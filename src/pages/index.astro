@@ -1,11 +1,47 @@
 ---
-import Welcome from '../components/Welcome.astro';
-import Layout from '../layouts/Layout.astro';
+/**
+ * ========================================
+ * index.astro - หน้าหลักของ App
+ * ========================================
+ *
+ * หน้าแรกที่โหลดเมื่อเปิด Launcher
+ * ใช้ LauncherApp component (React)
+ */
 
-// Welcome to Astro! Wondering what to do next? Check out the Astro documentation at https://docs.astro.build
-// Don't want to use any of this? Delete everything in this file, the `assets`, `components`, and `layouts` directories, and start fresh.
+import LauncherApp from "../components/LauncherApp";
+import "../styles/global.css";
 ---
 
-<Layout>
-	<Welcome />
-</Layout>
+<html lang="th">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="ML Client - Minecraft Launcher" />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- Google Fonts - Itim (Thai font) + Jaturat for title -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Itim&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Font Awesome Icons -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+    />
+
+    <title>Reality - Minecraft Launcher</title>
+  </head>
+  <body class="bg-zinc-950">
+    <!--
+      client:only="react" - render เฉพาะ client side
+      React component ไม่รัน SSR (ต้องใช้ window.api)
+    -->
+    <LauncherApp client:only="react" />
+  </body>
+</html>

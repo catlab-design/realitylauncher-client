@@ -1,14 +1,36 @@
 {
-  "name": "ml-client",
+  "name": "reality-launcher",
   "type": "module",
   "version": "0.0.1",
+  "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "astro dev",
-    "build": "astro build",
-    "preview": "astro preview",
-    "astro": "astro"
+    "dev": "bun run electron:build && concurrently --kill-others-on-fail \"astro dev --port 4321\" \"wait-on http://localhost:4321 && electron .\"",
+    "build": "astro build && bun run electron:build",
+    "start": "electron .",
+    "electron:build": "esbuild src/electron/main.ts --bundle --platform=node --format=esm --external:electron --external:discord-rpc --outdir=dist-electron && esbuild src/electron/preload.ts --bundle --platform=node --format=esm --external:electron --outdir=dist-electron"
   },
   "dependencies": {
-    "astro": "^5.16.5"
+    "@astrojs/react": "^4.4.2",
+    "@fluentui/react-components": "^9.72.8",
+    "@tailwindcss/vite": "^4.1.18",
+    "@types/discord-rpc": "^4.0.10",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "astro": "^5.16.5",
+    "astro-electron": "^0.5.0",
+    "discord-rpc": "^4.0.1",
+    "electron": "^39.2.7",
+    "gsap": "^3.14.2",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "react-hot-toast": "^2.6.0",
+    "tailwindcss": "^4.1.18",
+    "userland": "^0.4.3"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "esbuild": "^0.27.1",
+    "vite-plugin-electron-renderer": "^0.14.6",
+    "wait-on": "^9.0.3"
   }
 }
