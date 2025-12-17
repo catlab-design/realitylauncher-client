@@ -3,11 +3,70 @@
   "type": "module",
   "version": "0.0.1",
   "main": "dist-electron/main.js",
+  "author": "Cat Lab_ Design",
+  "description": "Reality Minecraft Launcher",
   "scripts": {
     "dev": "bun run electron:build && concurrently --kill-others-on-fail \"astro dev --port 4321\" \"wait-on http://localhost:4321 && electron .\"",
     "build": "astro build && bun run electron:build",
     "start": "electron .",
-    "electron:build": "esbuild src/electron/main.ts --bundle --platform=node --format=esm --external:electron --external:discord-rpc --outdir=dist-electron && esbuild src/electron/preload.ts --bundle --platform=node --format=esm --external:electron --outdir=dist-electron"
+    "electron:build": "esbuild src/electron/main.ts --bundle --platform=node --format=esm --external:electron --external:discord-rpc --external:electron-updater --outdir=dist-electron && esbuild src/electron/preload.ts --bundle --platform=node --format=cjs --external:electron --outdir=dist-electron",
+    "dist": "bun run build && electron-builder",
+    "dist:win": "bun run build && electron-builder --win",
+    "dist:mac": "bun run build && electron-builder --mac",
+    "dist:linux": "bun run build && electron-builder --linux"
+  },
+  "build": {
+    "appId": "net.catlab.reality-launcher",
+    "productName": "Reality Launcher",
+    "directories": {
+      "output": "release"
+    },
+    "icon": "public/r.png",
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.games"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm"
+      ],
+      "category": "Game"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "AquaOffical",
+      "repo": "ml-client",
+      "releaseType": "release"
+    }
   },
   "dependencies": {
     "@astrojs/react": "^4.4.2",
@@ -19,8 +78,9 @@
     "astro": "^5.16.5",
     "astro-electron": "^0.5.0",
     "discord-rpc": "^4.0.1",
-    "electron": "^39.2.7",
+    "electron-updater": "^6.6.2",
     "gsap": "^3.14.2",
+    "minecraft-launcher-core": "^3.18.2",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-hot-toast": "^2.6.0",
@@ -29,6 +89,8 @@
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
+    "electron": "^39.2.7",
+    "electron-builder": "^26.0.12",
     "esbuild": "^0.27.1",
     "vite-plugin-electron-renderer": "^0.14.6",
     "wait-on": "^9.0.3"

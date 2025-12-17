@@ -56,6 +56,87 @@ interface ColorThemeInfo {
   name: string;
 }
 
+// Version types
+interface InstalledVersion {
+  id: string;
+  type: "release" | "snapshot" | "old_beta" | "old_alpha" | "modded";
+  releaseTime?: string;
+  lastUsed?: string;
+  hasJar: boolean;
+  hasJson: boolean;
+}
+
+interface VersionManifestVersion {
+  id: string;
+  type: "release" | "snapshot" | "old_beta" | "old_alpha";
+  url: string;
+  time: string;
+  releaseTime: string;
+}
+
+// Java types
+interface JavaInstallation {
+  path: string;
+  version: string;
+  majorVersion: number;
+  vendor: string;
+  is64Bit: boolean;
+  isValid: boolean;
+}
+
+interface JavaTestResult {
+  success: boolean;
+  version?: string;
+  majorVersion?: number;
+  vendor?: string;
+  is64Bit?: boolean;
+  error?: string;
+}
+
+// Verification types
+interface VerificationResult {
+  success: boolean;
+  totalFiles: number;
+  verifiedFiles: number;
+  missingFiles: string[];
+  corruptedFiles: string[];
+  errors: string[];
+}
+
+// Profile types
+interface Profile {
+  id: string;
+  name: string;
+  version: string;
+  modLoader?: "forge" | "fabric" | "quilt" | "neoforge" | "vanilla";
+  modLoaderVersion?: string;
+  javaVersion?: 8 | 17 | 21;
+  ramMB: number;
+  javaArguments?: string;
+  created: string;
+  lastPlayed?: string;
+  icon?: string;
+  description?: string;
+}
+
+interface ProfileCreateOptions {
+  name: string;
+  version: string;
+  modLoader?: Profile["modLoader"];
+  modLoaderVersion?: string;
+  ramMB?: number;
+  description?: string;
+  icon?: string;
+}
+
+interface ProfileStats {
+  modsCount: number;
+  savesCount: number;
+  resourcePacksCount: number;
+  shaderPacksCount: number;
+  totalSize: number;
+}
+
 // ========================================
 // API Definition
 // ========================================
@@ -100,7 +181,23 @@ const api = {
     return ipcRenderer.invoke("list-versions");
   },
 
-  getLauncherInfo: (): Promise<LauncherInfo> => {
+  listInstalledVersions: (): Promise<InstalledVersion[]> => {
+    return ipcRenderer.invoke("list-installed-versions");
+  },
+
+  getVersionManifest: (): Promise<{ latest: { release: string; snapshot: string }; versions: VersionManifestVersion[] }> => {
+    return ipcRenderer.invoke("get-version-manifest");
+  },
+
+  getVersionsForDisplay: (): Promise<{
+    installed: InstalledVersion[];
+    available: VersionManifestVersion[];
+    latest: { release: string; snapshot: string };
+  }> => {
+    return ipcRenderer.invoke("get-versions-for-display");
+  },
+
+  getLauncherInfo: (): Promise<LauncherInfo & { javaVersion?: number | null }> => {
     return ipcRenderer.invoke("get-launcher-info");
   },
 
@@ -110,6 +207,82 @@ const api = {
     ramMB: number;
   }): Promise<LaunchResult> => {
     return ipcRenderer.invoke("launch-game", payload);
+  },
+
+  // === Java APIs ===
+  detectJava: (): Promise<JavaInstallation[]> => {
+    return ipcRenderer.invoke("detect-java");
+  },
+
+  testJava: (javaPath: string): Promise<JavaTestResult> => {
+    return ipcRenderer.invoke("test-java", javaPath);
+  },
+
+  getRecommendedJava: (mcVersion: string): Promise<number> => {
+    return ipcRenderer.invoke("get-recommended-java", mcVersion);
+  },
+
+  selectBestJava: (mcVersion: string): Promise<string | null> => {
+    return ipcRenderer.invoke("select-best-java", mcVersion);
+  },
+
+  getJavaForVersion: (mcVersion: string): Promise<{
+    javaPath: string | null;
+    recommendedVersion: number;
+    actualVersion: number | null;
+    isExactMatch: boolean;
+  }> => {
+    return ipcRenderer.invoke("get-java-for-version", mcVersion);
+  },
+
+  // === Verification APIs ===
+  verifyGameFiles: (versionId: string): Promise<VerificationResult> => {
+    return ipcRenderer.invoke("verify-game-files", versionId);
+  },
+
+  quickVerify: (versionId: string): Promise<boolean> => {
+    return ipcRenderer.invoke("quick-verify", versionId);
+  },
+
+  // === Profile APIs ===
+  initProfiles: (): Promise<void> => {
+    return ipcRenderer.invoke("init-profiles");
+  },
+
+  listProfiles: (): Promise<Profile[]> => {
+    return ipcRenderer.invoke("list-profiles");
+  },
+
+  createProfile: (options: ProfileCreateOptions): Promise<Profile> => {
+    return ipcRenderer.invoke("create-profile", options);
+  },
+
+  getProfile: (profileId: string): Promise<Profile | null> => {
+    return ipcRenderer.invoke("get-profile", profileId);
+  },
+
+  updateProfile: (profileId: string, updates: Partial<Profile>): Promise<Profile | null> => {
+    return ipcRenderer.invoke("update-profile", profileId, updates);
+  },
+
+  deleteProfile: (profileId: string): Promise<boolean> => {
+    return ipcRenderer.invoke("delete-profile", profileId);
+  },
+
+  duplicateProfile: (profileId: string, newName: string): Promise<Profile | null> => {
+    return ipcRenderer.invoke("duplicate-profile", profileId, newName);
+  },
+
+  getProfileStats: (profileId: string): Promise<ProfileStats | null> => {
+    return ipcRenderer.invoke("get-profile-stats", profileId);
+  },
+
+  getProfilePath: (profileId: string): Promise<string> => {
+    return ipcRenderer.invoke("get-profile-path", profileId);
+  },
+
+  openProfileFolder: (profileId: string): Promise<void> => {
+    return ipcRenderer.invoke("open-profile-folder", profileId);
   },
 
   // === Utility APIs ===
@@ -170,6 +343,59 @@ const api = {
     ipcRenderer.on("auth-callback", handler);
     // Return cleanup function
     return () => ipcRenderer.removeListener("auth-callback", handler);
+  },
+
+  // === Auto Update APIs ===
+  checkForUpdates: (): Promise<void> => {
+    return ipcRenderer.invoke("check-for-updates");
+  },
+
+  downloadUpdate: (): Promise<void> => {
+    return ipcRenderer.invoke("download-update");
+  },
+
+  installUpdate: (): Promise<void> => {
+    return ipcRenderer.invoke("install-update");
+  },
+
+  getAppVersion: (): Promise<string> => {
+    return ipcRenderer.invoke("get-app-version");
+  },
+
+  // รับ events จาก auto-updater
+  onUpdateAvailable: (callback: (info: { version: string; releaseDate: string }) => void): (() => void) => {
+    const handler = (_event: any, info: { version: string; releaseDate: string }) => callback(info);
+    ipcRenderer.on("update-available", handler);
+    return () => ipcRenderer.removeListener("update-available", handler);
+  },
+
+  onUpdateProgress: (callback: (progress: { percent: number; bytesPerSecond: number; transferred: number; total: number }) => void): (() => void) => {
+    const handler = (_event: any, progress: { percent: number; bytesPerSecond: number; transferred: number; total: number }) => callback(progress);
+    ipcRenderer.on("update-progress", handler);
+    return () => ipcRenderer.removeListener("update-progress", handler);
+  },
+
+  onUpdateDownloaded: (callback: (info: { version: string; releaseDate: string }) => void): (() => void) => {
+    const handler = (_event: any, info: { version: string; releaseDate: string }) => callback(info);
+    ipcRenderer.on("update-downloaded", handler);
+    return () => ipcRenderer.removeListener("update-downloaded", handler);
+  },
+
+  // === Window Control APIs ===
+  windowMinimize: (): Promise<void> => {
+    return ipcRenderer.invoke("window-minimize");
+  },
+
+  windowMaximize: (): Promise<void> => {
+    return ipcRenderer.invoke("window-maximize");
+  },
+
+  windowClose: (): Promise<void> => {
+    return ipcRenderer.invoke("window-close");
+  },
+
+  windowIsMaximized: (): Promise<boolean> => {
+    return ipcRenderer.invoke("window-is-maximized");
   },
 };
 

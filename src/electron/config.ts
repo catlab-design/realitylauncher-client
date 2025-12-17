@@ -54,6 +54,20 @@ export interface LauncherConfig {
 
     // === Discord RPC ===
     discordRPCEnabled: boolean; // เปิด/ปิด Discord RPC
+
+    // === Java Settings ===
+    autoJavaSelection: boolean; // เลือก Java อัตโนมัติตามเวอร์ชัน MC
+    selectedJavaVersion?: "8" | "17" | "21" | "custom"; // Java version ที่เลือก
+    java8Path?: string;  // path ไปยัง Java 8
+    java17Path?: string; // path ไปยัง Java 17
+    java21Path?: string; // path ไปยัง Java 21
+
+    // === Game Launch Settings ===
+    verifyFilesBeforeLaunch: boolean; // ตรวจสอบไฟล์ก่อนเปิดเกม
+    fullscreen: boolean; // เปิดเกมแบบเต็มจอ
+    javaArguments: string; // JVM arguments เพิ่มเติม
+    maxConcurrentDownloads: number; // จำนวน download พร้อมกัน
+    telemetryEnabled: boolean; // เปิด/ปิด telemetry
 }
 
 // ========================================
@@ -89,6 +103,18 @@ export const DEFAULT_CONFIG: LauncherConfig = {
     closeOnLaunch: false,
     downloadSpeedLimit: 0, // 0 = ไม่จำกัด
     discordRPCEnabled: true,
+    // Java settings
+    autoJavaSelection: true,
+    selectedJavaVersion: undefined,
+    java8Path: undefined,
+    java17Path: undefined,
+    java21Path: undefined,
+    // Game launch settings
+    verifyFilesBeforeLaunch: true,
+    fullscreen: false,
+    javaArguments: "",
+    maxConcurrentDownloads: 5,
+    telemetryEnabled: true,
 };
 
 // ========================================

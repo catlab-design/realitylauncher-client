@@ -82,6 +82,11 @@ declare global {
       openAuthWindow: () => Promise<void>;
       closeAuthWindow: () => Promise<void>;
       onAuthCallback: (callback: (data: { token: string }) => void) => () => void;
+      // Window Control
+      windowMinimize: () => Promise<void>;
+      windowMaximize: () => Promise<void>;
+      windowClose: () => Promise<void>;
+      windowIsMaximized: () => Promise<boolean>;
     };
   }
 }

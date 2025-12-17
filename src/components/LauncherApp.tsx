@@ -62,6 +62,20 @@ interface LauncherConfig {
   closeOnLaunch: boolean;
   discordRPCEnabled: boolean;
   downloadSpeedLimit: number;
+  // Game launch settings
+  fullscreen: boolean;
+  javaArguments: string;
+  maxConcurrentDownloads: number;
+  telemetryEnabled: boolean;
+  // Java installations
+  java8Path?: string;
+  java17Path?: string;
+  java21Path?: string;
+  // Auto Java selection
+  autoJavaSelection: boolean;
+  selectedJavaVersion?: "8" | "17" | "21" | "custom";
+  // File verification
+  verifyFilesBeforeLaunch: boolean;
 }
 
 // ========================================
@@ -262,6 +276,46 @@ function LoadingScreen({ onComplete, themeColor }: { onComplete: () => void; the
 
   return (
     <div className="loading-screen fixed inset-0 z-50 flex flex-col" style={{ backgroundColor: themeColor }}>
+      {/* Title Bar Drag Region with Window Controls */}
+      <div className="h-10 w-full flex-shrink-0 flex items-center justify-end pr-0 drag-region">
+        {/* Window Control Buttons */}
+        <div className="flex items-center gap-0 no-drag">
+          {/* Minimize */}
+          <button
+            onClick={() => window.api?.windowMinimize()}
+            className="w-12 h-10 flex items-center justify-center transition-all hover:bg-black/10"
+            style={{ color: "#1a1a1a" }}
+            title="ย่อหน้าต่าง"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19 13H5v-2h14v2z" />
+            </svg>
+          </button>
+          {/* Maximize */}
+          <button
+            onClick={() => window.api?.windowMaximize()}
+            className="w-12 h-10 flex items-center justify-center transition-all hover:bg-black/10"
+            style={{ color: "#1a1a1a" }}
+            title="ขยายหน้าต่าง"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z" />
+            </svg>
+          </button>
+          {/* Close */}
+          <button
+            onClick={() => window.api?.windowClose()}
+            className="w-12 h-10 flex items-center justify-center transition-all hover:bg-red-500 hover:!text-white"
+            style={{ color: "#1a1a1a" }}
+            title="ปิดหน้าต่าง"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
       {/* Spacer */}
       <div className="flex-1" />
 
@@ -271,7 +325,7 @@ function LoadingScreen({ onComplete, themeColor }: { onComplete: () => void; the
         <div className="flex items-center justify-between mb-4">
           {/* Left - Logo + Title */}
           <div ref={logoRef} className="flex items-center gap-3">
-            <img src="/r.png" alt="Reality" className="w-12 h-12 object-contain" />
+            <img src="r.svg" alt="Reality" className="w-12 h-12 object-contain" />
             <span className="text-2xl font-bold text-gray-900" style={{ fontFamily: "'Jaturat', 'Itim', sans-serif" }}>
               Reality
             </span>
@@ -330,6 +384,7 @@ export default function LauncherApp() {
   // State
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("home");
+  const [settingsTab, setSettingsTab] = useState<"appearance" | "game" | "connections" | "launcher" | "resources" | "java" | "account">("account");
   const [session, setSession] = useState<AuthSession | null>(null);
   const [accounts, setAccounts] = useState<AuthSession[]>([]);
   const [selectedServer, setSelectedServer] = useState<Server | null>(null);
@@ -355,6 +410,15 @@ export default function LauncherApp() {
     closeOnLaunch: false,
     downloadSpeedLimit: 0,
     discordRPCEnabled: true,
+    // Game launch settings
+    fullscreen: false,
+    javaArguments: "",
+    maxConcurrentDownloads: 5,
+    telemetryEnabled: true,
+    // Java auto-selection
+    autoJavaSelection: true,
+    // File verification
+    verifyFilesBeforeLaunch: true,
   });
 
   // Get colors based on current theme (dark/light + color)
@@ -631,11 +695,14 @@ export default function LauncherApp() {
     return <LoadingScreen onComplete={() => setIsLoading(false)} themeColor={colors.secondary} />;
   }
 
-  // Render tabs
-  const navItems = [
+  // Render tabs - split into main and bottom navigation
+  const mainNavItems = [
     { id: "home", icon: Icons.Home, label: "หน้าหลัก" },
     { id: "servers", icon: Icons.Dns, label: "เซิร์ฟเวอร์" },
     { id: "modpack", icon: Icons.Box, label: "Mod Pack" },
+  ];
+
+  const bottomNavItems = [
     { id: "settings", icon: Icons.Settings, label: "ตั้งค่า" },
     { id: "about", icon: Icons.Info, label: "เกี่ยวกับ" },
   ];
@@ -940,140 +1007,247 @@ export default function LauncherApp() {
       )}
 
       {/* Sidebar */}
-      <nav className="w-20 flex flex-col items-center py-4 gap-3" style={{ backgroundColor: colors.secondary }}>
-        <div className="w-12 h-12 rounded-2xl mb-4 overflow-hidden">
-          <img src="/r.png" alt="Logo" className="w-full h-full object-cover" />
+      <nav className="w-20 flex flex-col items-center" style={{ backgroundColor: colors.secondary }}>
+        {/* Top Section - Logo and Main Nav */}
+        <div className="flex-1 flex flex-col items-center gap-2">
+          {/* Drag region for sidebar top */}
+          <div className="w-full pt-2 pb-2 flex justify-center drag-region">
+            <div className="w-12 h-12 rounded-2xl overflow-hidden">
+              <img src="r.svg" alt="Logo" className="w-full h-full object-cover" />
+            </div>
+          </div>
+
+          {/* Main Navigation Items */}
+          {mainNavItems.map(({ id, icon: Icon, label }) => (
+            <div key={id} className="relative group">
+              <button
+                onClick={() => setActiveTab(id)}
+                className="w-14 h-14 rounded-2xl flex items-center justify-center transition-all hover:scale-105 no-drag"
+                style={{
+                  backgroundColor: activeTab === id ? "rgba(255,255,255,0.9)" : "transparent",
+                  color: "#1a1a1a"
+                }}
+              >
+                <Icon className="w-6 h-6" />
+              </button>
+              {/* Hover Tooltip */}
+              <div
+                className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-3 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 translate-x-2 group-hover:translate-x-0 transition-all duration-200 pointer-events-none z-50"
+                style={{
+                  backgroundColor: "rgba(0,0,0,0.8)",
+                  color: "#fff",
+                  fontSize: "0.75rem"
+                }}
+              >
+                {label}
+              </div>
+            </div>
+          ))}
         </div>
-        {navItems.map(({ id, icon: Icon, label }) => (
-          <button
-            key={id}
-            onClick={() => setActiveTab(id)}
-            title={label}
-            className="w-14 h-14 rounded-2xl flex items-center justify-center transition-all hover:scale-105"
-            style={{ backgroundColor: activeTab === id ? "rgba(255,255,255,0.9)" : "transparent", color: "#1a1a1a" }}
-          >
-            <Icon className="w-6 h-6" />
-          </button>
-        ))}
+
+        {/* Bottom Section - Settings and About */}
+        <div className="flex flex-col items-center gap-2 pb-4">
+          {bottomNavItems.map(({ id, icon: Icon, label }) => (
+            <div key={id} className="relative group">
+              <button
+                onClick={() => setActiveTab(id)}
+                className="w-14 h-14 rounded-2xl flex items-center justify-center transition-all hover:scale-105 no-drag"
+                style={{
+                  backgroundColor: activeTab === id ? "rgba(255,255,255,0.9)" : "transparent",
+                  color: "#1a1a1a"
+                }}
+              >
+                <Icon className="w-6 h-6" />
+              </button>
+              {/* Hover Tooltip */}
+              <div
+                className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-3 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 translate-x-2 group-hover:translate-x-0 transition-all duration-200 pointer-events-none z-50"
+                style={{
+                  backgroundColor: "rgba(0,0,0,0.8)",
+                  color: "#fff",
+                  fontSize: "0.75rem"
+                }}
+              >
+                {label}
+              </div>
+            </div>
+          ))}
+        </div>
       </nav>
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
-        <header className="h-16 flex items-center justify-between px-6" style={{ backgroundColor: colors.surface }}>
+        {/* Header with Drag Region */}
+        <header
+          className="h-10 flex items-center justify-between pl-6 pr-0 drag-region"
+          style={{ backgroundColor: colors.surface }}
+        >
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold" style={{ fontFamily: "'Jaturat', 'Itim', sans-serif", color: colors.onSurface }}>Reality</h1>
-            <span className="text-xs px-2 py-1 rounded-full" style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}>v0.1.0</span>
+            <h1 className="text-xl font-bold" style={{ fontFamily: "'Jaturat', 'Itim', sans-serif", color: colors.onSurface }}>Reality</h1>
+            <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}>v0.1.0</span>
           </div>
-          <div className="flex items-center gap-3 relative">
-            {/* Account Button */}
-            <button
-              onClick={() => setAccountDropdownOpen(!accountDropdownOpen)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl border transition-all hover:scale-105"
-              style={{ borderColor: colors.outline, color: colors.onSurface }}
-            >
-              {session ? (
-                <MCHead username={session.username} size={28} className="rounded-full" />
-              ) : (
-                <Icons.Person className="w-5 h-5" />
-              )}
-              Account
-              <svg className={`w-4 h-4 transition-transform ${accountDropdownOpen ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="currentColor">
-                <path d="M7 10l5 5 5-5z" />
-              </svg>
-            </button>
 
-            {/* Account Dropdown */}
-            {accountDropdownOpen && (
-              <div
-                className="absolute top-full right-0 mt-2 w-64 rounded-2xl shadow-xl p-4 z-50"
-                style={{ backgroundColor: colors.surface, border: `1px solid ${colors.outline}` }}
+          {/* Right Side - Account + Window Controls */}
+          <div className="flex items-center gap-3 no-drag">
+            {/* Account Section */}
+            <div className="relative">
+              {/* Account Button */}
+              <button
+                onClick={() => setAccountDropdownOpen(!accountDropdownOpen)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-full border text-sm transition-all hover:scale-105"
+                style={{ borderColor: colors.outline, color: colors.onSurface }}
               >
-                <p className="text-xs font-medium mb-3" style={{ color: colors.onSurfaceVariant }}>Account</p>
+                {session ? (
+                  <MCHead username={session.username} size={22} className="rounded-full" />
+                ) : (
+                  <Icons.Person className="w-4 h-4" />
+                )}
+                {session?.username || "Account"}
+                <svg className={`w-3 h-3 transition-transform ${accountDropdownOpen ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M7 10l5 5 5-5z" />
+                </svg>
+              </button>
 
-                {/* Account List */}
-                <div className="space-y-2 mb-4">
-                  {accounts.length > 0 ? (
-                    accounts.map((account, index) => (
-                      <div
-                        key={`${account.type}-${account.username}-${index}`}
-                        className="flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-all hover:bg-gray-500/10"
-                        style={{
-                          backgroundColor: session?.username === account.username ? colors.surfaceContainerHighest : "transparent",
-                          border: session?.username === account.username ? `1px solid ${colors.secondary}` : "1px solid transparent",
-                        }}
-                        onClick={() => {
-                          selectAccount(account);
-                          setAccountDropdownOpen(false);
-                        }}
-                      >
-                        <MCHead username={account.username} size={32} className="rounded-full" />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium truncate" style={{ color: colors.onSurface }}>{account.username}</div>
-                          <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>
-                            {account.type === "microsoft" ? "Microsoft" : "Offline Account"}
-                          </div>
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeAccount(account);
+              {/* Account Dropdown */}
+              {accountDropdownOpen && (
+                <div
+                  className="absolute top-full right-0 mt-2 w-64 rounded-2xl shadow-xl p-4 z-50"
+                  style={{ backgroundColor: colors.surface, border: `1px solid ${colors.outline}` }}
+                >
+                  <p className="text-xs font-medium mb-3" style={{ color: colors.onSurfaceVariant }}>Account</p>
+
+                  {/* Account List */}
+                  <div className="space-y-2 mb-4">
+                    {accounts.length > 0 ? (
+                      accounts.map((account, index) => (
+                        <div
+                          key={`${account.type}-${account.username}-${index}`}
+                          className="flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-all hover:bg-gray-500/10"
+                          style={{
+                            backgroundColor: session?.username === account.username ? colors.surfaceContainerHighest : "transparent",
+                            border: session?.username === account.username ? `1px solid ${colors.secondary}` : "1px solid transparent",
                           }}
-                          className="w-6 h-6 rounded-full flex items-center justify-center hover:bg-red-500/20"
-                          style={{ color: colors.onSurfaceVariant }}
+                          onClick={() => {
+                            selectAccount(account);
+                            setAccountDropdownOpen(false);
+                          }}
                         >
-                          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-                          </svg>
-                        </button>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-center py-2" style={{ color: colors.onSurfaceVariant }}>ยังไม่มีบัญชี</p>
-                  )}
-                </div>
+                          <MCHead username={account.username} size={32} className="rounded-full" />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium truncate" style={{ color: colors.onSurface }}>{account.username}</div>
+                            <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>
+                              {account.type === "microsoft" ? "Microsoft" : "Offline Account"}
+                            </div>
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeAccount(account);
+                            }}
+                            className="w-6 h-6 rounded-full flex items-center justify-center hover:bg-red-500/20"
+                            style={{ color: colors.onSurfaceVariant }}
+                          >
+                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+                            </svg>
+                          </button>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-center py-2" style={{ color: colors.onSurfaceVariant }}>ยังไม่มีบัญชี</p>
+                    )}
+                  </div>
 
-                {/* Divider */}
-                <div className="h-px mb-3" style={{ backgroundColor: colors.outline }} />
+                  {/* Divider */}
+                  <div className="h-px mb-3" style={{ backgroundColor: colors.outline }} />
 
-                {/* Actions */}
-                <p className="text-xs font-medium mb-2" style={{ color: colors.onSurfaceVariant }}>Actions</p>
-                <div className="space-y-1">
-                  <button
-                    onClick={() => {
-                      setAccountDropdownOpen(false);
-                      setLoginDialogOpen(true);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all hover:bg-gray-500/10"
-                    style={{ color: colors.onSurface }}
-                  >
-                    <span style={{ color: colors.secondary }}>+</span>
-                    เพิ่มบัญชีผู้ใช้
-                  </button>
-                  {session && (
+                  {/* Actions */}
+                  <p className="text-xs font-medium mb-2" style={{ color: colors.onSurfaceVariant }}>Actions</p>
+                  <div className="space-y-1">
                     <button
                       onClick={() => {
-                        handleLogout();
                         setAccountDropdownOpen(false);
+                        setLoginDialogOpen(true);
                       }}
                       className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all hover:bg-gray-500/10"
                       style={{ color: colors.onSurface }}
                     >
-                      <span>←</span>
-                      ออกจากระบบ
+                      <span style={{ color: colors.secondary }}>+</span>
+                      เพิ่มบัญชีผู้ใช้
                     </button>
-                  )}
+                    {session && (
+                      <button
+                        onClick={() => {
+                          handleLogout();
+                          setAccountDropdownOpen(false);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all hover:bg-gray-500/10"
+                        style={{ color: colors.onSurface }}
+                      >
+                        <span>←</span>
+                        ออกจากระบบ
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Backdrop to close dropdown */}
-            {accountDropdownOpen && (
-              <div
-                className="fixed inset-0 z-40"
-                onClick={() => setAccountDropdownOpen(false)}
-              />
-            )}
+              {/* Backdrop to close dropdown */}
+              {accountDropdownOpen && (
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setAccountDropdownOpen(false)}
+                />
+              )}
+            </div>
+
+            {/* Window Control Buttons */}
+            <div className="flex items-center gap-0 ml-3 relative z-50" style={{ pointerEvents: "auto" }}>
+              {/* Minimize */}
+              <button
+                onClick={() => window.api?.windowMinimize()}
+                className="w-12 h-10 flex items-center justify-center transition-all hover:bg-black/10"
+                style={{ color: colors.onSurfaceVariant }}
+                title="ย่อหน้าต่าง"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19 13H5v-2h14v2z" />
+                </svg>
+              </button>
+              {/* Maximize / Fullscreen */}
+              <button
+                onClick={async () => {
+                  await window.api?.windowMaximize();
+                  // Sync with fullscreen setting
+                  const isMaximized = await window.api?.windowIsMaximized?.();
+                  updateConfig({ fullscreen: isMaximized ?? false });
+                }}
+                className="w-12 h-10 flex items-center justify-center transition-all hover:bg-black/10"
+                style={{ color: config.fullscreen ? colors.secondary : colors.onSurfaceVariant }}
+                title={config.fullscreen ? "ย่อกลับ" : "ขยายหน้าต่าง"}
+              >
+                {config.fullscreen ? (
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z" />
+                  </svg>
+                )}
+              </button>
+              {/* Close */}
+              <button
+                onClick={() => window.api?.windowClose()}
+                className="w-12 h-10 flex items-center justify-center transition-all hover:bg-red-500 hover:!text-white"
+                style={{ color: colors.onSurfaceVariant }}
+                title="ปิดหน้าต่าง"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+                </svg>
+              </button>
+            </div>
           </div>
         </header>
 
@@ -1086,7 +1260,7 @@ export default function LauncherApp() {
                 {session ? <MCHead username={session.username} size={64} /> : <div className="w-16 h-16 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.surfaceContainerHighest }}><Icons.Person className="w-8 h-8" style={{ color: colors.onSurfaceVariant }} /></div>}
                 <div>
                   <h2 className="text-2xl font-medium" style={{ color: colors.onSurface }}>{session ? `ยินดีต้อนรับกลับ, ${session.username}!` : "ยินดีต้อนรับสู่ Reality"}</h2>
-                  <p style={{ color: colors.onSurfaceVariant }}>{session ? "เลือกเซิร์ฟเวอร์แล้วกดเล่น" : "เข้าสู่ระบบเพื่อเริ่มเล่น"}</p>
+                  <p style={{ color: colors.onSurfaceVariant }}>{session ? "launcher ที่เป็นมากกว่า..." : "เข้าสู่ระบบเพื่อเริ่มเล่น"}</p>
                 </div>
               </div>
 
@@ -1295,290 +1469,1078 @@ export default function LauncherApp() {
 
           {/* Settings Tab */}
           {activeTab === "settings" && (
-            <div className="space-y-6 max-w-2xl">
-              <h2 className="text-xl font-medium" style={{ color: colors.onSurface }}>ตั้งค่า</h2>
-
-              {/* Dark/Light Theme */}
-              <div className="p-4 rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
-                <h3 className="font-medium mb-3" style={{ color: colors.onSurface }}>ธีมพื้นหลัง</h3>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => updateConfig({ theme: "light" })}
-                    className="flex-1 py-3 rounded-xl transition-all font-medium flex items-center justify-center gap-2"
-                    style={{
-                      backgroundColor: config.theme === "light" ? colors.secondary : colors.surfaceContainerHigh,
-                      color: config.theme === "light" ? "#1a1a1a" : colors.onSurfaceVariant,
-                    }}
-                  >
-                    <i className="fa-solid fa-sun"></i> สว่าง
-                  </button>
-                  <button
-                    onClick={() => updateConfig({ theme: "dark" })}
-                    className="flex-1 py-3 rounded-xl transition-all font-medium flex items-center justify-center gap-2"
-                    style={{
-                      backgroundColor: config.theme === "dark" ? colors.secondary : colors.surfaceContainerHigh,
-                      color: config.theme === "dark" ? "#1a1a1a" : colors.onSurfaceVariant,
-                    }}
-                  >
-                    <i className="fa-solid fa-moon"></i> มืด
-                  </button>
-                </div>
-              </div>
-
-              {/* Color Theme */}
-              <div className="p-4 rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
-                <h3 className="font-medium mb-3" style={{ color: colors.onSurface }}>ธีมสี</h3>
-                <div className="flex gap-3 flex-wrap items-center">
-                  {(Object.keys(COLOR_THEMES) as ColorTheme[]).map((theme) => (
+            <div className="flex gap-6 h-full">
+              {/* Sidebar Navigation */}
+              <div className={`${config.fullscreen ? "w-64" : "w-56"} flex-shrink-0 pr-4 transition-all`}>
+                <div className="sticky top-0 space-y-1">
+                  {[
+                    { id: "account", icon: "fa-user", label: "บัญชีผู้ใช้" },
+                    { id: "appearance", icon: "fa-palette", label: "การแสดงผล" },
+                    { id: "game", icon: "fa-gamepad", label: "เกมและประสิทธิภาพ" },
+                    { id: "connections", icon: "fa-wifi", label: "การเชื่อมต่อ" },
+                    { id: "launcher", icon: "fa-rocket", label: "Launcher" },
+                    { id: "resources", icon: "fa-hard-drive", label: "จัดการทรัพยากร" },
+                    { id: "java", icon: "fa-brands fa-java", label: "Java" },
+                  ].map((item) => (
                     <button
-                      key={theme}
-                      onClick={() => {
-                        updateConfig({ colorTheme: theme, customColor: undefined });
-                        setCustomColorPending(null);
-                      }}
-                      className="w-10 h-10 rounded-full transition-all hover:scale-110"
-                      style={{ backgroundColor: COLOR_THEMES[theme].primary, border: config.colorTheme === theme && !config.customColor && !customColorPending ? `3px solid ${colors.onSurface}` : "3px solid transparent" }}
-                      title={COLOR_THEMES[theme].name}
-                    />
-                  ))}
-                  {/* Custom Color Button */}
-                  <div className="relative">
-                    <input
-                      type="color"
-                      value={customColorPending || config.customColor || "#ff6b6b"}
-                      onChange={(e) => setCustomColorPending(e.target.value)}
-                      className="absolute inset-0 opacity-0 cursor-pointer w-10 h-10"
-                    />
-                    <div
-                      className="w-10 h-10 rounded-full transition-all hover:scale-110 flex items-center justify-center"
+                      key={item.id}
+                      onClick={() => setSettingsTab(item.id as typeof settingsTab)}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all text-left"
                       style={{
-                        background: customColorPending || config.customColor || `conic-gradient(red, yellow, lime, aqua, blue, magenta, red)`,
-                        border: (customColorPending || config.customColor) ? `3px solid ${colors.onSurface}` : "3px solid transparent"
+                        backgroundColor: settingsTab === item.id ? colors.secondary : "transparent",
+                        color: settingsTab === item.id ? "#1a1a1a" : colors.onSurfaceVariant,
                       }}
-                      title="เลือกสี Custom"
                     >
-                      {!customColorPending && !config.customColor && <span className="text-xs">🎨</span>}
-                    </div>
-                  </div>
-                </div>
-                {/* Pending custom color - show save/cancel */}
-                {customColorPending && (
-                  <div className="flex items-center gap-3 mt-3 p-3 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                    <div className="w-8 h-8 rounded-full" style={{ backgroundColor: customColorPending }} />
-                    <span className="text-sm flex-1" style={{ color: colors.onSurface }}>สีใหม่: {customColorPending}</span>
-                    <button
-                      onClick={() => {
-                        updateConfig({ customColor: customColorPending });
-                        setCustomColorPending(null);
-                        toast.success("บันทึกสี Custom แล้ว");
-                      }}
-                      className="px-3 py-1.5 rounded-lg text-sm font-medium"
-                      style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
-                    >
-                      บันทึก
+                      <i className={`fa-solid ${item.icon} w-5`}></i>
+                      {item.label}
                     </button>
-                    <button
-                      onClick={() => setCustomColorPending(null)}
-                      className="px-3 py-1.5 rounded-lg text-sm"
-                      style={{ backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
-                    >
-                      ยกเลิก
-                    </button>
-                  </div>
-                )}
-                {/* Saved custom color - show clear button */}
-                {config.customColor && !customColorPending && (
-                  <div className="flex items-center gap-2 mt-3">
-                    <div className="w-6 h-6 rounded-full" style={{ backgroundColor: config.customColor }} />
-                    <span className="text-sm" style={{ color: colors.onSurfaceVariant }}>กำลังใช้สี Custom: {config.customColor}</span>
-                    <button
-                      onClick={() => updateConfig({ customColor: undefined })}
-                      className="text-xs px-2 py-1 rounded ml-2"
-                      style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                    >
-                      ล้าง
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* RAM */}
-              <div className="p-4 rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
-                <h3 className="font-medium mb-3" style={{ color: colors.onSurface }}>หน่วยความจำ (RAM)</h3>
-                <div className="flex items-center gap-4">
-                  <input type="range" min={1024} max={8192} step={256} value={config.ramMB} onChange={(e) => updateConfig({ ramMB: Number(e.target.value) })} className="flex-1" style={{ accentColor: colors.secondary }} />
-                  <span className="font-medium w-20 text-right" style={{ color: colors.onSurface }}>{(config.ramMB / 1024).toFixed(1)} GB</span>
+                  ))}
                 </div>
               </div>
 
-              {/* Download Speed Limit */}
-              <div className="p-4 rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
-                <h3 className="font-medium mb-3" style={{ color: colors.onSurface }}>ความเร็วดาวน์โหลด</h3>
-                <div className="flex items-center gap-4">
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    step={5}
-                    value={config.downloadSpeedLimit}
-                    onChange={(e) => updateConfig({ downloadSpeedLimit: Number(e.target.value) })}
-                    className="flex-1"
-                    style={{ accentColor: colors.secondary }}
-                  />
-                  <span className="font-medium w-24 text-right" style={{ color: colors.onSurface }}>
-                    {config.downloadSpeedLimit === 0 ? "ไม่จำกัด" : `${config.downloadSpeedLimit} MB/s`}
-                  </span>
-                </div>
-              </div>
+              {/* Content Area */}
+              <div className="flex-1 space-y-6 overflow-auto">
+                {/* ==================== APPEARANCE ==================== */}
+                {settingsTab === "appearance" && (
+                  <>
+                    <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
+                      <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "40" }}>
+                        <i className="fa-solid fa-palette text-lg" style={{ color: colors.secondary }}></i>
+                        <h3 className="font-medium" style={{ color: colors.onSurface }}>การแสดงผล</h3>
+                      </div>
+                      <div className="p-4 space-y-4">
+                        {/* Theme Toggle */}
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>ธีมพื้นหลัง</p>
+                            <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>เลือกโหมดสว่างหรือมืด</p>
+                          </div>
+                          <div className="flex gap-2 p-1 rounded-xl" style={{ backgroundColor: colors.surfaceContainerHighest }}>
+                            <button
+                              onClick={() => updateConfig({ theme: "light" })}
+                              className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2"
+                              style={{
+                                backgroundColor: config.theme === "light" ? colors.secondary : "transparent",
+                                color: config.theme === "light" ? "#1a1a1a" : colors.onSurfaceVariant,
+                              }}
+                            >
+                              <i className="fa-solid fa-sun"></i> สว่าง
+                            </button>
+                            <button
+                              onClick={() => updateConfig({ theme: "dark" })}
+                              className="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2"
+                              style={{
+                                backgroundColor: config.theme === "dark" ? colors.secondary : "transparent",
+                                color: config.theme === "dark" ? "#1a1a1a" : colors.onSurfaceVariant,
+                              }}
+                            >
+                              <i className="fa-solid fa-moon"></i> มืด
+                            </button>
+                          </div>
+                        </div>
 
-              {/* Java Path */}
-              <div className="p-4 rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
-                <h3 className="font-medium mb-3" style={{ color: colors.onSurface }}>Java Installation</h3>
-                <div className="flex gap-3">
-                  <input type="text" value={config.javaPath || "ใช้ Java ของระบบ"} readOnly className="flex-1 px-4 py-2 rounded-xl border" style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurface }} />
-                  <button onClick={handleBrowseJava} className="px-4 py-2 rounded-xl" style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}>เลือก</button>
-                </div>
-              </div>
+                        <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
 
-              {/* Minecraft Directory */}
-              <div className="p-4 rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
-                <h3 className="font-medium mb-3" style={{ color: colors.onSurface }}>App Directory (.minecraft)</h3>
-                <div className="flex gap-3">
-                  <input type="text" value={config.minecraftDir || "ใช้ค่าเริ่มต้น"} readOnly className="flex-1 px-4 py-2 rounded-xl border" style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurface }} />
-                  <button onClick={handleBrowseMinecraftDir} className="px-4 py-2 rounded-xl" style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}>เลือก</button>
-                </div>
-              </div>
-
-              {/* Window Size */}
-              <div className="p-4 rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-medium" style={{ color: colors.onSurface }}>ขนาดหน้าต่าง</h3>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm" style={{ color: colors.onSurfaceVariant }}>อัตโนมัติ</span>
-                    <button
-                      onClick={() => updateConfig({ windowAuto: !config.windowAuto })}
-                      className="relative w-12 h-6 rounded-full transition-colors"
-                      style={{ backgroundColor: config.windowAuto ? colors.secondary : colors.surfaceContainerHighest }}
-                    >
-                      <div
-                        className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all"
-                        style={{ left: config.windowAuto ? "calc(100% - 20px)" : "4px" }}
-                      />
-                    </button>
-                  </div>
-                </div>
-                {!config.windowAuto && (
-                  <div className="flex gap-4">
-                    <div className="flex-1">
-                      <label className="text-sm" style={{ color: colors.onSurfaceVariant }}>กว้าง</label>
-                      <input type="number" value={config.windowWidth} onChange={(e) => updateConfig({ windowWidth: Number(e.target.value) })} className="w-full px-4 py-2 rounded-xl border mt-1" style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurface }} />
+                        {/* Color Theme */}
+                        <div>
+                          <p className="font-medium text-sm mb-3" style={{ color: colors.onSurface }}>ธีมสี</p>
+                          <div className="flex gap-3 flex-wrap items-center">
+                            {(Object.keys(COLOR_THEMES) as ColorTheme[]).map((theme) => (
+                              <button
+                                key={theme}
+                                onClick={() => {
+                                  updateConfig({ colorTheme: theme, customColor: undefined });
+                                  setCustomColorPending(null);
+                                }}
+                                className="w-10 h-10 rounded-full transition-all hover:scale-110 relative"
+                                style={{ backgroundColor: COLOR_THEMES[theme].primary }}
+                                title={COLOR_THEMES[theme].name}
+                              >
+                                {config.colorTheme === theme && !config.customColor && !customColorPending && (
+                                  <i className="fa-solid fa-check absolute inset-0 flex items-center justify-center text-white text-sm drop-shadow"></i>
+                                )}
+                              </button>
+                            ))}
+                            {/* Custom Color */}
+                            <div className="relative">
+                              <input
+                                type="color"
+                                value={customColorPending || config.customColor || "#ff6b6b"}
+                                onChange={(e) => setCustomColorPending(e.target.value)}
+                                className="absolute inset-0 opacity-0 cursor-pointer w-10 h-10"
+                              />
+                              <div
+                                className="w-10 h-10 rounded-full transition-all hover:scale-110 flex items-center justify-center"
+                                style={{
+                                  background: customColorPending || config.customColor || `conic-gradient(red, yellow, lime, aqua, blue, magenta, red)`,
+                                }}
+                                title="เลือกสี Custom"
+                              >
+                                {(customColorPending || config.customColor) && (
+                                  <i className="fa-solid fa-check text-white text-sm drop-shadow"></i>
+                                )}
+                                {!customColorPending && !config.customColor && <i className="fa-solid fa-palette text-white text-sm drop-shadow"></i>}
+                              </div>
+                            </div>
+                          </div>
+                          {/* Pending custom color */}
+                          {customColorPending && (
+                            <div className="flex items-center gap-3 mt-3 p-3 rounded-xl" style={{ backgroundColor: colors.surfaceContainerHighest }}>
+                              <div className="w-6 h-6 rounded-full" style={{ backgroundColor: customColorPending }} />
+                              <span className="text-sm flex-1" style={{ color: colors.onSurface }}>{customColorPending}</span>
+                              <button
+                                onClick={() => {
+                                  updateConfig({ customColor: customColorPending });
+                                  setCustomColorPending(null);
+                                  toast.success("บันทึกสี Custom แล้ว");
+                                }}
+                                className="px-3 py-1.5 rounded-lg text-sm font-medium"
+                                style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                              >
+                                บันทึก
+                              </button>
+                              <button
+                                onClick={() => setCustomColorPending(null)}
+                                className="px-3 py-1.5 rounded-lg text-sm"
+                                style={{ backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
+                              >
+                                ยกเลิก
+                              </button>
+                            </div>
+                          )}
+                          {config.customColor && !customColorPending && (
+                            <div className="flex items-center gap-2 mt-3">
+                              <div className="w-5 h-5 rounded-full" style={{ backgroundColor: config.customColor }} />
+                              <span className="text-xs" style={{ color: colors.onSurfaceVariant }}>สี Custom: {config.customColor}</span>
+                              <button
+                                onClick={() => updateConfig({ customColor: undefined })}
+                                className="text-xs px-2 py-0.5 rounded"
+                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                              >
+                                ล้าง
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <label className="text-sm" style={{ color: colors.onSurfaceVariant }}>สูง</label>
-                      <input type="number" value={config.windowHeight} onChange={(e) => updateConfig({ windowHeight: Number(e.target.value) })} className="w-full px-4 py-2 rounded-xl border mt-1" style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurface }} />
-                    </div>
-                  </div>
+                  </>
                 )}
-                {config.windowAuto && (
-                  <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>ขนาดหน้าต่างจะปรับตามหน้าจออัตโนมัติ</p>
+
+                {/* ==================== GAME & PERFORMANCE ==================== */}
+                {settingsTab === "game" && (
+                  <>
+                    <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
+                      <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "40" }}>
+                        <i className="fa-solid fa-gamepad text-lg" style={{ color: colors.secondary }}></i>
+                        <h3 className="font-medium" style={{ color: colors.onSurface }}>เกมและประสิทธิภาพ</h3>
+                      </div>
+                      <div className="p-4 space-y-4">
+                        {/* RAM */}
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>หน่วยความจำ (RAM)</p>
+                            <span className="text-sm font-medium px-3 py-1 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.secondary }}>
+                              {(config.ramMB / 1024).toFixed(1)} GB
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min={1024}
+                            max={8192}
+                            step={256}
+                            value={config.ramMB}
+                            onChange={(e) => updateConfig({ ramMB: Number(e.target.value) })}
+                            className="w-full"
+                            style={{ accentColor: colors.secondary }}
+                          />
+                          <div className="flex justify-between text-xs mt-1" style={{ color: colors.onSurfaceVariant }}>
+                            <span>1 GB</span>
+                            <span>8 GB</span>
+                          </div>
+                        </div>
+
+                        <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
+
+                        {/* Auto Java Selection */}
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>เลือก Java อัตโนมัติ</p>
+                            <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>
+                              เลือก Java ให้เหมาะกับเวอร์ชัน MC (8/17/21)
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => updateConfig({ autoJavaSelection: !config.autoJavaSelection })}
+                            className="relative w-12 h-6 rounded-full transition-colors"
+                            style={{ backgroundColor: config.autoJavaSelection ? colors.secondary : colors.surfaceContainerHighest }}
+                          >
+                            <div
+                              className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow"
+                              style={{ left: config.autoJavaSelection ? "calc(100% - 20px)" : "4px" }}
+                            />
+                          </button>
+                        </div>
+
+                        {/* Manual Java Path (only shown when auto is off) */}
+                        {!config.autoJavaSelection && (
+                          <>
+                            <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
+                            <div>
+                              <p className="font-medium text-sm mb-2" style={{ color: colors.onSurface }}>Java Installation</p>
+                              <div className="flex gap-2">
+                                <input
+                                  type="text"
+                                  value={config.javaPath || "ใช้ Java ของระบบ"}
+                                  readOnly
+                                  className="flex-1 px-4 py-2.5 rounded-xl border text-sm"
+                                  style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurface }}
+                                />
+                                <button
+                                  onClick={handleBrowseJava}
+                                  className="px-4 py-2.5 rounded-xl text-sm font-medium"
+                                  style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                                >
+                                  เลือก
+                                </button>
+                              </div>
+                            </div>
+                          </>
+                        )}
+
+                        <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
+
+                        {/* File Verification Toggle */}
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>ตรวจสอบไฟล์ก่อนเปิดเกม</p>
+                            <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>
+                              ตรวจความสมบูรณ์ของไฟล์เกมก่อน launch
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => updateConfig({ verifyFilesBeforeLaunch: !config.verifyFilesBeforeLaunch })}
+                            className="relative w-12 h-6 rounded-full transition-colors"
+                            style={{ backgroundColor: config.verifyFilesBeforeLaunch ? colors.secondary : colors.surfaceContainerHighest }}
+                          >
+                            <div
+                              className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow"
+                              style={{ left: config.verifyFilesBeforeLaunch ? "calc(100% - 20px)" : "4px" }}
+                            />
+                          </button>
+                        </div>
+
+                        <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
+
+                        {/* Minecraft Directory */}
+                        <div>
+                          <p className="font-medium text-sm mb-2" style={{ color: colors.onSurface }}>โฟลเดอร์เกม (.minecraft)</p>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={config.minecraftDir || "ใช้ค่าเริ่มต้น"}
+                              readOnly
+                              className="flex-1 px-4 py-2.5 rounded-xl border text-sm"
+                              style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurface }}
+                            />
+                            <button
+                              onClick={handleBrowseMinecraftDir}
+                              className="px-4 py-2.5 rounded-xl text-sm font-medium"
+                              style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                            >
+                              เลือก
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
+
+                        {/* Java Arguments */}
+                        <div>
+                          <p className="font-medium text-sm mb-2" style={{ color: colors.onSurface }}>Java Arguments</p>
+                          <p className="text-xs mb-2" style={{ color: colors.onSurfaceVariant }}>
+                            เพิ่ม JVM arguments สำหรับ Minecraft (เช่น -XX:+UseG1GC)
+                          </p>
+                          <input
+                            type="text"
+                            value={config.javaArguments}
+                            onChange={(e) => updateConfig({ javaArguments: e.target.value })}
+                            placeholder="เพิ่ม Java arguments..."
+                            className="w-full px-4 py-2.5 rounded-xl border text-sm"
+                            style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurface }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </>
                 )}
-              </div>
 
-              {/* Discord RPC */}
-              <div className="p-4 rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="relative">
-                      <Icons.Discord className="w-6 h-6" style={{ color: colors.onSurface }} />
-                      <div
-                        className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2"
-                        style={{
-                          backgroundColor: config.discordRPCEnabled ? "#22c55e" : "#6b7280",
-                          borderColor: colors.surfaceContainer
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <h3 className="font-medium" style={{ color: colors.onSurface }}>Discord Rich Presence</h3>
-                      <p className="text-sm" style={{ color: config.discordRPCEnabled ? "#22c55e" : colors.onSurfaceVariant }}>
-                        {config.discordRPCEnabled ? "กำลังแสดงสถานะ" : "ปิดอยู่"}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => {
-                      const newValue = !config.discordRPCEnabled;
-                      updateConfig({ discordRPCEnabled: newValue });
-                      window.api?.discordRPCSetEnabled?.(newValue);
-                      if (newValue) {
-                        window.api?.discordRPCUpdate?.("idle");
-                        toast.success("เปิด Discord Rich Presence");
-                      } else {
-                        toast.success("ปิด Discord Rich Presence");
-                      }
-                    }}
-                    className="relative w-12 h-6 rounded-full transition-colors"
-                    style={{ backgroundColor: config.discordRPCEnabled ? colors.secondary : colors.surfaceContainerHighest }}
-                  >
-                    <div
-                      className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all"
-                      style={{ left: config.discordRPCEnabled ? "calc(100% - 20px)" : "4px" }}
-                    />
-                  </button>
-                </div>
-              </div>
+                {/* ==================== CONNECTIONS ==================== */}
+                {settingsTab === "connections" && (
+                  <>
+                    <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
+                      <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "40" }}>
+                        <i className="fa-solid fa-wifi text-lg" style={{ color: colors.secondary }}></i>
+                        <h3 className="font-medium" style={{ color: colors.onSurface }}>การเชื่อมต่อ</h3>
+                      </div>
+                      <div className="p-4 space-y-4">
+                        {/* Discord RPC */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="relative">
+                              <Icons.Discord className="w-6 h-6" style={{ color: colors.onSurface }} />
+                              <div
+                                className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2"
+                                style={{
+                                  backgroundColor: config.discordRPCEnabled ? "#22c55e" : "#6b7280",
+                                  borderColor: colors.surfaceContainer
+                                }}
+                              />
+                            </div>
+                            <div>
+                              <p className="font-medium text-sm" style={{ color: colors.onSurface }}>Discord Rich Presence</p>
+                              <p className="text-xs" style={{ color: config.discordRPCEnabled ? "#22c55e" : colors.onSurfaceVariant }}>
+                                {config.discordRPCEnabled ? "กำลังแสดงสถานะ" : "ปิดอยู่"}
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              const newValue = !config.discordRPCEnabled;
+                              updateConfig({ discordRPCEnabled: newValue });
+                              window.api?.discordRPCSetEnabled?.(newValue);
+                              if (newValue) {
+                                window.api?.discordRPCUpdate?.("idle");
+                                toast.success("เปิด Discord Rich Presence");
+                              } else {
+                                toast.success("ปิด Discord Rich Presence");
+                              }
+                            }}
+                            className="relative w-12 h-6 rounded-full transition-colors"
+                            style={{ backgroundColor: config.discordRPCEnabled ? colors.secondary : colors.surfaceContainerHighest }}
+                          >
+                            <div
+                              className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow"
+                              style={{ left: config.discordRPCEnabled ? "calc(100% - 20px)" : "4px" }}
+                            />
+                          </button>
+                        </div>
 
-              {/* Close on Launch */}
-              <div className="p-4 rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-medium" style={{ color: colors.onSurface }}>ปิด Launcher เมื่อเปิดเกม</h3>
-                    <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>ปิดหน้าต่าง launcher อัตโนมัติ</p>
-                  </div>
-                  <input type="checkbox" checked={config.closeOnLaunch} onChange={(e) => updateConfig({ closeOnLaunch: e.target.checked })} className="w-5 h-5" style={{ accentColor: colors.secondary }} />
-                </div>
+                        <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
+
+                        {/* Telemetry Toggle */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <i className="fa-solid fa-chart-line w-6" style={{ color: colors.onSurface }}></i>
+                            <div>
+                              <p className="font-medium text-sm" style={{ color: colors.onSurface }}>Telemetry</p>
+                              <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>
+                                เก็บข้อมูลการใช้งานเพื่อปรับปรุง Launcher
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              const newValue = !config.telemetryEnabled;
+                              updateConfig({ telemetryEnabled: newValue });
+                              toast.success(newValue ? "เปิด Telemetry" : "ปิด Telemetry");
+                            }}
+                            className="relative w-12 h-6 rounded-full transition-colors"
+                            style={{ backgroundColor: config.telemetryEnabled ? colors.secondary : colors.surfaceContainerHighest }}
+                          >
+                            <div
+                              className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow"
+                              style={{ left: config.telemetryEnabled ? "calc(100% - 20px)" : "4px" }}
+                            />
+                          </button>
+                        </div>
+
+                        <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
+
+                        {/* Download Speed */}
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>จำกัดความเร็วดาวน์โหลด</p>
+                            <span className="text-sm font-medium px-3 py-1 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.secondary }}>
+                              {config.downloadSpeedLimit === 0 ? "ไม่จำกัด" : `${config.downloadSpeedLimit} MB/s`}
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={5}
+                            value={config.downloadSpeedLimit}
+                            onChange={(e) => updateConfig({ downloadSpeedLimit: Number(e.target.value) })}
+                            className="w-full"
+                            style={{ accentColor: colors.secondary }}
+                          />
+                          <div className="flex justify-between text-xs mt-1" style={{ color: colors.onSurfaceVariant }}>
+                            <span>ไม่จำกัด</span>
+                            <span>100 MB/s</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* ==================== LAUNCHER ==================== */}
+                {settingsTab === "launcher" && (
+                  <>
+                    <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
+                      <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "40" }}>
+                        <i className="fa-solid fa-rocket text-lg" style={{ color: colors.secondary }}></i>
+                        <h3 className="font-medium" style={{ color: colors.onSurface }}>Launcher</h3>
+                      </div>
+                      <div className="p-4 space-y-4">
+                        {/* Fullscreen Toggle */}
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>เต็มหน้าจอ (Fullscreen)</p>
+                            <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>ขยายหน้าต่าง Launcher เต็มจอ</p>
+                          </div>
+                          <button
+                            onClick={async () => {
+                              if (!window.api) {
+                                toast.error("ฟีเจอร์นี้ต้องใช้ใน Electron App");
+                                return;
+                              }
+                              // Toggle window maximize first
+                              await window.api.windowMaximize();
+                              // Then sync config with actual state
+                              const isMaximized = await window.api.windowIsMaximized();
+                              updateConfig({ fullscreen: isMaximized });
+                            }}
+                            className="relative w-12 h-6 rounded-full transition-colors"
+                            style={{ backgroundColor: config.fullscreen ? colors.secondary : colors.surfaceContainerHighest }}
+                          >
+                            <div
+                              className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow"
+                              style={{ left: config.fullscreen ? "calc(100% - 20px)" : "4px" }}
+                            />
+                          </button>
+                        </div>
+
+                        <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
+
+                        {/* Window Size */}
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <div>
+                              <p className="font-medium text-sm" style={{ color: colors.onSurface }}>ขนาดหน้าต่างเกม</p>
+                              <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>กำหนดขนาดหน้าต่างเมื่อเปิดเกม</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs" style={{ color: colors.onSurfaceVariant }}>อัตโนมัติ</span>
+                              <button
+                                onClick={() => updateConfig({ windowAuto: !config.windowAuto })}
+                                className="relative w-12 h-6 rounded-full transition-colors"
+                                style={{ backgroundColor: config.windowAuto ? colors.secondary : colors.surfaceContainerHighest }}
+                              >
+                                <div
+                                  className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow"
+                                  style={{ left: config.windowAuto ? "calc(100% - 20px)" : "4px" }}
+                                />
+                              </button>
+                            </div>
+                          </div>
+                          {!config.windowAuto && (
+                            <div className="flex gap-3 mt-3">
+                              <div className="flex-1">
+                                <label className="text-xs mb-1 block" style={{ color: colors.onSurfaceVariant }}>กว้าง (px)</label>
+                                <input
+                                  type="number"
+                                  value={config.windowWidth}
+                                  onChange={(e) => updateConfig({ windowWidth: Number(e.target.value) })}
+                                  className="w-full px-4 py-2.5 rounded-xl border text-sm"
+                                  style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurface }}
+                                />
+                              </div>
+                              <div className="flex-1">
+                                <label className="text-xs mb-1 block" style={{ color: colors.onSurfaceVariant }}>สูง (px)</label>
+                                <input
+                                  type="number"
+                                  value={config.windowHeight}
+                                  onChange={(e) => updateConfig({ windowHeight: Number(e.target.value) })}
+                                  className="w-full px-4 py-2.5 rounded-xl border text-sm"
+                                  style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurface }}
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
+
+                        {/* Close on Launch */}
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>ปิด Launcher เมื่อเปิดเกม</p>
+                            <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>ปิดหน้าต่าง Launcher อัตโนมัติหลังเริ่มเกม</p>
+                          </div>
+                          <button
+                            onClick={() => updateConfig({ closeOnLaunch: !config.closeOnLaunch })}
+                            className="relative w-12 h-6 rounded-full transition-colors"
+                            style={{ backgroundColor: config.closeOnLaunch ? colors.secondary : colors.surfaceContainerHighest }}
+                          >
+                            <div
+                              className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow"
+                              style={{ left: config.closeOnLaunch ? "calc(100% - 20px)" : "4px" }}
+                            />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* ==================== RESOURCE MANAGEMENT ==================== */}
+                {settingsTab === "resources" && (
+                  <>
+                    <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
+                      <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "40" }}>
+                        <i className="fa-solid fa-hard-drive text-lg" style={{ color: colors.secondary }}></i>
+                        <h3 className="font-medium" style={{ color: colors.onSurface }}>จัดการทรัพยากร</h3>
+                      </div>
+                      <div className="p-4 space-y-4">
+                        {/* App Directory */}
+                        <div>
+                          <p className="font-medium text-sm mb-2" style={{ color: colors.onSurface }}>โฟลเดอร์ Launcher</p>
+                          <p className="text-xs mb-2" style={{ color: colors.onSurfaceVariant }}>โฟลเดอร์ที่เก็บไฟล์ทั้งหมดของ Launcher</p>
+                          <div className="flex gap-2">
+                            <div
+                              className="flex-1 px-4 py-2.5 rounded-xl border text-sm flex items-center gap-2 overflow-hidden"
+                              style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurface }}
+                            >
+                              <i className="fa-solid fa-folder" style={{ color: colors.secondary }}></i>
+                              <span className="truncate">{config.minecraftDir || "%APPDATA%/RealityLauncher"}</span>
+                            </div>
+                            <button
+                              onClick={() => {
+                                navigator.clipboard.writeText(config.minecraftDir || "%APPDATA%/RealityLauncher");
+                                toast.success("คัดลอก path แล้ว");
+                              }}
+                              className="px-4 py-2.5 rounded-xl text-sm"
+                              style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                              title="คัดลอก"
+                            >
+                              <i className="fa-solid fa-copy"></i>
+                            </button>
+                            <button
+                              onClick={async () => {
+                                const api = window.api as any;
+                                if (api?.openDirectory) {
+                                  await api.openDirectory(config.minecraftDir || "");
+                                } else {
+                                  toast.success("เปิดโฟลเดอร์... (ฟีเจอร์นี้ต้องใช้ใน Electron)");
+                                }
+                              }}
+                              className="px-4 py-2.5 rounded-xl text-sm"
+                              style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                              title="เปิดโฟลเดอร์"
+                            >
+                              <i className="fa-solid fa-arrow-up-right-from-square"></i>
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
+
+                        {/* Cache Management */}
+                        <div>
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-medium text-sm" style={{ color: colors.onSurface }}>แคช Launcher</p>
+                              <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>ล้างแคชเพื่อเพิ่มพื้นที่เก็บข้อมูล</p>
+                            </div>
+                            <button
+                              onClick={() => {
+                                toast.success("ล้างแคชเรียบร้อยแล้ว");
+                              }}
+                              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all hover:scale-105"
+                              style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                            >
+                              <i className="fa-solid fa-trash"></i>
+                              ล้างแคช
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
+
+                        {/* Max Concurrent Downloads */}
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <div>
+                              <p className="font-medium text-sm" style={{ color: colors.onSurface }}>ดาวน์โหลดพร้อมกันสูงสุด</p>
+                              <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>จำนวนไฟล์ที่ดาวน์โหลดพร้อมกันได้</p>
+                            </div>
+                            <span className="text-sm font-medium px-3 py-1 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.secondary }}>
+                              {config.maxConcurrentDownloads}
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min={1}
+                            max={10}
+                            step={1}
+                            value={config.maxConcurrentDownloads}
+                            onChange={(e) => updateConfig({ maxConcurrentDownloads: Number(e.target.value) })}
+                            className="w-full"
+                            style={{ accentColor: colors.secondary }}
+                          />
+                          <div className="flex justify-between text-xs mt-1" style={{ color: colors.onSurfaceVariant }}>
+                            <span>1</span>
+                            <span>10</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* ==================== JAVA INSTALLATIONS ==================== */}
+                {settingsTab === "java" && (
+                  <>
+                    <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
+                      <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "40" }}>
+                        <i className="fa-brands fa-java text-lg" style={{ color: colors.secondary }}></i>
+                        <h3 className="font-medium" style={{ color: colors.onSurface }}>Java Installations</h3>
+                      </div>
+                      <div className="p-4 space-y-4">
+                        {/* Java 21 */}
+                        <div>
+                          <p className="font-medium text-sm mb-2" style={{ color: colors.onSurface }}>Java 21 (แนะนำ)</p>
+                          <div className="flex gap-2 mb-2">
+                            <input
+                              type="text"
+                              value={config.java21Path || "ไม่ได้ตั้งค่า"}
+                              readOnly
+                              className="flex-1 px-4 py-2.5 rounded-xl border text-sm"
+                              style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurface }}
+                            />
+                          </div>
+                          <div className="flex gap-2 flex-wrap">
+                            <button
+                              onClick={() => toast.success("ฟีเจอร์ติดตั้ง Java กำลังพัฒนา")}
+                              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                              style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                            >
+                              <i className="fa-solid fa-download"></i>
+                              ติดตั้ง
+                            </button>
+                            <button
+                              onClick={() => toast.success("ค้นหา Java ในระบบ...")}
+                              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                              style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                            >
+                              <i className="fa-solid fa-magnifying-glass"></i>
+                              ค้นหา
+                            </button>
+                            <button
+                              onClick={async () => {
+                                const path = await window.api?.browseJava?.();
+                                if (path) updateConfig({ java21Path: path });
+                              }}
+                              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                              style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                            >
+                              <i className="fa-solid fa-folder-open"></i>
+                              เลือก
+                            </button>
+                            <button
+                              onClick={() => toast.success("ทดสอบ Java...")}
+                              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                              style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                            >
+                              <i className="fa-solid fa-play"></i>
+                              ทดสอบ
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
+
+                        {/* Java 17 */}
+                        <div>
+                          <p className="font-medium text-sm mb-2" style={{ color: colors.onSurface }}>Java 17</p>
+                          <div className="flex gap-2 mb-2">
+                            <input
+                              type="text"
+                              value={config.java17Path || "ไม่ได้ตั้งค่า"}
+                              readOnly
+                              className="flex-1 px-4 py-2.5 rounded-xl border text-sm"
+                              style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurface }}
+                            />
+                          </div>
+                          <div className="flex gap-2 flex-wrap">
+                            <button
+                              onClick={() => toast.success("ฟีเจอร์ติดตั้ง Java กำลังพัฒนา")}
+                              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                              style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                            >
+                              <i className="fa-solid fa-download"></i>
+                              ติดตั้ง
+                            </button>
+                            <button
+                              onClick={() => toast.success("ค้นหา Java ในระบบ...")}
+                              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                              style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                            >
+                              <i className="fa-solid fa-magnifying-glass"></i>
+                              ค้นหา
+                            </button>
+                            <button
+                              onClick={async () => {
+                                const path = await window.api?.browseJava?.();
+                                if (path) updateConfig({ java17Path: path });
+                              }}
+                              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                              style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                            >
+                              <i className="fa-solid fa-folder-open"></i>
+                              เลือก
+                            </button>
+                            <button
+                              onClick={() => toast.success("ทดสอบ Java...")}
+                              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                              style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                            >
+                              <i className="fa-solid fa-play"></i>
+                              ทดสอบ
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
+
+                        {/* Java 8 */}
+                        <div>
+                          <p className="font-medium text-sm mb-2" style={{ color: colors.onSurface }}>Java 8 (Legacy)</p>
+                          <div className="flex gap-2 mb-2">
+                            <input
+                              type="text"
+                              value={config.java8Path || "ไม่ได้ตั้งค่า"}
+                              readOnly
+                              className="flex-1 px-4 py-2.5 rounded-xl border text-sm"
+                              style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurface }}
+                            />
+                          </div>
+                          <div className="flex gap-2 flex-wrap">
+                            <button
+                              onClick={() => toast.success("ฟีเจอร์ติดตั้ง Java กำลังพัฒนา")}
+                              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                              style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                            >
+                              <i className="fa-solid fa-download"></i>
+                              ติดตั้ง
+                            </button>
+                            <button
+                              onClick={() => toast.success("ค้นหา Java ในระบบ...")}
+                              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                              style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                            >
+                              <i className="fa-solid fa-magnifying-glass"></i>
+                              ค้นหา
+                            </button>
+                            <button
+                              onClick={async () => {
+                                const path = await window.api?.browseJava?.();
+                                if (path) updateConfig({ java8Path: path });
+                              }}
+                              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                              style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                            >
+                              <i className="fa-solid fa-folder-open"></i>
+                              เลือก
+                            </button>
+                            <button
+                              onClick={() => toast.success("ทดสอบ Java...")}
+                              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                              style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                            >
+                              <i className="fa-solid fa-play"></i>
+                              ทดสอบ
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* ==================== ACCOUNT ==================== */}
+                {settingsTab === "account" && (
+                  <>
+                    <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
+                      <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "40" }}>
+                        <i className="fa-solid fa-user text-lg" style={{ color: colors.secondary }}></i>
+                        <h3 className="font-medium" style={{ color: colors.onSurface }}>บัญชีผู้ใช้</h3>
+                      </div>
+                      <div className="p-4 space-y-3">
+                        {/* Current Account */}
+                        {session ? (
+                          <div className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: colors.surfaceContainerHigh }}>
+                            <MCHead username={session.username} size={48} className="rounded-xl" />
+                            <div className="flex-1">
+                              <div className="font-medium" style={{ color: colors.onSurface }}>{session.username}</div>
+                              <div className="text-xs flex items-center gap-2" style={{ color: colors.onSurfaceVariant }}>
+                                <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                                {session.type === "microsoft" ? "Microsoft Account" : "Offline Mode"}
+                              </div>
+                            </div>
+                            <button
+                              onClick={handleLogout}
+                              className="px-3 py-1.5 rounded-lg text-sm transition-all hover:scale-105"
+                              style={{ backgroundColor: "#ef444420", color: "#ef4444" }}
+                            >
+                              ออกจากระบบ
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="p-4 rounded-xl text-center" style={{ backgroundColor: colors.surfaceContainerHigh }}>
+                            <Icons.Person className="w-10 h-10 mx-auto mb-2" style={{ color: colors.onSurfaceVariant }} />
+                            <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>ยังไม่ได้เข้าสู่ระบบ</p>
+                          </div>
+                        )}
+
+                        {/* Other Accounts */}
+                        {accounts.length > 1 && (
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium" style={{ color: colors.onSurfaceVariant }}>บัญชีอื่นๆ</p>
+                            {accounts.filter(acc => acc.username !== session?.username).map((account, index) => (
+                              <div
+                                key={`${account.type}-${account.username}-${index}`}
+                                className="flex items-center gap-3 p-2 rounded-xl transition-all hover:bg-opacity-80"
+                                style={{ backgroundColor: colors.surfaceContainerHigh }}
+                              >
+                                <MCHead username={account.username} size={32} className="rounded-lg" />
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium truncate" style={{ color: colors.onSurface }}>{account.username}</div>
+                                  <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>
+                                    {account.type === "microsoft" ? "Microsoft" : "Offline"}
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() => selectAccount(account)}
+                                  className="px-2 py-1 rounded-lg text-xs font-medium"
+                                  style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                                >
+                                  เปลี่ยน
+                                </button>
+                                <button
+                                  onClick={() => removeAccount(account)}
+                                  className="px-2 py-1 rounded-lg text-xs"
+                                  style={{ backgroundColor: "#ef444420", color: "#ef4444" }}
+                                >
+                                  ลบ
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Add Account Button */}
+                        <button
+                          onClick={() => setLoginDialogOpen(true)}
+                          className="w-full py-3 rounded-xl border-2 border-dashed transition-all hover:bg-opacity-10 flex items-center justify-center gap-2 text-sm font-medium"
+                          style={{ borderColor: colors.outline, color: colors.onSurfaceVariant }}
+                        >
+                          <i className="fa-solid fa-plus"></i>
+                          เพิ่มบัญชีใหม่
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}
 
           {/* About Tab */}
           {activeTab === "about" && (
-            <div className="max-w-2xl mx-auto space-y-6">
-              <div className="text-center py-8">
-                <div className="w-24 h-24 rounded-3xl mx-auto mb-4 overflow-hidden shadow-lg">
-                  <img src="/r.png" alt="Reality" className="w-full h-full object-cover" />
+            <div className="max-w-4xl mx-auto space-y-8 pb-8">
+              {/* Hero Section with Gradient Background */}
+              <div
+                className="relative rounded-3xl overflow-hidden p-8"
+                style={{
+                  background: `linear-gradient(135deg, ${colors.secondary}40 0%, ${colors.secondary}10 50%, ${colors.surfaceContainer} 100%)`,
+                }}
+              >
+                {/* Decorative Elements */}
+                <div
+                  className="absolute top-4 right-4 w-32 h-32 rounded-full opacity-20 blur-3xl"
+                  style={{ backgroundColor: colors.secondary }}
+                />
+                <div
+                  className="absolute bottom-4 left-4 w-24 h-24 rounded-full opacity-15 blur-2xl"
+                  style={{ backgroundColor: colors.secondary }}
+                />
+
+                <div className="relative text-center">
+                  {/* Logo with Glow Effect */}
+                  <div className="relative inline-block mb-6">
+                    <div
+                      className="absolute inset-0 rounded-3xl blur-xl opacity-50"
+                      style={{ backgroundColor: colors.secondary }}
+                    />
+                    <div className="relative w-28 h-28 rounded-3xl mx-auto overflow-hidden shadow-2xl ring-4 ring-white/20">
+                      <img src="r_background.svg" alt="Reality" className="w-full h-full object-cover" />
+                    </div>
+                  </div>
+
+                  <h2
+                    className="text-4xl font-bold mb-2"
+                    style={{
+                      fontFamily: "'Jaturat', 'Itim', sans-serif",
+                      color: colors.onSurface,
+                      textShadow: `0 2px 20px ${colors.secondary}50`
+                    }}
+                  >
+                    Reality
+                  </h2>
+                  <p className="text-xl mb-4" style={{ color: colors.onSurfaceVariant }}>
+                    Minecraft Launcher
+                  </p>
+
+                  {/* Version Badge */}
+                  <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full"
+                    style={{
+                      backgroundColor: colors.surfaceContainerHighest,
+                      boxShadow: `0 4px 20px ${colors.secondary}20`
+                    }}>
+                    <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: "#22c55e" }} />
+                    <span className="text-sm font-medium" style={{ color: colors.onSurface }}>Version 0.1.0</span>
+                  </div>
                 </div>
-                <h2 className="text-3xl font-bold" style={{ fontFamily: "'Jaturat', 'Itim', sans-serif", color: colors.onSurface }}>Reality</h2>
-                <p className="text-lg" style={{ color: colors.onSurfaceVariant }}>Minecraft Launcher</p>
-                <p className="text-sm mt-2 px-2 py-1 rounded-full inline-block" style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}>Version 0.1.0</p>
               </div>
 
-              <div className="p-6 rounded-xl text-center" style={{ backgroundColor: colors.surfaceContainer }}>
-                <Icons.Heart className="w-8 h-8 mx-auto mb-3" style={{ color: "#ef4444" }} />
-                <h3 className="text-lg font-medium mb-2" style={{ color: colors.onSurface }}>จุดประสงค์</h3>
-                <p style={{ color: colors.onSurfaceVariant }}>
-                  Reality Launcher ถูกสร้างขึ้นเพื่อให้การเข้าถึง Server ต่างๆ ได้ง่ายขึ้น
-                  และขยายโอกาสใหม่ๆ ให้คนรุ่นใหม่ และ Server เล็กๆ ได้มีโอกาสมากขึ้น
-                </p>
+              {/* Mission Card with Glassmorphism */}
+              <div
+                className="relative p-8 rounded-3xl overflow-hidden"
+                style={{
+                  backgroundColor: `${colors.surfaceContainer}ee`,
+                  backdropFilter: "blur(20px)",
+                  boxShadow: `0 8px 32px ${colors.secondary}15`
+                }}
+              >
+                <div className="flex flex-col md:flex-row items-center gap-6">
+                  <div
+                    className="w-20 h-20 rounded-2xl flex items-center justify-center shrink-0"
+                    style={{
+                      background: `linear-gradient(135deg, #ef4444 0%, #f97316 100%)`,
+                      boxShadow: "0 8px 24px rgba(239, 68, 68, 0.3)"
+                    }}
+                  >
+                    <Icons.Heart className="w-10 h-10" style={{ color: "#ffffff" }} />
+                  </div>
+                  <div className="text-center md:text-left">
+                    <h3 className="text-2xl font-bold mb-3" style={{ color: colors.onSurface }}>
+                      จุดประสงค์ของเรา
+                    </h3>
+                    <p className="text-base leading-relaxed" style={{ color: colors.onSurfaceVariant }}>
+                      Reality Launcher ถูกสร้างขึ้นเพื่อให้การเข้าถึง Server ต่างๆ ได้ง่ายขึ้น
+                      และขยายโอกาสใหม่ๆ ให้คนรุ่นใหม่ และ Server เล็กๆ ได้มีโอกาสมากขึ้น
+                      เราเชื่อว่าทุกคนควรมีโอกาสที่เท่าเทียมกันในการสนุกกับ Minecraft
+                    </p>
+                  </div>
+                </div>
               </div>
 
-              <div className="p-6 rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
-                <h3 className="text-lg font-medium mb-4 text-center" style={{ color: colors.onSurface }}>ทีมงาน</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {credits.map((person) => (
-                    <div key={person.name} className="text-center p-4 rounded-xl" style={{ backgroundColor: colors.surface }}>
-                      <MCHead username={person.name} size={80} className="mx-auto mb-3 rounded-xl" />
-                      <h4 className="font-bold" style={{ color: colors.onSurface }}>{person.name}</h4>
-                      <p className="text-sm font-medium" style={{ color: colors.primary }}>{person.role}</p>
-                      <p className="text-xs mt-1" style={{ color: colors.onSurface }}>{person.description}</p>
+              {/* Team Section */}
+              <div
+                className="p-8 rounded-3xl"
+                style={{
+                  backgroundColor: colors.surfaceContainer,
+                  boxShadow: `0 4px 24px ${colors.secondary}10`
+                }}
+              >
+                <div className="text-center mb-8">
+                  <h3 className="text-2xl font-bold mb-2" style={{ color: colors.onSurface }}>
+                    ทีมพัฒนา
+                  </h3>
+                  <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>
+                    คนเบื้องหลังที่ทำให้ Reality เกิดขึ้น
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {credits.map((person, index) => (
+                    <div
+                      key={person.name}
+                      className="group relative p-6 rounded-2xl text-center transition-all duration-300 hover:scale-105"
+                      style={{
+                        backgroundColor: colors.surface,
+                        boxShadow: `0 4px 20px ${colors.secondary}10`
+                      }}
+                    >
+                      {/* Hover Glow Effect */}
+                      <div
+                        className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                        style={{
+                          boxShadow: `0 0 30px ${colors.secondary}30`,
+                        }}
+                      />
+
+                      {/* Avatar with Ring */}
+                      <div className="relative inline-block mb-4">
+                        <div
+                          className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-50 transition-opacity duration-300 blur-lg"
+                          style={{ backgroundColor: colors.secondary }}
+                        />
+                        <div
+                          className="relative ring-4 rounded-2xl overflow-hidden"
+                          style={{
+                            ["--tw-ring-color" as string]: `${colors.secondary}40`,
+                          }}
+                        >
+                          <MCHead username={person.name} size={100} className="rounded-2xl" />
+                        </div>
+                      </div>
+
+                      <h4 className="text-lg font-bold mt-2" style={{ color: colors.onSurface }}>
+                        {person.name}
+                      </h4>
+                      <p
+                        className="text-sm font-medium mt-1"
+                        style={{ color: colors.secondary }}
+                      >
+                        {person.role}
+                      </p>
+                      <p className="text-xs mt-2 opacity-80" style={{ color: colors.onSurfaceVariant }}>
+                        {person.description}
+                      </p>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div className="text-center text-sm" style={{ color: colors.onSurfaceVariant }}>
-                <p>Made by Cat Lab_ Design</p>
-                <p className="mt-1">Powered by Q Team Studio</p>
+
+
+              {/* Footer */}
+              <div className="text-center py-6">
+                <div className="inline-flex items-center gap-3 mb-4">
+                  <img src="/r.svg" alt="Reality" className="w-8 h-8 opacity-50" />
+                  <div
+                    className="h-px w-12"
+                    style={{ backgroundColor: colors.outline }}
+                  />
+                  <span className="text-sm" style={{ color: colors.onSurfaceVariant }}>Made with ❤️ in Thailand</span>
+                  <div
+                    className="h-px w-12"
+                    style={{ backgroundColor: colors.outline }}
+                  />
+                  <img src="/r.svg" alt="Reality" className="w-8 h-8 opacity-50" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium" style={{ color: colors.onSurfaceVariant }}>
+                    Cat Lab_ Design × Q Team Studio
+                  </p>
+                  <p className="text-xs" style={{ color: colors.outline }}>
+                    © 2024 Reality Launcher. All rights reserved.
+                  </p>
+                </div>
               </div>
             </div>
           )}
@@ -1600,3 +2562,5 @@ export default function LauncherApp() {
     </div>
   );
 }
+
+

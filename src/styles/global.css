@@ -221,3 +221,19 @@ body {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* ========================================
+   Electron Drag Region
+   ======================================== */
+
+/* Allow dragging the window */
+.drag-region {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+/* Prevent dragging - for buttons and interactive elements */
+.no-drag {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
