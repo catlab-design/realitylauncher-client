@@ -4,7 +4,7 @@
  * Global Type Declarations for Reality Launcher
  */
 
-type ColorTheme = "yellow" | "purple" | "blue" | "green" | "red" | "orange";
+type ColorTheme = "yellow" | "purple" | "blue" | "green" | "red" | "orange" | "custom";
 
 interface LauncherConfig {
   username: string;
@@ -12,7 +12,7 @@ interface LauncherConfig {
   ramMB: number;
   javaPath?: string;
   minecraftDir?: string;
-  theme: "dark" | "light";
+  theme: "dark" | "light" | "oled" | "auto";
   colorTheme: ColorTheme;
   language: "th" | "en";
   windowWidth: number;
@@ -23,7 +23,7 @@ interface LauncherConfig {
 }
 
 interface AuthSession {
-  type: "offline" | "microsoft";
+  type: "catid" | "microsoft" | "offline";
   username: string;
   uuid: string;
   accessToken?: string;
@@ -48,6 +48,39 @@ interface ColorThemeInfo {
   name: string;
 }
 
+interface GameInstance {
+  id: string;
+  name: string;
+  icon?: string;
+  minecraftVersion: string;
+  loader: "vanilla" | "fabric" | "forge" | "neoforge" | "quilt";
+  loaderVersion?: string;
+  createdAt: string;
+  lastPlayedAt?: string;
+  totalPlayTime: number;
+  gameDirectory: string;
+}
+
+interface CreateInstanceOptions {
+  name: string;
+  minecraftVersion: string;
+  loader?: string;
+  loaderVersion?: string;
+  icon?: string;
+  javaPath?: string;
+  ramMB?: number;
+}
+
+interface UpdateInstanceOptions {
+  name?: string;
+  icon?: string;
+  loader?: string;
+  loaderVersion?: string;
+  javaPath?: string;
+  ramMB?: number;
+  javaArguments?: string;
+}
+
 declare global {
   interface Window {
     api?: {
@@ -56,8 +89,7 @@ declare global {
       setConfig: (config: Partial<LauncherConfig>) => Promise<LauncherConfig>;
       resetConfig: () => Promise<LauncherConfig>;
       getColorThemes: () => Promise<Record<ColorTheme, ColorThemeInfo>>;
-      // Auth
-      loginOffline: (username: string) => Promise<AuthSession>;
+      // Auth (Note: loginOffline removed, use loginCatID instead)
       logout: () => Promise<void>;
       getSession: () => Promise<AuthSession | null>;
       isLoggedIn: () => Promise<boolean>;
@@ -74,6 +106,9 @@ declare global {
       browseDirectory: (title?: string) => Promise<string | null>;
       validateJavaPath: (javaPath: string) => Promise<boolean>;
       openFolder: (folderPath: string) => Promise<void>;
+      browseModpack: () => Promise<string | null>;
+      importModpack: (filePath: string) => Promise<{ success: boolean; name: string; error?: string }>;
+      detectJavaInstallations: () => Promise<string[]>;
       // Discord RPC
       discordRPCSetEnabled: (enabled: boolean) => Promise<void>;
       discordRPCUpdate: (status: "idle" | "playing" | "launching", serverName?: string) => Promise<void>;
@@ -82,11 +117,86 @@ declare global {
       openAuthWindow: () => Promise<void>;
       closeAuthWindow: () => Promise<void>;
       onAuthCallback: (callback: (data: { token: string }) => void) => () => void;
+      // Device Code Authentication
+      startDeviceCodeAuth: () => Promise<{
+        ok: boolean;
+        deviceCode?: string;
+        userCode?: string;
+        verificationUri?: string;
+        expiresIn?: number;
+        interval?: number;
+        message?: string;
+        error?: string;
+      }>;
+      pollDeviceCodeAuth: (deviceCode: string) => Promise<{
+        status: "pending" | "success" | "error" | "expired";
+        error?: string;
+        session?: {
+          username: string;
+          uuid: string;
+          accessToken: string;
+        };
+      }>;
+      // CatID Authentication
+      loginCatID: (username: string, password: string) => Promise<{
+        ok: boolean;
+        session?: {
+          username: string;
+          uuid: string;
+          token: string;
+        };
+        error?: string;
+      }>;
+      registerCatID: (username: string, email: string, password: string) => Promise<{
+        ok: boolean;
+        error?: string;
+      }>;
+      // Offline Account
+      loginOffline: (username: string) => Promise<{
+        ok: boolean;
+        session?: {
+          username: string;
+          uuid: string;
+        };
+        error?: string;
+      }>;
       // Window Control
       windowMinimize: () => Promise<void>;
       windowMaximize: () => Promise<void>;
       windowClose: () => Promise<void>;
       windowIsMaximized: () => Promise<boolean>;
+      // Modrinth APIs
+      modrinthSearch: (filters: { query?: string; projectType?: string; gameVersion?: string; loader?: string; limit?: number; offset?: number; sortBy?: string }) => Promise<any>;
+      modrinthGetProject: (idOrSlug: string) => Promise<any>;
+      modrinthGetVersions: (idOrSlug: string) => Promise<any>;
+      modrinthGetVersion: (versionId: string) => Promise<any>;
+      modrinthDownload: (versionId: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
+      modrinthGetPopular: (limit?: number) => Promise<any>;
+      modrinthGetGameVersions: () => Promise<{ version: string; version_type: string }[]>;
+      modrinthGetLoaders: () => Promise<{ name: string; icon: string }[]>;
+      modrinthGetInstalled: () => Promise<any[]>;
+      modrinthDeleteModpack: (modpackPath: string) => Promise<boolean>;
+      // Instance Management APIs
+      instancesList: () => Promise<GameInstance[]>;
+      instancesCreate: (options: CreateInstanceOptions) => Promise<GameInstance>;
+      instancesGet: (id: string) => Promise<GameInstance | null>;
+      instancesUpdate: (id: string, updates: UpdateInstanceOptions) => Promise<GameInstance | null>;
+      instancesDelete: (id: string) => Promise<boolean>;
+      instancesDuplicate: (id: string) => Promise<GameInstance | null>;
+      instancesOpenFolder: (id: string) => Promise<void>;
+      instancesLaunch: (id: string) => Promise<LaunchResult>;
+      // Game Control
+      isGameRunning: () => Promise<boolean>;
+      killGame: () => Promise<boolean>;
+      // Content Download
+      contentDownloadToInstance: (options: { projectId: string; versionId: string; instanceId: string; contentType: string }) => Promise<{ ok: boolean; error?: string }>;
+      onLaunchProgress: (callback: (data: { type: string; task?: string; current?: number; total?: number; percent?: number }) => void) => () => void;
+      // Modpack Installer APIs
+      modpackInstall: (mrpackPath: string) => Promise<{ ok: boolean; instance?: GameInstance; error?: string }>;
+      modpackInstallFromModrinth: (versionId: string) => Promise<{ ok: boolean; instance?: GameInstance; error?: string }>;
+      modpackCheckConflicts: (instanceId: string) => Promise<{ type: string; file1: string; file2?: string; reason: string }[]>;
+      modpackParseInfo: (mrpackPath: string) => Promise<any>;
+      onModpackInstallProgress: (callback: (data: { stage: string; message: string; current?: number; total?: number; percent?: number }) => void) => () => void;
     };
   }
 }

@@ -2,14 +2,14 @@
   "name": "reality-launcher",
   "type": "module",
   "version": "0.0.1",
-  "main": "dist-electron/main.js",
+  "main": "dist-electron/main.cjs",
   "author": "Cat Lab_ Design",
   "description": "Reality Minecraft Launcher",
   "scripts": {
-    "dev": "bun run electron:build && concurrently --kill-others-on-fail \"astro dev --port 4321\" \"wait-on http://localhost:4321 && electron .\"",
+    "dev": "bun run electron:build && concurrently --kill-others \"astro dev --port 4321\" \"wait-on http://localhost:4321 && electron .\"",
     "build": "astro build && bun run electron:build",
     "start": "electron .",
-    "electron:build": "esbuild src/electron/main.ts --bundle --platform=node --format=esm --external:electron --external:discord-rpc --external:electron-updater --outdir=dist-electron && esbuild src/electron/preload.ts --bundle --platform=node --format=cjs --external:electron --outdir=dist-electron",
+    "electron:build": "esbuild src/electron/main.ts --bundle --platform=node --format=cjs --minify --external:electron --external:discord-rpc --external:electron-updater --external:minecraft-java-core --outfile=dist-electron/main.cjs && esbuild src/electron/preload.ts --bundle --platform=node --format=cjs --minify --external:electron --outdir=dist-electron",
     "dist": "bun run build && electron-builder",
     "dist:win": "bun run build && electron-builder --win",
     "dist:mac": "bun run build && electron-builder --mac",
@@ -28,6 +28,7 @@
     ],
     "asar": true,
     "win": {
+      "icon": "public/r.png",
       "target": [
         {
           "target": "nsis",
@@ -69,22 +70,27 @@
     }
   },
   "dependencies": {
+    "@astrojs/check": "^0.9.6",
     "@astrojs/react": "^4.4.2",
     "@fluentui/react-components": "^9.72.8",
+    "@headlessui/react": "^2.2.9",
     "@tailwindcss/vite": "^4.1.18",
+    "@types/adm-zip": "^0.5.7",
     "@types/discord-rpc": "^4.0.10",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
+    "adm-zip": "^0.5.16",
     "astro": "^5.16.5",
     "astro-electron": "^0.5.0",
     "discord-rpc": "^4.0.1",
     "electron-updater": "^6.6.2",
     "gsap": "^3.14.2",
-    "minecraft-launcher-core": "^3.18.2",
+    "minecraft-java-core": "^3.4.3",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-hot-toast": "^2.6.0",
     "tailwindcss": "^4.1.18",
+    "typescript": "^5.9.3",
     "userland": "^0.4.3"
   },
   "devDependencies": {

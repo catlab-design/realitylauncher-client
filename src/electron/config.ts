@@ -1,236 +1,227 @@
 /**
  * ========================================
- * Config System - ระบบจัดการค่าตั้งค่า Launcher
+ * Config System - จัดการค่าตั้งค่า Launcher
  * ========================================
- * 
- * ไฟล์นี้จัดการการอ่าน/เขียน config ของ Launcher
- * 
- * คุณสมบัติ:
- * - บันทึกค่าลงไฟล์ JSON ใน appData
- * - Auto-load เมื่อ app เริ่มต้น
- * - ค่า default สำหรับ config ใหม่
  */
 
 import { app } from "electron";
-import * as fs from "node:fs";
-import * as path from "node:path";
+import path from "node:path";
+import fs from "node:fs";
+import os from "node:os";
 
 // ========================================
-// Types - ประเภทข้อมูล
+// Types
 // ========================================
 
-/**
- * ColorTheme - ธีมสีที่รองรับ
- */
-export type ColorTheme = "yellow" | "purple" | "blue" | "green" | "red" | "orange";
+export type ColorTheme = "yellow" | "purple" | "blue" | "green" | "red" | "orange" | "custom";
 
-/**
- * LauncherConfig - โครงสร้างค่าตั้งค่าทั้งหมดของ Launcher
- */
 export interface LauncherConfig {
-    // === User Settings ===
-    username: string;           // ชื่อผู้เล่น (offline mode)
-    selectedVersion: string;    // เวอร์ชัน Minecraft ที่เลือก
+    // Display
+    theme: "light" | "dark" | "oled" | "auto";
+    colorTheme: ColorTheme;
+    customColor?: string;
+    language: "th" | "en";
 
-    // === Game Settings ===
-    ramMB: number;              // RAM ที่จัดสรร (MB)
-    javaPath?: string;          // path ไปยัง Java (ถ้าไม่ระบุใช้ system)
-    minecraftDir?: string;      // path โฟลเดอร์ .minecraft
+    // Game Settings
+    selectedVersion: string;
+    minRamMB: number;
+    ramMB: number;
+    javaPath: string;
+    javaArguments: string;
+    customMinecraftDir?: string;
 
-    // === UI Settings ===
-    theme: "dark" | "light";    // ธีม UI
-    colorTheme: ColorTheme;     // ธีมสี (yellow, purple, etc.)
-    customColor?: string;       // สี custom (hex)
-    language: "th" | "en";      // ภาษา
+    // Download Settings
+    maxConcurrentDownloads: number;
+    downloadSpeedLimit: number; // 0 = unlimited, MB/s
+    cacheDir?: string;
 
-    // === Window Settings ===
-    windowWidth: number;        // ความกว้างหน้าต่าง
-    windowHeight: number;       // ความสูงหน้าต่าง
-    windowAuto: boolean;        // ใช้ขนาดหน้าต่างอัตโนมัติ
+    // Window Settings
+    windowAutoSize: boolean;
+    windowWidth: number;
+    windowHeight: number;
 
-    // === Launcher Settings ===
-    closeOnLaunch: boolean;     // ปิด launcher เมื่อเปิดเกม
-    downloadSpeedLimit: number; // จำกัดความเร็วดาวน์โหลด (MB/s, 0 = ไม่จำกัด)
-
-    // === Discord RPC ===
-    discordRPCEnabled: boolean; // เปิด/ปิด Discord RPC
-
-    // === Java Settings ===
-    autoJavaSelection: boolean; // เลือก Java อัตโนมัติตามเวอร์ชัน MC
-    selectedJavaVersion?: "8" | "17" | "21" | "custom"; // Java version ที่เลือก
-    java8Path?: string;  // path ไปยัง Java 8
-    java17Path?: string; // path ไปยัง Java 17
-    java21Path?: string; // path ไปยัง Java 21
-
-    // === Game Launch Settings ===
-    verifyFilesBeforeLaunch: boolean; // ตรวจสอบไฟล์ก่อนเปิดเกม
-    fullscreen: boolean; // เปิดเกมแบบเต็มจอ
-    javaArguments: string; // JVM arguments เพิ่มเติม
-    maxConcurrentDownloads: number; // จำนวน download พร้อมกัน
-    telemetryEnabled: boolean; // เปิด/ปิด telemetry
+    // Discord
+    discordRPCEnabled: boolean;
 }
 
 // ========================================
-// Color Themes - ธีมสี
+// Constants
 // ========================================
 
-export const COLOR_THEMES: Record<ColorTheme, { primary: string; name: string }> = {
-    yellow: { primary: "#ffde59", name: "Yellow" },
-    purple: { primary: "#8b5cf6", name: "Purple" },
-    blue: { primary: "#3b82f6", name: "Blue" },
-    green: { primary: "#22c55e", name: "Green" },
-    red: { primary: "#ef4444", name: "Red" },
-    orange: { primary: "#f97316", name: "Orange" },
-};
+export const COLOR_THEMES: ColorTheme[] = [
+    "yellow",
+    "purple",
+    "blue",
+    "green",
+    "red",
+    "orange",
+    "custom"
+];
 
-// ========================================
-// Default Config - ค่าเริ่มต้น
-// ========================================
-
-export const DEFAULT_CONFIG: LauncherConfig = {
-    username: "Player",
-    selectedVersion: "1.20.1",
-    ramMB: 2048,
-    javaPath: undefined,
-    minecraftDir: undefined,
+const DEFAULT_CONFIG: LauncherConfig = {
     theme: "light",
     colorTheme: "yellow",
-    customColor: undefined,
     language: "th",
-    windowWidth: 1024,
-    windowHeight: 700,
-    windowAuto: true,
-    closeOnLaunch: false,
-    downloadSpeedLimit: 0, // 0 = ไม่จำกัด
-    discordRPCEnabled: true,
-    // Java settings
-    autoJavaSelection: true,
-    selectedJavaVersion: undefined,
-    java8Path: undefined,
-    java17Path: undefined,
-    java21Path: undefined,
-    // Game launch settings
-    verifyFilesBeforeLaunch: true,
-    fullscreen: false,
+    selectedVersion: "",
+    minRamMB: 2048,
+    ramMB: 4096,
+    javaPath: "",
     javaArguments: "",
     maxConcurrentDownloads: 5,
-    telemetryEnabled: true,
+    downloadSpeedLimit: 0,
+    windowAutoSize: true,
+    windowWidth: 1100,
+    windowHeight: 680,
+    discordRPCEnabled: true,
 };
 
 // ========================================
-// Paths - ที่อยู่ไฟล์
+// Config State
 // ========================================
 
-function getConfigPath(): string {
-    const userDataPath = app.getPath("userData");
-    return path.join(userDataPath, "config.json");
-}
-
-// ========================================
-// Config Functions - ฟังก์ชันจัดการ config
-// ========================================
-
-export function getConfig(): LauncherConfig {
-    const configPath = getConfigPath();
-
-    try {
-        if (!fs.existsSync(configPath)) {
-            setConfig(DEFAULT_CONFIG);
-            return { ...DEFAULT_CONFIG };
-        }
-
-        const rawData = fs.readFileSync(configPath, "utf-8");
-        const savedConfig = JSON.parse(rawData) as Partial<LauncherConfig>;
-
-        return {
-            ...DEFAULT_CONFIG,
-            ...savedConfig,
-        };
-    } catch (error) {
-        console.error("[Config] Error reading config:", error);
-        return { ...DEFAULT_CONFIG };
-    }
-}
-
-export function setConfig(config: Partial<LauncherConfig>): LauncherConfig {
-    const configPath = getConfigPath();
-    const configDir = path.dirname(configPath);
-
-    try {
-        if (!fs.existsSync(configDir)) {
-            fs.mkdirSync(configDir, { recursive: true });
-        }
-
-        let currentConfig = DEFAULT_CONFIG;
-        if (fs.existsSync(configPath)) {
-            try {
-                const rawData = fs.readFileSync(configPath, "utf-8");
-                currentConfig = { ...DEFAULT_CONFIG, ...JSON.parse(rawData) };
-            } catch {
-                // ignore parse error
-            }
-        }
-
-        const newConfig: LauncherConfig = {
-            ...currentConfig,
-            ...config,
-        };
-
-        fs.writeFileSync(configPath, JSON.stringify(newConfig, null, 2), "utf-8");
-        console.log("[Config] Saved config to:", configPath);
-        return newConfig;
-    } catch (error) {
-        console.error("[Config] Error saving config:", error);
-        throw error;
-    }
-}
-
-export function resetConfig(): LauncherConfig {
-    const configPath = getConfigPath();
-
-    try {
-        if (fs.existsSync(configPath)) {
-            fs.unlinkSync(configPath);
-        }
-    } catch (error) {
-        console.error("[Config] Error deleting config:", error);
-    }
-
-    return setConfig(DEFAULT_CONFIG);
-}
-
-export function getMinecraftDir(): string {
-    const config = getConfig();
-
-    if (config.minecraftDir) {
-        return config.minecraftDir;
-    }
-
-    const platform = process.platform;
-    if (platform === "win32") {
-        return path.join(app.getPath("appData"), ".minecraft");
-    } else if (platform === "darwin") {
-        return path.join(app.getPath("appData"), "minecraft");
-    } else {
-        return path.join(app.getPath("home"), ".minecraft");
-    }
-}
+let currentConfig: LauncherConfig = { ...DEFAULT_CONFIG };
+let configLoaded = false;
 
 /**
- * getAppDataDir - หา path โฟลเดอร์ data ของ app
+ * Get the app data directory for storing config and instances
+ * Uses AppData\Roaming\RealityLauncher on Windows
  */
 export function getAppDataDir(): string {
-    return app.getPath("userData");
+    const platform = process.platform;
+
+    if (platform === "win32") {
+        return path.join(app.getPath("appData"), "RealityLauncher");
+    } else if (platform === "darwin") {
+        return path.join(app.getPath("home"), "Library", "Application Support", "RealityLauncher");
+    } else {
+        return path.join(app.getPath("home"), ".realitylauncher");
+    }
 }
 
 /**
- * browseForJava - เปิด dialog เลือกไฟล์ Java
- * (ต้องเรียกจาก main process ผ่าน dialog module)
+ * Get the path to the config file
+ */
+function getConfigPath(): string {
+    return path.join(getAppDataDir(), "config.json");
+}
+
+/**
+ * Get the Minecraft data directory (where instances live)
+ * Defaults to RealityLauncher folder, can be customized
+ */
+export function getMinecraftDir(): string {
+    if (currentConfig.customMinecraftDir) {
+        return currentConfig.customMinecraftDir;
+    }
+    // Default to same as app data dir
+    return getAppDataDir();
+}
+
+/**
+ * Get total system RAM in MB
+ */
+export function getSystemRamMB(): number {
+    const totalBytes = os.totalmem();
+    return Math.floor(totalBytes / (1024 * 1024));
+}
+
+/**
+ * Get recommended max RAM for Minecraft (leave 2GB for system)
+ */
+export function getMaxRamMB(): number {
+    const total = getSystemRamMB();
+    // Leave at least 2GB for system
+    return Math.max(total - 2048, 4096);
+}
+
+/**
+ * Load config from disk
+ */
+function loadConfig(): LauncherConfig {
+    try {
+        const configPath = getConfigPath();
+        if (fs.existsSync(configPath)) {
+            const data = fs.readFileSync(configPath, "utf-8");
+            const loaded = JSON.parse(data) as Partial<LauncherConfig>;
+            currentConfig = { ...DEFAULT_CONFIG, ...loaded };
+        }
+    } catch (error) {
+        console.error("[Config] Failed to load config:", error);
+        currentConfig = { ...DEFAULT_CONFIG };
+    }
+    return currentConfig;
+}
+
+/**
+ * Save config to disk
+ */
+function saveConfig(): void {
+    try {
+        const configPath = getConfigPath();
+        const dir = path.dirname(configPath);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(configPath, JSON.stringify(currentConfig, null, 2));
+    } catch (error) {
+        console.error("[Config] Failed to save config:", error);
+    }
+}
+
+/**
+ * Get current config
+ */
+export function getConfig(): LauncherConfig {
+    if (!configLoaded) {
+        loadConfig();
+        configLoaded = true;
+    }
+    return { ...currentConfig };
+}
+
+/**
+ * Set config values (partial update)
+ */
+export function setConfig(updates: Partial<LauncherConfig>): LauncherConfig {
+    currentConfig = { ...currentConfig, ...updates };
+    saveConfig();
+    return { ...currentConfig };
+}
+
+/**
+ * Reset config to defaults
+ */
+export function resetConfig(): LauncherConfig {
+    currentConfig = { ...DEFAULT_CONFIG };
+    saveConfig();
+    return { ...currentConfig };
+}
+
+/**
+ * Validate Java path
  */
 export function validateJavaPath(javaPath: string): boolean {
+    if (!javaPath) return false;
+
     try {
-        return fs.existsSync(javaPath);
+        // Check if file exists
+        if (!fs.existsSync(javaPath)) {
+            return false;
+        }
+
+        // Check if it's a file (not directory)
+        const stats = fs.statSync(javaPath);
+        if (!stats.isFile()) {
+            return false;
+        }
+
+        // Check if it looks like a java executable
+        const basename = path.basename(javaPath).toLowerCase();
+        return basename === "java" || basename === "java.exe" || basename === "javaw.exe";
     } catch {
         return false;
     }
 }
+
+// Initialize config on module load
+loadConfig();

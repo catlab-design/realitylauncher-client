@@ -3,400 +3,234 @@
  * Electron Preload Script
  * ========================================
  * 
- * Bridge ระหว่าง Main Process กับ Renderer Process
+ * Bridge ระหว่าง Main Process และ Renderer Process
+ * ใช้ contextBridge เพื่อ expose APIs อย่างปลอดภัย
  */
 
 import { contextBridge, ipcRenderer } from "electron";
-
-// ========================================
-// Types
-// ========================================
-
-type ColorTheme = "yellow" | "purple" | "blue" | "green" | "red" | "orange";
-
-interface LauncherConfig {
-  username: string;
-  selectedVersion: string;
-  ramMB: number;
-  javaPath?: string;
-  minecraftDir?: string;
-  theme: "dark" | "light";
-  colorTheme: ColorTheme;
-  language: "th" | "en";
-  windowWidth: number;
-  windowHeight: number;
-  closeOnLaunch: boolean;
-  downloadSpeedLimit: number;
-  discordRPCEnabled: boolean;
-}
-
-interface AuthSession {
-  type: "offline" | "microsoft";
-  username: string;
-  uuid: string;
-  accessToken?: string;
-  refreshToken?: string;
-  expiresAt?: number;
-  skinUrl?: string;
-}
-
-interface LauncherInfo {
-  javaOK: boolean;
-  runtime: string;
-  minecraftDir: string;
-}
-
-interface LaunchResult {
-  ok: boolean;
-  message?: string;
-}
-
-interface ColorThemeInfo {
-  primary: string;
-  name: string;
-}
-
-// Version types
-interface InstalledVersion {
-  id: string;
-  type: "release" | "snapshot" | "old_beta" | "old_alpha" | "modded";
-  releaseTime?: string;
-  lastUsed?: string;
-  hasJar: boolean;
-  hasJson: boolean;
-}
-
-interface VersionManifestVersion {
-  id: string;
-  type: "release" | "snapshot" | "old_beta" | "old_alpha";
-  url: string;
-  time: string;
-  releaseTime: string;
-}
-
-// Java types
-interface JavaInstallation {
-  path: string;
-  version: string;
-  majorVersion: number;
-  vendor: string;
-  is64Bit: boolean;
-  isValid: boolean;
-}
-
-interface JavaTestResult {
-  success: boolean;
-  version?: string;
-  majorVersion?: number;
-  vendor?: string;
-  is64Bit?: boolean;
-  error?: string;
-}
-
-// Verification types
-interface VerificationResult {
-  success: boolean;
-  totalFiles: number;
-  verifiedFiles: number;
-  missingFiles: string[];
-  corruptedFiles: string[];
-  errors: string[];
-}
-
-// Profile types
-interface Profile {
-  id: string;
-  name: string;
-  version: string;
-  modLoader?: "forge" | "fabric" | "quilt" | "neoforge" | "vanilla";
-  modLoaderVersion?: string;
-  javaVersion?: 8 | 17 | 21;
-  ramMB: number;
-  javaArguments?: string;
-  created: string;
-  lastPlayed?: string;
-  icon?: string;
-  description?: string;
-}
-
-interface ProfileCreateOptions {
-  name: string;
-  version: string;
-  modLoader?: Profile["modLoader"];
-  modLoaderVersion?: string;
-  ramMB?: number;
-  description?: string;
-  icon?: string;
-}
-
-interface ProfileStats {
-  modsCount: number;
-  savesCount: number;
-  resourcePacksCount: number;
-  shaderPacksCount: number;
-  totalSize: number;
-}
 
 // ========================================
 // API Definition
 // ========================================
 
 const api = {
-  // === Config APIs ===
-  getConfig: (): Promise<LauncherConfig> => {
-    return ipcRenderer.invoke("get-config");
-  },
+    // ----------------------------------------
+    // Config APIs
+    // ----------------------------------------
+    getConfig: () => ipcRenderer.invoke("get-config"),
+    setConfig: (config: Record<string, unknown>) => ipcRenderer.invoke("set-config", config),
+    resetConfig: () => ipcRenderer.invoke("reset-config"),
+    getColorThemes: () => ipcRenderer.invoke("get-color-themes"),
 
-  setConfig: (config: Partial<LauncherConfig>): Promise<LauncherConfig> => {
-    return ipcRenderer.invoke("set-config", config);
-  },
+    // ----------------------------------------
+    // Auth APIs
+    // ----------------------------------------
+    // Note: loginOffline was removed in favor of CatID auth (use loginCatID)
+    logout: () => ipcRenderer.invoke("auth-logout"),
+    getSession: () => ipcRenderer.invoke("auth-get-session"),
+    isLoggedIn: () => ipcRenderer.invoke("auth-is-logged-in"),
 
-  resetConfig: (): Promise<LauncherConfig> => {
-    return ipcRenderer.invoke("reset-config");
-  },
+    // ----------------------------------------
+    // Launcher APIs
+    // ----------------------------------------
+    listVersions: () => ipcRenderer.invoke("list-versions"),
+    getLauncherInfo: () => ipcRenderer.invoke("get-launcher-info"),
+    launchGame: (payload: { version: string; username: string; ramMB: number }) =>
+        ipcRenderer.invoke("launch-game", payload),
 
-  getColorThemes: (): Promise<Record<ColorTheme, ColorThemeInfo>> => {
-    return ipcRenderer.invoke("get-color-themes");
-  },
+    // ----------------------------------------
+    // Utility APIs
+    // ----------------------------------------
+    openExternal: (url: string) => ipcRenderer.invoke("open-external", url),
+    getMinecraftDir: () => ipcRenderer.invoke("get-minecraft-dir"),
+    getAppDataDir: () => ipcRenderer.invoke("get-app-data-dir"),
+    getSystemRam: () => ipcRenderer.invoke("get-system-ram"),
+    getMaxRam: () => ipcRenderer.invoke("get-max-ram"),
+    autoDetectJava: () => ipcRenderer.invoke("auto-detect-java"),
 
-  // === Auth APIs ===
-  loginOffline: (username: string): Promise<AuthSession> => {
-    return ipcRenderer.invoke("auth-login-offline", username);
-  },
+    // ----------------------------------------
+    // Dialog APIs
+    // ----------------------------------------
+    browseJava: () => ipcRenderer.invoke("browse-java"),
+    browseDirectory: (title?: string) => ipcRenderer.invoke("browse-directory", title),
+    validateJavaPath: (javaPath: string) => ipcRenderer.invoke("validate-java-path", javaPath),
+    openFolder: (folderPath: string) => ipcRenderer.invoke("open-folder", folderPath),
+    browseModpack: () => ipcRenderer.invoke("browse-modpack"),
+    importModpack: (filePath: string) => ipcRenderer.invoke("import-modpack", filePath),
+    detectJavaInstallations: () => ipcRenderer.invoke("detect-java-installations"),
 
-  logout: (): Promise<void> => {
-    return ipcRenderer.invoke("auth-logout");
-  },
 
-  getSession: (): Promise<AuthSession | null> => {
-    return ipcRenderer.invoke("auth-get-session");
-  },
+    // ----------------------------------------
+    // Discord RPC APIs
+    // ----------------------------------------
+    discordRPCSetEnabled: (enabled: boolean) => ipcRenderer.invoke("discord-rpc-set-enabled", enabled),
+    discordRPCUpdate: (status: "idle" | "playing" | "launching", serverName?: string) =>
+        ipcRenderer.invoke("discord-rpc-update", status, serverName),
+    discordRPCIsConnected: () => ipcRenderer.invoke("discord-rpc-is-connected"),
 
-  isLoggedIn: (): Promise<boolean> => {
-    return ipcRenderer.invoke("auth-is-logged-in");
-  },
+    // ----------------------------------------
+    // Auth Window APIs
+    // ----------------------------------------
+    openAuthWindow: () => ipcRenderer.invoke("open-auth-window"),
+    closeAuthWindow: () => ipcRenderer.invoke("close-auth-window"),
+    onAuthCallback: (callback: (data: { token: string }) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, data: { token: string }) => callback(data);
+        ipcRenderer.on("auth-callback", handler);
+        // Return cleanup function
+        return () => ipcRenderer.removeListener("auth-callback", handler);
+    },
 
-  // === Launcher APIs ===
-  listVersions: (): Promise<string[]> => {
-    return ipcRenderer.invoke("list-versions");
-  },
+    // Device Code Authentication APIs
+    startDeviceCodeAuth: () => ipcRenderer.invoke("auth-device-code-start"),
+    pollDeviceCodeAuth: (deviceCode: string) => ipcRenderer.invoke("auth-device-code-poll", deviceCode),
 
-  listInstalledVersions: (): Promise<InstalledVersion[]> => {
-    return ipcRenderer.invoke("list-installed-versions");
-  },
+    // CatID Authentication APIs
+    loginCatID: (username: string, password: string) => ipcRenderer.invoke("auth-catid-login", username, password),
+    registerCatID: (username: string, email: string, password: string) => ipcRenderer.invoke("auth-catid-register", username, email, password),
 
-  getVersionManifest: (): Promise<{ latest: { release: string; snapshot: string }; versions: VersionManifestVersion[] }> => {
-    return ipcRenderer.invoke("get-version-manifest");
-  },
+    // Offline Account API
+    loginOffline: (username: string) => ipcRenderer.invoke("auth-offline-login", username),
 
-  getVersionsForDisplay: (): Promise<{
-    installed: InstalledVersion[];
-    available: VersionManifestVersion[];
-    latest: { release: string; snapshot: string };
-  }> => {
-    return ipcRenderer.invoke("get-versions-for-display");
-  },
+    // ----------------------------------------
+    // Auto Update APIs
+    // ----------------------------------------
+    checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
+    downloadUpdate: () => ipcRenderer.invoke("download-update"),
+    installUpdate: () => ipcRenderer.invoke("install-update"),
+    getAppVersion: () => ipcRenderer.invoke("get-app-version"),
+    onUpdateAvailable: (callback: (data: { version: string; releaseDate: string }) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, data: { version: string; releaseDate: string }) => callback(data);
+        ipcRenderer.on("update-available", handler);
+        return () => ipcRenderer.removeListener("update-available", handler);
+    },
+    onUpdateProgress: (callback: (data: { percent: number; bytesPerSecond: number; transferred: number; total: number }) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, data: { percent: number; bytesPerSecond: number; transferred: number; total: number }) => callback(data);
+        ipcRenderer.on("update-progress", handler);
+        return () => ipcRenderer.removeListener("update-progress", handler);
+    },
+    onUpdateDownloaded: (callback: (data: { version: string; releaseDate: string }) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, data: { version: string; releaseDate: string }) => callback(data);
+        ipcRenderer.on("update-downloaded", handler);
+        return () => ipcRenderer.removeListener("update-downloaded", handler);
+    },
 
-  getLauncherInfo: (): Promise<LauncherInfo & { javaVersion?: number | null }> => {
-    return ipcRenderer.invoke("get-launcher-info");
-  },
+    // ----------------------------------------
+    // Window Control APIs
+    // ----------------------------------------
+    windowMinimize: () => ipcRenderer.invoke("window-minimize"),
+    windowMaximize: () => ipcRenderer.invoke("window-maximize"),
+    windowClose: () => ipcRenderer.invoke("window-close"),
+    windowIsMaximized: () => ipcRenderer.invoke("window-is-maximized"),
 
-  launchGame: (payload: {
-    version: string;
-    username: string;
-    ramMB: number;
-  }): Promise<LaunchResult> => {
-    return ipcRenderer.invoke("launch-game", payload);
-  },
+    // ----------------------------------------
+    // Modrinth APIs
+    // ----------------------------------------
+    modrinthSearch: (filters: { query?: string; projectType?: string; gameVersion?: string; loader?: string; limit?: number; offset?: number; sortBy?: string }) =>
+        ipcRenderer.invoke("modrinth-search", filters),
+    modrinthGetProject: (idOrSlug: string) => ipcRenderer.invoke("modrinth-get-project", idOrSlug),
+    modrinthGetVersions: (idOrSlug: string) => ipcRenderer.invoke("modrinth-get-versions", idOrSlug),
+    modrinthGetVersion: (versionId: string) => ipcRenderer.invoke("modrinth-get-version", versionId),
+    modrinthDownload: (versionId: string) => ipcRenderer.invoke("modrinth-download", versionId),
+    modrinthGetPopular: (limit?: number) => ipcRenderer.invoke("modrinth-get-popular", limit),
+    modrinthGetGameVersions: () => ipcRenderer.invoke("modrinth-get-game-versions"),
+    modrinthGetLoaders: () => ipcRenderer.invoke("modrinth-get-loaders"),
+    modrinthGetInstalled: () => ipcRenderer.invoke("modrinth-get-installed"),
+    modrinthDeleteModpack: (modpackPath: string) => ipcRenderer.invoke("modrinth-delete-modpack", modpackPath),
+    onModrinthDownloadProgress: (callback: (data: { filename: string; downloaded: number; total: number; percent: number }) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, data: { filename: string; downloaded: number; total: number; percent: number }) => callback(data);
+        ipcRenderer.on("modrinth-download-progress", handler);
+        return () => ipcRenderer.removeListener("modrinth-download-progress", handler);
+    },
 
-  // === Java APIs ===
-  detectJava: (): Promise<JavaInstallation[]> => {
-    return ipcRenderer.invoke("detect-java");
-  },
+    // ----------------------------------------
+    // Instance Management APIs
+    // ----------------------------------------
+    instancesList: () => ipcRenderer.invoke("instances-list"),
+    instancesCreate: (options: { name: string; minecraftVersion: string; loader?: string; loaderVersion?: string; icon?: string; javaPath?: string; ramMB?: number }) =>
+        ipcRenderer.invoke("instances-create", options),
+    instancesGet: (id: string) => ipcRenderer.invoke("instances-get", id),
+    instancesUpdate: (id: string, updates: { name?: string; icon?: string; loader?: string; loaderVersion?: string; javaPath?: string; ramMB?: number; javaArguments?: string }) =>
+        ipcRenderer.invoke("instances-update", id, updates),
+    instancesDelete: (id: string) => ipcRenderer.invoke("instances-delete", id),
+    instancesDuplicate: (id: string) => ipcRenderer.invoke("instances-duplicate", id),
+    instancesOpenFolder: (id: string) => ipcRenderer.invoke("instances-open-folder", id),
+    instancesLaunch: (id: string) => ipcRenderer.invoke("instances-launch", id),
+    onLaunchProgress: (callback: (data: { type: string; task?: string; current?: number; total?: number; percent?: number }) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, data: { type: string; task?: string; current?: number; total?: number; percent?: number }) => callback(data);
+        ipcRenderer.on("launch-progress", handler);
+        return () => ipcRenderer.removeListener("launch-progress", handler);
+    },
+    isGameRunning: () => ipcRenderer.invoke("is-game-running"),
+    killGame: () => ipcRenderer.invoke("kill-game"),
 
-  testJava: (javaPath: string): Promise<JavaTestResult> => {
-    return ipcRenderer.invoke("test-java", javaPath);
-  },
+    // Instance Content Management APIs
+    instanceListMods: (instanceId: string) => ipcRenderer.invoke("instance-list-mods", instanceId),
+    instanceToggleMod: (instanceId: string, filename: string) => ipcRenderer.invoke("instance-toggle-mod", instanceId, filename),
+    instanceDeleteMod: (instanceId: string, filename: string) => ipcRenderer.invoke("instance-delete-mod", instanceId, filename),
 
-  getRecommendedJava: (mcVersion: string): Promise<number> => {
-    return ipcRenderer.invoke("get-recommended-java", mcVersion);
-  },
+    // Browse icon dialog
+    browseIcon: () => ipcRenderer.invoke("browse-icon"),
 
-  selectBestJava: (mcVersion: string): Promise<string | null> => {
-    return ipcRenderer.invoke("select-best-java", mcVersion);
-  },
+    // List resourcepacks and shaders
+    instanceListResourcepacks: (instanceId: string) => ipcRenderer.invoke("instance-list-resourcepacks", instanceId),
+    instanceListShaders: (instanceId: string) => ipcRenderer.invoke("instance-list-shaders", instanceId),
 
-  getJavaForVersion: (mcVersion: string): Promise<{
-    javaPath: string | null;
-    recommendedVersion: number;
-    actualVersion: number | null;
-    isExactMatch: boolean;
-  }> => {
-    return ipcRenderer.invoke("get-java-for-version", mcVersion);
-  },
+    // Toggle resourcepacks and shaders
+    instanceToggleResourcepack: (instanceId: string, filename: string) => ipcRenderer.invoke("instance-toggle-resourcepack", instanceId, filename),
+    instanceToggleShader: (instanceId: string, filename: string) => ipcRenderer.invoke("instance-toggle-shader", instanceId, filename),
 
-  // === Verification APIs ===
-  verifyGameFiles: (versionId: string): Promise<VerificationResult> => {
-    return ipcRenderer.invoke("verify-game-files", versionId);
-  },
+    // Delete resourcepacks and shaders
+    instanceDeleteResourcepack: (instanceId: string, filename: string) => ipcRenderer.invoke("instance-delete-resourcepack", instanceId, filename),
+    instanceDeleteShader: (instanceId: string, filename: string) => ipcRenderer.invoke("instance-delete-shader", instanceId, filename),
 
-  quickVerify: (versionId: string): Promise<boolean> => {
-    return ipcRenderer.invoke("quick-verify", versionId);
-  },
+    // Datapacks APIs
+    instanceListDatapacks: (instanceId: string) => ipcRenderer.invoke("instance-list-datapacks", instanceId),
+    instanceToggleDatapack: (instanceId: string, worldName: string, filename: string) => ipcRenderer.invoke("instance-toggle-datapack", instanceId, worldName, filename),
+    instanceDeleteDatapack: (instanceId: string, worldName: string, filename: string) => ipcRenderer.invoke("instance-delete-datapack", instanceId, worldName, filename),
 
-  // === Profile APIs ===
-  initProfiles: (): Promise<void> => {
-    return ipcRenderer.invoke("init-profiles");
-  },
+    // ----------------------------------------
+    // Content Download APIs
+    // ----------------------------------------
+    contentDownloadToInstance: (options: { projectId: string; versionId: string; instanceId: string; contentType: string }) =>
+        ipcRenderer.invoke("content-download-to-instance", options),
+    contentGetCompatibleVersions: (projectId: string, instanceId: string) =>
+        ipcRenderer.invoke("content-get-compatible-versions", projectId, instanceId),
+    onContentDownloadProgress: (callback: (data: { filename: string; downloaded: number; total: number; percent: number }) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, data: { filename: string; downloaded: number; total: number; percent: number }) => callback(data);
+        ipcRenderer.on("content-download-progress", handler);
+        return () => ipcRenderer.removeListener("content-download-progress", handler);
+    },
 
-  listProfiles: (): Promise<Profile[]> => {
-    return ipcRenderer.invoke("list-profiles");
-  },
+    // ----------------------------------------
+    // Server Status APIs
+    // ----------------------------------------
+    pingServer: (options: { host: string; port?: number; timeout?: number }) =>
+        ipcRenderer.invoke("ping-server", options),
+    isServerOnline: (host: string, port?: number) =>
+        ipcRenderer.invoke("is-server-online", host, port),
 
-  createProfile: (options: ProfileCreateOptions): Promise<Profile> => {
-    return ipcRenderer.invoke("create-profile", options);
-  },
+    // ----------------------------------------
+    // Modpack Installer APIs
+    // ----------------------------------------
+    modpackInstall: (mrpackPath: string) => ipcRenderer.invoke("modpack-install", mrpackPath),
+    modpackInstallFromModrinth: (versionId: string) => ipcRenderer.invoke("modpack-install-from-modrinth", versionId),
+    modpackCheckConflicts: (instanceId: string) => ipcRenderer.invoke("modpack-check-conflicts", instanceId),
+    modpackParseInfo: (mrpackPath: string) => ipcRenderer.invoke("modpack-parse-info", mrpackPath),
+    onModpackInstallProgress: (callback: (data: { stage: string; message: string; current?: number; total?: number; percent?: number }) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, data: { stage: string; message: string; current?: number; total?: number; percent?: number }) => callback(data);
+        ipcRenderer.on("modpack-install-progress", handler);
+        return () => ipcRenderer.removeListener("modpack-install-progress", handler);
+    },
 
-  getProfile: (profileId: string): Promise<Profile | null> => {
-    return ipcRenderer.invoke("get-profile", profileId);
-  },
-
-  updateProfile: (profileId: string, updates: Partial<Profile>): Promise<Profile | null> => {
-    return ipcRenderer.invoke("update-profile", profileId, updates);
-  },
-
-  deleteProfile: (profileId: string): Promise<boolean> => {
-    return ipcRenderer.invoke("delete-profile", profileId);
-  },
-
-  duplicateProfile: (profileId: string, newName: string): Promise<Profile | null> => {
-    return ipcRenderer.invoke("duplicate-profile", profileId, newName);
-  },
-
-  getProfileStats: (profileId: string): Promise<ProfileStats | null> => {
-    return ipcRenderer.invoke("get-profile-stats", profileId);
-  },
-
-  getProfilePath: (profileId: string): Promise<string> => {
-    return ipcRenderer.invoke("get-profile-path", profileId);
-  },
-
-  openProfileFolder: (profileId: string): Promise<void> => {
-    return ipcRenderer.invoke("open-profile-folder", profileId);
-  },
-
-  // === Utility APIs ===
-  openExternal: (url: string): Promise<void> => {
-    return ipcRenderer.invoke("open-external", url);
-  },
-
-  getMinecraftDir: (): Promise<string> => {
-    return ipcRenderer.invoke("get-minecraft-dir");
-  },
-
-  getAppDataDir: (): Promise<string> => {
-    return ipcRenderer.invoke("get-app-data-dir");
-  },
-
-  // === Dialog APIs ===
-  browseJava: (): Promise<string | null> => {
-    return ipcRenderer.invoke("browse-java");
-  },
-
-  browseDirectory: (title?: string): Promise<string | null> => {
-    return ipcRenderer.invoke("browse-directory", title);
-  },
-
-  validateJavaPath: (javaPath: string): Promise<boolean> => {
-    return ipcRenderer.invoke("validate-java-path", javaPath);
-  },
-
-  openFolder: (folderPath: string): Promise<void> => {
-    return ipcRenderer.invoke("open-folder", folderPath);
-  },
-
-  // === Discord RPC APIs ===
-  discordRPCSetEnabled: (enabled: boolean): Promise<void> => {
-    return ipcRenderer.invoke("discord-rpc-set-enabled", enabled);
-  },
-
-  discordRPCUpdate: (status: "idle" | "playing" | "launching", serverName?: string): Promise<void> => {
-    return ipcRenderer.invoke("discord-rpc-update", status, serverName);
-  },
-
-  discordRPCIsConnected: (): Promise<boolean> => {
-    return ipcRenderer.invoke("discord-rpc-is-connected");
-  },
-
-  // === Auth Window APIs ===
-  openAuthWindow: (): Promise<void> => {
-    return ipcRenderer.invoke("open-auth-window");
-  },
-
-  closeAuthWindow: (): Promise<void> => {
-    return ipcRenderer.invoke("close-auth-window");
-  },
-
-  // รับ callback จาก auth window
-  onAuthCallback: (callback: (data: { token: string }) => void): (() => void) => {
-    const handler = (_event: any, data: { token: string }) => callback(data);
-    ipcRenderer.on("auth-callback", handler);
-    // Return cleanup function
-    return () => ipcRenderer.removeListener("auth-callback", handler);
-  },
-
-  // === Auto Update APIs ===
-  checkForUpdates: (): Promise<void> => {
-    return ipcRenderer.invoke("check-for-updates");
-  },
-
-  downloadUpdate: (): Promise<void> => {
-    return ipcRenderer.invoke("download-update");
-  },
-
-  installUpdate: (): Promise<void> => {
-    return ipcRenderer.invoke("install-update");
-  },
-
-  getAppVersion: (): Promise<string> => {
-    return ipcRenderer.invoke("get-app-version");
-  },
-
-  // รับ events จาก auto-updater
-  onUpdateAvailable: (callback: (info: { version: string; releaseDate: string }) => void): (() => void) => {
-    const handler = (_event: any, info: { version: string; releaseDate: string }) => callback(info);
-    ipcRenderer.on("update-available", handler);
-    return () => ipcRenderer.removeListener("update-available", handler);
-  },
-
-  onUpdateProgress: (callback: (progress: { percent: number; bytesPerSecond: number; transferred: number; total: number }) => void): (() => void) => {
-    const handler = (_event: any, progress: { percent: number; bytesPerSecond: number; transferred: number; total: number }) => callback(progress);
-    ipcRenderer.on("update-progress", handler);
-    return () => ipcRenderer.removeListener("update-progress", handler);
-  },
-
-  onUpdateDownloaded: (callback: (info: { version: string; releaseDate: string }) => void): (() => void) => {
-    const handler = (_event: any, info: { version: string; releaseDate: string }) => callback(info);
-    ipcRenderer.on("update-downloaded", handler);
-    return () => ipcRenderer.removeListener("update-downloaded", handler);
-  },
-
-  // === Window Control APIs ===
-  windowMinimize: (): Promise<void> => {
-    return ipcRenderer.invoke("window-minimize");
-  },
-
-  windowMaximize: (): Promise<void> => {
-    return ipcRenderer.invoke("window-maximize");
-  },
-
-  windowClose: (): Promise<void> => {
-    return ipcRenderer.invoke("window-close");
-  },
-
-  windowIsMaximized: (): Promise<boolean> => {
-    return ipcRenderer.invoke("window-is-maximized");
-  },
+    // ----------------------------------------
+    // Game Log APIs
+    // ----------------------------------------
+    onGameLog: (callback: (data: { level: string; message: string }) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, data: { level: string; message: string }) => callback(data);
+        ipcRenderer.on("game-log", handler);
+        return () => ipcRenderer.removeListener("game-log", handler);
+    },
+    instanceReadLatestLog: (instanceId: string) => ipcRenderer.invoke("instance-read-latest-log", instanceId),
 };
 
 // ========================================
@@ -404,6 +238,3 @@ const api = {
 // ========================================
 
 contextBridge.exposeInMainWorld("api", api);
-
-// Export type for TypeScript
-export type API = typeof api;

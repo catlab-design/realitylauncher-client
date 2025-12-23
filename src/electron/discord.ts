@@ -9,8 +9,7 @@
  * bun add discord-rpc
  */
 
-import { createRequire } from "node:module";
-const require = createRequire(import.meta.url);
+// CommonJS format - require is available natively
 
 // Discord Application ID (ต้องสร้างใน Discord Developer Portal)
 const CLIENT_ID = "1449834700079366174"; // TODO: เปลี่ยนเป็น ID จริง
@@ -33,8 +32,11 @@ interface RPCActivity {
 // RPC State
 // ========================================
 
+// Type for discord-rpc Client (using the installed @types/discord-rpc)
+import type { Client as DiscordRPCClient } from "discord-rpc";
+
 let rpcEnabled = true;
-let rpcClient: any = null;
+let rpcClient: DiscordRPCClient | null = null;
 let startTimestamp = Date.now();
 
 // ========================================

@@ -1,0 +1,278 @@
+import React, { useEffect, useState } from "react";
+import toast from "react-hot-toast";
+import { Icons } from "./ui/Icons";
+
+// ========================================
+// Types
+// ========================================
+
+type LoaderType = "forge" | "fabric" | "neoforge" | "quilt" | "vanilla";
+
+interface CreateModpackModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    onCreate: (modpack: NewModpack) => void;
+    colors: any;
+}
+
+interface NewModpack {
+    name: string;
+    icon?: string;
+    gameVersion: string;
+    loader: LoaderType;
+}
+
+interface GameVersion {
+    version: string;
+    version_type: string;
+}
+
+// ========================================
+// Constants
+// ========================================
+
+const LOADERS: { id: LoaderType; name: string; icon: string }[] = [
+    { id: "fabric", name: "Fabric", icon: "🧶" },
+    { id: "forge", name: "Forge", icon: "⚒️" },
+    { id: "neoforge", name: "NeoForge", icon: "🔧" },
+    { id: "quilt", name: "Quilt", icon: "🧵" },
+    { id: "vanilla", name: "Vanilla", icon: "🎮" },
+];
+
+// ========================================
+// Component
+// ========================================
+
+export function CreateModpackModal({
+    isOpen,
+    onClose,
+    onCreate,
+    colors,
+}: CreateModpackModalProps) {
+    const [name, setName] = useState("");
+    const [icon, setIcon] = useState<string | undefined>();
+    const [gameVersion, setGameVersion] = useState("");
+    const [loader, setLoader] = useState<LoaderType>("fabric");
+    const [gameVersions, setGameVersions] = useState<GameVersion[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [showAllVersions, setShowAllVersions] = useState(false);
+
+    // Load game versions on mount
+    useEffect(() => {
+        if (isOpen) {
+            loadGameVersions();
+        }
+    }, [isOpen]);
+
+    const loadGameVersions = async () => {
+        setIsLoading(true);
+        try {
+            const versions = await window.api?.modrinthGetGameVersions?.();
+            if (versions) {
+                setGameVersions(versions);
+                // Set default to latest release
+                const latestRelease = versions.find((v: GameVersion) => v.version_type === "release");
+                if (latestRelease) {
+                    setGameVersion(latestRelease.version);
+                }
+            }
+        } catch (error) {
+            console.error("[CreateModpack] Failed to load versions:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleIconSelect = () => {
+        // Create file input
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = "image/*";
+        input.onchange = (e) => {
+            const file = (e.target as HTMLInputElement).files?.[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    setIcon(reader.result as string);
+                };
+                reader.readAsDataURL(file);
+            }
+        };
+        input.click();
+    };
+
+    const handleCreate = () => {
+        if (!name.trim()) {
+            toast.error("กรุณาใส่ชื่อ Mod Pack");
+            return;
+        }
+        if (!gameVersion) {
+            toast.error("กรุณาเลือก Minecraft version");
+            return;
+        }
+
+        onCreate({
+            name: name.trim(),
+            icon,
+            gameVersion,
+            loader,
+        });
+
+        // Reset form
+        setName("");
+        setIcon(undefined);
+        setLoader("fabric");
+        onClose();
+    };
+
+    const displayVersions = showAllVersions
+        ? gameVersions
+        : gameVersions.filter((v) => v.version_type === "release").slice(0, 20);
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div
+                className="w-full max-w-lg rounded-2xl p-6 shadow-2xl"
+                style={{ backgroundColor: colors.surface }}
+            >
+                {/* Header */}
+                <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-xl font-semibold" style={{ color: colors.onSurface }}>
+                        สร้าง Mod Pack ใหม่
+                    </h2>
+                    <button
+                        onClick={onClose}
+                        className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-500/20"
+                        style={{ color: colors.onSurfaceVariant }}
+                    >
+                        ✕
+                    </button>
+                </div>
+
+                {/* Icon Picker */}
+                <div className="flex items-center gap-4 mb-6">
+                    <button
+                        onClick={handleIconSelect}
+                        className="w-20 h-20 rounded-2xl flex items-center justify-center border-2 border-dashed transition-all hover:border-solid"
+                        style={{
+                            backgroundColor: colors.surfaceContainer,
+                            borderColor: colors.outline,
+                        }}
+                    >
+                        {icon ? (
+                            <img src={icon} alt="Icon" className="w-full h-full rounded-2xl object-cover" />
+                        ) : (
+                            <Icons.Box className="w-10 h-10" style={{ color: colors.onSurfaceVariant }} />
+                        )}
+                    </button>
+                    <div>
+                        <p className="font-medium" style={{ color: colors.onSurface }}>ไอคอน</p>
+                        <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>
+                            คลิกเพื่อเลือกรูปภาพ
+                        </p>
+                    </div>
+                </div>
+
+                {/* Name Input */}
+                <div className="mb-4">
+                    <label className="block text-sm font-medium mb-2" style={{ color: colors.onSurface }}>
+                        ชื่อ Mod Pack
+                    </label>
+                    <input
+                        type="text"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="My Awesome Modpack"
+                        className="w-full px-4 py-3 rounded-xl border"
+                        style={{
+                            backgroundColor: colors.surfaceContainer,
+                            borderColor: colors.outline,
+                            color: colors.onSurface,
+                        }}
+                    />
+                </div>
+
+                {/* Game Version Select */}
+                <div className="mb-4">
+                    <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm font-medium" style={{ color: colors.onSurface }}>
+                            Minecraft Version
+                        </label>
+                        <button
+                            onClick={() => setShowAllVersions(!showAllVersions)}
+                            className="text-xs underline"
+                            style={{ color: colors.secondary }}
+                        >
+                            {showAllVersions ? "แสดงเฉพาะ release" : "แสดงทั้งหมด"}
+                        </button>
+                    </div>
+                    <select
+                        value={gameVersion}
+                        onChange={(e) => setGameVersion(e.target.value)}
+                        disabled={isLoading}
+                        className="w-full px-4 py-3 rounded-xl border"
+                        style={{
+                            backgroundColor: colors.surfaceContainer,
+                            borderColor: colors.outline,
+                            color: colors.onSurface,
+                        }}
+                    >
+                        {isLoading ? (
+                            <option>กำลังโหลด...</option>
+                        ) : (
+                            displayVersions.map((v) => (
+                                <option key={v.version} value={v.version}>
+                                    {v.version} {v.version_type !== "release" ? `(${v.version_type})` : ""}
+                                </option>
+                            ))
+                        )}
+                    </select>
+                </div>
+
+                {/* Loader Selection */}
+                <div className="mb-6">
+                    <label className="block text-sm font-medium mb-2" style={{ color: colors.onSurface }}>
+                        Mod Loader
+                    </label>
+                    <div className="grid grid-cols-5 gap-2">
+                        {LOADERS.map((l) => (
+                            <button
+                                key={l.id}
+                                onClick={() => setLoader(l.id)}
+                                className="p-3 rounded-xl text-center transition-all"
+                                style={{
+                                    backgroundColor: loader === l.id ? colors.secondary : colors.surfaceContainer,
+                                    color: loader === l.id ? "#1a1a1a" : colors.onSurface,
+                                    border: `1px solid ${loader === l.id ? colors.secondary : colors.outline}`,
+                                }}
+                            >
+                                <div className="text-2xl mb-1">{l.icon}</div>
+                                <div className="text-xs font-medium">{l.name}</div>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex justify-end gap-3">
+                    <button
+                        onClick={onClose}
+                        className="px-6 py-2.5 rounded-xl border"
+                        style={{ borderColor: colors.outline, color: colors.onSurface }}
+                    >
+                        ยกเลิก
+                    </button>
+                    <button
+                        onClick={handleCreate}
+                        className="px-6 py-2.5 rounded-xl font-medium"
+                        style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                    >
+                        สร้าง Mod Pack
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
