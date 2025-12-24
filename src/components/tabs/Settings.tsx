@@ -121,7 +121,7 @@ export function Settings({
                                             <div className="font-medium" style={{ color: colors.onSurface }}>{session.username}</div>
                                             <div className="text-xs flex items-center gap-2" style={{ color: colors.onSurfaceVariant }}>
                                                 <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                                                {session.type === "microsoft" ? "Microsoft Account" : "Offline Mode"}
+                                                {session.type === "microsoft" ? "Microsoft Account" : session.type === "catid" ? "CatID Account" : "Offline Mode"}
                                             </div>
                                         </div>
                                         <button

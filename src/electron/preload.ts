@@ -42,6 +42,7 @@ const api = {
     // Utility APIs
     // ----------------------------------------
     openExternal: (url: string) => ipcRenderer.invoke("open-external", url),
+    openMicrosoftLogin: (verificationUri: string, userCode: string) => ipcRenderer.invoke("open-microsoft-login", verificationUri, userCode),
     getMinecraftDir: () => ipcRenderer.invoke("get-minecraft-dir"),
     getAppDataDir: () => ipcRenderer.invoke("get-app-data-dir"),
     getSystemRam: () => ipcRenderer.invoke("get-system-ram"),

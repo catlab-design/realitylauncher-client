@@ -646,9 +646,11 @@ export default function LauncherApp() {
   };
 
   // ลบบัญชีออกจากรายการ
-  const removeAccount = (account: AuthSession) => {
+  const removeAccount = async (account: AuthSession) => {
     setAccounts(prev => prev.filter(acc => !(acc.username === account.username && acc.type === account.type)));
     if (session?.username === account.username && session?.type === account.type) {
+      // ถ้าลบบัญชีที่กำลังใช้อยู่ ให้เรียก logout เพื่อลบ session.json ด้วย
+      await window.api?.logout();
       setSession(null);
     }
     toast.success(`ลบบัญชี ${account.username} แล้ว`);
@@ -1128,6 +1130,123 @@ export default function LauncherApp() {
         </div>
       )}
 
+      {/* CatID Register Modal */}
+      {catIDRegisterOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-3xl p-6 shadow-xl relative" style={{ backgroundColor: colors.surface }}>
+            {/* X Close Button */}
+            <button
+              onClick={() => setCatIDRegisterOpen(false)}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-500/20"
+              style={{ color: colors.onSurfaceVariant }}
+            >
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+              </svg>
+            </button>
+
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: "#8b5cf6" }}>
+                <svg className="w-6 h-6" viewBox="0 0 24 24" fill="#ffffff">
+                  <path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-xl font-bold" style={{ color: colors.onSurface }}>สมัครสมาชิก CatID</h2>
+                <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>สร้างบัญชีใหม่</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <input
+                id="catid-reg-username"
+                type="text"
+                placeholder="ชื่อผู้ใช้"
+                className="w-full px-4 py-3 rounded-xl border"
+                style={{
+                  borderColor: colors.outline,
+                  backgroundColor: colors.surfaceContainer,
+                  color: colors.onSurface,
+                }}
+              />
+              <input
+                id="catid-reg-email"
+                type="email"
+                placeholder="อีเมล"
+                className="w-full px-4 py-3 rounded-xl border"
+                style={{
+                  borderColor: colors.outline,
+                  backgroundColor: colors.surfaceContainer,
+                  color: colors.onSurface,
+                }}
+              />
+              <input
+                id="catid-reg-password"
+                type="password"
+                placeholder="รหัสผ่าน"
+                className="w-full px-4 py-3 rounded-xl border"
+                style={{
+                  borderColor: colors.outline,
+                  backgroundColor: colors.surfaceContainer,
+                  color: colors.onSurface,
+                }}
+              />
+              <input
+                id="catid-reg-confirm"
+                type="password"
+                placeholder="ยืนยันรหัสผ่าน"
+                className="w-full px-4 py-3 rounded-xl border"
+                style={{
+                  borderColor: colors.outline,
+                  backgroundColor: colors.surfaceContainer,
+                  color: colors.onSurface,
+                }}
+              />
+
+              <div className="flex gap-2 mt-4">
+                <button
+                  onClick={async () => {
+                    const username = (document.getElementById("catid-reg-username") as HTMLInputElement)?.value;
+                    const email = (document.getElementById("catid-reg-email") as HTMLInputElement)?.value;
+                    const password = (document.getElementById("catid-reg-password") as HTMLInputElement)?.value;
+                    const confirm = (document.getElementById("catid-reg-confirm") as HTMLInputElement)?.value;
+
+                    if (!username || !email || !password || !confirm) {
+                      toast.error("กรุณากรอกข้อมูลให้ครบ");
+                      return;
+                    }
+                    if (password !== confirm) {
+                      toast.error("รหัสผ่านไม่ตรงกัน");
+                      return;
+                    }
+                    if (password.length < 8) {
+                      toast.error("รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร");
+                      return;
+                    }
+
+                    await handleCatIDRegister(username, email, password);
+                  }}
+                  className="flex-1 py-3 rounded-xl font-medium transition-all hover:scale-[1.02]"
+                  style={{ backgroundColor: "#8b5cf6", color: "#ffffff" }}
+                >
+                  สมัครสมาชิก
+                </button>
+                <button
+                  onClick={() => {
+                    setCatIDRegisterOpen(false);
+                    setCatIDLoginOpen(true);
+                  }}
+                  className="px-4 py-3 rounded-xl border transition-all hover:scale-[1.02]"
+                  style={{ borderColor: colors.outline, color: colors.onSurface }}
+                >
+                  เข้าสู่ระบบ
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Account Manager Modal */}
       {accountManagerOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -1161,7 +1280,7 @@ export default function LauncherApp() {
                   <div className="flex-1">
                     <div className="font-medium" style={{ color: colors.onSurface }}>{account.username}</div>
                     <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>
-                      {account.type === "microsoft" ? "Microsoft Account" : "Offline Mode"}
+                      {account.type === "microsoft" ? "Microsoft Account" : account.type === "catid" ? "CatID Account" : "Offline Mode"}
                     </div>
                   </div>
                   <div className="flex gap-2">
@@ -1387,13 +1506,15 @@ export default function LauncherApp() {
                 try {
                   // Copy code first
                   await navigator.clipboard.writeText(deviceCodeData.userCode);
-                  // Then open browser
-                  if (window.api?.openExternal) {
-                    await window.api.openExternal(deviceCodeData.verificationUri);
+                  // Open in clean Electron window to allow account selection
+                  if ((window as any).api?.openMicrosoftLogin) {
+                    await (window as any).api.openMicrosoftLogin(deviceCodeData.verificationUri, deviceCodeData.userCode);
+                    toast.success("คัดลอกรหัสแล้ว - กรุณาเลือกบัญชีและใส่รหัสในหน้าต่าง");
                   } else {
+                    // Fallback to external browser
                     window.open(deviceCodeData.verificationUri, "_blank");
+                    toast.success("คัดลอกรหัสแล้ว - กรุณาใส่รหัสในหน้าเว็บ");
                   }
-                  toast.success("คัดลอกรหัสแล้ว - กรุณาใส่รหัสในหน้าเว็บ");
                 } catch {
                   window.open(deviceCodeData.verificationUri, "_blank");
                 }
@@ -1913,10 +2034,10 @@ export default function LauncherApp() {
                   </div>
                   <div className="space-y-1">
                     <p className="text-sm font-medium" style={{ color: colors.onSurfaceVariant }}>
-                      Cat Lab_ Design × Q Team Studio
+                      SpaceLogic Studios × Q Team Studio
                     </p>
                     <p className="text-xs" style={{ color: colors.outline }}>
-                      © 2024 Reality Launcher. All rights reserved.
+                      © 2024 Cat Lab_ Design. All rights reserved.
                     </p>
                   </div>
                 </div>

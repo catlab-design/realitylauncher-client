@@ -561,6 +561,51 @@ ipcMain.handle("open-external", async (_event, url: string): Promise<void> => {
 });
 
 /**
+ * open-microsoft-login - เปิดหน้า Microsoft login ในหน้าต่างใหม่ที่ล้าง session
+ * ทำให้ผู้ใช้สามารถเลือกบัญชี Microsoft ได้
+ */
+ipcMain.handle("open-microsoft-login", async (_event, verificationUri: string, userCode: string): Promise<void> => {
+  // สร้างหน้าต่างใหม่สำหรับ login
+  const loginWindow = new BrowserWindow({
+    width: 500,
+    height: 700,
+    title: "Microsoft Login",
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      // เปิดหน้าต่างในโหมด partition แยก (ไม่มี cookies เก่า)
+      partition: "microsoft-login-" + Date.now(),
+    },
+    autoHideMenuBar: true,
+    resizable: true,
+    center: true,
+  });
+
+  // ล้าง cookies และ session ของ Microsoft ใน partition นี้
+  await loginWindow.webContents.session.clearStorageData({
+    storages: ["cookies", "localstorage"],
+  });
+
+  // เปิดหน้า devicelogin
+  await loginWindow.loadURL(verificationUri);
+
+  // เมื่อปิดหน้าต่าง ก็ไม่ต้องทำอะไร (polling จะจัดการเอง)
+  loginWindow.on("closed", () => {
+    console.log("[Auth] Microsoft login window closed");
+  });
+
+  // ถ้า login สำเร็จ Microsoft จะ redirect ไป confirmation page
+  // ตรวจจับการ navigate และปิดหน้าต่างถ้า login สำเร็จ
+  loginWindow.webContents.on("did-navigate", (_event, url) => {
+    console.log("[Auth] Microsoft login navigated to:", url);
+    // ถ้าไป page ที่บอกว่า login สำเร็จ ให้ปิดหน้าต่าง
+    if (url.includes("nativeclient") || url.includes("success") || url.includes("close")) {
+      loginWindow.close();
+    }
+  });
+});
+
+/**
  * get-minecraft-dir - ดึง path โฟลเดอร์ .minecraft
  */
 ipcMain.handle("get-minecraft-dir", async (): Promise<string> => {
@@ -968,8 +1013,9 @@ ipcMain.handle("close-auth-window", async (): Promise<void> => {
 // Device Code Authentication Handlers
 // ----------------------------------------
 
-// Microsoft OAuth Client ID - ต้องตั้งค่าผ่าน environment variable
-const MICROSOFT_CLIENT_ID = process.env.MICROSOFT_CLIENT_ID || "";
+// Microsoft OAuth Client ID - for Device Code Auth
+// CatID App - configured with native client redirect URI
+const MICROSOFT_CLIENT_ID = process.env.MICROSOFT_CLIENT_ID || "1d500075-0bac-43ba-a987-3e35771c7354";
 if (!MICROSOFT_CLIENT_ID) {
   console.error("[Auth] MICROSOFT_CLIENT_ID not set! Device code auth will not work.");
 }
@@ -1183,10 +1229,14 @@ ipcMain.handle("auth-device-code-poll", async (_event, deviceCode: string): Prom
     const mcData = await mcResponse.json() as {
       access_token?: string;
       error?: string;
+      errorMessage?: string;
     };
 
+    console.log("[Auth] Minecraft response:", mcResponse.status, JSON.stringify(mcData));
+
     if (!mcResponse.ok || !mcData.access_token) {
-      return { status: "error", error: "Minecraft authentication failed" };
+      console.error("[Auth] Minecraft auth failed:", mcData);
+      return { status: "error", error: `Minecraft authentication failed: ${mcData.error || mcData.errorMessage || mcResponse.status}` };
     }
 
     console.log("[Auth] Minecraft authenticated, checking ownership...");
@@ -1254,7 +1304,7 @@ ipcMain.handle("auth-device-code-poll", async (_event, deviceCode: string): Prom
 // ----------------------------------------
 
 // ml-api URL for CatID authentication
-const ML_API_URL = process.env.ML_API_URL || "http://localhost:3000";
+const ML_API_URL = process.env.ML_API_URL || "https://api.reality.notpumpkins.com";
 
 /**
  * auth-catid-login - Login with CatID (username/password)
