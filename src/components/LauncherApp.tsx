@@ -327,7 +327,8 @@ export default function LauncherApp() {
   const credits = [
     { name: "Sam_Su", role: "ผู้สร้างและผู้ทำลาย", description: "UI/UX Designer" },
     { name: "realnice_k", role: "ผู้ออกแบบและผู้ช่วยพัฒนา", description: "Creator & Developer" },
-    { name: "Kjofex2", role: "ผู้สนับสนุนรายใหญ่", description: "Supporter" },
+    { name: "MrPeachs", role: "ที่ปรึกษา", description: "Consultant" },
+    { name: "Kjofex2", role: "ผู้สนับสนุนรายใหญ่", description: "BigSupporter" },
   ];
 
   // Load config, session, and accounts on mount
@@ -527,8 +528,17 @@ export default function LauncherApp() {
   };
 
   // Handlers
+  // Minecraft username regex: 2-16 characters, letters/numbers/underscore only
+  const MINECRAFT_USERNAME_REGEX = /^[a-zA-Z0-9_]{2,16}$/;
+
   const handleCatIDLogin = async (username: string, password: string) => {
     try {
+      // Validate username format
+      if (!MINECRAFT_USERNAME_REGEX.test(username)) {
+        toast.error("ชื่อผู้ใช้ต้องมี 2-16 ตัวอักษร (a-z, 0-9, _)");
+        return;
+      }
+
       // Login via Electron CatID API
       if (!window.api?.loginCatID) {
         toast.error("CatID Login ต้องการ Electron");
@@ -572,6 +582,12 @@ export default function LauncherApp() {
 
   const handleOfflineLogin = async (username: string) => {
     try {
+      // Validate username format
+      if (!MINECRAFT_USERNAME_REGEX.test(username)) {
+        toast.error("ชื่อผู้ใช้ต้องมี 2-16 ตัวอักษร (a-z, 0-9, _)");
+        return;
+      }
+
       // Login via Electron Offline API
       if (!window.api?.loginOffline) {
         toast.error("Offline Login ต้องการ Electron");
@@ -613,6 +629,12 @@ export default function LauncherApp() {
 
   const handleCatIDRegister = async (username: string, email: string, password: string) => {
     try {
+      // Validate username format
+      if (!MINECRAFT_USERNAME_REGEX.test(username)) {
+        toast.error("ชื่อผู้ใช้ต้องมี 2-16 ตัวอักษร (a-z, 0-9, _)");
+        return false;
+      }
+
       // Register via Electron CatID API
       if (!window.api?.registerCatID) {
         toast.error("CatID Register ต้องการ Electron");
@@ -1684,7 +1706,7 @@ export default function LauncherApp() {
                           <div className="flex-1 min-w-0">
                             <div className="text-sm font-medium truncate" style={{ color: colors.onSurface }}>{account.username}</div>
                             <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>
-                              {account.type === "microsoft" ? "Microsoft" : "Offline Account"}
+                              {account.type === "microsoft" ? "Microsoft" : account.type === "catid" ? "CatID Account" : "Offline Account"}
                             </div>
                           </div>
                           <button

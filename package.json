@@ -3,7 +3,10 @@
   "type": "module",
   "version": "0.0.1",
   "main": "dist-electron/main.cjs",
-  "author": "Cat Lab_ Design",
+  "author": {
+    "name": "Cat Lab_ Design",
+    "email": "contact@catlab.design"
+  },
   "description": "Reality Minecraft Launcher",
   "scripts": {
     "dev": "bun run electron:build && concurrently --kill-others \"astro dev --port 4321\" \"wait-on http://localhost:4321 && electron .\"",
@@ -64,7 +67,7 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "AquaOffical",
+      "owner": "CatLab_ Design",
       "repo": "ml-client",
       "releaseType": "release"
     }
