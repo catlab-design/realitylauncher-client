@@ -35,11 +35,10 @@ export function Home({
     useEffect(() => {
         const fetchNewsletters = async () => {
             try {
-                const res = await fetch("https://api.reality.catlab.design/admin/newsletter/history");
+                const res = await fetch("https://api.reality.notpumpkins.com/newsletter/list");
                 if (res.ok) {
                     const data = await res.json();
-                    // Only show sent newsletters
-                    setNewsletters((data.newsletters || []).filter((n: Newsletter) => n.sentAt));
+                    setNewsletters(data.newsletters || []);
                 }
             } catch {
                 // Silent fail - just show no newsletters
