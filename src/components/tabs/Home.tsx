@@ -1,8 +1,16 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { cn } from "../../lib/utils";
 import { type AuthSession, type NewsItem, type Server } from "../../types/launcher";
 import { Icons } from "../ui/Icons";
 import { MCHead } from "../ui/MCHead";
+
+interface Newsletter {
+    id: string;
+    subject: string;
+    content: string;
+    createdAt: string;
+    sentAt: string | null;
+}
 
 interface HomeProps {
     session: AuthSession | null;
@@ -21,6 +29,25 @@ export function Home({
     setSelectedServer,
     colors,
 }: HomeProps) {
+    const [newsletters, setNewsletters] = useState<Newsletter[]>([]);
+
+    // Fetch newsletters from API
+    useEffect(() => {
+        const fetchNewsletters = async () => {
+            try {
+                const res = await fetch("https://api.reality.catlab.design/admin/newsletter/history");
+                if (res.ok) {
+                    const data = await res.json();
+                    // Only show sent newsletters
+                    setNewsletters((data.newsletters || []).filter((n: Newsletter) => n.sentAt));
+                }
+            } catch {
+                // Silent fail - just show no newsletters
+            }
+        };
+        fetchNewsletters();
+    }, []);
+
     // Get current hour for greeting
     const hour = new Date().getHours();
     const greeting = hour < 12 ? "อรุณสวัสดิ์" : hour < 18 ? "สวัสดีตอนบ่าย" : "สวัสดีตอนเย็น";
@@ -88,21 +115,22 @@ export function Home({
 
             {/* Main Content - Stacked Layout */}
             <div className="space-y-8">
-                {/* News Section */}
+                {/* Newsletter Section */}
                 <div className="space-y-4">
                     <div className="flex items-center justify-between">
                         <h3 className="text-lg font-bold flex items-center gap-2" style={{ color: colors.onSurface }}>
                             <span className="w-1 h-5 rounded-full" style={{ backgroundColor: colors.secondary }} />
                             ข่าวสารและอัปเดต
                         </h3>
-                        {news.length > 0 && (
+                        {newsletters.length > 0 && (
                             <span className="text-xs px-2 py-1 rounded-full" style={{ backgroundColor: colors.primary + "20", color: colors.primary }}>
-                                {news.length} รายการ
+                                {newsletters.length} รายการ
                             </span>
                         )}
                     </div>
 
-                    {news.length === 0 ? (
+                    {/* Newsletter List */}
+                    {newsletters.length === 0 ? (
                         <div
                             className="p-12 rounded-2xl text-center"
                             style={{ backgroundColor: colors.surfaceContainer }}
@@ -112,53 +140,39 @@ export function Home({
                         </div>
                     ) : (
                         <div className="space-y-3">
-                            {news.map((item, index) => (
+                            {newsletters.map((item) => (
                                 <div
                                     key={item.id}
-                                    className="group p-5 rounded-2xl transition-all hover:scale-[1.01] hover:shadow-lg cursor-pointer"
+                                    className="group p-5 rounded-2xl transition-all hover:scale-[1.01] hover:shadow-lg"
                                     style={{ backgroundColor: colors.surfaceContainer }}
                                 >
                                     <div className="flex gap-4">
-                                        {/* News Icon */}
+                                        {/* Newsletter Icon */}
                                         <div
                                             className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
-                                            style={{
-                                                backgroundColor: item.type === "update" ? colors.primary + "20" : colors.secondary + "20",
-                                            }}
+                                            style={{ backgroundColor: colors.secondary + "20" }}
                                         >
-                                            {item.type === "update" ? (
-                                                <Icons.Download className="w-5 h-5" style={{ color: colors.primary }} />
-                                            ) : (
-                                                <Icons.Star className="w-5 h-5" style={{ color: colors.secondary }} />
-                                            )}
+                                            <i className="fa-solid fa-newspaper text-lg" style={{ color: colors.secondary }}></i>
                                         </div>
 
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-2 mb-1">
                                                 <span
                                                     className="text-xs px-2 py-0.5 rounded-full font-medium"
-                                                    style={{
-                                                        backgroundColor: item.type === "update" ? colors.primary + "20" : colors.secondary + "20",
-                                                        color: item.type === "update" ? colors.primary : colors.secondary,
-                                                    }}
+                                                    style={{ backgroundColor: colors.secondary + "20", color: colors.secondary }}
                                                 >
-                                                    {item.type === "update" ? "อัปเดต" : "กิจกรรม"}
+                                                    Newsletter
                                                 </span>
                                                 <span className="text-xs" style={{ color: colors.onSurfaceVariant }}>
-                                                    {item.date}
+                                                    {new Date(item.sentAt || item.createdAt).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}
                                                 </span>
                                             </div>
                                             <h4 className="font-semibold truncate group-hover:text-clip" style={{ color: colors.onSurface }}>
-                                                {item.title}
+                                                {item.subject}
                                             </h4>
                                             <p className="text-sm line-clamp-2 mt-1" style={{ color: colors.onSurfaceVariant }}>
                                                 {item.content}
                                             </p>
-                                        </div>
-
-                                        {/* Arrow indicator */}
-                                        <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <Icons.ChevronRight className="w-5 h-5" style={{ color: colors.onSurfaceVariant }} />
                                         </div>
                                     </div>
                                 </div>

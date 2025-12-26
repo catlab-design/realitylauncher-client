@@ -168,6 +168,7 @@ const api = {
     instanceListMods: (instanceId: string) => ipcRenderer.invoke("instance-list-mods", instanceId),
     instanceToggleMod: (instanceId: string, filename: string) => ipcRenderer.invoke("instance-toggle-mod", instanceId, filename),
     instanceDeleteMod: (instanceId: string, filename: string) => ipcRenderer.invoke("instance-delete-mod", instanceId, filename),
+    instanceGetModMetadata: (instanceId: string, filename: string) => ipcRenderer.invoke("instance-get-mod-metadata", instanceId, filename),
 
     // Browse icon dialog
     browseIcon: () => ipcRenderer.invoke("browse-icon"),

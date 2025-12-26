@@ -4,7 +4,7 @@
  * ========================================
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import toast from "react-hot-toast";
 import { Icons } from "../ui/Icons";
 import type { GameInstance } from "../../types/launcher";
@@ -43,6 +43,139 @@ interface ModInfo {
 type SettingsTab = "general" | "installation";
 
 // ========================================
+// LazyModItem Component - Loads metadata when visible
+// ========================================
+
+interface LazyModItemProps {
+    mod: ModInfo;
+    instanceId: string;
+    colors: any;
+    formatSize: (bytes: number) => string;
+    onToggle: (filename: string) => void;
+    onDelete: (filename: string) => void;
+}
+
+function LazyModItem({ mod, instanceId, colors, formatSize, onToggle, onDelete }: LazyModItemProps) {
+    const [metadata, setMetadata] = useState<{
+        displayName?: string | null;
+        author?: string | null;
+        icon?: string | null;
+        loaded: boolean;
+    }>({ loaded: false });
+
+    const itemRef = useRef<HTMLDivElement>(null);
+    const loadedRef = useRef(false);
+
+    useEffect(() => {
+        // Skip if already has metadata from cache
+        if (mod.icon || (mod.displayName !== mod.name)) {
+            setMetadata({
+                displayName: mod.displayName,
+                author: mod.author,
+                icon: mod.icon,
+                loaded: true
+            });
+            return;
+        }
+
+        const observer = new IntersectionObserver(
+            async (entries) => {
+                if (entries[0].isIntersecting && !loadedRef.current) {
+                    loadedRef.current = true;
+                    try {
+                        const result = await (window.api as any)?.instanceGetModMetadata?.(instanceId, mod.filename);
+                        if (result?.ok && result.metadata) {
+                            setMetadata({
+                                displayName: result.metadata.displayName,
+                                author: result.metadata.author,
+                                icon: result.metadata.icon,
+                                loaded: true,
+                            });
+                        } else {
+                            setMetadata({ loaded: true });
+                        }
+                    } catch (error) {
+                        console.error("[LazyModItem] Failed to load metadata:", error);
+                        setMetadata({ loaded: true });
+                    }
+                }
+            },
+            { threshold: 0.1, rootMargin: "100px" }
+        );
+
+        if (itemRef.current) {
+            observer.observe(itemRef.current);
+        }
+
+        return () => observer.disconnect();
+    }, [instanceId, mod.filename, mod.icon, mod.displayName, mod.name]);
+
+    const displayName = metadata.loaded ? (metadata.displayName || mod.name) : mod.displayName;
+    const author = metadata.loaded ? (metadata.author || "") : mod.author;
+    const icon = metadata.loaded ? metadata.icon : mod.icon;
+
+    return (
+        <div
+            ref={itemRef}
+            className="flex items-center gap-4 p-4 rounded-xl transition-all"
+            style={{
+                backgroundColor: colors.surfaceContainer,
+                opacity: mod.enabled ? 1 : 0.6
+            }}
+        >
+            {/* Mod icon */}
+            {icon ? (
+                <img
+                    src={icon}
+                    alt={displayName}
+                    className="w-10 h-10 rounded-lg object-cover"
+                />
+            ) : (
+                <div
+                    className="w-10 h-10 rounded-lg flex items-center justify-center"
+                    style={{ backgroundColor: colors.surfaceContainerHighest }}
+                >
+                    <Icons.Box className="w-5 h-5" style={{ color: colors.onSurfaceVariant }} />
+                </div>
+            )}
+
+            {/* Mod info */}
+            <div className="flex-1 min-w-0">
+                <p className="font-medium truncate" style={{ color: colors.onSurface }}>
+                    {displayName}
+                </p>
+                <p className="text-xs truncate" style={{ color: colors.onSurfaceVariant }}>
+                    {author ? `by ${author} • ` : ""}{formatSize(mod.size)}
+                </p>
+            </div>
+
+            {/* Toggle switch */}
+            <button
+                onClick={() => onToggle(mod.filename)}
+                className="relative w-12 h-6 rounded-full transition-colors"
+                style={{ backgroundColor: mod.enabled ? colors.secondary : colors.surfaceContainerHighest }}
+                title={mod.enabled ? "ปิด Mod" : "เปิด Mod"}
+            >
+                <div
+                    className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow"
+                    style={{ left: mod.enabled ? "calc(100% - 20px)" : "4px" }}
+                />
+            </button>
+
+            {/* Delete button */}
+            <button
+                onClick={() => onDelete(mod.filename)}
+                className="w-10 h-10 rounded-lg flex items-center justify-center transition-all hover:bg-red-500/20"
+                style={{ color: "#ef4444" }}
+                title="ลบ Mod"
+            >
+                <Icons.Trash className="w-5 h-5" />
+            </button>
+        </div>
+    );
+}
+
+// ========================================
 // Component
 // ========================================
 
@@ -63,6 +196,7 @@ export function InstanceDetail({
     const [mods, setMods] = useState<ModInfo[]>([]);
     const [modsLoading, setModsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
+    const [modsPage, setModsPage] = useState(1);
     const [showSettings, setShowSettings] = useState(false);
     const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
     const [editedName, setEditedName] = useState(instance.name);
@@ -95,13 +229,32 @@ export function InstanceDetail({
     // Check if this instance is currently playing
     const isThisInstancePlaying = isGameRunning && playingInstanceId === instance.id;
 
-    // Load all content on mount
+    // Track which tabs have been loaded
+    const [loadedTabs, setLoadedTabs] = useState<Set<ContentCategory>>(new Set());
+
+    // Load mods on mount (default tab)
     useEffect(() => {
         loadMods();
-        loadResourcepacks();
-        loadShaders();
-        loadDatapacks();
+        setLoadedTabs(new Set(["mods"]));
     }, [instance.id]);
+
+    // Lazy load content when tab changes
+    useEffect(() => {
+        if (loadedTabs.has(contentTab)) return;
+
+        switch (contentTab) {
+            case "resourcepacks":
+                loadResourcepacks();
+                break;
+            case "shaders":
+                loadShaders();
+                break;
+            case "datapacks":
+                loadDatapacks();
+                break;
+        }
+        setLoadedTabs(prev => new Set([...prev, contentTab]));
+    }, [contentTab]);
 
     // Update edited name when instance changes
     useEffect(() => {
@@ -114,6 +267,16 @@ export function InstanceDetail({
             const result = await (window.api as any)?.instanceListMods?.(instance.id);
             if (result?.ok) {
                 setMods(result.mods);
+
+                // If there are uncached mods, refresh after background loading completes
+                if (result.hasUncached) {
+                    setTimeout(async () => {
+                        const refreshResult = await (window.api as any)?.instanceListMods?.(instance.id);
+                        if (refreshResult?.ok) {
+                            setMods(refreshResult.mods);
+                        }
+                    }, 1500); // Wait 1.5s for background loading
+                }
             } else {
                 toast.error(result?.error || "โหลดรายการ Mods ไม่สำเร็จ");
             }
@@ -310,6 +473,19 @@ export function InstanceDetail({
         mod.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
+    // Pagination for mods
+    const MODS_PER_PAGE = 20;
+    const totalModsPages = Math.ceil(filteredMods.length / MODS_PER_PAGE);
+    const paginatedMods = filteredMods.slice(
+        (modsPage - 1) * MODS_PER_PAGE,
+        modsPage * MODS_PER_PAGE
+    );
+
+    // Reset page when search changes
+    useEffect(() => {
+        setModsPage(1);
+    }, [searchQuery]);
+
     const formatSize = (bytes: number): string => {
         if (bytes < 1024) return `${bytes} B`;
         if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -439,17 +615,15 @@ export function InstanceDetail({
                         <path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18-.21 0-.41-.06-.57-.18l-7.9-4.44A.991.991 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18.21 0 .41.06.57.18l7.9 4.44c.32.17.53.5.53.88v9zM12 4.15L6.04 7.5 12 10.85l5.96-3.35L12 4.15zM5 15.91l6 3.38v-6.71L5 9.21v6.7zm14 0v-6.7l-6 3.37v6.71l6-3.38z" />
                     </svg>
                     <span>Mods</span>
-                    {mods.length > 0 && (
-                        <span
-                            className="px-2 py-0.5 rounded-full text-xs"
-                            style={{
-                                backgroundColor: contentTab === "mods" ? "rgba(0,0,0,0.2)" : colors.surfaceContainer,
-                                color: contentTab === "mods" ? "#1a1a1a" : colors.onSurfaceVariant
-                            }}
-                        >
-                            {mods.length}
-                        </span>
-                    )}
+                    <span
+                        className="px-2 py-0.5 rounded-full text-xs"
+                        style={{
+                            backgroundColor: contentTab === "mods" ? "rgba(0,0,0,0.2)" : colors.surfaceContainer,
+                            color: contentTab === "mods" ? "#1a1a1a" : colors.onSurfaceVariant
+                        }}
+                    >
+                        {modsLoading ? "..." : mods.length}
+                    </span>
                 </button>
 
                 {/* Resource Packs Tab */}
@@ -538,7 +712,7 @@ export function InstanceDetail({
                     <>
                         <div className="flex items-center justify-between mb-4">
                             <h3 className="text-lg font-medium" style={{ color: colors.onSurface }}>
-                                Mods ({mods.length})
+                                Mods {modsLoading ? "" : `(${mods.length})`}
                             </h3>
 
                             {/* Search */}
@@ -585,67 +759,87 @@ export function InstanceDetail({
                                 </p>
                             </div>
                         ) : (
-                            <div className="space-y-2">
-                                {filteredMods.map((mod) => (
-                                    <div
-                                        key={mod.filename}
-                                        className="flex items-center gap-4 p-4 rounded-xl transition-all"
-                                        style={{
-                                            backgroundColor: colors.surfaceContainer,
-                                            opacity: mod.enabled ? 1 : 0.6
-                                        }}
-                                    >
-                                        {/* Mod icon */}
-                                        {mod.icon ? (
-                                            <img
-                                                src={mod.icon}
-                                                alt={mod.displayName}
-                                                className="w-10 h-10 rounded-lg object-cover"
-                                            />
-                                        ) : (
-                                            <div
-                                                className="w-10 h-10 rounded-lg flex items-center justify-center"
-                                                style={{ backgroundColor: colors.surfaceContainerHighest }}
-                                            >
-                                                <Icons.Box className="w-5 h-5" style={{ color: colors.onSurfaceVariant }} />
-                                            </div>
-                                        )}
-
-                                        {/* Mod info */}
-                                        <div className="flex-1 min-w-0">
-                                            <p className="font-medium truncate" style={{ color: colors.onSurface }}>
-                                                {mod.displayName}
-                                            </p>
-                                            <p className="text-xs truncate" style={{ color: colors.onSurfaceVariant }}>
-                                                {mod.author ? `by ${mod.author} • ` : ""}{formatSize(mod.size)}
-                                            </p>
-                                        </div>
-
-                                        {/* Toggle switch */}
+                            <>
+                                {/* Pagination Controls - Top */}
+                                {totalModsPages > 1 && (
+                                    <div className="flex items-center gap-3 mb-4 pb-4 border-b" style={{ borderColor: colors.outline + "30" }}>
                                         <button
-                                            onClick={() => handleToggleMod(mod.filename)}
-                                            className="relative w-12 h-6 rounded-full transition-colors"
-                                            style={{ backgroundColor: mod.enabled ? colors.secondary : colors.surfaceContainerHighest }}
-                                            title={mod.enabled ? "ปิด Mod" : "เปิด Mod"}
+                                            onClick={() => setModsPage(p => Math.max(1, p - 1))}
+                                            disabled={modsPage === 1}
+                                            className="flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40"
+                                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                                         >
-                                            <div
-                                                className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow"
-                                                style={{ left: mod.enabled ? "calc(100% - 20px)" : "4px" }}
-                                            />
+                                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                                                <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+                                            </svg>
+                                            ก่อนหน้า
                                         </button>
 
-                                        {/* Delete button */}
+                                        <span className="px-4 py-2 rounded-xl text-sm" style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}>
+                                            {modsPage} / {totalModsPages}
+                                        </span>
+
                                         <button
-                                            onClick={() => handleDeleteMod(mod.filename)}
-                                            className="w-10 h-10 rounded-lg flex items-center justify-center transition-all hover:bg-red-500/20"
-                                            style={{ color: "#ef4444" }}
-                                            title="ลบ Mod"
+                                            onClick={() => setModsPage(p => Math.min(totalModsPages, p + 1))}
+                                            disabled={modsPage === totalModsPages}
+                                            className="flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40"
+                                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                                         >
-                                            <Icons.Trash className="w-5 h-5" />
+                                            ถัดไป
+                                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                                                <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" />
+                                            </svg>
                                         </button>
                                     </div>
-                                ))}
-                            </div>
+                                )}
+
+                                <div className="space-y-2">
+                                    {paginatedMods.map((mod) => (
+                                        <LazyModItem
+                                            key={mod.filename}
+                                            mod={mod}
+                                            instanceId={instance.id}
+                                            colors={colors}
+                                            formatSize={formatSize}
+                                            onToggle={handleToggleMod}
+                                            onDelete={handleDeleteMod}
+                                        />
+                                    ))}
+                                </div>
+
+                                {/* Pagination Controls - Bottom */}
+                                {totalModsPages > 1 && (
+                                    <div className="flex items-center gap-3 mt-4 pt-4 border-t" style={{ borderColor: colors.outline + "30" }}>
+                                        <button
+                                            onClick={() => setModsPage(p => Math.max(1, p - 1))}
+                                            disabled={modsPage === 1}
+                                            className="flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40"
+                                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                        >
+                                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                                                <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+                                            </svg>
+                                            ก่อนหน้า
+                                        </button>
+
+                                        <span className="px-4 py-2 rounded-xl text-sm" style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}>
+                                            {modsPage} / {totalModsPages}
+                                        </span>
+
+                                        <button
+                                            onClick={() => setModsPage(p => Math.min(totalModsPages, p + 1))}
+                                            disabled={modsPage === totalModsPages}
+                                            className="flex items-center gap-1 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40"
+                                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                        >
+                                            ถัดไป
+                                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                                                <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                )}
+                            </>
                         )}
                     </>
                 )}

@@ -213,8 +213,8 @@ async function downloadModpackFiles(
     let completed = 0;
     const total = clientFiles.length;
 
-    // Download in batches of 5 for better performance
-    const batchSize = 5;
+    // Download in batches of 10 for better performance
+    const batchSize = 10;
 
     for (let i = 0; i < clientFiles.length; i += batchSize) {
         const batch = clientFiles.slice(i, i + batchSize);

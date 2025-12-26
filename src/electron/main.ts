@@ -2109,7 +2109,22 @@ interface ModInfo {
   modifiedAt: string;
 }
 
-// Helper to extract mod info from JAR file
+// Cache for mod metadata to avoid re-parsing JAR files
+// Key: filepath + size + mtime, Value: extracted metadata
+interface ModMetadataCache {
+  displayName?: string;
+  author?: string;
+  description?: string;
+  icon?: string;
+}
+const modMetadataCache = new Map<string, ModMetadataCache>();
+
+// Generate cache key from file stats
+function getModCacheKey(filepath: string, size: number, mtime: string): string {
+  return `${filepath}|${size}|${mtime}`;
+}
+
+// Helper to extract mod info from JAR file (with caching)
 async function extractModInfo(jarPath: string): Promise<{ displayName?: string; author?: string; description?: string; icon?: string }> {
   try {
     const AdmZip = require("adm-zip");
@@ -2193,40 +2208,60 @@ ipcMain.handle("instance-list-mods", async (_event, instanceId: string) => {
     }
 
     const files = fs.readdirSync(modsDir);
-    const mods: ModInfo[] = [];
 
-    for (const file of files) {
-      // Include .jar and .jar.disabled files
-      if (file.endsWith(".jar") || file.endsWith(".jar.disabled")) {
+    // Filter jar files first
+    const jarFiles = files.filter(file => file.endsWith(".jar") || file.endsWith(".jar.disabled"));
+
+    // Collect uncached files for background loading
+    const uncachedFiles: string[] = [];
+
+    // Process all mods SYNCHRONOUSLY for instant display (cache only)
+    const mods: ModInfo[] = jarFiles.map((file) => {
+      const filePath = path.join(modsDir, file);
+      const stats = fs.statSync(filePath);
+      const mtime = stats.mtime.toISOString();
+
+      // Get display name (remove .jar.disabled or .jar extension)
+      let name = file;
+      let enabled = true;
+
+      if (file.endsWith(".jar.disabled")) {
+        name = file.replace(".jar.disabled", "");
+        enabled = false;
+      } else if (file.endsWith(".jar")) {
+        name = file.replace(".jar", "");
+      }
+
+      // Use cache ONLY - don't wait for JAR parsing
+      const cacheKey = getModCacheKey(filePath, stats.size, mtime);
+      const metadata = modMetadataCache.get(cacheKey);
+
+      if (!metadata) {
+        uncachedFiles.push(file);
+      }
+
+      return {
+        filename: file,
+        name,
+        displayName: metadata?.displayName || name,
+        author: metadata?.author || "",
+        description: metadata?.description || "",
+        icon: metadata?.icon || null,
+        enabled,
+        size: stats.size,
+        modifiedAt: mtime,
+      } as ModInfo;
+    });
+
+    // Start background loading of uncached mods (don't wait)
+    if (uncachedFiles.length > 0) {
+      Promise.all(uncachedFiles.map(async (file) => {
         const filePath = path.join(modsDir, file);
         const stats = fs.statSync(filePath);
-
-        // Get display name (remove .jar.disabled or .jar extension)
-        let name = file;
-        let enabled = true;
-
-        if (file.endsWith(".jar.disabled")) {
-          name = file.replace(".jar.disabled", "");
-          enabled = false;
-        } else if (file.endsWith(".jar")) {
-          name = file.replace(".jar", "");
-        }
-
-        // Extract mod metadata from JAR
+        const cacheKey = getModCacheKey(filePath, stats.size, stats.mtime.toISOString());
         const metadata = await extractModInfo(filePath);
-
-        mods.push({
-          filename: file,
-          name,
-          displayName: metadata.displayName || name,
-          author: metadata.author || "",
-          description: metadata.description || "",
-          icon: metadata.icon || null,
-          enabled,
-          size: stats.size,
-          modifiedAt: stats.mtime.toISOString(),
-        });
-      }
+        modMetadataCache.set(cacheKey, metadata);
+      })).catch(err => console.error("[Instance] Background mod loading error:", err));
     }
 
     // Sort by displayName
@@ -2236,6 +2271,50 @@ ipcMain.handle("instance-list-mods", async (_event, instanceId: string) => {
   } catch (error: any) {
     console.error("[Instance] List mods error:", error);
     return { ok: false, error: error.message, mods: [] };
+  }
+});
+/**
+ * instance-get-mod-metadata - Get metadata for a single mod (for lazy loading)
+ */
+ipcMain.handle("instance-get-mod-metadata", async (_event, instanceId: string, filename: string) => {
+  const instance = getInstance(instanceId);
+  if (!instance) {
+    return { ok: false, error: "Instance not found" };
+  }
+
+  const modsDir = path.join(instance.gameDirectory, "mods");
+  const filePath = path.join(modsDir, filename);
+
+  try {
+    if (!fs.existsSync(filePath)) {
+      return { ok: false, error: "Mod file not found" };
+    }
+
+    const stats = fs.statSync(filePath);
+    const mtime = stats.mtime.toISOString();
+    const cacheKey = getModCacheKey(filePath, stats.size, mtime);
+
+    // Check cache first
+    let metadata = modMetadataCache.get(cacheKey);
+
+    if (!metadata) {
+      // Extract and cache
+      metadata = await extractModInfo(filePath);
+      modMetadataCache.set(cacheKey, metadata);
+    }
+
+    return {
+      ok: true,
+      metadata: {
+        displayName: metadata.displayName || null,
+        author: metadata.author || null,
+        description: metadata.description || null,
+        icon: metadata.icon || null,
+      }
+    };
+  } catch (error: any) {
+    console.error("[Instance] Get mod metadata error:", error);
+    return { ok: false, error: error.message };
   }
 });
 

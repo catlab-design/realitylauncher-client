@@ -1488,7 +1488,7 @@ export default function LauncherApp() {
               </div>
               <div>
                 <h2 className="text-xl font-bold" style={{ color: colors.onSurface }}>เข้าสู่ระบบ Microsoft</h2>
-                <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>ใช้รหัสด้านล่างที่ microsoft.com/devicelogin</p>
+                <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>ใช้รหัสด้านล่างที่ microsoft.com/link</p>
               </div>
             </div>
 
@@ -1528,23 +1528,22 @@ export default function LauncherApp() {
                 try {
                   // Copy code first
                   await navigator.clipboard.writeText(deviceCodeData.userCode);
-                  // Open in clean Electron window to allow account selection
-                  if ((window as any).api?.openMicrosoftLogin) {
-                    await (window as any).api.openMicrosoftLogin(deviceCodeData.verificationUri, deviceCodeData.userCode);
-                    toast.success("คัดลอกรหัสแล้ว - กรุณาเลือกบัญชีและใส่รหัสในหน้าต่าง");
+                  toast.success("คัดลอกรหัสแล้ว!");
+                  // Open microsoft.com/link in default browser
+                  if ((window as any).api?.openExternal) {
+                    await (window as any).api.openExternal("https://microsoft.com/link");
                   } else {
-                    // Fallback to external browser
-                    window.open(deviceCodeData.verificationUri, "_blank");
-                    toast.success("คัดลอกรหัสแล้ว - กรุณาใส่รหัสในหน้าเว็บ");
+                    window.open("https://microsoft.com/link", "_blank");
                   }
-                } catch {
-                  window.open(deviceCodeData.verificationUri, "_blank");
+                } catch (error) {
+                  console.error("Failed to open browser:", error);
+                  window.open("https://microsoft.com/link", "_blank");
                 }
               }}
               className="w-full flex items-center justify-center gap-2 px-4 py-4 rounded-xl mb-4 transition-all hover:scale-[1.02]"
               style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
             >
-              🌐 เปิด microsoft.com/devicelogin
+              🌐 เปิด microsoft.com/link
             </button>
 
             {/* Error Display */}
@@ -1878,188 +1877,78 @@ export default function LauncherApp() {
             />
           )}
 
-          {/* About Tab */}
+          {/* About Tab - Minimal Clean Style */}
           {
             activeTab === "about" && (
-              <div className="max-w-4xl mx-auto space-y-8 pb-8">
-                {/* Hero Section with Gradient Background */}
-                <div
-                  className="relative rounded-3xl overflow-hidden p-8"
-                  style={{
-                    background: `linear-gradient(135deg, ${colors.secondary}40 0%, ${colors.secondary}10 50%, ${colors.surfaceContainer} 100%)`,
-                  }}
-                >
-                  {/* Decorative Elements */}
-                  <div
-                    className="absolute top-4 right-4 w-32 h-32 rounded-full opacity-20 blur-3xl"
-                    style={{ backgroundColor: colors.secondary }}
-                  />
-                  <div
-                    className="absolute bottom-4 left-4 w-24 h-24 rounded-full opacity-15 blur-2xl"
-                    style={{ backgroundColor: colors.secondary }}
-                  />
+              <div className="h-full flex flex-col p-8 overflow-y-auto">
+                {/* Centered Content Container */}
+                <div className="max-w-3xl mx-auto w-full space-y-12">
 
-                  <div className="relative text-center">
-                    {/* Logo with Glow Effect */}
-                    <div className="relative inline-block mb-6">
-                      <div
-                        className="absolute inset-0 rounded-3xl blur-xl opacity-50"
-                        style={{ backgroundColor: colors.secondary }}
-                      />
-                      <div className="relative w-28 h-28 rounded-3xl mx-auto overflow-hidden shadow-2xl ring-4 ring-white/20">
-                        <img src="r_background.svg" alt="Reality" className="w-full h-full object-cover" />
-                      </div>
-                    </div>
-
-                    <h2
-                      className="text-4xl font-bold mb-2"
-                      style={{
-                        fontFamily: "'Jaturat', 'Itim', sans-serif",
-                        color: colors.onSurface,
-                        textShadow: `0 2px 20px ${colors.secondary}50`
-                      }}
-                    >
-                      Reality
-                    </h2>
-                    <p className="text-xl mb-4" style={{ color: colors.onSurfaceVariant }}>
-                      Minecraft Launcher
-                    </p>
-
-                    {/* Version Badge */}
-                    <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full"
-                      style={{
-                        backgroundColor: colors.surfaceContainerHighest,
-                        boxShadow: `0 4px 20px ${colors.secondary}20`
-                      }}>
-                      <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: "#22c55e" }} />
-                      <span className="text-sm font-medium" style={{ color: colors.onSurface }}>Version 0.1.0</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Mission Card with Glassmorphism */}
-                <div
-                  className="relative p-8 rounded-3xl overflow-hidden"
-                  style={{
-                    backgroundColor: `${colors.surfaceContainer}ee`,
-                    backdropFilter: "blur(20px)",
-                    boxShadow: `0 8px 32px ${colors.secondary}15`
-                  }}
-                >
-                  <div className="flex flex-col md:flex-row items-center gap-6">
-                    <div
-                      className="w-20 h-20 rounded-2xl flex items-center justify-center shrink-0"
-                      style={{
-                        background: `linear-gradient(135deg, #ef4444 0%, #f97316 100%)`,
-                        boxShadow: "0 8px 24px rgba(239, 68, 68, 0.3)"
-                      }}
-                    >
-                      <Icons.Heart className="w-10 h-10" style={{ color: "#ffffff" }} />
-                    </div>
-                    <div className="text-center md:text-left">
-                      <h3 className="text-2xl font-bold mb-3" style={{ color: colors.onSurface }}>
-                        จุดประสงค์ของเรา
-                      </h3>
-                      <p className="text-base leading-relaxed" style={{ color: colors.onSurfaceVariant }}>
-                        Reality Launcher ถูกสร้างขึ้นเพื่อให้การเข้าถึง Server ต่างๆ ได้ง่ายขึ้น
-                        และขยายโอกาสใหม่ๆ ให้คนรุ่นใหม่ และ Server เล็กๆ ได้มีโอกาสมากขึ้น
-                        เราเชื่อว่าทุกคนควรมีโอกาสที่เท่าเทียมกันในการสนุกกับ Minecraft
+                  {/* Header - Simple & Clean */}
+                  <div className="text-center space-y-4">
+                    <img src="r_background.svg" alt="Reality" className="w-16 h-16 mx-auto rounded-xl" />
+                    <div>
+                      <h1
+                        className="text-3xl font-bold"
+                        style={{ fontFamily: "'Jaturat', 'Itim', sans-serif", color: colors.onSurface }}
+                      >
+                        Reality
+                      </h1>
+                      <p className="text-sm mt-1" style={{ color: colors.onSurfaceVariant }}>
+                        Minecraft Launcher · v0.1.0
                       </p>
                     </div>
                   </div>
-                </div>
 
-                {/* Team Section */}
-                <div
-                  className="p-8 rounded-3xl"
-                  style={{
-                    backgroundColor: colors.surfaceContainer,
-                    boxShadow: `0 4px 24px ${colors.secondary}10`
-                  }}
-                >
-                  <div className="text-center mb-8">
-                    <h3 className="text-2xl font-bold mb-2" style={{ color: colors.onSurface }}>
-                      ทีมพัฒนา
-                    </h3>
-                    <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>
-                      คนเบื้องหลังที่ทำให้ Reality เกิดขึ้น
+                  {/* Mission - Simple Text */}
+                  <div className="text-center max-w-md mx-auto">
+                    <p className="text-base leading-relaxed" style={{ color: colors.onSurfaceVariant }}>
+                      สร้างขึ้นเพื่อให้การเข้าถึง Minecraft Server ต่างๆ ได้ง่ายขึ้น
+                      และขยายโอกาสให้ทุกคนได้สนุกกับ Minecraft
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {credits.map((person, index) => (
+                  {/* Divider */}
+                  <div className="flex items-center gap-4">
+                    <div className="flex-1 h-px" style={{ backgroundColor: colors.outline }} />
+                    <span className="text-xs" style={{ color: colors.onSurfaceVariant }}>ทีมพัฒนา</span>
+                    <div className="flex-1 h-px" style={{ backgroundColor: colors.outline }} />
+                  </div>
+
+                  {/* Team - Simple Row */}
+                  <div className="flex flex-wrap justify-center gap-8">
+                    {credits.map((person) => (
                       <div
                         key={person.name}
-                        className="group relative p-6 rounded-2xl text-center transition-all duration-300 hover:scale-105"
-                        style={{
-                          backgroundColor: colors.surface,
-                          boxShadow: `0 4px 20px ${colors.secondary}10`
-                        }}
+                        className="flex flex-col items-center gap-3 group"
                       >
-                        {/* Hover Glow Effect */}
-                        <div
-                          className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-                          style={{
-                            boxShadow: `0 0 30px ${colors.secondary}30`,
-                          }}
+                        <MCHead
+                          username={person.name}
+                          size={56}
+                          className="rounded-full transition-transform duration-300 group-hover:scale-110"
                         />
-
-                        {/* Avatar with Ring */}
-                        <div className="relative inline-block mb-4">
-                          <div
-                            className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-50 transition-opacity duration-300 blur-lg"
-                            style={{ backgroundColor: colors.secondary }}
-                          />
-                          <div
-                            className="relative ring-4 rounded-2xl overflow-hidden"
-                            style={{
-                              ["--tw-ring-color" as string]: `${colors.secondary}40`,
-                            }}
-                          >
-                            <MCHead username={person.name} size={100} className="rounded-2xl" />
-                          </div>
+                        <div className="text-center">
+                          <p className="text-sm font-medium" style={{ color: colors.onSurface }}>
+                            {person.name}
+                          </p>
+                          <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>
+                            {person.role}
+                          </p>
                         </div>
-
-                        <h4 className="text-lg font-bold mt-2" style={{ color: colors.onSurface }}>
-                          {person.name}
-                        </h4>
-                        <p
-                          className="text-sm font-medium mt-1"
-                          style={{ color: colors.secondary }}
-                        >
-                          {person.role}
-                        </p>
-                        <p className="text-xs mt-2 opacity-80" style={{ color: colors.onSurfaceVariant }}>
-                          {person.description}
-                        </p>
                       </div>
                     ))}
                   </div>
-                </div>
 
+                  {/* Spacer */}
+                  <div className="flex-1" />
 
-
-                {/* Footer */}
-                <div className="text-center py-6">
-                  <div className="inline-flex items-center gap-3 mb-4">
-                    <img src="/r.svg" alt="Reality" className="w-8 h-8 opacity-50" />
-                    <div
-                      className="h-px w-12"
-                      style={{ backgroundColor: colors.outline }}
-                    />
-                    <span className="text-sm" style={{ color: colors.onSurfaceVariant }}>Made with ❤️ in Thailand</span>
-                    <div
-                      className="h-px w-12"
-                      style={{ backgroundColor: colors.outline }}
-                    />
-                    <img src="/r.svg" alt="Reality" className="w-8 h-8 opacity-50" />
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium" style={{ color: colors.onSurfaceVariant }}>
-                      SpaceLogic Studios × Q Team Studio
+                  {/* Footer - Minimal */}
+                  <div className="text-center space-y-2 pt-8">
+                    <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>
+                      Made with ❤️ in Thailand
                     </p>
                     <p className="text-xs" style={{ color: colors.outline }}>
-                      © 2024 Cat Lab_ Design. All rights reserved.
+                      © 2024 Cat Lab_ Design
                     </p>
                   </div>
                 </div>

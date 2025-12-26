@@ -104,11 +104,26 @@ declare global {
       // Dialog
       browseJava: () => Promise<string | null>;
       browseDirectory: (title?: string) => Promise<string | null>;
+      browseIcon: () => Promise<string | null>;
       validateJavaPath: (javaPath: string) => Promise<boolean>;
       openFolder: (folderPath: string) => Promise<void>;
       browseModpack: () => Promise<string | null>;
       importModpack: (filePath: string) => Promise<{ success: boolean; name: string; error?: string }>;
       detectJavaInstallations: () => Promise<string[]>;
+      // Instance Content Management
+      instanceListMods: (instanceId: string) => Promise<{ ok: boolean; mods: any[]; hasUncached?: boolean; error?: string }>;
+      instanceToggleMod: (instanceId: string, filename: string) => Promise<{ ok: boolean; newFilename?: string; enabled?: boolean; error?: string }>;
+      instanceDeleteMod: (instanceId: string, filename: string) => Promise<{ ok: boolean; error?: string }>;
+      instanceGetModMetadata: (instanceId: string, filename: string) => Promise<{ ok: boolean; metadata?: { displayName?: string; author?: string; description?: string; icon?: string }; error?: string }>;
+      instanceListResourcepacks: (instanceId: string) => Promise<{ ok: boolean; items: any[]; error?: string }>;
+      instanceListShaders: (instanceId: string) => Promise<{ ok: boolean; items: any[]; error?: string }>;
+      instanceListDatapacks: (instanceId: string) => Promise<{ ok: boolean; items: any[]; error?: string }>;
+      instanceToggleResourcepack: (instanceId: string, filename: string) => Promise<{ ok: boolean; error?: string }>;
+      instanceToggleShader: (instanceId: string, filename: string) => Promise<{ ok: boolean; error?: string }>;
+      instanceToggleDatapack: (instanceId: string, worldName: string, filename: string) => Promise<{ ok: boolean; error?: string }>;
+      instanceDeleteResourcepack: (instanceId: string, filename: string) => Promise<{ ok: boolean; error?: string }>;
+      instanceDeleteShader: (instanceId: string, filename: string) => Promise<{ ok: boolean; error?: string }>;
+      instanceDeleteDatapack: (instanceId: string, worldName: string, filename: string) => Promise<{ ok: boolean; error?: string }>;
       // Discord RPC
       discordRPCSetEnabled: (enabled: boolean) => Promise<void>;
       discordRPCUpdate: (status: "idle" | "playing" | "launching", serverName?: string) => Promise<void>;
