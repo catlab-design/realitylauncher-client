@@ -59,6 +59,9 @@ const launcher = new Launch();
 // Track current game process
 let gameProcess: ChildProcess | null = null;
 
+// Track the last known game PID (even if process handle is lost)
+let lastGamePid: number | null = null;
+
 // Track if we're in the launching phase (downloading, preparing, etc.)
 let isLaunching = false;
 
@@ -72,6 +75,7 @@ export function resetLauncherState(): void {
     isLaunching = false;
     launchAborted = false;
     gameProcess = null;
+    lastGamePid = null;
     console.log("[Launcher] State reset on app start");
 }
 
@@ -186,9 +190,12 @@ launcher.on("close", () => {
 });
 
 // Capture process reference when minecraft-java-core spawns the game
+launcher.on("debug", (e: string) => console.log("[MCLC Debug]", e));
+launcher.on("data", (e: string) => console.log("[MCLC Data]", e));
 launcher.on("process", (proc: ChildProcess) => {
     console.log("[Launcher] Game process started, PID:", proc.pid);
     gameProcess = proc;
+    if (proc.pid) lastGamePid = proc.pid;
 
     // Detach the process from Electron's event loop
     // This allows the game to continue running after Launcher closes
@@ -200,6 +207,7 @@ launcher.on("process", (proc: ChildProcess) => {
     // If user clicked stop during download, kill immediately
     if (launchAborted) {
         console.log("[Launcher] Launch was aborted, killing process immediately");
+        killProcessAndChildren(proc.pid);
         proc.kill();
         gameProcess = null;
         isLaunching = false;
@@ -212,6 +220,7 @@ launcher.on("start", (proc: ChildProcess) => {
     if (proc && proc.pid) {
         console.log("[Launcher] Game started via 'start' event, PID:", proc.pid);
         gameProcess = proc;
+        lastGamePid = proc.pid;
 
         // Detach the process from Electron's event loop
         proc.unref();
@@ -222,6 +231,7 @@ launcher.on("start", (proc: ChildProcess) => {
         // If user clicked stop during download, kill immediately
         if (launchAborted) {
             console.log("[Launcher] Launch was aborted, killing process immediately");
+            killProcessAndChildren(proc.pid);
             proc.kill();
             gameProcess = null;
             isLaunching = false;
@@ -229,6 +239,43 @@ launcher.on("start", (proc: ChildProcess) => {
         }
     }
 });
+
+/**
+ * Kill a process and all its children (Windows only)
+ * Uses taskkill with /T flag to terminate the entire process tree
+ */
+function killProcessAndChildren(pid: number | undefined): void {
+    if (!pid) return;
+
+    if (process.platform === "win32") {
+        try {
+            // /F = Force, /T = Tree (kill child processes too)
+            execSync(`taskkill /F /T /PID ${pid}`, { stdio: "ignore" });
+            console.log("[Launcher] Killed process tree for PID:", pid);
+        } catch {
+            // Process may already be dead
+        }
+    }
+}
+
+/**
+ * Kill all Java processes related to our launcher
+ */
+function killAllLauncherJavaProcesses(): void {
+    if (process.platform !== "win32") return;
+
+    try {
+        // Kill by window title
+        execSync('taskkill /F /FI "WINDOWTITLE eq Minecraft*"', { stdio: "ignore" });
+    } catch { /* ignore */ }
+
+    try {
+        // Kill javaw.exe with our launcher branding in command line
+        const psCommand = `Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'java*' -and $_.CommandLine -like '*RealityLauncher*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`;
+        execSync(`powershell -Command "${psCommand}"`, { stdio: "ignore", timeout: 3000 });
+        console.log("[Launcher] Killed launcher Java processes via PowerShell");
+    } catch { /* ignore */ }
+}
 
 /**
  * Set progress callback
@@ -255,6 +302,9 @@ export async function launchGame(options: LaunchOptions): Promise<LaunchResult> 
         loader,
     } = options;
 
+    // Sanitize UUID - remove "catid-" prefix which causes crash in some mods (EpicFight)
+    const sanitizedUuid = uuid ? uuid.replace(/^catid-/, "") : uuid;
+
     const config = getConfig();
     // minecraft-java-core uses `path` as the working directory for ALL game files
     // This includes assets, libraries, versions, mods, saves, config
@@ -277,7 +327,7 @@ export async function launchGame(options: LaunchOptions): Promise<LaunchResult> 
         const authenticator = {
             access_token: accessToken || "",
             client_token: "",
-            uuid: uuid,
+            uuid: sanitizedUuid,
             name: username,
             user_properties: "{}",
             meta: {
@@ -315,7 +365,13 @@ export async function launchGame(options: LaunchOptions): Promise<LaunchResult> 
         };
 
         // Add custom Java path if specified
-        const customJavaPath = javaPath || config.javaPath;
+        let customJavaPath = javaPath || config.javaPath;
+
+        // Handle "auto" - use system java
+        if (customJavaPath === "auto") {
+            customJavaPath = "";
+        }
+
         if (customJavaPath) {
             launchOpts.java = {
                 path: customJavaPath,
@@ -367,8 +423,8 @@ export async function launchGame(options: LaunchOptions): Promise<LaunchResult> 
         console.log("[Launcher] Launch options:", JSON.stringify({
             path: launchOpts.path,
             version: launchOpts.version,
-            JVM_ARGS: launchOpts.JVM_ARGS,
-            GAME_ARGS: launchOpts.GAME_ARGS,
+            game_args: launchOpts.GAME_ARGS,
+            authenticator: launchOpts.authenticator,
         }, null, 2));
 
         // Launch the game
@@ -416,12 +472,12 @@ export async function launchGame(options: LaunchOptions): Promise<LaunchResult> 
             // Note: stdout/stderr logging disabled for performance
             // Game output can be very verbose and slow down the launcher
             // Uncomment for debugging:
-            // gameProcess.stdout?.on("data", (data: Buffer) => {
-            //     console.log("[Game]", data.toString("utf-8").trim());
-            // });
-            // gameProcess.stderr?.on("data", (data: Buffer) => {
-            //     console.error("[Game Error]", data.toString("utf-8").trim());
-            // });
+            gameProcess.stdout?.on("data", (data: Buffer) => {
+                console.log("[Game]", data.toString("utf-8").trim());
+            });
+            gameProcess.stderr?.on("data", (data: Buffer) => {
+                console.error("[Game Error]", data.toString("utf-8").trim());
+            });
 
             gameProcess.on("exit", (code: number | null) => {
                 console.log("[Launcher] Game exited with code:", code);
@@ -481,7 +537,7 @@ let killRetryInterval: NodeJS.Timeout | null = null;
 
 /**
  * Start retry mechanism to kill Minecraft/Java process
- * Keeps trying every 100ms for 3 seconds (instant kill)
+ * Keeps trying every 200ms for 5 seconds
  */
 function startKillRetry() {
     // Clear any existing retry
@@ -490,48 +546,23 @@ function startKillRetry() {
     }
 
     let attempts = 0;
-    const maxAttempts = 30; // 30 attempts x 100ms = 3 seconds
-    const launcherDir = getMinecraftDir().replace(/\//g, "\\");
+    const maxAttempts = 25; // 25 attempts x 200ms = 5 seconds
 
-    console.log("[Launcher] Starting aggressive kill retry for:", launcherDir);
+    console.log("[Launcher] Starting kill retry mechanism");
 
     killRetryInterval = setInterval(() => {
         attempts++;
 
-        // Stop if launchAborted was cleared (game was killed)
+        // Stop if launchAborted was cleared (game was killed) or max attempts reached
         if (!launchAborted || attempts >= maxAttempts) {
             console.log("[Launcher] Kill retry stopped (attempts:", attempts, ")");
             clearKillRetry();
             return;
         }
 
-        try {
-
-            // Use PowerShell to find and kill java processes running from our launcher
-            try {
-                // PowerShell command to find and kill java processes with RealityLauncher in command line
-                const psCommand = `Get-WmiObject Win32_Process | Where-Object { $_.Name -like 'java*' -and $_.CommandLine -like '*RealityLauncher*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`;
-                execSync(`powershell -Command "${psCommand}"`, { stdio: "ignore", timeout: 2000 });
-                console.log("[Launcher] PowerShell killed java process");
-                clearKillRetry();
-                return;
-            } catch {
-                // PowerShell error or timeout
-            }
-
-            // Fallback: Try WMIC with RealityLauncher
-            try {
-                execSync(`wmic process where "commandline like '%RealityLauncher%' and name like 'java%'" call terminate 2>nul`, { stdio: "ignore", timeout: 1000 });
-                console.log("[Launcher] WMIC killed java process");
-                clearKillRetry();
-                return;
-            } catch {
-                // No matching process
-            }
-        } catch (err) {
-            // Ignore errors
-        }
-    }, 100);
+        // Try to kill each iteration
+        killAllLauncherJavaProcesses();
+    }, 200);
 }
 
 function clearKillRetry() {
@@ -558,67 +589,49 @@ export function killGame(): boolean {
     isLaunching = false;
     launchAborted = true; // Set abort flag to catch any late-starting process
 
+    console.log("[Launcher] Kill requested. wasLaunching:", wasLaunching, "gameProcess:", !!gameProcess, "lastGamePid:", lastGamePid);
+
+    // If we have a process handle, kill it
     if (gameProcess) {
         const pid = gameProcess.pid;
         console.log("[Launcher] Killing game process, PID:", pid);
 
         try {
+            // First try taskkill with tree flag for Windows
+            killProcessAndChildren(pid);
             gameProcess.kill();
-
-            if (process.platform === "win32" && pid) {
-                try {
-                    execSync(`taskkill /F /T /PID ${pid}`, { stdio: "ignore" });
-                    console.log("[Launcher] Taskkill executed for PID:", pid);
-                } catch {
-                    // Taskkill may fail if process already dead
-                }
-            }
         } catch (err) {
             console.error("[Launcher] Error killing process:", err);
         }
 
         gameProcess = null;
+        lastGamePid = null;
         launchAborted = false;
         console.log("[Launcher] Game process killed");
         return true;
     }
 
-    // If no process handle, try to find and kill Minecraft java process directly
-    if (process.platform === "win32") {
-        try {
-
-            // Kill java processes with Minecraft in the window title
-            try {
-                execSync('taskkill /F /FI "WINDOWTITLE eq Minecraft*"', { stdio: "ignore" });
-                console.log("[Launcher] Killed Minecraft window process");
-            } catch {
-                // No such process
-            }
-
-            // Also try to kill javaw.exe running from our launcher directory
-            try {
-                const minecraftDir = getMinecraftDir().replace(/\//g, "\\\\");
-                execSync(`wmic process where "commandline like '%${minecraftDir}%' and name like 'java%'" call terminate`, { stdio: "ignore" });
-                console.log("[Launcher] Killed java process via WMIC");
-            } catch {
-                // WMIC may fail or no process found
-            }
-
-            // Start retry mechanism to keep trying for 5 seconds
-            // This handles the case where user clicks stop before window appears
-            if (wasLaunching) {
-                startKillRetry();
-            }
-
-            return true;
-        } catch (err) {
-            console.error("[Launcher] Error in fallback kill:", err);
-        }
+    // Try to kill by last known PID
+    if (lastGamePid) {
+        console.log("[Launcher] No process handle, trying last known PID:", lastGamePid);
+        killProcessAndChildren(lastGamePid);
+        lastGamePid = null;
     }
 
+    // If we were launching (download phase), immediately try to kill all launcher Java processes
     if (wasLaunching) {
-        console.log("[Launcher] Launch aborted - will keep trying to kill");
+        console.log("[Launcher] Was launching - aggressively killing all launcher Java processes");
+        killAllLauncherJavaProcesses();
+
+        // Start retry mechanism to keep trying for a few seconds
+        // This handles the case where Java process starts after we click stop
         startKillRetry();
+        return true;
+    }
+
+    // Fallback: try to kill by window title or command line on Windows
+    if (process.platform === "win32") {
+        killAllLauncherJavaProcesses();
         return true;
     }
 

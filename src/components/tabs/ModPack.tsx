@@ -384,8 +384,16 @@ export function ModPack({ colors, setImportModpackOpen, setActiveTab, isActive =
         );
 
         if (modpackFile) {
-            // Get the file path - in Electron, dropped files have a path property
-            const filePath = (modpackFile as any).path;
+            // Get the file path - use webUtils via preload if available
+            let filePath = (modpackFile as any).path;
+            if (window.api?.getPathForFile) {
+                try {
+                    filePath = window.api.getPathForFile(modpackFile);
+                } catch (e) {
+                    console.warn("Failed to get path via webUtils:", e);
+                }
+            }
+
             if (filePath) {
                 await handleImportModpack(filePath);
             } else {

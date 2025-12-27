@@ -7,7 +7,7 @@
  * ใช้ contextBridge เพื่อ expose APIs อย่างปลอดภัย
  */
 
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 // ========================================
 // API Definition
@@ -41,6 +41,7 @@ const api = {
     // ----------------------------------------
     // Utility APIs
     // ----------------------------------------
+    getPathForFile: (file: File) => webUtils.getPathForFile(file),
     openExternal: (url: string) => ipcRenderer.invoke("open-external", url),
     openMicrosoftLogin: (verificationUri: string, userCode: string) => ipcRenderer.invoke("open-microsoft-login", verificationUri, userCode),
     getMinecraftDir: () => ipcRenderer.invoke("get-minecraft-dir"),

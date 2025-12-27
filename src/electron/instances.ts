@@ -207,9 +207,10 @@ function saveInstance(instance: GameInstance): void {
 
         const metaPath = getInstanceMetaPath(instance.id);
 
-        // Don't save the icon URL if it's a file:// path (loaded from icon.png)
+        // Don't save the icon if it's loaded from icon.png (file:// or data: URL)
+        // Icons are stored as icon.png in the instance folder
         const saveData = { ...instance };
-        if (saveData.icon?.startsWith("file://")) {
+        if (saveData.icon?.startsWith("file://") || saveData.icon?.startsWith("data:")) {
             delete saveData.icon;
         }
 
@@ -323,9 +324,12 @@ export function deleteInstance(id: string): boolean {
 
     const instance = instances[index];
 
+    console.trace("[Instances] deleteInstance called for:", instance.name);
+
     // Remove from array
+    // Note: No need to call saveInstances() here because each instance has its own
+    // instance.json file in its folder, which is deleted below anyway
     instances.splice(index, 1);
-    saveInstances();
 
     // Delete directory
     try {

@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createInstance, type GameInstance, type LoaderType } from "./instances.js";
 import { downloadFile, type DownloadProgress } from "./modrinth.js";
+import { installCurseForgeModpack } from "./curseforge.js";
 import AdmZip from "adm-zip";
 
 // ========================================
@@ -270,6 +271,77 @@ async function downloadModpackFiles(
 }
 
 // ========================================
+// Deduplicate Mods
+// ========================================
+
+/**
+ * Remove duplicate mods from the mods folder.
+ * Keeps the larger file when duplicates are found (usually newer version).
+ * Duplicates are detected by extracting mod name from filename
+ * (before version number like modname-1.0.0.jar)
+ */
+export function deduplicateMods(modsDir: string): void {
+    if (!fs.existsSync(modsDir)) {
+        return;
+    }
+
+    const files = fs.readdirSync(modsDir).filter(f => f.endsWith(".jar"));
+
+    // Map to track mods by normalized name
+    // Key: normalized mod name, Value: { filename, size, path }
+    const modMap = new Map<string, { filename: string; size: number; path: string }>();
+
+    for (const file of files) {
+        const filePath = path.join(modsDir, file);
+        const stats = fs.statSync(filePath);
+
+        // Extract mod name from filename
+        // Patterns: modname-version.jar, modname_version.jar, modname-fabric-version.jar
+        // Also handle patterns like: modname-fabric-mc1.20.1-version.jar
+        let modName = file.toLowerCase();
+
+        // Remove .jar extension
+        modName = modName.replace(/\.jar$/, "");
+
+        // Remove version patterns at the end
+        // Match patterns like: -1.0.0, _1.0.0, -v1.0, +build123
+        modName = modName.replace(/[-_+](\d+\.?\d*\.?\d*|v?\d+)([-_.+][a-z0-9]+)*$/i, "");
+
+        // Remove common suffixes that indicate MC version or loader
+        modName = modName.replace(/[-_](fabric|forge|neoforge|quilt|mc\d+[\.\d]*|minecraft|universal|client|server)[-_]?/gi, "-");
+
+        // Normalize separators and clean up
+        modName = modName.replace(/[-_]+/g, "-").replace(/^-|-$/g, "");
+
+        const existing = modMap.get(modName);
+
+        if (existing) {
+            // Found duplicate - keep the larger file
+            if (stats.size > existing.size) {
+                // Delete existing, keep new
+                console.log(`[ModpackInstaller] Removing duplicate mod: ${existing.filename} (keeping ${file})`);
+                try {
+                    fs.unlinkSync(existing.path);
+                } catch (err) {
+                    console.error(`[ModpackInstaller] Failed to delete duplicate: ${existing.filename}`, err);
+                }
+                modMap.set(modName, { filename: file, size: stats.size, path: filePath });
+            } else {
+                // Delete new, keep existing
+                console.log(`[ModpackInstaller] Removing duplicate mod: ${file} (keeping ${existing.filename})`);
+                try {
+                    fs.unlinkSync(filePath);
+                } catch (err) {
+                    console.error(`[ModpackInstaller] Failed to delete duplicate: ${file}`, err);
+                }
+            }
+        } else {
+            modMap.set(modName, { filename: file, size: stats.size, path: filePath });
+        }
+    }
+}
+
+// ========================================
 // Extract Overrides
 // ========================================
 
@@ -315,6 +387,32 @@ export async function installModpack(
     console.log("[ModpackInstaller] Installing modpack:", mrpackPath);
 
     try {
+        // Peek at ZIP content to determine type
+        const zip = new AdmZip(mrpackPath);
+
+        if (zip.getEntry("modrinth.index.json")) {
+            // Modrinth Format
+            return await installModrinthModpack(mrpackPath, onProgress);
+        } else if (zip.getEntry("manifest.json")) {
+            // CurseForge Format
+            return await installCurseForgeModpack(mrpackPath, onProgress);
+        } else {
+            throw new Error("ไม่รู้จักรูปแบบไฟล์ Modpack (ต้องมี modrinth.index.json หรือ manifest.json)");
+        }
+    } catch (error: any) {
+        console.error("[ModpackInstaller] Installation failed:", error);
+        return {
+            ok: false,
+            error: error.message || "การติดตั้งล้มเหลว",
+        };
+    }
+}
+
+async function installModrinthModpack(
+    mrpackPath: string,
+    onProgress?: ProgressCallback
+): Promise<InstallResult> {
+    try {
         // Step 1: Parse modpack index
         if (onProgress) {
             onProgress({
@@ -350,6 +448,10 @@ export async function installModpack(
         // Step 4: Extract overrides
         await extractOverrides(mrpackPath, instance.gameDirectory, onProgress);
 
+        // Step 5: Deduplicate mods (remove duplicates from downloaded + overrides)
+        const modsDir = path.join(instance.gameDirectory, "mods");
+        deduplicateMods(modsDir);
+
         if (onProgress) {
             onProgress({
                 stage: "creating",
@@ -365,11 +467,7 @@ export async function installModpack(
             instance,
         };
     } catch (error: any) {
-        console.error("[ModpackInstaller] Installation failed:", error);
-        return {
-            ok: false,
-            error: error.message || "Installation failed",
-        };
+        throw error;
     }
 }
 

@@ -1789,6 +1789,18 @@ ipcMain.handle("instances-launch", async (_event, id: string) => {
     gameDir: instance.gameDirectory,
   });
 
+  // Auto-fix Forge version format (if missing minecraft version prefix)
+  // e.g. "47.4.0" -> "1.20.1-47.4.0"
+  if (instance.loader === "forge" && instance.loaderVersion) {
+    if (!instance.loaderVersion.startsWith(instance.minecraftVersion)) {
+      const fixedVersion = `${instance.minecraftVersion}-${instance.loaderVersion}`;
+      console.log(`[Launch Instance] Auto-fixing Forge version: ${instance.loaderVersion} -> ${fixedVersion}`);
+      instance.loaderVersion = fixedVersion;
+      // Save the fix permanently
+      updateInstance(id, { loaderVersion: fixedVersion });
+    }
+  }
+
   // Record start time for play time tracking
   const startTime = Date.now();
 

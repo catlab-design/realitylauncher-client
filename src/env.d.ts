@@ -98,6 +98,7 @@ declare global {
       getLauncherInfo: () => Promise<LauncherInfo>;
       launchGame: (payload: { version: string; username: string; ramMB: number }) => Promise<LaunchResult>;
       // Utility
+      getPathForFile: (file: File) => string;
       openExternal: (url: string) => Promise<void>;
       getMinecraftDir: () => Promise<string>;
       getAppDataDir: () => Promise<string>;
