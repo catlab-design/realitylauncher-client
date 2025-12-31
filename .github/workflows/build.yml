@@ -129,7 +129,17 @@ jobs:
       - name: List artifacts
         run: |
           echo "=== Downloaded artifacts ==="
-          find artifacts -type f -name "*" | head -50
+          ls -R artifacts
+
+      - name: Check R2 Configuration
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npm install -g wrangler
+          echo "Target Bucket: $R2_BUCKET"
+          echo "Listing Buckets:"
+          wrangler r2 bucket list || echo "Could not list buckets (permissions?)"
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
