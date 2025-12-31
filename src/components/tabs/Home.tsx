@@ -73,62 +73,62 @@ export function Home({
 
     return (
         <div className="space-y-8">
-            {/* Hero Welcome Section */}
+            {/* User Status Bar */}
             <div
-                className="relative rounded-3xl overflow-hidden p-8"
+                className="flex items-center justify-between p-4 rounded-2xl"
                 style={{
-                    background: `linear-gradient(135deg, ${colors.primary}15, ${colors.secondary}25)`,
+                    backgroundColor: colors.surfaceContainer,
+                    border: `1px solid ${colors.outline}15`,
                 }}
             >
-                {/* Background Pattern */}
-                <div
-                    className="absolute inset-0 opacity-5"
-                    style={{
-                        backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-                    }}
-                />
-
-                <div className="relative flex items-center gap-6">
-                    {/* Avatar with glow effect */}
+                <div className="flex items-center gap-4">
+                    {/* Avatar */}
                     <div className="relative">
                         {session ? (
-                            <>
-                                <div
-                                    className="absolute inset-0 rounded-2xl blur-xl opacity-50"
-                                    style={{ backgroundColor: colors.primary }}
-                                />
-                                <MCHead
-                                    username={session.username}
-                                    size={80}
-                                    className="relative rounded-2xl shadow-2xl ring-4 ring-white/20"
-                                />
-                            </>
+                            <MCHead
+                                username={session.username}
+                                size={48}
+                                className="rounded-xl"
+                            />
                         ) : (
                             <div
-                                className="w-20 h-20 rounded-2xl flex items-center justify-center shadow-2xl"
-                                style={{
-                                    background: `linear-gradient(135deg, ${colors.surfaceContainerHighest}, ${colors.surfaceContainer})`,
-                                }}
+                                className="w-12 h-12 rounded-xl flex items-center justify-center"
+                                style={{ backgroundColor: colors.surfaceContainerHighest }}
                             >
-                                <Icons.Person className="w-10 h-10" style={{ color: colors.onSurfaceVariant }} />
+                                <Icons.Person className="w-6 h-6" style={{ color: colors.onSurfaceVariant }} />
                             </div>
+                        )}
+                        {/* Online indicator */}
+                        {session && (
+                            <div
+                                className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2"
+                                style={{
+                                    backgroundColor: '#22c55e',
+                                    borderColor: colors.surfaceContainer,
+                                }}
+                            />
                         )}
                     </div>
 
-                    <div className="flex-1">
-                        <p className="text-sm font-medium mb-1" style={{ color: colors.secondary }}>
-                            {greeting} 👋
-                        </p>
-                        <h1 className="text-3xl font-bold mb-2" style={{ color: colors.onSurface }}>
-                            {session ? session.username : "ยินดีต้อนรับสู่ Reality"}
-                        </h1>
-                        <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>
-                            {session
-                                ? "พร้อมที่จะเริ่มการผจญภัยใหม่แล้วหรือยัง?"
-                                : "เข้าสู่ระบบเพื่อเริ่มเล่นเกม"
-                            }
+                    {/* User Info */}
+                    <div>
+                        <h2 className="text-base font-semibold" style={{ color: colors.onSurface }}>
+                            {session ? session.username : "ยังไม่ได้เข้าสู่ระบบ"}
+                        </h2>
+                        <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>
+                            {session ? "พร้อมเล่น" : "กรุณาเข้าสู่ระบบ"}
                         </p>
                     </div>
+                </div>
+
+                {/* Right side - Time greeting */}
+                <div className="text-right">
+                    <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>
+                        {greeting}
+                    </p>
+                    <p className="text-xs font-medium" style={{ color: colors.primary }}>
+
+                    </p>
                 </div>
             </div>
 
@@ -137,23 +137,20 @@ export function Home({
                 {/* Newsletter Carousel Section */}
                 <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                        <h3 className="text-lg font-bold flex items-center gap-2" style={{ color: colors.onSurface }}>
-                            <span className="w-1.5 h-6 rounded-full" style={{
-                                background: `linear-gradient(180deg, ${colors.primary}, ${colors.secondary})`,
-                                boxShadow: `0 0 12px ${colors.primary}50`
+                        <h3 className="text-lg font-semibold flex items-center gap-2" style={{ color: colors.onSurface }}>
+                            <span className="w-1 h-5 rounded-full" style={{
+                                backgroundColor: colors.primary
                             }} />
                             ข่าวสารและอัปเดต
                         </h3>
                         {newsletters.length > 0 && (
                             <span
-                                className="text-xs px-3 py-1.5 rounded-full font-medium backdrop-blur-sm"
+                                className="text-xs px-2.5 py-1 rounded-full font-medium"
                                 style={{
-                                    background: `linear-gradient(135deg, ${colors.primary}25, ${colors.secondary}20)`,
-                                    color: colors.primary,
-                                    border: `1px solid ${colors.primary}30`
+                                    backgroundColor: colors.surfaceContainerHighest,
+                                    color: colors.onSurfaceVariant,
                                 }}
                             >
-                                <i className="fa-solid fa-bell mr-1.5 text-[10px]"></i>
                                 {newsletters.length} รายการ
                             </span>
                         )}
@@ -257,15 +254,15 @@ export function Home({
                                                 {/* Badge on Image */}
                                                 <div className="absolute top-4 left-4 flex items-center gap-2">
                                                     <span
-                                                        className="text-xs px-3 py-1.5 rounded-full font-semibold backdrop-blur-xl"
+                                                        className="text-xs px-3 py-1.5 rounded-full font-medium backdrop-blur-xl"
                                                         style={{
-                                                            background: `linear-gradient(135deg, ${colors.primary}90, ${colors.primary}70)`,
-                                                            color: colors.onPrimary || '#000',
-                                                            border: `1px solid ${colors.primary}40`,
+                                                            background: `${colors.surface}95`,
+                                                            color: colors.onSurface,
+                                                            border: `1px solid ${colors.outline}30`,
                                                         }}
                                                     >
-                                                        <i className="fa-solid fa-sparkles mr-1.5"></i>
-                                                        ข่าวใหม่
+                                                        <i className="fa-regular fa-newspaper mr-1.5"></i>
+                                                        ข่าวสาร
                                                     </span>
                                                 </div>
                                             </div>

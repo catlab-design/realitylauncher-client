@@ -42,6 +42,14 @@ export interface LauncherConfig {
 
     // Discord
     discordRPCEnabled: boolean;
+
+    // Telemetry
+    telemetryEnabled: boolean;
+    clientId?: string; // Anonymous unique ID for telemetry
+    hasLaunchedBefore?: boolean; // Track first launch
+
+    // Auto Update
+    autoUpdateEnabled: boolean; // ผู้ใช้เปิด/ปิด auto update ได้
 }
 
 // ========================================
@@ -73,6 +81,8 @@ const DEFAULT_CONFIG: LauncherConfig = {
     windowWidth: 1100,
     windowHeight: 680,
     discordRPCEnabled: true,
+    telemetryEnabled: true,
+    autoUpdateEnabled: true, // เปิด auto update เป็น default
 };
 
 // ========================================

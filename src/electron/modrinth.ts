@@ -12,6 +12,7 @@ import https from "node:https";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
+import { app } from "electron";
 import { getMinecraftDir } from "./config.js";
 
 // ========================================
@@ -19,7 +20,8 @@ import { getMinecraftDir } from "./config.js";
 // ========================================
 
 const MODRINTH_API = "https://api.modrinth.com/v2";
-const USER_AGENT = "RealityLauncher/1.0.0 (contact@catlab.net)";
+// Dynamic User-Agent with app version
+const USER_AGENT = `RealityLauncher/${app?.getVersion?.() || "1.0.0"} (contact@catlab.net)`;
 
 // ========================================
 // Types

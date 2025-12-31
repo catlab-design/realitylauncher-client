@@ -133,5 +133,35 @@ export const Icons = {
             <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" />
         </svg>
     ),
+    Spinner: (props: IconProps) => (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
+            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+        </svg>
+    ),
+    Edit: (props: IconProps) => (
+        <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+            <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+        </svg>
+    ),
+    Check: (props: IconProps) => (
+        <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+        </svg>
+    ),
+    Key: (props: IconProps) => (
+        <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+            <path d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z" />
+        </svg>
+    ),
+    Microsoft: (props: IconProps) => (
+        <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+            <path d="M11.4 2H2v9.4h9.4V2zm10.6 0h-9.4v9.4H22V2zM11.4 12.6H2V22h9.4v-9.4zm10.6 0h-9.4V22H22v-9.4z" />
+        </svg>
+    ),
+    Admin: (props: IconProps) => (
+        <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+            <path d="M12 1 3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z" />
+        </svg>
+    ),
 };
 

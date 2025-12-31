@@ -271,6 +271,48 @@ async function downloadModpackFiles(
 }
 
 // ========================================
+// Move ResourcePacks from Mods folder
+// ========================================
+
+/**
+ * Move .zip files from mods folder to resourcepacks folder.
+ * .zip files in mods folder are typically resourcepacks or shaderpacks
+ * that got mixed in from the overrides folder.
+ */
+export function moveResourcePacks(gameDir: string): void {
+    const modsDir = path.join(gameDir, "mods");
+    const resourcepacksDir = path.join(gameDir, "resourcepacks");
+
+    if (!fs.existsSync(modsDir)) {
+        return;
+    }
+
+    const zipFiles = fs.readdirSync(modsDir).filter(f => f.endsWith(".zip"));
+
+    if (zipFiles.length === 0) {
+        return;
+    }
+
+    // Create resourcepacks folder if it doesn't exist
+    if (!fs.existsSync(resourcepacksDir)) {
+        fs.mkdirSync(resourcepacksDir, { recursive: true });
+    }
+
+    for (const file of zipFiles) {
+        const srcPath = path.join(modsDir, file);
+        const destPath = path.join(resourcepacksDir, file);
+
+        try {
+            // Move file to resourcepacks folder
+            fs.renameSync(srcPath, destPath);
+            console.log(`[ModpackInstaller] Moved resourcepack: ${file} -> resourcepacks/`);
+        } catch (err) {
+            console.error(`[ModpackInstaller] Failed to move resourcepack: ${file}`, err);
+        }
+    }
+}
+
+// ========================================
 // Deduplicate Mods
 // ========================================
 
@@ -451,6 +493,9 @@ async function installModrinthModpack(
         // Step 5: Deduplicate mods (remove duplicates from downloaded + overrides)
         const modsDir = path.join(instance.gameDirectory, "mods");
         deduplicateMods(modsDir);
+
+        // Step 6: Move .zip files from mods to resourcepacks folder
+        moveResourcePacks(instance.gameDirectory);
 
         if (onProgress) {
             onProgress({

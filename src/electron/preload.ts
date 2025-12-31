@@ -100,6 +100,7 @@ const api = {
     downloadUpdate: () => ipcRenderer.invoke("download-update"),
     installUpdate: () => ipcRenderer.invoke("install-update"),
     getAppVersion: () => ipcRenderer.invoke("get-app-version"),
+    isDevMode: () => ipcRenderer.invoke("is-dev-mode"),
     onUpdateAvailable: (callback: (data: { version: string; releaseDate: string }) => void) => {
         const handler = (_event: Electron.IpcRendererEvent, data: { version: string; releaseDate: string }) => callback(data);
         ipcRenderer.on("update-available", handler);
@@ -114,6 +115,16 @@ const api = {
         const handler = (_event: Electron.IpcRendererEvent, data: { version: string; releaseDate: string }) => callback(data);
         ipcRenderer.on("update-downloaded", handler);
         return () => ipcRenderer.removeListener("update-downloaded", handler);
+    },
+    onUpdateNotAvailable: (callback: () => void) => {
+        const handler = () => callback();
+        ipcRenderer.on("update-not-available", handler);
+        return () => ipcRenderer.removeListener("update-not-available", handler);
+    },
+    onUpdateError: (callback: (data: { message: string }) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, data: { message: string }) => callback(data);
+        ipcRenderer.on("update-error", handler);
+        return () => ipcRenderer.removeListener("update-error", handler);
     },
 
     // ----------------------------------------
@@ -143,6 +154,16 @@ const api = {
         ipcRenderer.on("modrinth-download-progress", handler);
         return () => ipcRenderer.removeListener("modrinth-download-progress", handler);
     },
+
+    // ----------------------------------------
+    // CurseForge APIs
+    // ----------------------------------------
+    curseforgeSearch: (filters: { query?: string; projectType?: string; gameVersion?: string; sortBy?: string; pageSize?: number; index?: number }) =>
+        ipcRenderer.invoke("curseforge-search", filters),
+    curseforgeGetProject: (projectId: number | string) => ipcRenderer.invoke("curseforge-get-project", projectId),
+    curseforgeGetFiles: (projectId: number | string, gameVersion?: string) => ipcRenderer.invoke("curseforge-get-files", projectId, gameVersion),
+    curseforgeGetFile: (projectId: number | string, fileId: number | string) => ipcRenderer.invoke("curseforge-get-file", projectId, fileId),
+    curseforgeGetDownloadUrl: (projectId: number | string, fileId: number | string) => ipcRenderer.invoke("curseforge-get-download-url", projectId, fileId),
 
     // ----------------------------------------
     // Instance Management APIs
@@ -234,6 +255,28 @@ const api = {
         return () => ipcRenderer.removeListener("game-log", handler);
     },
     instanceReadLatestLog: (instanceId: string) => ipcRenderer.invoke("instance-read-latest-log", instanceId),
+
+    // ----------------------------------------
+    // Admin Panel APIs
+    // ----------------------------------------
+    checkAdminStatus: (token: string) => ipcRenderer.invoke("admin-check-status", token),
+    getAdminSettings: (token: string) => ipcRenderer.invoke("admin-get-settings", token),
+    saveAdminSetting: (token: string, settingKey: string, value: string) =>
+        ipcRenderer.invoke("admin-save-setting", token, settingKey, value),
+    getSystemInfo: () => ipcRenderer.invoke("admin-get-system-info"),
+    // User Management APIs
+    getAdminUsers: (token: string, page?: number, limit?: number, search?: string) =>
+        ipcRenderer.invoke("admin-get-users", token, page, limit, search),
+    banUser: (token: string, userId: string, reason?: string) =>
+        ipcRenderer.invoke("admin-ban-user", token, userId, reason),
+    unbanUser: (token: string, userId: string) =>
+        ipcRenderer.invoke("admin-unban-user", token, userId),
+    toggleUserAdmin: (token: string, userId: string) =>
+        ipcRenderer.invoke("admin-toggle-user-admin", token, userId),
+    createUser: (token: string, userData: { email: string; catidUsername: string; password: string; isAdmin: boolean }) =>
+        ipcRenderer.invoke("admin-create-user", token, userData),
+    getUserDetails: (token: string, userId: string) =>
+        ipcRenderer.invoke("admin-get-user-details", token, userId),
 };
 
 // ========================================

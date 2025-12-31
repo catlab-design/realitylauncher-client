@@ -18,7 +18,9 @@ import toast, { Toaster } from "react-hot-toast";
 import { cn } from "../lib/utils";
 import { Icons } from "./ui/Icons";
 import { MCHead } from "./ui/MCHead";
+import { ChangelogModal } from "./ui/ChangelogModal";
 import { Home, Settings, ServerMenu, ModPack, Explore } from "./tabs";
+import AdminPanel from "./tabs/AdminPanel";
 import { type AuthSession, type Server, type NewsItem, type LauncherConfig, type ColorTheme } from "../types/launcher";
 
 // ========================================
@@ -123,11 +125,23 @@ function LoadingScreen({ onComplete, themeColor }: { onComplete: () => void; the
   useEffect(() => {
     let completed = false;
 
+    // Dev mode detection - localhost:4321 = Astro dev server
+    const isDevMode = typeof window !== 'undefined' &&
+      (window.location.hostname === 'localhost' || window.location.port === '4321');
+
     const completeLoading = () => {
       if (completed) return;
       completed = true;
-      gsap.to(".loading-screen", { opacity: 0, duration: 0.5, onComplete });
+      gsap.to(".loading-screen", { opacity: 0, duration: isDevMode ? 0.1 : 0.5, onComplete });
     };
+
+    // Skip animation in dev mode for faster loading
+    if (isDevMode) {
+      console.log("[LoadingScreen] Dev mode - skipping animation");
+      setProgress(100);
+      setTimeout(completeLoading, 100);
+      return;
+    }
 
     // Fallback timeout in case GSAP fails
     const fallbackTimeout = setTimeout(() => {
@@ -250,6 +264,34 @@ function LoadingScreen({ onComplete, themeColor }: { onComplete: () => void; the
 // MCHead moved to components/ui/MCHead.tsx
 
 // ========================================
+// App Version Badge Component
+// ========================================
+
+function AppVersionBadge({ colors }: { colors: any }) {
+  const [version, setVersion] = useState<string>("...");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const appVersion = await (window as any).api?.getAppVersion?.();
+        if (appVersion) setVersion(appVersion);
+      } catch {
+        setVersion("0.0.0");
+      }
+    })();
+  }, []);
+
+  return (
+    <span
+      className="text-xs px-2 py-0.5 rounded-full"
+      style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}
+    >
+      v{version}
+    </span>
+  );
+}
+
+// ========================================
 // Main Component
 // ========================================
 
@@ -259,7 +301,7 @@ export default function LauncherApp() {
   // State
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("home");
-  const [settingsTab, setSettingsTab] = useState<"appearance" | "game" | "connections" | "launcher" | "resources" | "java" | "account">("account");
+  const [settingsTab, setSettingsTab] = useState<"appearance" | "game" | "connections" | "launcher" | "resources" | "java" | "account" | "update">("account");
   const [session, setSession] = useState<AuthSession | null>(null);
   const [accounts, setAccounts] = useState<AuthSession[]>([]);
   const [selectedServer, setSelectedServer] = useState<Server | null>(null);
@@ -289,6 +331,15 @@ export default function LauncherApp() {
   // CatID register modal state
   const [catIDRegisterOpen, setCatIDRegisterOpen] = useState(false);
   const [catIDLoginOpen, setCatIDLoginOpen] = useState(false);
+  const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
+
+  // Admin state
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminToken, setAdminToken] = useState<string | null>(null);
+
+  // Changelog modal state
+  const [changelogModalOpen, setChangelogModalOpen] = useState(false);
+  const [changelogData, setChangelogData] = useState<{ version: string; changelog: string } | null>(null);
 
   // Config state
   const [config, setConfig] = useState<LauncherConfig>({
@@ -309,6 +360,7 @@ export default function LauncherApp() {
     javaArguments: "",
     maxConcurrentDownloads: 5,
     telemetryEnabled: true,
+    autoUpdateEnabled: true,
   });
 
   // Get colors based on current theme (memoized for performance)
@@ -402,6 +454,48 @@ export default function LauncherApp() {
     return () => clearTimeout(timer);
   }, []);
 
+  // Check for version update and show changelog modal
+  useEffect(() => {
+    if (!isInitialized) return;
+
+    (async () => {
+      try {
+        // Get current app version
+        const currentVersion = await (window as any).api?.getAppVersion?.();
+        if (!currentVersion) return;
+
+        // Load saved config to get lastSeenVersion
+        const savedConfig = await (window as any).api?.loadConfig?.();
+        const lastSeenVersion = savedConfig?.lastSeenVersion;
+
+        // If this is a new version, fetch changelog and show modal
+        if (currentVersion !== lastSeenVersion) {
+          try {
+            // Fetch latest.json from CDN to get changelog
+            const response = await fetch("https://cdn.reality.catlabdesign.space/client/latest.json");
+            if (response.ok) {
+              const data = await response.json();
+              if (data.changelog && data.version === currentVersion) {
+                setChangelogData({
+                  version: currentVersion,
+                  changelog: data.changelog
+                });
+                setChangelogModalOpen(true);
+              }
+            }
+          } catch (fetchError) {
+            console.log("[Changelog] Could not fetch changelog:", fetchError);
+          }
+
+          // Update lastSeenVersion even if we couldn't fetch changelog
+          updateConfig({ lastSeenVersion: currentVersion });
+        }
+      } catch (error) {
+        console.log("[Changelog] Version check error:", error);
+      }
+    })();
+  }, [isInitialized]);
+
   // Save accounts to localStorage when they change (only after initialization)
   useEffect(() => {
     if (!isInitialized) return;
@@ -444,6 +538,44 @@ export default function LauncherApp() {
       window.api?.discordRPCSetEnabled?.(false);
     }
   }, [config.discordRPCEnabled, isInitialized]);
+
+  // Auto-update notification listeners
+  useEffect(() => {
+    if (!window.api) return;
+
+    // Listen for update available
+    const unsubAvailable = window.api.onUpdateAvailable?.((data: { version: string }) => {
+      toast.success(
+        `🚀 มีเวอร์ชันใหม่ ${data.version} พร้อมดาวน์โหลด`,
+        { duration: 6000, id: "update-available" }
+      );
+    });
+
+    // Listen for update downloaded
+    const unsubDownloaded = window.api.onUpdateDownloaded?.((data: { version: string }) => {
+      toast.success(
+        `✅ เวอร์ชัน ${data.version} ดาวน์โหลดเสร็จแล้ว จะติดตั้งเมื่อปิด Launcher`,
+        { duration: 8000, id: "update-downloaded" }
+      );
+    });
+
+    // Listen for update not available
+    const unsubNotAvailable = window.api.onUpdateNotAvailable?.(() => {
+      toast.success("คุณใช้เวอร์ชันล่าสุดแล้ว", { id: "check-update" });
+    });
+
+    // Listen for update error
+    const unsubError = window.api.onUpdateError?.((data: { message: string }) => {
+      toast.error(`ไม่สามารถตรวจสอบอัปเดต: ${data.message}`, { id: "check-update" });
+    });
+
+    return () => {
+      unsubAvailable?.();
+      unsubDownloaded?.();
+      unsubNotAvailable?.();
+      unsubError?.();
+    };
+  }, []);
 
   // Device code polling effect
   useEffect(() => {
@@ -575,6 +707,29 @@ export default function LauncherApp() {
       setSession(newSession);
       setLoginDialogOpen(false);
       toast.success(`ยินดีต้อนรับ, ${newSession.username}!`);
+
+      // Check if user is admin (CatID only)
+      if (result.session.token) {
+        setAdminToken(result.session.token);
+        try {
+          const adminCheck = await window.api?.checkAdminStatus(result.session.token);
+          if (adminCheck?.isAdmin) {
+            setIsAdmin(true);
+            console.log("[Admin] User is admin:", result.session.username);
+            // Update session and accounts with admin status
+            const adminSession = { ...newSession, isAdmin: true };
+            setSession(adminSession);
+            // Update accounts list to include isAdmin
+            setAccounts(prev => prev.map(acc =>
+              acc.username === newSession.username && acc.type === newSession.type
+                ? { ...acc, isAdmin: true }
+                : acc
+            ));
+          }
+        } catch (e) {
+          console.log("[Admin] Could not check admin status");
+        }
+      }
     } catch (error: any) {
       toast.error(error?.message || "เข้าสู่ระบบไม่สำเร็จ");
     }
@@ -661,10 +816,29 @@ export default function LauncherApp() {
   };
 
   // เลือกบัญชีที่จะใช้งาน
-  const selectAccount = (account: AuthSession) => {
+  const selectAccount = async (account: AuthSession) => {
     setSession(account);
     setAccountManagerOpen(false);
     toast.success(`เปลี่ยนเป็นบัญชี ${account.username}`);
+
+    // Check admin status if switching to CatID account
+    if (account.type === "catid" && account.accessToken) {
+      setAdminToken(account.accessToken);
+      try {
+        const adminCheck = await window.api?.checkAdminStatus(account.accessToken);
+        setIsAdmin(adminCheck?.isAdmin || false);
+        if (adminCheck?.isAdmin) {
+          console.log("[Admin] Switched to admin account:", account.username);
+        }
+      } catch (e) {
+        setIsAdmin(false);
+        console.log("[Admin] Could not check admin status on account switch");
+      }
+    } else {
+      // Non-CatID account - reset admin state
+      setIsAdmin(false);
+      setAdminToken(null);
+    }
   };
 
   // ลบบัญชีออกจากรายการ
@@ -682,6 +856,9 @@ export default function LauncherApp() {
     try {
       await window.api?.logout();
       setSession(null);
+      // Reset admin state on logout
+      setIsAdmin(false);
+      setAdminToken(null);
       toast.success("ออกจากระบบแล้ว");
     } catch {
       toast.error("ออกจากระบบไม่สำเร็จ");
@@ -741,19 +918,73 @@ export default function LauncherApp() {
   // Render tabs - split into main and bottom navigation
   const mainNavItems = [
     { id: "home", icon: Icons.Home, label: "หน้าหลัก" },
-    { id: "servers", icon: Icons.Dns, label: "เซิร์ฟเวอร์" },
+    // { id: "servers", icon: Icons.Dns, label: "เซิร์ฟเวอร์" }, // Temporarily disabled for this release
     { id: "modpack", icon: Icons.Box, label: "Mod Pack" },
     { id: "explore", icon: Icons.Search, label: "สำรวจ" },
   ];
 
+  // Admin tab is added dynamically based on isAdmin state
   const bottomNavItems = [
+    ...(isAdmin ? [{ id: "admin", icon: Icons.Admin, label: "Admin" }] : []),
     { id: "settings", icon: Icons.Settings, label: "ตั้งค่า" },
     { id: "about", icon: Icons.Info, label: "เกี่ยวกับ" },
   ];
 
   return (
     <div ref={rootRef} className="h-screen flex overflow-hidden" style={{ backgroundColor: colors.surface }}>
-      <Toaster position="bottom-center" />
+      <Toaster
+        position="bottom-right"
+        containerStyle={{
+          bottom: 16,
+          right: 16,
+        }}
+        toastOptions={{
+          duration: 3000,
+          style: {
+            background: colors.surfaceContainer,
+            color: colors.onSurface,
+            borderRadius: '4px',
+            padding: '10px 14px',
+            fontSize: '13px',
+            fontWeight: 400,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+            maxWidth: '300px',
+            borderLeft: `3px solid ${colors.primary}`,
+          },
+          success: {
+            style: {
+              borderLeft: '3px solid #22c55e',
+            },
+            iconTheme: {
+              primary: '#22c55e',
+              secondary: '#fff',
+            },
+          },
+          error: {
+            style: {
+              borderLeft: '3px solid #ef4444',
+            },
+            iconTheme: {
+              primary: '#ef4444',
+              secondary: '#fff',
+            },
+          },
+          loading: {
+            style: {
+              borderLeft: `3px solid ${colors.primary}`,
+            },
+          },
+        }}
+      />
+
+      {/* Changelog Modal - Shows after update */}
+      <ChangelogModal
+        isOpen={changelogModalOpen}
+        onClose={() => setChangelogModalOpen(false)}
+        version={changelogData?.version || ""}
+        changelog={changelogData?.changelog || ""}
+        colors={colors}
+      />
 
       {/* Login Modal */}
       {loginDialogOpen && (
@@ -1119,6 +1350,17 @@ export default function LauncherApp() {
                   }
                 }}
               />
+              {/* Forgot Password Link */}
+              <button
+                onClick={() => {
+                  setCatIDLoginOpen(false);
+                  setForgotPasswordOpen(true);
+                }}
+                className="text-sm text-right w-full -mt-1"
+                style={{ color: colors.secondary }}
+              >
+                ลืมรหัสผ่าน?
+              </button>
               <div className="flex gap-2">
                 <button
                   onClick={async () => {
@@ -1269,6 +1511,48 @@ export default function LauncherApp() {
         </div>
       )}
 
+      {/* Forgot Password Modal - พร้อม meme gif */}
+      {forgotPasswordOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-3xl p-6 shadow-xl text-center relative" style={{ backgroundColor: colors.surface }}>
+            {/* X Close Button */}
+            <button
+              onClick={() => setForgotPasswordOpen(false)}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-500/20"
+              style={{ color: colors.onSurfaceVariant }}
+            >
+              <Icons.Close className="w-5 h-5" />
+            </button>
+
+            <h2 className="text-xl font-bold mb-4" style={{ color: colors.onSurface }}>
+              ลืมรหัสผ่าน
+            </h2>
+
+            {/* Random Meme GIF */}
+            <img
+              src={`https://media.giphy.com/media/${["3o7btPCcdNniyf0ArS", "l2SpMDbxEdUXtBHqM", "10h8CdMQUWoZ8Y", "xT5LMHxhOfscxPfIfm", "3og0INyCmHlNylks9O", "26FPy3QZQqGtDcrja"][Math.floor(Math.random() * 6)]}/giphy.gif`}
+              alt="meme"
+              className="w-48 h-48 mx-auto rounded-xl object-cover mb-4"
+            />
+
+            <p className="text-lg mb-6" style={{ color: colors.onSurfaceVariant }}>
+              🧘 หายใจเข้าลึกๆ และนึกดีๆ ก่อนใส่ใหม่
+            </p>
+
+            <button
+              onClick={() => {
+                setForgotPasswordOpen(false);
+                setCatIDLoginOpen(true);
+              }}
+              className="px-6 py-3 rounded-xl font-medium transition-all hover:scale-[1.02]"
+              style={{ backgroundColor: colors.secondary, color: colors.onPrimary }}
+            >
+              ← กลับไปหน้าเข้าสู่ระบบ
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Account Manager Modal */}
       {accountManagerOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -1300,7 +1584,14 @@ export default function LauncherApp() {
                 >
                   <MCHead username={account.username} size={40} className="rounded-full" />
                   <div className="flex-1">
-                    <div className="font-medium" style={{ color: colors.onSurface }}>{account.username}</div>
+                    <div className="font-medium flex items-center gap-1" style={{ color: colors.onSurface }}>
+                      {account.username}
+                      {account.isAdmin && (
+                        <span title="Admin" className="inline-flex items-center justify-center w-4 h-4 rounded-full" style={{ backgroundColor: "#fbbf24" }}>
+                          <Icons.Check className="w-3 h-3 text-gray-900" />
+                        </span>
+                      )}
+                    </div>
                     <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>
                       {account.type === "microsoft" ? "Microsoft Account" : account.type === "catid" ? "CatID Account" : "Offline Mode"}
                     </div>
@@ -1518,7 +1809,7 @@ export default function LauncherApp() {
                 className="px-4 py-2 rounded-lg text-sm transition-all hover:scale-105"
                 style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
               >
-                📋 คัดลอกรหัส
+                <i className="fa-solid fa-copy mr-1"></i> คัดลอกรหัส
               </button>
             </div>
 
@@ -1543,7 +1834,7 @@ export default function LauncherApp() {
               className="w-full flex items-center justify-center gap-2 px-4 py-4 rounded-xl mb-4 transition-all hover:scale-[1.02]"
               style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
             >
-              🌐 เปิด microsoft.com/link
+              <i className="fa-solid fa-globe mr-2"></i> เปิด microsoft.com/link
             </button>
 
             {/* Error Display */}
@@ -1582,7 +1873,7 @@ export default function LauncherApp() {
           {/* Drag region for sidebar top */}
           <div className="w-full pt-2 pb-2 flex justify-center drag-region">
             <div className="w-12 h-12 rounded-2xl overflow-hidden">
-              <img src="/r.svg" alt="Logo" className="w-full h-full object-cover" />
+              <img src="./r.svg" alt="Logo" className="w-full h-full object-cover" />
             </div>
           </div>
 
@@ -1653,7 +1944,7 @@ export default function LauncherApp() {
         >
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold" style={{ fontFamily: "'Jaturat', 'Itim', sans-serif", color: colors.onSurface }}>Reality</h1>
-            <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}>v0.1.0</span>
+            <AppVersionBadge colors={colors} />
           </div>
 
           {/* Right Side - Account - Fixed at top */}
@@ -1672,6 +1963,11 @@ export default function LauncherApp() {
                   <Icons.Person className="w-4 h-4" />
                 )}
                 {session?.username || "Account"}
+                {session?.isAdmin && (
+                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full" style={{ backgroundColor: "#fbbf24" }}>
+                    <Icons.Check className="w-3 h-3 text-gray-900" />
+                  </span>
+                )}
                 <svg className={`w-3 h-3 transition-transform ${accountDropdownOpen ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="currentColor">
                   <path d="M7 10l5 5 5-5z" />
                 </svg>
@@ -1703,7 +1999,14 @@ export default function LauncherApp() {
                         >
                           <MCHead username={account.username} size={32} className="rounded-full" />
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium truncate" style={{ color: colors.onSurface }}>{account.username}</div>
+                            <div className="text-sm font-medium truncate flex items-center gap-1" style={{ color: colors.onSurface }}>
+                              {account.username}
+                              {account.isAdmin && (
+                                <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full flex-shrink-0" style={{ backgroundColor: "#fbbf24" }}>
+                                  <Icons.Check className="w-2.5 h-2.5 text-gray-900" />
+                                </span>
+                              )}
+                            </div>
                             <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>
                               {account.type === "microsoft" ? "Microsoft" : account.type === "catid" ? "CatID Account" : "Offline Account"}
                             </div>
@@ -1877,6 +2180,11 @@ export default function LauncherApp() {
             />
           )}
 
+          {/* Admin Panel Tab - Only for admins */}
+          {activeTab === "admin" && isAdmin && adminToken && (
+            <AdminPanel colors={colors} adminToken={adminToken} />
+          )}
+
           {/* About Tab - Minimal Clean Style */}
           {
             activeTab === "about" && (
@@ -1886,7 +2194,7 @@ export default function LauncherApp() {
 
                   {/* Header - Simple & Clean */}
                   <div className="text-center space-y-4">
-                    <img src="r_background.svg" alt="Reality" className="w-16 h-16 mx-auto rounded-xl" />
+                    <img src="./r_background.svg" alt="Reality" className="w-16 h-16 mx-auto rounded-xl" />
                     <div>
                       <h1
                         className="text-3xl font-bold"

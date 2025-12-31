@@ -192,6 +192,34 @@ declare global {
       modrinthGetLoaders: () => Promise<{ name: string; icon: string }[]>;
       modrinthGetInstalled: () => Promise<any[]>;
       modrinthDeleteModpack: (modpackPath: string) => Promise<boolean>;
+      // CurseForge APIs
+      curseforgeSearch: (filters: { query?: string; projectType?: string; gameVersion?: string; sortBy?: string; pageSize?: number; index?: number }) => Promise<{
+        data: Array<{
+          id: number;
+          name: string;
+          slug: string;
+          summary: string;
+          downloadCount: number;
+          logo: { url: string } | null;
+          authors: { name: string }[];
+          categories: { id: number; name: string }[];
+          latestFiles: Array<{
+            id: number;
+            displayName: string;
+            fileName: string;
+            gameVersions: string[];
+            releaseType: number;
+          }>;
+          dateCreated: string;
+          dateModified: string;
+          thumbsUpCount: number;
+        }>;
+        pagination: { index: number; pageSize: number; resultCount: number; totalCount: number };
+      }>;
+      curseforgeGetProject: (projectId: number | string) => Promise<{ data: any }>;
+      curseforgeGetFiles: (projectId: number | string, gameVersion?: string) => Promise<{ data: any[] }>;
+      curseforgeGetFile: (projectId: number | string, fileId: number | string) => Promise<{ data: any }>;
+      curseforgeGetDownloadUrl: (projectId: number | string, fileId: number | string) => Promise<{ data: string }>;
       // Instance Management APIs
       instancesList: () => Promise<GameInstance[]>;
       instancesCreate: (options: CreateInstanceOptions) => Promise<GameInstance>;
@@ -213,6 +241,34 @@ declare global {
       modpackCheckConflicts: (instanceId: string) => Promise<{ type: string; file1: string; file2?: string; reason: string }[]>;
       modpackParseInfo: (mrpackPath: string) => Promise<any>;
       onModpackInstallProgress: (callback: (data: { stage: string; message: string; current?: number; total?: number; percent?: number }) => void) => () => void;
+      // Admin Panel APIs
+      checkAdminStatus: (token: string) => Promise<{ isAdmin: boolean; username?: string }>;
+      getAdminSettings: (token: string) => Promise<{ ok: boolean; settings?: any; error?: string }>;
+      saveAdminSetting: (token: string, settingKey: string, value: string) => Promise<{ ok: boolean; error?: string }>;
+      getSystemInfo: () => Promise<{ apiUrl: string; version: string }>;
+      // User Management APIs
+      getAdminUsers: (token: string, page?: number, limit?: number, search?: string) =>
+        Promise<{ ok: boolean; users?: any[]; pagination?: any; error?: string }>;
+      banUser: (token: string, userId: string, reason?: string) =>
+        Promise<{ ok: boolean; error?: string }>;
+      unbanUser: (token: string, userId: string) =>
+        Promise<{ ok: boolean; error?: string }>;
+      toggleUserAdmin: (token: string, userId: string) =>
+        Promise<{ ok: boolean; isAdmin?: boolean; error?: string }>;
+      createUser: (token: string, userData: { email: string; catidUsername: string; password: string; isAdmin: boolean }) =>
+        Promise<{ ok: boolean; user?: any; error?: string }>;
+      getUserDetails: (token: string, userId: string) =>
+        Promise<{ ok: boolean; user?: any; sessions?: any[]; error?: string }>;
+      // Auto Update APIs
+      checkForUpdates: () => Promise<void>;
+      downloadUpdate: () => Promise<void>;
+      installUpdate: () => Promise<void>;
+      getAppVersion: () => Promise<string>;
+      onUpdateAvailable: (callback: (data: { version: string; releaseDate: string }) => void) => () => void;
+      onUpdateProgress: (callback: (data: { percent: number; bytesPerSecond: number; transferred: number; total: number }) => void) => () => void;
+      onUpdateDownloaded: (callback: (data: { version: string; releaseDate: string }) => void) => () => void;
+      onUpdateNotAvailable: (callback: () => void) => () => void;
+      onUpdateError: (callback: (data: { message: string }) => void) => () => void;
     };
   }
 }

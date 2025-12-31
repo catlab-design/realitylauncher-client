@@ -14,7 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createInstance, type GameInstance } from "./instances.js";
 import { downloadFile } from "./modrinth.js";
-import { type InstallProgress, type InstallResult, deduplicateMods } from "./modpack-installer.js";
+import { type InstallProgress, type InstallResult, deduplicateMods, moveResourcePacks } from "./modpack-installer.js";
 import AdmZip from "adm-zip";
 
 // ========================================
@@ -244,6 +244,9 @@ export async function installCurseForgeModpack(
         // Step 4: Deduplicate mods (remove duplicates from downloaded + overrides)
         const modsDir = path.join(instance.gameDirectory, "mods");
         deduplicateMods(modsDir);
+
+        // Step 5: Move .zip files from mods to resourcepacks folder
+        moveResourcePacks(instance.gameDirectory);
 
         if (onProgress) {
             onProgress({

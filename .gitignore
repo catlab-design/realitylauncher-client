@@ -24,3 +24,5 @@ pnpm-debug.log*
 .idea/
 # Electron
 dist-electron/
+# Release builds (too large for GitHub)
+release/

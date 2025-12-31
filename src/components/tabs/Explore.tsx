@@ -1,6 +1,20 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import toast from "react-hot-toast";
 import { Icons } from "../ui/Icons";
+
+// ========================================
+// Constants
+// ========================================
+
+const SEARCH_DEBOUNCE_MS = 300;
+
+// Content source constants
+const CONTENT_SOURCES = {
+    MODRINTH: "modrinth",
+    CURSEFORGE: "curseforge",
+} as const;
+
+type ContentSource = typeof CONTENT_SOURCES[keyof typeof CONTENT_SOURCES];
 
 // ========================================
 // Types
@@ -116,6 +130,9 @@ const SORT_OPTIONS = [
 // ========================================
 
 export function Explore({ colors }: ExploreProps) {
+    // Content source state
+    const [contentSource, setContentSource] = useState<ContentSource>(CONTENT_SOURCES.MODRINTH);
+
     // Main state
     const [projectType, setProjectType] = useState<ProjectType>("modpack");
     const [searchQuery, setSearchQuery] = useState("");
@@ -128,6 +145,7 @@ export function Explore({ colors }: ExploreProps) {
 
     // Instance selection state
     const [instances, setInstances] = useState<GameInstance[]>([]);
+    const [isLoadingInstances, setIsLoadingInstances] = useState(false);
     const [selectedProject, setSelectedProject] = useState<ModrinthProject | null>(null);
     const [showInstanceModal, setShowInstanceModal] = useState(false);
     const [isDownloading, setIsDownloading] = useState(false);
@@ -156,6 +174,9 @@ export function Explore({ colors }: ExploreProps) {
     // Preview state
     const [previewProject, setPreviewProject] = useState<ModrinthProject | null>(null);
 
+    // Debounce timer ref for search
+    const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
+
     // Load instances on mount
     useEffect(() => {
         loadInstances();
@@ -170,11 +191,15 @@ export function Explore({ colors }: ExploreProps) {
     }, []);
 
     const loadInstances = async () => {
+        setIsLoadingInstances(true);
         try {
             const list = await window.api?.instancesList?.();
             if (list) setInstances(list);
         } catch (error) {
             console.error("[Explore] Load instances failed:", error);
+            toast.error("โหลดรายการ Instance ไม่สำเร็จ");
+        } finally {
+            setIsLoadingInstances(false);
         }
     };
 
@@ -182,22 +207,54 @@ export function Explore({ colors }: ExploreProps) {
     useEffect(() => {
         loadProjects();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [projectType, sortBy, page, viewCount]);
+    }, [projectType, sortBy, page, viewCount, contentSource]);
 
     const loadProjects = async () => {
         setIsLoading(true);
         try {
-            const result = await window.api?.modrinthSearch?.({
-                query: searchQuery,
-                projectType: projectType,
-                sortBy: sortBy,
-                limit: viewCount,
-                offset: (page - 1) * viewCount,
-            });
+            if (contentSource === CONTENT_SOURCES.MODRINTH) {
+                // Modrinth API
+                const result = await window.api?.modrinthSearch?.({
+                    query: searchQuery,
+                    projectType: projectType,
+                    sortBy: sortBy,
+                    limit: viewCount,
+                    offset: (page - 1) * viewCount,
+                });
 
-            if (result?.hits) {
-                setResults(result.hits);
-                setTotalHits(result.total_hits || 0);
+                if (result?.hits) {
+                    setResults(result.hits);
+                    setTotalHits(result.total_hits || 0);
+                }
+            } else {
+                // CurseForge API
+                const result = await window.api?.curseforgeSearch?.({
+                    query: searchQuery,
+                    projectType: projectType,
+                    sortBy: sortBy,
+                    pageSize: viewCount,
+                    index: (page - 1) * viewCount,
+                });
+
+                if (result?.data) {
+                    // Normalize CurseForge data to match Modrinth format
+                    const normalized: ModrinthProject[] = result.data.map((cf: any) => ({
+                        slug: cf.slug || cf.id.toString(),
+                        title: cf.name,
+                        description: cf.summary,
+                        categories: cf.categories?.map((c: any) => c.name) || [],
+                        downloads: cf.downloadCount,
+                        icon_url: cf.logo?.url || null,
+                        project_id: cf.id.toString(),
+                        author: cf.authors?.[0]?.name || "Unknown",
+                        versions: cf.latestFiles?.flatMap((f: any) => f.gameVersions) || [],
+                        follows: cf.thumbsUpCount || 0,
+                        client_side: "required",
+                        server_side: "optional",
+                    }));
+                    setResults(normalized);
+                    setTotalHits(result.pagination?.totalCount || 0);
+                }
             }
         } catch (error) {
             console.error("[Explore] Load failed:", error);
@@ -225,6 +282,22 @@ export function Explore({ colors }: ExploreProps) {
         setPage(1);
         loadProjects();
     };
+
+    // Debounced search - for live search while typing
+    const handleDebouncedSearch = useCallback((query: string) => {
+        setSearchQuery(query);
+
+        // Clear existing debounce timer
+        if (searchDebounceRef.current) {
+            clearTimeout(searchDebounceRef.current);
+        }
+
+        // Set new debounce timer
+        searchDebounceRef.current = setTimeout(() => {
+            setPage(1);
+            loadProjects();
+        }, SEARCH_DEBOUNCE_MS);
+    }, [projectType, sortBy, viewCount, contentSource]);
 
     // Smart version matching helper - handles wildcards and ranges
     const matchesVersion = (modVersion: string, instanceVersion: string): boolean => {
@@ -306,21 +379,41 @@ export function Explore({ colors }: ExploreProps) {
         setVersionFilter("");
 
         try {
-            const versions = await window.api?.modrinthGetVersions?.(project.project_id);
+            let versions: any[] = [];
+
+            if (contentSource === CONTENT_SOURCES.CURSEFORGE) {
+                // Use CurseForge API
+                const result = await window.api?.curseforgeGetFiles?.(project.project_id);
+                if (result?.data) {
+                    versions = result.data.map((f: any) => ({
+                        id: f.id.toString(),
+                        name: f.displayName,
+                        version_number: f.fileName,
+                        game_versions: f.gameVersions || [],
+                        loaders: f.sortableGameVersions?.filter((v: any) => !v.gameVersion.match(/^\d/)).map((v: any) => v.gameVersionName) || [],
+                    }));
+                }
+            } else {
+                // Use Modrinth API
+                const result = await window.api?.modrinthGetVersions?.(project.project_id);
+                if (result) {
+                    versions = result.map((v: any) => ({
+                        id: v.id,
+                        name: v.name,
+                        version_number: v.version_number,
+                        game_versions: v.game_versions || [],
+                        loaders: v.loaders || [],
+                    }));
+                }
+            }
+
             if (!versions || versions.length === 0) {
                 toast.error("ไม่พบเวอร์ชันที่ดาวน์โหลดได้");
                 setShowModpackVersionModal(false);
                 return;
             }
 
-            const mapped: ModVersion[] = versions.map((v: any) => ({
-                id: v.id,
-                name: v.name,
-                version_number: v.version_number,
-                game_versions: v.game_versions || [],
-                loaders: v.loaders || [],
-            }));
-            setModpackVersions(mapped);
+            setModpackVersions(versions);
         } catch (error: any) {
             toast.error(error?.message || "โหลดข้อมูลไม่สำเร็จ");
             setShowModpackVersionModal(false);
@@ -361,25 +454,52 @@ export function Explore({ colors }: ExploreProps) {
         setInstanceCompatibility([]);
 
         try {
-            const versions = await window.api?.modrinthGetVersions?.(project.project_id);
-            if (!versions || versions.length === 0) {
-                toast.error("ไม่พบเวอร์ชันที่ดาวน์โหลดได้");
-                setShowInstanceModal(false);
-                return;
+            let modVers: ModVersion[] = [];
+
+            if (contentSource === CONTENT_SOURCES.CURSEFORGE) {
+                // Use CurseForge API
+                const result = await window.api?.curseforgeGetFiles?.(project.project_id);
+                if (!result?.data || result.data.length === 0) {
+                    toast.error("ไม่พบเวอร์ชันที่ดาวน์โหลดได้");
+                    setShowInstanceModal(false);
+                    return;
+                }
+
+                modVers = result.data.map((f: any) => ({
+                    id: f.id.toString(),
+                    name: f.displayName,
+                    version_number: f.fileName,
+                    game_versions: f.gameVersions || [],
+                    loaders: f.sortableGameVersions?.filter((v: any) => !v.gameVersion.match(/^\d/)).map((v: any) => v.gameVersionName) || [],
+                    files: [{
+                        filename: f.fileName,
+                        primary: true,
+                        url: f.downloadUrl || "",
+                    }],
+                })).filter((v: ModVersion) => hasValidFilesForType(v, projectType));
+            } else {
+                // Use Modrinth API
+                const versions = await window.api?.modrinthGetVersions?.(project.project_id);
+                if (!versions || versions.length === 0) {
+                    toast.error("ไม่พบเวอร์ชันที่ดาวน์โหลดได้");
+                    setShowInstanceModal(false);
+                    return;
+                }
+
+                modVers = versions.map((v: any) => ({
+                    id: v.id,
+                    name: v.name,
+                    version_number: v.version_number,
+                    game_versions: v.game_versions || [],
+                    loaders: v.loaders || [],
+                    files: v.files?.map((f: any) => ({
+                        filename: f.filename,
+                        primary: f.primary,
+                        url: f.url,
+                    })) || [],
+                })).filter((v: ModVersion) => hasValidFilesForType(v, projectType));
             }
 
-            const modVers: ModVersion[] = versions.map((v: any) => ({
-                id: v.id,
-                name: v.name,
-                version_number: v.version_number,
-                game_versions: v.game_versions || [],
-                loaders: v.loaders || [],
-                files: v.files?.map((f: any) => ({
-                    filename: f.filename,
-                    primary: f.primary,
-                    url: f.url,
-                })) || [],
-            })).filter((v: ModVersion) => hasValidFilesForType(v, projectType));
             setModVersions(modVers);
 
             const compatibility = instances.map(instance => checkCompatibility(instance, modVers));
@@ -814,7 +934,7 @@ export function Explore({ colors }: ExploreProps) {
                             type="text"
                             placeholder={`ค้นหาใน ${projectType}...`}
                             value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
+                            onChange={(e) => handleDebouncedSearch(e.target.value)}
                             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                             className="w-full px-4 py-3 pl-12 rounded-xl border"
                             style={{
@@ -825,6 +945,39 @@ export function Explore({ colors }: ExploreProps) {
                         />
                         <Icons.Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2" style={{ color: colors.onSurfaceVariant }} />
                     </div>
+                </div>
+
+                {/* Source Selector (Modrinth / CurseForge) */}
+                <div className="mt-4 flex items-center gap-2 pb-3 border-b" style={{ borderColor: colors.outline }}>
+                    <span className="text-sm font-medium mr-2" style={{ color: colors.onSurfaceVariant }}>แหล่งที่มา:</span>
+                    <button
+                        onClick={() => { setContentSource(CONTENT_SOURCES.MODRINTH); setPage(1); }}
+                        className="px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all"
+                        style={{
+                            backgroundColor: contentSource === CONTENT_SOURCES.MODRINTH ? "#1bd96a" : colors.surface,
+                            color: contentSource === CONTENT_SOURCES.MODRINTH ? "#000" : colors.onSurfaceVariant,
+                            border: `1px solid ${contentSource === CONTENT_SOURCES.MODRINTH ? "transparent" : colors.outline}`,
+                        }}
+                    >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                        </svg>
+                        Modrinth
+                    </button>
+                    <button
+                        onClick={() => { setContentSource(CONTENT_SOURCES.CURSEFORGE); setPage(1); }}
+                        className="px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all"
+                        style={{
+                            backgroundColor: contentSource === CONTENT_SOURCES.CURSEFORGE ? "#f16436" : colors.surface,
+                            color: contentSource === CONTENT_SOURCES.CURSEFORGE ? "#fff" : colors.onSurfaceVariant,
+                            border: `1px solid ${contentSource === CONTENT_SOURCES.CURSEFORGE ? "transparent" : colors.outline}`,
+                        }}
+                    >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M18.4 7H5.6C4.72 7 4 7.72 4 8.6v6.8c0 .88.72 1.6 1.6 1.6h12.8c.88 0 1.6-.72 1.6-1.6V8.6c0-.88-.72-1.6-1.6-1.6zM8 14H6v-2h2v2zm0-3H6V9h2v2zm4 3h-2v-2h2v2zm0-3h-2V9h2v2zm4 3h-2v-2h2v2zm0-3h-2V9h2v2zm2 3h-2v-2h2v2z" />
+                        </svg>
+                        CurseForge
+                    </button>
                 </div>
 
                 <div className="mt-4 flex flex-wrap items-center gap-2">

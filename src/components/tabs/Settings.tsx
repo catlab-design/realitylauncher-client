@@ -9,8 +9,8 @@ interface SettingsProps {
     config: LauncherConfig;
     updateConfig: (newConfig: Partial<LauncherConfig>) => void;
     colors: any;
-    setSettingsTab: (tab: "account" | "appearance" | "game" | "connections" | "launcher" | "resources" | "java") => void;
-    settingsTab: "account" | "appearance" | "game" | "connections" | "launcher" | "resources" | "java";
+    setSettingsTab: (tab: "account" | "appearance" | "game" | "connections" | "launcher" | "resources" | "java" | "update") => void;
+    settingsTab: "account" | "appearance" | "game" | "connections" | "launcher" | "resources" | "java" | "update";
     handleBrowseJava: () => void;
     handleBrowseMinecraftDir: () => void;
     session: AuthSession | null;
@@ -41,15 +41,54 @@ export function Settings({
     const [isDetectingJava, setIsDetectingJava] = useState(false);
     const [maxRamMB, setMaxRamMB] = useState(8192);
     const [systemRamMB, setSystemRamMB] = useState(0);
+    const [appVersion, setAppVersion] = useState<string>("0.0.0");
+    const [isDevMode, setIsDevMode] = useState<boolean>(false);
+    const [updateStatus, setUpdateStatus] = useState<"idle" | "checking" | "available" | "downloading" | "ready">("idle");
+    const [updateInfo, setUpdateInfo] = useState<{ version: string; releaseDate: string } | null>(null);
+    const [downloadProgress, setDownloadProgress] = useState<number>(0);
 
-    // Load system RAM on mount
+    // Load system RAM and app info on mount
     useEffect(() => {
         (async () => {
             const maxRam = await (window as any).api?.getMaxRam?.();
             const systemRam = await (window as any).api?.getSystemRam?.();
+            const version = await (window as any).api?.getAppVersion?.();
+            const devMode = await (window as any).api?.isDevMode?.();
             if (maxRam) setMaxRamMB(maxRam);
             if (systemRam) setSystemRamMB(systemRam);
+            if (version) setAppVersion(version);
+            if (devMode !== undefined) setIsDevMode(devMode);
         })();
+
+        // Listen for update events
+        const windowApi = (window as any).api;
+        const cleanups: (() => void)[] = [];
+
+        if (windowApi?.onUpdateAvailable) {
+            cleanups.push(windowApi.onUpdateAvailable((data: { version: string; releaseDate: string }) => {
+                setUpdateInfo(data);
+                setUpdateStatus("available");
+            }));
+        }
+        if (windowApi?.onUpdateProgress) {
+            cleanups.push(windowApi.onUpdateProgress((data: { percent: number }) => {
+                setDownloadProgress(data.percent);
+                setUpdateStatus("downloading");
+            }));
+        }
+        if (windowApi?.onUpdateDownloaded) {
+            cleanups.push(windowApi.onUpdateDownloaded((data: { version: string; releaseDate: string }) => {
+                setUpdateInfo(data);
+                setUpdateStatus("ready");
+            }));
+        }
+        if (windowApi?.onUpdateNotAvailable) {
+            cleanups.push(windowApi.onUpdateNotAvailable(() => {
+                setUpdateStatus("idle");
+            }));
+        }
+
+        return () => cleanups.forEach(fn => fn());
     }, []);
 
     const handleAutoDetectJava = async () => {
@@ -83,6 +122,7 @@ export function Settings({
                         { id: "game", icon: "fa-gamepad", label: "เกมและประสิทธิภาพ" },
                         { id: "connections", icon: "fa-wifi", label: "การเชื่อมต่อ" },
                         { id: "launcher", icon: "fa-rocket", label: "Launcher" },
+                        { id: "update", icon: "fa-download", label: "อัปเดต" },
                         { id: "resources", icon: "fa-hard-drive", label: "จัดการทรัพยากร" },
                         { id: "java", icon: "fa-brands fa-java", label: "Java" },
                     ].map((item) => (
@@ -118,7 +158,14 @@ export function Settings({
                                     <div className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: colors.surfaceContainerHigh }}>
                                         <MCHead username={session.username} size={48} className="rounded-xl" />
                                         <div className="flex-1">
-                                            <div className="font-medium" style={{ color: colors.onSurface }}>{session.username}</div>
+                                            <div className="font-medium flex items-center gap-1" style={{ color: colors.onSurface }}>
+                                                {session.username}
+                                                {session.isAdmin && (
+                                                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full" style={{ backgroundColor: "#fbbf24" }}>
+                                                        <Icons.Check className="w-3 h-3 text-gray-900" />
+                                                    </span>
+                                                )}
+                                            </div>
                                             <div className="text-xs flex items-center gap-2" style={{ color: colors.onSurfaceVariant }}>
                                                 <span className="w-2 h-2 rounded-full bg-green-500"></span>
                                                 {session.type === "microsoft" ? "Microsoft Account" : session.type === "catid" ? "CatID Account" : "Offline Mode"}
@@ -155,7 +202,14 @@ export function Settings({
                                             >
                                                 <MCHead username={account.username} size={32} className="rounded-lg" />
                                                 <div className="flex-1">
-                                                    <div className="text-sm font-medium" style={{ color: colors.onSurface }}>{account.username}</div>
+                                                    <div className="text-sm font-medium flex items-center gap-1" style={{ color: colors.onSurface }}>
+                                                        {account.username}
+                                                        {account.isAdmin && (
+                                                            <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full flex-shrink-0" style={{ backgroundColor: "#fbbf24" }}>
+                                                                <Icons.Check className="w-2.5 h-2.5 text-gray-900" />
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                     <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>{account.type}</div>
                                                 </div>
                                                 {account.uuid !== session?.uuid && (
@@ -678,6 +732,197 @@ export function Settings({
                     </>
                 )}
 
+                {/* ==================== UPDATE ==================== */}
+                {settingsTab === "update" && (
+                    <>
+                        <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
+                            <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "40" }}>
+                                <i className="fa-solid fa-download text-lg" style={{ color: colors.secondary }}></i>
+                                <h3 className="font-medium" style={{ color: colors.onSurface }}>อัปเดต Launcher</h3>
+                            </div>
+                            <div className="p-4 space-y-4">
+                                {/* Version Info */}
+                                <div className="p-4 rounded-xl" style={{ backgroundColor: colors.surfaceContainerHigh }}>
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-14 h-14 rounded-xl overflow-hidden flex items-center justify-center" style={{ backgroundColor: colors.secondary }}>
+                                            <img src="./r.svg" alt="Reality" className="w-10 h-10 object-contain" />
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className="font-bold text-lg" style={{ color: colors.onSurface }}>Reality Launcher</p>
+                                            <div className="flex items-center gap-2 mt-1">
+                                                <span className="text-sm font-medium" style={{ color: colors.onSurfaceVariant }}>
+                                                    v{appVersion}
+                                                </span>
+                                                <span
+                                                    className="px-2 py-0.5 rounded-full text-xs font-medium"
+                                                    style={{
+                                                        backgroundColor: isDevMode ? "#f97316" : "#22c55e",
+                                                        color: "#fff"
+                                                    }}
+                                                >
+                                                    {isDevMode ? "Pre-release (Dev)" : "Release"}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
+
+                                {/* Update Status */}
+                                {updateStatus === "available" && updateInfo && (
+                                    <div className="p-4 rounded-xl border-2" style={{ borderColor: colors.secondary, backgroundColor: colors.secondary + "15" }}>
+                                        <div className="flex items-center gap-3 mb-3">
+                                            <i className="fa-solid fa-gift text-xl" style={{ color: colors.secondary }}></i>
+                                            <div>
+                                                <p className="font-medium" style={{ color: colors.onSurface }}>มีอัปเดตใหม่!</p>
+                                                <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>
+                                                    เวอร์ชัน {updateInfo.version} พร้อมให้ดาวน์โหลด
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={async () => {
+                                                try {
+                                                    await windowApi?.downloadUpdate?.();
+                                                    toast.success("กำลังดาวน์โหลดอัปเดต...");
+                                                } catch (error) {
+                                                    toast.error("ไม่สามารถดาวน์โหลดอัปเดตได้");
+                                                }
+                                            }}
+                                            className="w-full py-2.5 rounded-xl text-sm font-medium transition-all hover:scale-[1.02]"
+                                            style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                                        >
+                                            <i className="fa-solid fa-download mr-2"></i>
+                                            ดาวน์โหลดอัปเดต
+                                        </button>
+                                    </div>
+                                )}
+
+                                {updateStatus === "downloading" && (
+                                    <div className="p-4 rounded-xl" style={{ backgroundColor: colors.surfaceContainerHigh }}>
+                                        <div className="flex items-center gap-3 mb-3">
+                                            <i className="fa-solid fa-spinner fa-spin text-xl" style={{ color: colors.secondary }}></i>
+                                            <div>
+                                                <p className="font-medium" style={{ color: colors.onSurface }}>กำลังดาวน์โหลด...</p>
+                                                <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>
+                                                    {downloadProgress.toFixed(1)}%
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="w-full h-2 rounded-full overflow-hidden" style={{ backgroundColor: colors.surfaceContainerHighest }}>
+                                            <div
+                                                className="h-full transition-all"
+                                                style={{ width: `${downloadProgress}%`, backgroundColor: colors.secondary }}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {updateStatus === "ready" && updateInfo && (
+                                    <div className="p-4 rounded-xl border-2" style={{ borderColor: "#22c55e", backgroundColor: "#22c55e15" }}>
+                                        <div className="flex items-center gap-3 mb-3">
+                                            <i className="fa-solid fa-check-circle text-xl" style={{ color: "#22c55e" }}></i>
+                                            <div>
+                                                <p className="font-medium" style={{ color: colors.onSurface }}>พร้อมติดตั้ง!</p>
+                                                <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>
+                                                    เวอร์ชัน {updateInfo.version} ดาวน์โหลดเสร็จแล้ว
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={async () => {
+                                                try {
+                                                    await windowApi?.installUpdate?.();
+                                                } catch (error) {
+                                                    toast.error("ไม่สามารถติดตั้งอัปเดตได้");
+                                                }
+                                            }}
+                                            className="w-full py-2.5 rounded-xl text-sm font-medium transition-all hover:scale-[1.02]"
+                                            style={{ backgroundColor: "#22c55e", color: "#fff" }}
+                                        >
+                                            <i className="fa-solid fa-arrow-up-right-from-square mr-2"></i>
+                                            ติดตั้งและรีสตาร์ท
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Auto Update Toggle */}
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <i className="fa-solid fa-clock-rotate-left w-6" style={{ color: colors.onSurface }}></i>
+                                        <div>
+                                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>อัปเดตอัตโนมัติ</p>
+                                            <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>
+                                                ตรวจสอบและดาวน์โหลดอัปเดตใหม่อัตโนมัติ
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            const newValue = !config.autoUpdateEnabled;
+                                            updateConfig({ autoUpdateEnabled: newValue });
+                                            toast.success(newValue ? "เปิดอัปเดตอัตโนมัติ" : "ปิดอัปเดตอัตโนมัติ");
+                                        }}
+                                        className="relative w-12 h-6 rounded-full transition-colors"
+                                        style={{ backgroundColor: config.autoUpdateEnabled ? colors.secondary : colors.surfaceContainerHighest }}
+                                    >
+                                        <div
+                                            className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow"
+                                            style={{ left: config.autoUpdateEnabled ? "calc(100% - 20px)" : "4px" }}
+                                        />
+                                    </button>
+                                </div>
+
+                                <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
+
+                                {/* Manual Check for Updates Button */}
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="font-medium text-sm" style={{ color: colors.onSurface }}>ตรวจสอบอัปเดต</p>
+                                        <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>ตรวจสอบเวอร์ชันใหม่ด้วยตนเอง</p>
+                                    </div>
+                                    <button
+                                        onClick={async () => {
+                                            setUpdateStatus("checking");
+                                            toast.loading("กำลังตรวจสอบอัปเดต...", { id: "check-update" });
+                                            try {
+                                                await windowApi?.checkForUpdates?.();
+                                                setTimeout(() => {
+                                                    if (updateStatus === "checking") {
+                                                        setUpdateStatus("idle");
+                                                        toast.success("คุณใช้เวอร์ชันล่าสุดแล้ว", { id: "check-update" });
+                                                    } else {
+                                                        toast.dismiss("check-update");
+                                                    }
+                                                }, 3000);
+                                            } catch (error) {
+                                                setUpdateStatus("idle");
+                                                toast.error("ไม่สามารถตรวจสอบอัปเดตได้", { id: "check-update" });
+                                            }
+                                        }}
+                                        disabled={updateStatus === "checking" || isDevMode}
+                                        className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all hover:scale-105 disabled:opacity-50"
+                                        style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                                    >
+                                        <i className={`fa-solid ${updateStatus === "checking" ? "fa-spinner fa-spin" : "fa-sync"}`}></i>
+                                        {updateStatus === "checking" ? "กำลังตรวจสอบ..." : "ตรวจสอบ"}
+                                    </button>
+                                </div>
+
+                                {isDevMode && (
+                                    <div className="p-3 rounded-xl flex items-center gap-3" style={{ backgroundColor: "#f9731620" }}>
+                                        <i className="fa-solid fa-flask" style={{ color: "#f97316" }}></i>
+                                        <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>
+                                            คุณกำลังใช้งานโหมด Development (bun run dev) - ระบบอัปเดตอัตโนมัติถูกปิดใช้งาน
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </>
+                )}
+
                 {/* ==================== RESOURCE MANAGEMENT ==================== */}
                 {settingsTab === "resources" && (
                     <>
@@ -797,7 +1042,7 @@ export function Settings({
                                     <div className="flex gap-2 mb-2">
                                         <input
                                             type="text"
-                                            value={config.java21Path || "ไม่ได้ตั้งค่า"}
+                                            value={config.javaPath || "ไม่ได้ตั้งค่า"}
                                             readOnly
                                             className="flex-1 px-4 py-2.5 rounded-xl border text-sm"
                                             style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurface }}
@@ -843,7 +1088,7 @@ export function Settings({
                                         <button
                                             onClick={async () => {
                                                 const path = await windowApi?.browseJava?.();
-                                                if (path) updateConfig({ java21Path: path });
+                                                if (path) updateConfig({ javaPath: path });
                                             }}
                                             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
                                             style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
@@ -870,7 +1115,7 @@ export function Settings({
                                     <div className="flex gap-2 mb-2">
                                         <input
                                             type="text"
-                                            value={config.java17Path || "ไม่ได้ตั้งค่า"}
+                                            value={config.javaPath || "ไม่ได้ตั้งค่า"}
                                             readOnly
                                             className="flex-1 px-4 py-2.5 rounded-xl border text-sm"
                                             style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurface }}
@@ -896,7 +1141,7 @@ export function Settings({
                                         <button
                                             onClick={async () => {
                                                 const path = await windowApi?.browseJava?.();
-                                                if (path) updateConfig({ java17Path: path });
+                                                if (path) updateConfig({ javaPath: path });
                                             }}
                                             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
                                             style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
@@ -915,7 +1160,7 @@ export function Settings({
                                     <div className="flex gap-2 mb-2">
                                         <input
                                             type="text"
-                                            value={config.java8Path || "ไม่ได้ตั้งค่า"}
+                                            value={config.javaPath || "ไม่ได้ตั้งค่า"}
                                             readOnly
                                             className="flex-1 px-4 py-2.5 rounded-xl border text-sm"
                                             style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurface }}
@@ -941,7 +1186,7 @@ export function Settings({
                                         <button
                                             onClick={async () => {
                                                 const path = await windowApi?.browseJava?.();
-                                                if (path) updateConfig({ java8Path: path });
+                                                if (path) updateConfig({ javaPath: path });
                                             }}
                                             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
                                             style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}

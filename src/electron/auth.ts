@@ -7,7 +7,6 @@
 import { app } from "electron";
 import path from "node:path";
 import fs from "node:fs";
-import { randomUUID } from "node:crypto";
 
 // ========================================
 // Types
@@ -40,15 +39,11 @@ function getSessionPath(): string {
 function loadSession(): AuthSession | null {
     try {
         const sessionPath = getSessionPath();
-        console.log("[Auth] loadSession - checking path:", sessionPath);
         if (fs.existsSync(sessionPath)) {
             const data = fs.readFileSync(sessionPath, "utf-8");
-            console.log("[Auth] loadSession - file contents:", data);
             currentSession = JSON.parse(data) as AuthSession;
-            console.log("[Auth] loadSession - parsed session:", currentSession);
+            console.log("[Auth] Session restored for:", currentSession.username);
             return currentSession;
-        } else {
-            console.log("[Auth] loadSession - session file does not exist");
         }
     } catch (error) {
         console.error("[Auth] Failed to load session:", error);
@@ -84,9 +79,7 @@ function saveSession(): void {
  * Initialize auth system (load saved session)
  */
 export function initAuth(): void {
-    console.log("[Auth] initAuth called");
-    const loaded = loadSession();
-    console.log("[Auth] After loadSession, currentSession:", currentSession);
+    loadSession();
     if (currentSession) {
         console.log("[Auth] Restored session for:", currentSession.username);
     } else {
@@ -167,7 +160,6 @@ export function logout(): void {
  * Get current session
  */
 export function getSession(): AuthSession | null {
-    console.log("[Auth] getSession called, currentSession:", currentSession);
     return currentSession ? { ...currentSession } : null;
 }
 

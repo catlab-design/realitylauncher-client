@@ -88,6 +88,16 @@ import {
   type SearchFilters,
 } from "./modrinth.js";
 
+// CurseForge API - ค้นหาจาก CurseForge
+import {
+  searchCurseForge,
+  getCurseForgeProject,
+  getCurseForgeFiles,
+  getCurseForgeFile,
+  getCurseForgeDownloadUrl,
+  type CurseForgeSearchFilters,
+} from "./curseforge-api.js";
+
 // Instance Management - จัดการ instances
 import {
   getInstances,
@@ -123,6 +133,16 @@ import {
 // Auto Updater - ระบบอัปเดตอัตโนมัติ
 import electronUpdater from "electron-updater";
 const { autoUpdater } = electronUpdater;
+
+// Telemetry - ส่งข้อมูลการใช้งาน (anonymous)
+import {
+  initTelemetry,
+  cleanupTelemetry,
+  trackGameLaunch,
+  trackGameClose,
+  trackInstanceCreate,
+  trackError,
+} from "./telemetry.js";
 
 // ========================================
 // Path Setup - ตั้งค่า path
@@ -276,6 +296,9 @@ app.whenReady().then(async () => {
     await initDiscordRPC();
   }
 
+  // Initialize Telemetry
+  initTelemetry();
+
   // สร้างหน้าต่างหลัก
   mainWindow = createWindow();
 
@@ -296,8 +319,19 @@ app.whenReady().then(async () => {
     // ตั้งค่า log level
     autoUpdater.logger = console;
 
-    // ตรวจสอบ update เมื่อเปิด app
-    autoUpdater.checkForUpdatesAndNotify();
+    // ตั้งค่า update feed URL ไปที่ R2 CDN
+    autoUpdater.setFeedURL({
+      provider: "generic",
+      url: "https://cdn.reality.catlabdesign.space/client",
+    });
+
+    // ตรวจสอบ update เมื่อเปิด app (ถ้า autoUpdateEnabled)
+    if (config.autoUpdateEnabled) {
+      console.log("[AutoUpdater] Auto-update enabled, checking for updates...");
+      autoUpdater.checkForUpdatesAndNotify();
+    } else {
+      console.log("[AutoUpdater] Auto-update disabled by user");
+    }
 
     // Event: มี update ใหม่
     autoUpdater.on("update-available", (info) => {
@@ -311,6 +345,7 @@ app.whenReady().then(async () => {
     // Event: ไม่มี update
     autoUpdater.on("update-not-available", () => {
       console.log("[AutoUpdater] No update available");
+      mainWindow?.webContents.send("update-not-available");
     });
 
     // Event: กำลังดาวน์โหลด
@@ -336,6 +371,7 @@ app.whenReady().then(async () => {
     // Event: Error
     autoUpdater.on("error", (err) => {
       console.error("[AutoUpdater] Error:", err);
+      mainWindow?.webContents.send("update-error", { message: err.message });
     });
   }
 
@@ -347,8 +383,9 @@ app.whenReady().then(async () => {
   });
 });
 
-// Cleanup Discord RPC before quit
+// Cleanup Discord RPC and Telemetry before quit
 app.on("before-quit", () => {
+  cleanupTelemetry();
   destroyRPC();
 });
 
@@ -1013,12 +1050,34 @@ ipcMain.handle("close-auth-window", async (): Promise<void> => {
 // Device Code Authentication Handlers
 // ----------------------------------------
 
-// Microsoft OAuth Client ID - for Device Code Auth
-// CatID App - configured with native client redirect URI
-const MICROSOFT_CLIENT_ID = process.env.MICROSOFT_CLIENT_ID || "1d500075-0bac-43ba-a987-3e35771c7354";
-if (!MICROSOFT_CLIENT_ID) {
-  console.error("[Auth] MICROSOFT_CLIENT_ID not set! Device code auth will not work.");
+// Microsoft OAuth Client ID for Device Code Flow
+// MUST be fetched from ml-api - no hardcoded fallback
+let MICROSOFT_CLIENT_ID: string | null = null;
+let oauthConfigFetched = false;
+
+// Fetch Device Client ID from ml-api
+async function fetchOAuthConfig(): Promise<boolean> {
+  try {
+    const response = await fetch(`${ML_API_URL}/oauth/config`);
+    if (response.ok) {
+      const data = await response.json() as { microsoftDeviceClientId?: string; microsoftClientId?: string };
+      if (data.microsoftDeviceClientId) {
+        MICROSOFT_CLIENT_ID = data.microsoftDeviceClientId;
+        oauthConfigFetched = true;
+        console.log("[Auth] Fetched Microsoft Device Client ID from API:", MICROSOFT_CLIENT_ID.substring(0, 8) + "...");
+        return true;
+      } else {
+        console.warn("[Auth] No Device Client ID configured in API - please set it in Admin Panel");
+      }
+    }
+  } catch (error) {
+    console.error("[Auth] Could not fetch OAuth config from API:", error);
+  }
+  return false;
 }
+
+// Fetch OAuth config when app starts
+fetchOAuthConfig();
 
 /**
  * Device Code Response from Microsoft
@@ -1050,6 +1109,18 @@ ipcMain.handle("auth-device-code-start", async (): Promise<{
   console.log("[Auth] Starting device code flow...");
 
   try {
+    // Fetch latest OAuth config from API before each login attempt
+    await fetchOAuthConfig();
+
+    if (!MICROSOFT_CLIENT_ID) {
+      return {
+        ok: false,
+        error: "Device Client ID ยังไม่ได้ตั้งค่า - กรุณาตั้งค่าใน Admin Panel",
+      };
+    }
+
+    console.log("[Auth] Using Client ID:", MICROSOFT_CLIENT_ID.substring(0, 8) + "...");
+
     const response = await fetch("https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -1105,6 +1176,11 @@ ipcMain.handle("auth-device-code-poll", async (_event, deviceCode: string): Prom
   };
 }> => {
   try {
+    // Check if client ID is available
+    if (!MICROSOFT_CLIENT_ID) {
+      return { status: "error", error: "Device Client ID not configured" };
+    }
+
     // Step 1: Poll for Microsoft token
     const tokenResponse = await fetch("https://login.microsoftonline.com/consumers/oauth2/v2.0/token", {
       method: "POST",
@@ -1505,6 +1581,13 @@ ipcMain.handle("get-app-version", async (): Promise<string> => {
   return app.getVersion();
 });
 
+/**
+ * is-dev-mode - ตรวจสอบว่ารันใน development mode หรือไม่
+ */
+ipcMain.handle("is-dev-mode", async (): Promise<boolean> => {
+  return isDev;
+});
+
 // ----------------------------------------
 // Window Control Handlers - ควบคุมหน้าต่าง
 // ----------------------------------------
@@ -1683,6 +1766,70 @@ ipcMain.handle("modrinth-delete-modpack", async (_event, modpackPath: string) =>
   } catch (error: any) {
     console.error("[Modrinth] Delete modpack error:", error);
     return false;
+  }
+});
+
+// ----------------------------------------
+// CurseForge Handlers - ค้นหาจาก CurseForge
+// ----------------------------------------
+
+/**
+ * curseforge-search - ค้นหา mods/modpacks จาก CurseForge
+ */
+ipcMain.handle("curseforge-search", async (_event, filters: CurseForgeSearchFilters) => {
+  try {
+    return await searchCurseForge(filters);
+  } catch (error: any) {
+    console.error("[CurseForge] Search error:", error);
+    throw error;
+  }
+});
+
+/**
+ * curseforge-get-project - ดึงรายละเอียด project
+ */
+ipcMain.handle("curseforge-get-project", async (_event, projectId: number | string) => {
+  try {
+    return await getCurseForgeProject(projectId);
+  } catch (error: any) {
+    console.error("[CurseForge] Get project error:", error);
+    throw error;
+  }
+});
+
+/**
+ * curseforge-get-files - ดึง files/versions ของ project
+ */
+ipcMain.handle("curseforge-get-files", async (_event, projectId: number | string, gameVersion?: string) => {
+  try {
+    return await getCurseForgeFiles(projectId, gameVersion);
+  } catch (error: any) {
+    console.error("[CurseForge] Get files error:", error);
+    throw error;
+  }
+});
+
+/**
+ * curseforge-get-file - ดึงรายละเอียด file เดียว
+ */
+ipcMain.handle("curseforge-get-file", async (_event, projectId: number | string, fileId: number | string) => {
+  try {
+    return await getCurseForgeFile(projectId, fileId);
+  } catch (error: any) {
+    console.error("[CurseForge] Get file error:", error);
+    throw error;
+  }
+});
+
+/**
+ * curseforge-get-download-url - ดึง download URL
+ */
+ipcMain.handle("curseforge-get-download-url", async (_event, projectId: number | string, fileId: number | string) => {
+  try {
+    return await getCurseForgeDownloadUrl(projectId, fileId);
+  } catch (error: any) {
+    console.error("[CurseForge] Get download URL error:", error);
+    throw error;
   }
 });
 
@@ -2999,5 +3146,300 @@ ipcMain.handle("instance-read-latest-log", async (_event, instanceId: string) =>
   } catch (error: any) {
     console.error("[Instance] Read latest.log error:", error);
     return { ok: false, error: error.message, content: "" };
+  }
+});
+
+// ----------------------------------------
+// Admin Panel IPC Handlers
+// ----------------------------------------
+
+/**
+ * admin-check-status - Check if current user is admin
+ */
+ipcMain.handle("admin-check-status", async (_event, token: string): Promise<{
+  isAdmin: boolean;
+  username?: string;
+}> => {
+  try {
+    const response = await fetch(`${ML_API_URL}/admin/check`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (response.ok) {
+      const data = await response.json() as { isAdmin: boolean; username?: string };
+      return data;
+    }
+    return { isAdmin: false };
+  } catch (error) {
+    console.error("[Admin] Check status error:", error);
+    return { isAdmin: false };
+  }
+});
+
+/**
+ * admin-get-settings - Get admin settings from API
+ */
+ipcMain.handle("admin-get-settings", async (_event, token: string): Promise<{
+  ok: boolean;
+  settings?: any;
+  error?: string;
+}> => {
+  try {
+    const response = await fetch(`${ML_API_URL}/admin/settings`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (response.ok) {
+      const settings = await response.json();
+      return { ok: true, settings };
+    }
+
+    const error = await response.json() as { message?: string };
+    return { ok: false, error: error.message || "Failed to get settings" };
+  } catch (error: any) {
+    console.error("[Admin] Get settings error:", error);
+    return { ok: false, error: error.message };
+  }
+});
+
+/**
+ * admin-save-setting - Save admin setting to API
+ */
+ipcMain.handle("admin-save-setting", async (
+  _event,
+  token: string,
+  settingKey: string,
+  value: string
+): Promise<{ ok: boolean; error?: string }> => {
+  try {
+    let endpoint: string;
+    let body: Record<string, string>;
+
+    switch (settingKey) {
+      case "microsoft-client-id":
+        endpoint = `${ML_API_URL}/admin/settings/microsoft-client-id`;
+        body = { clientId: value };
+        break;
+      case "microsoft-device-client-id":
+        endpoint = `${ML_API_URL}/admin/settings/microsoft-device-client-id`;
+        body = { clientId: value };
+        break;
+      case "microsoft-secret":
+        endpoint = `${ML_API_URL}/admin/settings/microsoft-secret`;
+        body = { secret: value };
+        break;
+      case "curseforge-api-key":
+        endpoint = `${ML_API_URL}/admin/settings/curseforge-api-key`;
+        body = { apiKey: value };
+        break;
+      default:
+        return { ok: false, error: "Unknown setting key" };
+    }
+
+    const response = await fetch(endpoint, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (response.ok) {
+      return { ok: true };
+    }
+
+    const error = await response.json() as { message?: string; error?: string };
+    return { ok: false, error: error.message || error.error || "Failed to save setting" };
+  } catch (error: any) {
+    console.error("[Admin] Save setting error:", error);
+    return { ok: false, error: error.message };
+  }
+});
+
+ipcMain.handle("admin-get-system-info", async (): Promise<{
+  apiUrl: string;
+  version: string;
+}> => {
+  return {
+    apiUrl: ML_API_URL,
+    version: app.getVersion(),
+  };
+});
+
+/**
+ * admin-get-users - Get list of users with pagination
+ */
+ipcMain.handle("admin-get-users", async (
+  _event,
+  token: string,
+  page: number = 1,
+  limit: number = 20,
+  search: string = ""
+): Promise<{ ok: boolean; users?: any[]; pagination?: any; error?: string }> => {
+  try {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      limit: limit.toString(),
+    });
+    if (search) params.set("search", search);
+
+    const response = await fetch(`${ML_API_URL}/admin/users?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (response.ok) {
+      const data = await response.json() as { users: any[]; pagination: any };
+      return { ok: true, users: data.users, pagination: data.pagination };
+    }
+
+    const error = await response.json() as { message?: string };
+    return { ok: false, error: error.message || "Failed to get users" };
+  } catch (error: any) {
+    console.error("[Admin] Get users error:", error);
+    return { ok: false, error: error.message };
+  }
+});
+
+/**
+ * admin-ban-user - Ban a user
+ */
+ipcMain.handle("admin-ban-user", async (
+  _event,
+  token: string,
+  userId: string,
+  reason: string = ""
+): Promise<{ ok: boolean; error?: string }> => {
+  try {
+    const response = await fetch(`${ML_API_URL}/admin/users/${userId}/ban`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ reason }),
+    });
+
+    if (response.ok) {
+      return { ok: true };
+    }
+
+    const error = await response.json() as { message?: string };
+    return { ok: false, error: error.message || "Failed to ban user" };
+  } catch (error: any) {
+    console.error("[Admin] Ban user error:", error);
+    return { ok: false, error: error.message };
+  }
+});
+
+/**
+ * admin-unban-user - Unban a user
+ */
+ipcMain.handle("admin-unban-user", async (
+  _event,
+  token: string,
+  userId: string
+): Promise<{ ok: boolean; error?: string }> => {
+  try {
+    const response = await fetch(`${ML_API_URL}/admin/users/${userId}/unban`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (response.ok) {
+      return { ok: true };
+    }
+
+    const error = await response.json() as { message?: string };
+    return { ok: false, error: error.message || "Failed to unban user" };
+  } catch (error: any) {
+    console.error("[Admin] Unban user error:", error);
+    return { ok: false, error: error.message };
+  }
+});
+
+/**
+ * admin-toggle-user-admin - Toggle user admin status
+ */
+ipcMain.handle("admin-toggle-user-admin", async (
+  _event,
+  token: string,
+  userId: string
+): Promise<{ ok: boolean; isAdmin?: boolean; error?: string }> => {
+  try {
+    const response = await fetch(`${ML_API_URL}/admin/users/${userId}/toggle-admin`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (response.ok) {
+      const data = await response.json() as { isAdmin: boolean };
+      return { ok: true, isAdmin: data.isAdmin };
+    }
+
+    const error = await response.json() as { message?: string };
+    return { ok: false, error: error.message || "Failed to toggle admin" };
+  } catch (error: any) {
+    console.error("[Admin] Toggle admin error:", error);
+    return { ok: false, error: error.message };
+  }
+});
+
+/**
+ * admin-create-user - Create a new user
+ */
+ipcMain.handle("admin-create-user", async (
+  _event,
+  token: string,
+  userData: { email: string; catidUsername: string; password: string; isAdmin: boolean }
+): Promise<{ ok: boolean; user?: any; error?: string }> => {
+  try {
+    const response = await fetch(`${ML_API_URL}/admin/users`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(userData),
+    });
+
+    if (response.ok) {
+      const data = await response.json() as { user: any };
+      return { ok: true, user: data.user };
+    }
+
+    const error = await response.json() as { message?: string };
+    return { ok: false, error: error.message || "Failed to create user" };
+  } catch (error: any) {
+    console.error("[Admin] Create user error:", error);
+    return { ok: false, error: error.message };
+  }
+});
+
+/**
+ * admin-get-user-details - Get detailed info about a user
+ */
+ipcMain.handle("admin-get-user-details", async (
+  _event,
+  token: string,
+  userId: string
+): Promise<{ ok: boolean; user?: any; sessions?: any[]; error?: string }> => {
+  try {
+    const response = await fetch(`${ML_API_URL}/admin/users/${userId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (response.ok) {
+      // Backend returns flat user object with sessions embedded
+      const data = await response.json() as any;
+      const { sessions, ...user } = data;
+      return { ok: true, user, sessions: sessions || [] };
+    }
+
+    const error = await response.json() as { message?: string };
+    return { ok: false, error: error.message || "Failed to get user details" };
+  } catch (error: any) {
+    console.error("[Admin] Get user details error:", error);
+    return { ok: false, error: error.message };
   }
 });

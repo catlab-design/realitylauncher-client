@@ -7,9 +7,9 @@
     "name": "Cat Lab_ Design",
     "email": "contact@catlab.design"
   },
-  "description": "Reality Minecraft Launcher",
+  "description": "A launcher for make you easier to play Minecraft",
   "scripts": {
-    "dev": "bun run electron:build && concurrently --kill-others \"astro dev --port 4321\" \"wait-on http://localhost:4321 && electron .\"",
+    "dev": "bun run electron:build && concurrently --kill-others \"astro dev --port 4321\" \"wait-on tcp:4321 -i 200 && electron .\"",
     "build": "astro build && bun run electron:build",
     "start": "electron .",
     "electron:build": "esbuild src/electron/main.ts --bundle --platform=node --format=cjs --minify --external:electron --external:discord-rpc --external:electron-updater --external:minecraft-java-core --outfile=dist-electron/main.cjs && esbuild src/electron/preload.ts --bundle --platform=node --format=cjs --minify --external:electron --outdir=dist-electron",
@@ -67,8 +67,8 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "CatLab_ Design",
-      "repo": "ml-client",
+      "owner": "catlab-design",
+      "repo": "realitylauncher-client",
       "releaseType": "release"
     }
   },

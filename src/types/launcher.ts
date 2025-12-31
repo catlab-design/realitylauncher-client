@@ -14,6 +14,7 @@ export interface AuthSession {
     refreshToken?: string;
     expiresAt?: number;
     skinUrl?: string;
+    isAdmin?: boolean;
 }
 
 // Server Definition
@@ -66,6 +67,8 @@ export interface LauncherConfig {
     javaArguments: string;
     maxConcurrentDownloads: number;
     telemetryEnabled: boolean;
+    autoUpdateEnabled: boolean;
+    lastSeenVersion?: string; // Track last version user has seen for changelog modal
 }
 
 // Launcher Info
