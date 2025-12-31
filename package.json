@@ -65,12 +65,7 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
     },
-    "publish": {
-      "provider": "github",
-      "owner": "catlab-design",
-      "repo": "realitylauncher-client",
-      "releaseType": "release"
-    }
+    "publish": null
   },
   "dependencies": {
     "@astrojs/check": "^0.9.6",

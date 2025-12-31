@@ -35,6 +35,9 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     
+    permissions:
+      contents: read
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -53,20 +56,14 @@ jobs:
       - name: Build Electron app (Windows)
         if: matrix.platform == 'win'
         run: bun run dist:win
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Electron app (macOS)
         if: matrix.platform == 'mac'
         run: bun run dist:mac
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Electron app (Linux)
         if: matrix.platform == 'linux'
         run: bun run dist:linux
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Windows artifacts
         if: matrix.platform == 'win'
