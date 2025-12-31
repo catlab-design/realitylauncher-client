@@ -138,8 +138,10 @@ jobs:
         run: |
           npm install -g wrangler
           echo "Target Bucket: $R2_BUCKET"
+          echo "Account ID: $CLOUDFLARE_ACCOUNT_ID"
+          echo "API Token set: $([ -n "$CLOUDFLARE_API_TOKEN" ] && echo 'YES' || echo 'NO')"
           echo "Listing Buckets:"
-          wrangler r2 bucket list || echo "Could not list buckets (permissions?)"
+          wrangler r2 bucket list 2>&1 || echo "Could not list buckets"
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -171,14 +173,22 @@ jobs:
         run: npm install -g wrangler
 
       - name: Upload Windows build to R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           VERSION=${{ steps.version.outputs.version }}
+          echo "Uploading Windows build for version $VERSION"
+          echo "Files in artifacts/reality-launcher-windows:"
+          ls -la artifacts/reality-launcher-windows/ || echo "Directory not found"
+          
           # Upload installer
           for file in artifacts/reality-launcher-windows/*.exe; do
             if [ -f "$file" ]; then
               FILENAME=$(basename "$file")
               echo "Uploading $FILENAME to R2..."
-              wrangler r2 object put "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file"
+              wrangler r2 object put "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file" --content-type="application/octet-stream" 2>&1
+              echo "Upload exit code: $?"
             fi
           done
           # Upload blockmap
@@ -186,25 +196,35 @@ jobs:
             if [ -f "$file" ]; then
               FILENAME=$(basename "$file")
               echo "Uploading $FILENAME to R2..."
-              wrangler r2 object put "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file"
+              wrangler r2 object put "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file" 2>&1
+              echo "Upload exit code: $?"
             fi
           done
           # Upload latest.yml
           if [ -f "artifacts/reality-launcher-windows/latest.yml" ]; then
-            wrangler r2 object put "$R2_BUCKET/client/latest.yml" --file="artifacts/reality-launcher-windows/latest.yml"
+            echo "Uploading latest.yml..."
+            wrangler r2 object put "$R2_BUCKET/client/latest.yml" --file="artifacts/reality-launcher-windows/latest.yml" --content-type="text/yaml" 2>&1
+            echo "Upload exit code: $?"
+          else
+            echo "latest.yml not found!"
           fi
+
+      - name: Upload macOS build to R2
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
-      - name: Upload macOS build to R2
         run: |
           VERSION=${{ steps.version.outputs.version }}
+          echo "Uploading macOS build for version $VERSION"
+          echo "Files in artifacts/reality-launcher-macos:"
+          ls -la artifacts/reality-launcher-macos/ || echo "Directory not found"
+          
           for file in artifacts/reality-launcher-macos/*.dmg; do
             if [ -f "$file" ]; then
               FILENAME=$(basename "$file")
               echo "Uploading $FILENAME to R2..."
-              wrangler r2 object put "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file"
+              wrangler r2 object put "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file" --content-type="application/octet-stream" 2>&1
+              echo "Upload exit code: $?"
             fi
           done
           # Upload blockmap
@@ -212,34 +232,45 @@ jobs:
             if [ -f "$file" ]; then
               FILENAME=$(basename "$file")
               echo "Uploading $FILENAME to R2..."
-              wrangler r2 object put "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file"
+              wrangler r2 object put "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file" 2>&1
+              echo "Upload exit code: $?"
             fi
           done
           # Upload latest-mac.yml
           if [ -f "artifacts/reality-launcher-macos/latest-mac.yml" ]; then
-            wrangler r2 object put "$R2_BUCKET/client/latest-mac.yml" --file="artifacts/reality-launcher-macos/latest-mac.yml"
+            echo "Uploading latest-mac.yml..."
+            wrangler r2 object put "$R2_BUCKET/client/latest-mac.yml" --file="artifacts/reality-launcher-macos/latest-mac.yml" --content-type="text/yaml" 2>&1
+            echo "Upload exit code: $?"
+          else
+            echo "latest-mac.yml not found!"
           fi
+
+      - name: Upload Linux builds to R2
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
-      - name: Upload Linux builds to R2
         run: |
           VERSION=${{ steps.version.outputs.version }}
+          echo "Uploading Linux build for version $VERSION"
+          echo "Files in artifacts/reality-launcher-linux:"
+          ls -la artifacts/reality-launcher-linux/ || echo "Directory not found"
+          
           for file in artifacts/reality-launcher-linux/*.AppImage artifacts/reality-launcher-linux/*.deb; do
             if [ -f "$file" ]; then
               FILENAME=$(basename "$file")
               echo "Uploading $FILENAME to R2..."
-              wrangler r2 object put "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file"
+              wrangler r2 object put "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file" --content-type="application/octet-stream" 2>&1
+              echo "Upload exit code: $?"
             fi
           done
           # Upload latest-linux.yml
           if [ -f "artifacts/reality-launcher-linux/latest-linux.yml" ]; then
-            wrangler r2 object put "$R2_BUCKET/client/latest-linux.yml" --file="artifacts/reality-launcher-linux/latest-linux.yml"
+            echo "Uploading latest-linux.yml..."
+            wrangler r2 object put "$R2_BUCKET/client/latest-linux.yml" --file="artifacts/reality-launcher-linux/latest-linux.yml" --content-type="text/yaml" 2>&1
+            echo "Upload exit code: $?"
+          else
+            echo "latest-linux.yml not found!"
           fi
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Update latest.json
         env:
@@ -270,9 +301,14 @@ jobs:
           wrangler r2 object put "$R2_BUCKET/client/latest.json" --file="latest.json"
 
       - name: Verify R2 upload
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          echo "=== Uploaded to R2 ==="
+          echo "=== Verifying R2 upload ==="
           echo "Version: ${{ steps.version.outputs.version }}"
+          echo "Listing objects in bucket..."
+          wrangler r2 object list "$R2_BUCKET" --prefix="client/" 2>&1 || echo "Could not list objects"
           echo "Files should be available at: $CDN_URL/client/${{ steps.version.outputs.version }}/"
 
 
