@@ -88,7 +88,7 @@ const api = {
 
     // CatID Authentication APIs
     loginCatID: (username: string, password: string) => ipcRenderer.invoke("auth-catid-login", username, password),
-    registerCatID: (username: string, email: string, password: string) => ipcRenderer.invoke("auth-catid-register", username, email, password),
+    registerCatID: (username: string, email: string, password: string, confirmPassword?: string) => ipcRenderer.invoke("auth-catid-register", username, email, password, confirmPassword),
 
     // Offline Account API
     loginOffline: (username: string) => ipcRenderer.invoke("auth-offline-login", username),

@@ -782,7 +782,7 @@ export default function LauncherApp() {
     }
   };
 
-  const handleCatIDRegister = async (username: string, email: string, password: string) => {
+  const handleCatIDRegister = async (username: string, email: string, password: string, confirmPassword?: string) => {
     try {
       // Validate username format
       if (!MINECRAFT_USERNAME_REGEX.test(username)) {
@@ -797,7 +797,7 @@ export default function LauncherApp() {
       }
 
       const toastId = toast.loading("กำลังสมัครสมาชิก...");
-      const result = await window.api.registerCatID(username, email, password);
+      const result = await window.api.registerCatID(username, email, password, confirmPassword);
       toast.dismiss(toastId);
 
       if (!result.ok) {
@@ -1483,12 +1483,12 @@ export default function LauncherApp() {
                       toast.error("รหัสผ่านไม่ตรงกัน");
                       return;
                     }
-                    if (password.length < 8) {
-                      toast.error("รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร");
+                    if (password.length < 6) {
+                      toast.error("รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร");
                       return;
                     }
 
-                    await handleCatIDRegister(username, email, password);
+                    await handleCatIDRegister(username, email, password, confirm);
                   }}
                   className="flex-1 py-3 rounded-xl font-medium transition-all hover:scale-[1.02]"
                   style={{ backgroundColor: "#8b5cf6", color: "#ffffff" }}

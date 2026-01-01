@@ -163,7 +163,7 @@ declare global {
         };
         error?: string;
       }>;
-      registerCatID: (username: string, email: string, password: string) => Promise<{
+      registerCatID: (username: string, email: string, password: string, confirmPassword?: string) => Promise<{
         ok: boolean;
         error?: string;
       }>;

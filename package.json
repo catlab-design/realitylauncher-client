@@ -65,7 +65,10 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
     },
-    "publish": null
+    "publish": {
+      "provider": "generic",
+      "url": "https://cdn.reality.catlabdesign.space/client"
+    }
   },
   "dependencies": {
     "@astrojs/check": "^0.9.6",

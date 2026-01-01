@@ -1462,7 +1462,7 @@ ipcMain.handle("auth-catid-login", async (_event, username: string, password: st
 /**
  * auth-catid-register - Register new CatID account
  */
-ipcMain.handle("auth-catid-register", async (_event, username: string, email: string, password: string): Promise<{
+ipcMain.handle("auth-catid-register", async (_event, username: string, email: string, password: string, confirmPassword?: string): Promise<{
   ok: boolean;
   error?: string;
 }> => {
@@ -1472,15 +1472,25 @@ ipcMain.handle("auth-catid-register", async (_event, username: string, email: st
     const response = await fetch(`${ML_API_URL}/auth/catid/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, email, password }),
+      body: JSON.stringify({ username, email, password, confirmPassword }),
     });
 
-    const data = await response.json() as {
-      message?: string;
-      userId?: number;
-    };
+    // Try to parse JSON, but handle non-JSON responses gracefully
+    let data: { message?: string; userId?: number };
+    const responseText = await response.text();
+
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      console.error("[Auth] CatID register - Invalid JSON response:", responseText.substring(0, 100));
+      return {
+        ok: false,
+        error: response.ok ? "เซิร์ฟเวอร์ตอบกลับไม่ถูกต้อง" : `เซิร์ฟเวอร์ error: ${response.status}`,
+      };
+    }
 
     if (!response.ok) {
+      console.error("[Auth] CatID register failed:", response.status, data.message);
       return {
         ok: false,
         error: data.message || "สมัครสมาชิกไม่สำเร็จ",
