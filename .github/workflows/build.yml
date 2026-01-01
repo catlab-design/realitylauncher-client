@@ -174,7 +174,7 @@ jobs:
             if [ -f "$file" ]; then
               FILENAME=$(basename "$file")
               echo "Uploading $FILENAME..."
-              wrangler r2 object put "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file" --content-type="application/octet-stream"
+              wrangler r2 object put --remote "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file" --content-type="application/octet-stream"
               echo "✓ Uploaded $FILENAME"
             fi
           done
@@ -184,7 +184,7 @@ jobs:
             if [ -f "$file" ]; then
               FILENAME=$(basename "$file")
               echo "Uploading $FILENAME..."
-              wrangler r2 object put "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file"
+              wrangler r2 object put --remote "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file"
               echo "✓ Uploaded $FILENAME"
             fi
           done
@@ -192,8 +192,8 @@ jobs:
           # Upload latest.yml (to both versioned and root)
           if [ -f "artifacts/reality-launcher-windows/latest.yml" ]; then
             echo "Uploading latest.yml..."
-            wrangler r2 object put "$R2_BUCKET/client/$VERSION/latest.yml" --file="artifacts/reality-launcher-windows/latest.yml" --content-type="text/yaml"
-            wrangler r2 object put "$R2_BUCKET/client/latest.yml" --file="artifacts/reality-launcher-windows/latest.yml" --content-type="text/yaml"
+            wrangler r2 object put --remote "$R2_BUCKET/client/$VERSION/latest.yml" --file="artifacts/reality-launcher-windows/latest.yml" --content-type="text/yaml"
+            wrangler r2 object put --remote "$R2_BUCKET/client/latest.yml" --file="artifacts/reality-launcher-windows/latest.yml" --content-type="text/yaml"
             echo "✓ Uploaded latest.yml"
           else
             echo "ERROR: latest.yml not found!"
@@ -213,7 +213,7 @@ jobs:
             if [ -f "$file" ]; then
               FILENAME=$(basename "$file")
               echo "Uploading $FILENAME..."
-              wrangler r2 object put "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file" --content-type="application/octet-stream"
+              wrangler r2 object put --remote "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file" --content-type="application/octet-stream"
               echo "✓ Uploaded $FILENAME"
             fi
           done
@@ -222,15 +222,15 @@ jobs:
             if [ -f "$file" ]; then
               FILENAME=$(basename "$file")
               echo "Uploading $FILENAME..."
-              wrangler r2 object put "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file"
+              wrangler r2 object put --remote "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file"
               echo "✓ Uploaded $FILENAME"
             fi
           done
           
           if [ -f "artifacts/reality-launcher-macos/latest-mac.yml" ]; then
             echo "Uploading latest-mac.yml..."
-            wrangler r2 object put "$R2_BUCKET/client/$VERSION/latest-mac.yml" --file="artifacts/reality-launcher-macos/latest-mac.yml" --content-type="text/yaml"
-            wrangler r2 object put "$R2_BUCKET/client/latest-mac.yml" --file="artifacts/reality-launcher-macos/latest-mac.yml" --content-type="text/yaml"
+            wrangler r2 object put --remote "$R2_BUCKET/client/$VERSION/latest-mac.yml" --file="artifacts/reality-launcher-macos/latest-mac.yml" --content-type="text/yaml"
+            wrangler r2 object put --remote "$R2_BUCKET/client/latest-mac.yml" --file="artifacts/reality-launcher-macos/latest-mac.yml" --content-type="text/yaml"
             echo "✓ Uploaded latest-mac.yml"
           fi
 
@@ -247,15 +247,15 @@ jobs:
             if [ -f "$file" ]; then
               FILENAME=$(basename "$file")
               echo "Uploading $FILENAME..."
-              wrangler r2 object put "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file" --content-type="application/octet-stream"
+              wrangler r2 object put --remote "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file" --content-type="application/octet-stream"
               echo "✓ Uploaded $FILENAME"
             fi
           done
           
           if [ -f "artifacts/reality-launcher-linux/latest-linux.yml" ]; then
             echo "Uploading latest-linux.yml..."
-            wrangler r2 object put "$R2_BUCKET/client/$VERSION/latest-linux.yml" --file="artifacts/reality-launcher-linux/latest-linux.yml" --content-type="text/yaml"
-            wrangler r2 object put "$R2_BUCKET/client/latest-linux.yml" --file="artifacts/reality-launcher-linux/latest-linux.yml" --content-type="text/yaml"
+            wrangler r2 object put --remote "$R2_BUCKET/client/$VERSION/latest-linux.yml" --file="artifacts/reality-launcher-linux/latest-linux.yml" --content-type="text/yaml"
+            wrangler r2 object put --remote "$R2_BUCKET/client/latest-linux.yml" --file="artifacts/reality-launcher-linux/latest-linux.yml" --content-type="text/yaml"
             echo "✓ Uploaded latest-linux.yml"
           fi
 
@@ -288,7 +288,7 @@ jobs:
           cat latest.json
           
           echo "Uploading latest.json..."
-          wrangler r2 object put "$R2_BUCKET/client/latest.json" --file="latest.json" --content-type="application/json"
+          wrangler r2 object put --remote "$R2_BUCKET/client/latest.json" --file="latest.json" --content-type="application/json"
           echo "✓ Uploaded latest.json"
 
       - name: Verify R2 upload
@@ -301,7 +301,7 @@ jobs:
           echo "Checking for uploaded files..."
           
           # List objects with client prefix
-          wrangler r2 object list "$R2_BUCKET" --prefix="client/" | head -20
+          wrangler r2 object list --remote "$R2_BUCKET" --prefix="client/" | head -20
           
           echo ""
           echo "✓ Files should be available at:"
