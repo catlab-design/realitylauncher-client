@@ -277,15 +277,25 @@ jobs:
           CHANGELOG="${INPUT_CHANGELOG:-${DISPATCH_CHANGELOG:-}}"
           CHANGELOG_ESCAPED=$(echo "$CHANGELOG" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')
           
+          # Detect actual filenames
+          WIN_FILE=$(basename $(ls artifacts/reality-launcher-windows/*.exe | head -n 1))
+          MAC_FILE=$(basename $(ls artifacts/reality-launcher-macos/*.dmg | head -n 1))
+          LINUX_AppImage=$(basename $(ls artifacts/reality-launcher-linux/*.AppImage | head -n 1))
+          
+          # URL Encode filenames (replace spaces with %20)
+          WIN_URL="$CDN_URL/client/$VERSION/$(echo "$WIN_FILE" | sed 's/ /%20/g')"
+          MAC_URL="$CDN_URL/client/$VERSION/$(echo "$MAC_FILE" | sed 's/ /%20/g')"
+          LINUX_URL="$CDN_URL/client/$VERSION/$(echo "$LINUX_AppImage" | sed 's/ /%20/g')"
+          
           cat > latest.json <<EOF
           {
             "version": "$VERSION",
             "releaseDate": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
             "changelog": "$CHANGELOG_ESCAPED",
             "downloads": {
-              "windows": "$CDN_URL/client/$VERSION/Reality-Launcher-Setup.exe",
-              "macos": "$CDN_URL/client/$VERSION/Reality-Launcher.dmg",
-              "linux": "$CDN_URL/client/$VERSION/Reality-Launcher.AppImage"
+              "windows": "$WIN_URL",
+              "macos": "$MAC_URL",
+              "linux": "$LINUX_URL"
             }
           }
           EOF
