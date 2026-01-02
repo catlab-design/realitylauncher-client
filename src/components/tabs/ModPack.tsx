@@ -889,30 +889,22 @@ function CreateInstanceModal({ colors, onClose, onCreated }: CreateInstanceModal
     const loaders = [
         {
             id: "vanilla", name: "Vanilla", icon: (
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
-                </svg>
+                <img src="/minecraft.svg" alt="Minecraft" className="w-5 h-5" />
             )
         },
         {
             id: "fabric", name: "Fabric", icon: (
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M4 4h4v4H4V4m6 0h4v4h-4V4m6 0h4v4h-4V4M4 10h4v4H4v-4m6 0h4v4h-4v-4m6 0h4v4h-4v-4M4 16h4v4H4v-4m6 0h4v4h-4v-4m6 0h4v4h-4v-4z" />
-                </svg>
+                <img src="/fabric.svg" alt="Fabric" className="w-5 h-5" />
             )
         },
         {
             id: "forge", name: "Forge", icon: (
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z" />
-                </svg>
+                <img src="/forge.svg" alt="Forge" className="w-5 h-5" />
             )
         },
         {
             id: "neoforge", name: "NeoForge", icon: (
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2L4 5v6.09c0 5.05 3.41 9.76 8 10.91 4.59-1.15 8-5.86 8-10.91V5l-8-3zm6 9.09c0 4-2.55 7.7-6 8.83-3.45-1.13-6-4.82-6-8.83V6.31l6-2.12 6 2.12v4.78z" />
-                </svg>
+                <img src="/neoforge.svg" alt="NeoForge" className="w-5 h-5" />
             )
         },
         {

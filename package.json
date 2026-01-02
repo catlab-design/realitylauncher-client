@@ -1,7 +1,7 @@
 {
   "name": "reality-launcher",
   "type": "module",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "main": "dist-electron/main.cjs",
   "author": {
     "name": "Cat Lab_ Design",
@@ -87,6 +87,7 @@
     "electron-updater": "^6.6.2",
     "gsap": "^3.14.2",
     "minecraft-java-core": "^3.4.3",
+    "pace-js": "^1.2.4",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-hot-toast": "^2.6.0",

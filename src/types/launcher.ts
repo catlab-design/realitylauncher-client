@@ -45,12 +45,30 @@ export interface NewsItem {
     tags?: string[];
 }
 
+// Java Installation ที่ตรวจพบในระบบ
+export interface JavaInstallation {
+    path: string;           // เช่น C:\Program Files\Java\jdk-21\bin\java.exe
+    version: string;        // เช่น "21.0.1", "17.0.2", "1.8.0_392"
+    majorVersion: number;   // เช่น 21, 17, 8
+    vendor?: string;        // เช่น "Eclipse Adoptium", "Oracle", "Microsoft"
+    isValid: boolean;       // ผ่านการทดสอบแล้วหรือไม่
+}
+
+// Java Paths แยกตาม version
+export interface JavaPaths {
+    java8?: string;
+    java17?: string;
+    java21?: string;
+    java25?: string;
+}
+
 // Launcher Configuration
 export interface LauncherConfig {
     username: string;
     selectedVersion: string;
     ramMB: number;
     javaPath?: string;
+    javaPaths?: JavaPaths;  // Java paths แยกตาม version
     minecraftDir?: string;
     theme: "dark" | "light" | "oled" | "auto";
     colorTheme: ColorTheme;

@@ -234,7 +234,7 @@ function LoadingScreen({ onComplete, themeColor }: { onComplete: () => void; the
           {/* Left - Logo + Title */}
           <div ref={logoRef} className="flex items-center gap-3">
             <img src="r.svg" alt="Reality" className="w-12 h-12 object-contain" />
-            <span className="text-2xl font-bold text-gray-900" style={{ fontFamily: "'Jaturat', 'Itim', sans-serif" }}>
+            <span className="text-2xl font-bold text-gray-900" style={{ fontFamily: "'Inter', sans-serif" }}>
               Reality
             </span>
           </div>
@@ -539,6 +539,78 @@ export default function LauncherApp() {
     }
   }, [config.discordRPCEnabled, isInitialized]);
 
+  // Check for post-update notification
+  useEffect(() => {
+    const checkPostUpdate = async () => {
+      const currentVersion = await window.api?.getAppVersion?.();
+      if (!currentVersion) return; // Not in Electron or not ready
+
+      // Prevent showing multiple times in same session
+      if (sessionStorage.getItem("reality_update_shown")) {
+        return;
+      }
+
+      // Get the version we last NOTIFIED the user about
+      // Also check old key for migration
+      let notifiedVersion = localStorage.getItem("reality_notified_version");
+      if (!notifiedVersion) {
+        notifiedVersion = localStorage.getItem("reality_last_version");
+      }
+
+      // If we already notified about this exact version, do nothing
+      if (notifiedVersion === currentVersion) {
+        return;
+      }
+
+      // If notifiedVersion exists (not first run) AND differs from current -> show update toast
+      if (notifiedVersion && notifiedVersion !== currentVersion) {
+        toast.dismiss(); // Clear any pending toasts
+        toast.custom((t) => (
+          <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} bg-white dark:bg-zinc-800 rounded-2xl shadow-xl w-96 overflow-hidden pointer-events-auto border-2 border-yellow-400`}>
+            <div className="p-6">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 rounded-full bg-yellow-400 flex items-center justify-center flex-shrink-0">
+                  <i className="fa-solid fa-check text-xl text-zinc-900"></i>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-zinc-900 dark:text-white">อัปเดตเป็น v{currentVersion} แล้ว!</h3>
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">ดูการเปลี่ยนแปลงในเวอร์ชันนี้</p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  toast.dismiss(t.id);
+                  setChangelogModalOpen(true);
+                }}
+                className="w-full py-3 rounded-xl text-sm font-bold transition-colors mb-2"
+                style={{ backgroundColor: "#e4e4e7", color: "#18181b" }}
+              >
+                <i className="fa-solid fa-list mr-2"></i>
+                ดูรายการเปลี่ยนแปลง
+              </button>
+
+              <button
+                onClick={() => toast.dismiss(t.id)}
+                className="w-full py-3 bg-yellow-400 hover:bg-yellow-500 rounded-xl text-sm font-bold transition-colors text-zinc-900"
+              >
+                เข้าใจแล้ว!
+              </button>
+            </div>
+          </div>
+        ), { duration: 10000, position: "top-center" });
+
+        // Mark as shown in this session
+        sessionStorage.setItem("reality_update_shown", "true");
+      }
+
+      // Always mark this version as notified (handles both first run and update cases)
+      localStorage.setItem("reality_notified_version", currentVersion);
+    };
+
+    checkPostUpdate();
+  }, []);
+
   // Auto-update notification listeners
   useEffect(() => {
     if (!window.api) return;
@@ -830,6 +902,9 @@ export default function LauncherApp() {
         if (adminCheck?.isAdmin) {
           console.log("[Admin] Switched to admin account:", account.username);
         }
+        if (adminCheck?.isAdmin) {
+          console.log("[Admin] Switched to admin account:", account.username);
+        }
       } catch (e) {
         setIsAdmin(false);
         console.log("[Admin] Could not check admin status on account switch");
@@ -838,6 +913,13 @@ export default function LauncherApp() {
       // Non-CatID account - reset admin state
       setIsAdmin(false);
       setAdminToken(null);
+    }
+
+    // Sync session with backend
+    try {
+      await window.api?.setActiveSession?.(account);
+    } catch (err) {
+      console.error("[Auth] Failed to sync session with backend:", err);
     }
   };
 
@@ -1943,7 +2025,7 @@ export default function LauncherApp() {
           style={{ backgroundColor: colors.surface }}
         >
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold" style={{ fontFamily: "'Jaturat', 'Itim', sans-serif", color: colors.onSurface }}>Reality</h1>
+            <h1 className="text-2xl font-bold" style={{ fontFamily: "'Inter', sans-serif", color: colors.onSurface }}>Reality</h1>
             <AppVersionBadge colors={colors} />
           </div>
 
@@ -1963,11 +2045,17 @@ export default function LauncherApp() {
                   <Icons.Person className="w-4 h-4" />
                 )}
                 {session?.username || "Account"}
-                {session?.isAdmin && (
+                {session?.isAdmin ? (
                   <span className="inline-flex items-center justify-center w-4 h-4 rounded-full" style={{ backgroundColor: "#fbbf24" }}>
                     <Icons.Check className="w-3 h-3 text-gray-900" />
                   </span>
-                )}
+                ) : session?.type === "catid" ? (
+                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full" style={{ backgroundColor: "#3b82f6" }}>
+                    <Icons.Check className="w-3 h-3 text-white" />
+                  </span>
+                ) : session?.type === "microsoft" ? (
+                  <img src="./microsoft_icon.svg" alt="Microsoft" className="w-4 h-4" />
+                ) : null}
                 <svg className={`w-3 h-3 transition-transform ${accountDropdownOpen ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="currentColor">
                   <path d="M7 10l5 5 5-5z" />
                 </svg>
@@ -2001,11 +2089,17 @@ export default function LauncherApp() {
                           <div className="flex-1 min-w-0">
                             <div className="text-sm font-medium truncate flex items-center gap-1" style={{ color: colors.onSurface }}>
                               {account.username}
-                              {account.isAdmin && (
+                              {account.isAdmin ? (
                                 <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full flex-shrink-0" style={{ backgroundColor: "#fbbf24" }}>
                                   <Icons.Check className="w-2.5 h-2.5 text-gray-900" />
                                 </span>
-                              )}
+                              ) : account.type === "catid" ? (
+                                <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full flex-shrink-0" style={{ backgroundColor: "#3b82f6" }}>
+                                  <Icons.Check className="w-2.5 h-2.5 text-white" />
+                                </span>
+                              ) : account.type === "microsoft" ? (
+                                <img src="./microsoft_icon.svg" alt="Microsoft" className="w-4 h-4" />
+                              ) : null}
                             </div>
                             <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>
                               {account.type === "microsoft" ? "Microsoft" : account.type === "catid" ? "CatID Account" : "Offline Account"}
@@ -2198,7 +2292,7 @@ export default function LauncherApp() {
                     <div>
                       <h1
                         className="text-3xl font-bold"
-                        style={{ fontFamily: "'Jaturat', 'Itim', sans-serif", color: colors.onSurface }}
+                        style={{ fontFamily: "'Inter', sans-serif", color: colors.onSurface }}
                       >
                         Reality
                       </h1>

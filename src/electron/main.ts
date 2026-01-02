@@ -472,6 +472,14 @@ ipcMain.handle("auth-is-logged-in", async (): Promise<boolean> => {
   return isLoggedIn();
 });
 
+/**
+ * auth-set-active-session - เปลี่ยน active session
+ */
+ipcMain.handle("auth-set-active-session", async (_event, session: AuthSession): Promise<void> => {
+  const { setActiveSession } = await import("./auth.js");
+  setActiveSession(session);
+});
+
 // ----------------------------------------
 // Launcher Handlers - จัดการ Launcher
 // ----------------------------------------
@@ -856,57 +864,399 @@ ipcMain.handle("import-modpack", async (_event, filePath: string): Promise<{ suc
 });
 
 /**
- * detect-java-installations - ค้นหา Java installations ในระบบ
+ * detect-java-installations - ค้นหา Java installations ในระบบ พร้อม version info
+ * @returns JavaInstallation[] - รายการ Java ที่พบพร้อมข้อมูล version
  */
-ipcMain.handle("detect-java-installations", async (): Promise<string[]> => {
-  const installations: string[] = [];
+ipcMain.handle("detect-java-installations", async (): Promise<{
+  path: string;
+  version: string;
+  majorVersion: number;
+  vendor?: string;
+  isValid: boolean;
+}[]> => {
+  const { execSync } = await import("node:child_process");
   const fs = await import("node:fs");
   const path = await import("node:path");
 
-  try {
-    // Common Java paths on Windows
-    const possiblePaths = [
-      process.env.JAVA_HOME,
-      process.env.JRE_HOME,
-      "C:\\Program Files\\Java",
-      "C:\\Program Files\\Eclipse Adoptium",
-      "C:\\Program Files\\Zulu",
-      "C:\\Program Files\\Microsoft\\jdk",
-      "C:\\Program Files\\AdoptOpenJDK",
-      process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, ".minecraft", "runtime") : null,
-    ].filter(Boolean) as string[];
+  const installations: {
+    path: string;
+    version: string;
+    majorVersion: number;
+    vendor?: string;
+    isValid: boolean;
+  }[] = [];
 
-    for (const basePath of possiblePaths) {
-      if (!fs.existsSync(basePath)) continue;
+  // ฟังก์ชันสำหรับ parse Java version output
+  const parseJavaVersion = (output: string): { version: string; majorVersion: number; vendor?: string } | null => {
+    try {
+      // ตัวอย่าง output:
+      // openjdk version "21.0.1" 2023-10-17
+      // java version "1.8.0_392"
+      // OpenJDK Runtime Environment Temurin-17.0.2+8
 
-      // Check if it's a direct Java home
-      const javaBin = path.join(basePath, "bin", "java.exe");
-      if (fs.existsSync(javaBin)) {
-        installations.push(javaBin);
-        continue;
-      }
+      const lines = output.split("\n");
+      let version = "";
+      let vendor: string | undefined;
 
-      // Search subdirectories
-      try {
-        const dirs = fs.readdirSync(basePath, { withFileTypes: true });
-        for (const dir of dirs) {
-          if (!dir.isDirectory()) continue;
-
-          const javaPath = path.join(basePath, dir.name, "bin", "java.exe");
-          if (fs.existsSync(javaPath)) {
-            installations.push(javaPath);
-          }
+      for (const line of lines) {
+        // หา version string
+        const versionMatch = line.match(/(?:java|openjdk)\s+version\s+"([^"]+)"/i);
+        if (versionMatch) {
+          version = versionMatch[1];
         }
-      } catch {
-        // Ignore permission errors
+
+        // หา vendor
+        if (line.includes("Temurin") || line.includes("Adoptium")) {
+          vendor = "Eclipse Adoptium";
+        } else if (line.includes("Zulu")) {
+          vendor = "Azul Zulu";
+        } else if (line.includes("Microsoft")) {
+          vendor = "Microsoft";
+        } else if (line.includes("Oracle") || line.includes("Java(TM)")) {
+          vendor = "Oracle";
+        } else if (line.includes("OpenJDK")) {
+          vendor = "OpenJDK";
+        }
       }
+
+      if (!version) return null;
+
+      // แปลง version เป็น major version
+      let majorVersion = 0;
+      if (version.startsWith("1.")) {
+        // Java 8 และก่อนหน้า: 1.8.0_392 -> 8
+        const match = version.match(/^1\.(\d+)/);
+        if (match) majorVersion = parseInt(match[1]);
+      } else {
+        // Java 9+: 21.0.1 -> 21
+        const match = version.match(/^(\d+)/);
+        if (match) majorVersion = parseInt(match[1]);
+      }
+
+      return { version, majorVersion, vendor };
+    } catch {
+      return null;
     }
-  } catch (error) {
-    console.error("[Java] Detection error:", error);
+  };
+
+  // ค้นหา Java จาก path ต่างๆ
+  const possiblePaths = [
+    process.env.JAVA_HOME,
+    process.env.JRE_HOME,
+    "C:\\Program Files\\Java",
+    "C:\\Program Files\\Eclipse Adoptium",
+    "C:\\Program Files\\Zulu",
+    "C:\\Program Files\\Microsoft\\jdk",
+    "C:\\Program Files\\AdoptOpenJDK",
+    "C:\\Program Files\\BellSoft\\LibericaJDK",
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, ".minecraft", "runtime") : null,
+  ].filter(Boolean) as string[];
+
+  const foundPaths = new Set<string>();
+
+  for (const basePath of possiblePaths) {
+    if (!fs.existsSync(basePath)) continue;
+
+    // ตรวจสอบว่าเป็น Java home โดยตรงหรือไม่
+    const javaBin = path.join(basePath, "bin", "java.exe");
+    if (fs.existsSync(javaBin)) {
+      foundPaths.add(javaBin);
+      continue;
+    }
+
+    // ค้นหาใน subdirectories
+    try {
+      const dirs = fs.readdirSync(basePath, { withFileTypes: true });
+      for (const dir of dirs) {
+        if (!dir.isDirectory()) continue;
+
+        const javaPath = path.join(basePath, dir.name, "bin", "java.exe");
+        if (fs.existsSync(javaPath)) {
+          foundPaths.add(javaPath);
+        }
+
+        // ค้นหาลึกอีกระดับสำหรับ Minecraft runtime
+        if (dir.name.includes("java") || dir.name.includes("jre") || dir.name.includes("jdk")) {
+          try {
+            const subDirs = fs.readdirSync(path.join(basePath, dir.name), { withFileTypes: true });
+            for (const subDir of subDirs) {
+              if (!subDir.isDirectory()) continue;
+              const subJavaPath = path.join(basePath, dir.name, subDir.name, "bin", "java.exe");
+              if (fs.existsSync(subJavaPath)) {
+                foundPaths.add(subJavaPath);
+              }
+            }
+          } catch { /* ignore */ }
+        }
+      }
+    } catch {
+      // Ignore permission errors
+    }
   }
 
-  // Remove duplicates
-  return [...new Set(installations)];
+  // ดึงข้อมูล version สำหรับแต่ละ Java ที่พบ
+  for (const javaPath of foundPaths) {
+    try {
+      // รัน java -version (output ไปที่ stderr)
+      const output = execSync(`"${javaPath}" -version`, {
+        encoding: "utf-8",
+        timeout: 5000,
+        stdio: ["pipe", "pipe", "pipe"],
+        windowsHide: true,
+      });
+
+      // java -version ส่ง output ไปที่ stderr ไม่ใช่ stdout
+      // แต่ execSync กับ encoding จะรวม stderr ด้วย
+    } catch (error: any) {
+      // java -version return exit code 0 แต่ output ไปที่ stderr
+      // ซึ่ง execSync อาจจะ throw แต่ stderr ยังมีข้อมูล
+      const stderr = error.stderr?.toString() || error.message || "";
+      const stdout = error.stdout?.toString() || "";
+      const output = stderr + stdout;
+
+      const versionInfo = parseJavaVersion(output);
+      if (versionInfo) {
+        installations.push({
+          path: javaPath,
+          version: versionInfo.version,
+          majorVersion: versionInfo.majorVersion,
+          vendor: versionInfo.vendor,
+          isValid: true,
+        });
+      } else {
+        // ไม่สามารถ parse version ได้ แต่ file มีอยู่จริง
+        installations.push({
+          path: javaPath,
+          version: "ไม่ทราบ",
+          majorVersion: 0,
+          vendor: undefined,
+          isValid: false,
+        });
+      }
+      continue;
+    }
+  }
+
+  // เรียงตาม major version (มากไปน้อย)
+  installations.sort((a, b) => b.majorVersion - a.majorVersion);
+
+  console.log(`[Java] พบ Java ${installations.length} ตัว:`, installations.map(j => `${j.majorVersion} (${j.vendor || "unknown"})`));
+  return installations;
+});
+
+/**
+ * test-java-execution - ทดสอบว่า Java path ใช้งานได้หรือไม่
+ * @param javaPath - path ไปยัง java.exe
+ * @returns { ok: boolean; output?: string; error?: string; version?: string }
+ */
+ipcMain.handle("test-java-execution", async (_event, javaPath: string): Promise<{
+  ok: boolean;
+  output?: string;
+  error?: string;
+  version?: string;
+}> => {
+  const { execSync } = await import("node:child_process");
+  const fs = await import("node:fs");
+
+  try {
+    // ตรวจสอบว่าไฟล์มีอยู่จริง
+    if (!fs.existsSync(javaPath)) {
+      return { ok: false, error: "ไม่พบไฟล์ Java" };
+    }
+
+    // ทดสอบรัน java -version
+    try {
+      execSync(`"${javaPath}" -version`, {
+        encoding: "utf-8",
+        timeout: 10000,
+        windowsHide: true,
+      });
+    } catch (error: any) {
+      // java -version ส่ง output ไป stderr
+      const stderr = error.stderr?.toString() || "";
+      const stdout = error.stdout?.toString() || "";
+      const output = (stderr + stdout).trim();
+
+      if (output.includes("version")) {
+        // สำเร็จ - มี version output
+        // หา version string
+        const versionMatch = output.match(/(?:java|openjdk)\s+version\s+"([^"]+)"/i);
+        const version = versionMatch ? versionMatch[1] : undefined;
+
+        return { ok: true, output, version };
+      } else if (error.status !== 0 && error.status !== undefined) {
+        return { ok: false, error: `Java exit code: ${error.status}`, output };
+      }
+
+      return { ok: true, output };
+    }
+
+    return { ok: true };
+  } catch (error: any) {
+    console.error("[Java] ทดสอบ Java ล้มเหลว:", error);
+    return { ok: false, error: error.message || "ทดสอบ Java ล้มเหลว" };
+  }
+});
+
+/**
+ * install-java - ดาวน์โหลดและติดตั้ง Java จาก Adoptium
+ * @param majorVersion - major version ที่ต้องการ (8, 17, 21, 25)
+ * @returns { ok: boolean; path?: string; error?: string }
+ */
+ipcMain.handle("install-java", async (_event, majorVersion: number): Promise<{
+  ok: boolean;
+  path?: string;
+  error?: string;
+}> => {
+  const nodefs = await import("node:fs");
+  const nodepath = await import("node:path");
+  const https = await import("node:https");
+  const { execSync } = await import("node:child_process");
+  const { createWriteStream } = await import("node:fs");
+
+  try {
+    console.log(`[Java] กำลังติดตั้ง Java ${majorVersion}...`);
+
+    // กำหนด feature version ที่ใกล้เคียงที่สุด
+    let featureVersion = majorVersion;
+    if (majorVersion === 25) {
+      // Java 25 ยังไม่มี ใช้ 21 แทน
+      featureVersion = 21;
+    }
+
+    // สร้าง folder สำหรับเก็บ Java
+    const javaBaseDir = nodepath.join(getAppDataDir(), "java");
+    if (!nodefs.existsSync(javaBaseDir)) {
+      nodefs.mkdirSync(javaBaseDir, { recursive: true });
+    }
+
+    // เช็คว่ามีติดตั้งอยู่แล้วหรือไม่
+    const existingDir = nodepath.join(javaBaseDir, `jdk-${majorVersion}`);
+    const existingJava = nodepath.join(existingDir, "bin", "java.exe");
+    if (nodefs.existsSync(existingJava)) {
+      console.log(`[Java] Java ${majorVersion} มีอยู่แล้วที่ ${existingJava}`);
+      return { ok: true, path: existingJava };
+    }
+
+    // ดึงข้อมูล release จาก Adoptium API
+    const apiUrl = `https://api.adoptium.net/v3/assets/latest/${featureVersion}/hotspot?architecture=x64&image_type=jdk&os=windows&vendor=eclipse`;
+    console.log(`[Java] กำลังดึงข้อมูลจาก: ${apiUrl}`);
+
+    // Fetch API info
+    const apiResponse = await new Promise<any>((resolve, reject) => {
+      https.get(apiUrl, (res) => {
+        let data = "";
+        res.on("data", (chunk) => data += chunk);
+        res.on("end", () => {
+          try {
+            resolve(JSON.parse(data));
+          } catch {
+            reject(new Error("ไม่สามารถ parse API response"));
+          }
+        });
+      }).on("error", reject);
+    });
+
+    if (!apiResponse || !Array.isArray(apiResponse) || apiResponse.length === 0) {
+      return { ok: false, error: `ไม่พบ Java ${majorVersion} บน Adoptium` };
+    }
+
+    const release = apiResponse[0];
+    const downloadUrl = release.binary?.package?.link;
+    const fileName = release.binary?.package?.name;
+
+    if (!downloadUrl || !fileName) {
+      return { ok: false, error: "ไม่พบ download URL" };
+    }
+
+    console.log(`[Java] กำลังดาวน์โหลด: ${fileName}`);
+
+    // ดาวน์โหลดไฟล์
+    const zipPath = nodepath.join(javaBaseDir, fileName);
+
+    // ใช้ https + stream สำหรับดาวน์โหลด
+    await new Promise<void>((resolve, reject) => {
+      const download = (url: string) => {
+        https.get(url, (res) => {
+          // Handle redirects
+          if (res.statusCode === 301 || res.statusCode === 302) {
+            const redirectUrl = res.headers.location;
+            if (redirectUrl) {
+              download(redirectUrl);
+              return;
+            }
+          }
+
+          if (res.statusCode !== 200) {
+            reject(new Error(`HTTP ${res.statusCode}`));
+            return;
+          }
+
+          const file = createWriteStream(zipPath);
+          res.pipe(file);
+          file.on("finish", () => {
+            file.close();
+            resolve();
+          });
+          file.on("error", (err) => {
+            nodefs.unlinkSync(zipPath);
+            reject(err);
+          });
+        }).on("error", reject);
+      };
+      download(downloadUrl);
+    });
+
+    console.log(`[Java] ดาวน์โหลดเสร็จ: ${zipPath}`);
+
+    // Extract zip file using PowerShell
+    const extractDir = nodepath.join(javaBaseDir, `temp-${majorVersion}`);
+    if (nodefs.existsSync(extractDir)) {
+      nodefs.rmSync(extractDir, { recursive: true });
+    }
+    nodefs.mkdirSync(extractDir, { recursive: true });
+
+    console.log(`[Java] กำลัง extract...`);
+    execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${zipPath}' -DestinationPath '${extractDir}' -Force"`, {
+      windowsHide: true,
+      timeout: 120000,
+    });
+
+    // ลบไฟล์ zip
+    nodefs.unlinkSync(zipPath);
+
+    // หา folder ที่ extract ออกมา (เช่น jdk-21.0.1+12)
+    const extractedDirs = nodefs.readdirSync(extractDir);
+    if (extractedDirs.length === 0) {
+      return { ok: false, error: "Extract สำเร็จแต่ไม่พบ folder" };
+    }
+
+    const jdkFolder = extractedDirs[0];
+    const sourcePath = nodepath.join(extractDir, jdkFolder);
+    const targetPath = nodepath.join(javaBaseDir, `jdk-${majorVersion}`);
+
+    // ย้าย folder
+    if (nodefs.existsSync(targetPath)) {
+      nodefs.rmSync(targetPath, { recursive: true });
+    }
+    nodefs.renameSync(sourcePath, targetPath);
+
+    // ลบ temp folder
+    nodefs.rmSync(extractDir, { recursive: true });
+
+    // ตรวจสอบว่าติดตั้งสำเร็จ
+    const javaExePath = nodepath.join(targetPath, "bin", "java.exe");
+    if (!nodefs.existsSync(javaExePath)) {
+      return { ok: false, error: "ติดตั้งเสร็จแต่ไม่พบ java.exe" };
+    }
+
+    console.log(`[Java] ติดตั้ง Java ${majorVersion} สำเร็จ: ${javaExePath}`);
+    return { ok: true, path: javaExePath };
+
+  } catch (error: any) {
+    console.error(`[Java] ติดตั้ง Java ${majorVersion} ล้มเหลว:`, error);
+    return { ok: false, error: error.message || "ติดตั้ง Java ล้มเหลว" };
+  }
 });
 
 // ----------------------------------------
@@ -1428,9 +1778,9 @@ ipcMain.handle("auth-catid-login", async (_event, username: string, password: st
     const uuid = `catid-${data.user?.id || Date.now()}`;
 
     // Save session using auth module
-    const { loginMicrosoft } = await import("./auth.js");
-    // Reuse loginMicrosoft but mark as CatID type in the session
-    loginMicrosoft(displayName, uuid, data.token);
+    const { loginCatID: saveCatIDSession } = await import("./auth.js");
+    // Save session with correct CatID type
+    saveCatIDSession(displayName, uuid, data.token);
 
     // Notify renderer
     if (mainWindow) {

@@ -29,6 +29,7 @@ const api = {
     logout: () => ipcRenderer.invoke("auth-logout"),
     getSession: () => ipcRenderer.invoke("auth-get-session"),
     isLoggedIn: () => ipcRenderer.invoke("auth-is-logged-in"),
+    setActiveSession: (session: any) => ipcRenderer.invoke("auth-set-active-session", session),
 
     // ----------------------------------------
     // Launcher APIs
@@ -60,7 +61,8 @@ const api = {
     browseModpack: () => ipcRenderer.invoke("browse-modpack"),
     importModpack: (filePath: string) => ipcRenderer.invoke("import-modpack", filePath),
     detectJavaInstallations: () => ipcRenderer.invoke("detect-java-installations"),
-
+    testJavaExecution: (javaPath: string) => ipcRenderer.invoke("test-java-execution", javaPath),
+    installJava: (majorVersion: number) => ipcRenderer.invoke("install-java", majorVersion),
 
     // ----------------------------------------
     // Discord RPC APIs

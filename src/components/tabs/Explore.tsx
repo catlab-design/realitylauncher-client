@@ -959,9 +959,7 @@ export function Explore({ colors }: ExploreProps) {
                             border: `1px solid ${contentSource === CONTENT_SOURCES.MODRINTH ? "transparent" : colors.outline}`,
                         }}
                     >
-                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-                        </svg>
+                        <img src="/modrinth.svg" alt="Modrinth" className="w-5 h-5" />
                         Modrinth
                     </button>
                     <button
@@ -973,9 +971,7 @@ export function Explore({ colors }: ExploreProps) {
                             border: `1px solid ${contentSource === CONTENT_SOURCES.CURSEFORGE ? "transparent" : colors.outline}`,
                         }}
                     >
-                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M18.4 7H5.6C4.72 7 4 7.72 4 8.6v6.8c0 .88.72 1.6 1.6 1.6h12.8c.88 0 1.6-.72 1.6-1.6V8.6c0-.88-.72-1.6-1.6-1.6zM8 14H6v-2h2v2zm0-3H6V9h2v2zm4 3h-2v-2h2v2zm0-3h-2V9h2v2zm4 3h-2v-2h2v2zm0-3h-2V9h2v2zm2 3h-2v-2h2v2z" />
-                        </svg>
+                        <img src="/curseforge.svg" alt="CurseForge" className="w-5 h-5" />
                         CurseForge
                     </button>
                 </div>
@@ -1159,10 +1155,7 @@ export function Explore({ colors }: ExploreProps) {
                                                     </svg>
                                                     <span>{formatNumber(project.downloads)}</span>
                                                 </div>
-                                                <div className="flex items-center gap-1 text-xs" style={{ color: colors.onSurfaceVariant }}>
-                                                    <Icons.Heart className="w-4 h-4" />
-                                                    <span>{formatNumber(project.follows)}</span>
-                                                </div>
+
                                                 <div
                                                     className="w-2 h-2 rounded-full"
                                                     style={{ backgroundColor: active ? colors.secondary : colors.outline }}
@@ -1236,7 +1229,7 @@ export function Explore({ colors }: ExploreProps) {
                                     {previewProject.description || "—"}
                                 </div>
 
-                                <div className="mt-4 grid grid-cols-2 gap-2">
+                                <div className="mt-4 grid grid-cols-1 gap-2">
                                     <div className="rounded-xl p-3" style={{ backgroundColor: colors.surface }}>
                                         <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>
                                             Downloads
@@ -1245,14 +1238,7 @@ export function Explore({ colors }: ExploreProps) {
                                             {formatNumber(previewProject.downloads)}
                                         </div>
                                     </div>
-                                    <div className="rounded-xl p-3" style={{ backgroundColor: colors.surface }}>
-                                        <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>
-                                            Followers
-                                        </div>
-                                        <div className="text-sm font-semibold mt-1" style={{ color: colors.onSurface }}>
-                                            {formatNumber(previewProject.follows)}
-                                        </div>
-                                    </div>
+
                                 </div>
 
                                 <div className="mt-3 flex flex-wrap gap-1">

@@ -92,6 +92,7 @@ declare global {
       // Auth (Note: loginOffline removed, use loginCatID instead)
       logout: () => Promise<void>;
       getSession: () => Promise<AuthSession | null>;
+      setActiveSession: (session: AuthSession) => Promise<void>;
       isLoggedIn: () => Promise<boolean>;
       // Launcher
       listVersions: () => Promise<string[]>;

@@ -32,11 +32,11 @@ interface GameVersion {
 // ========================================
 
 const LOADERS: { id: LoaderType; name: string; icon: string }[] = [
-    { id: "fabric", name: "Fabric", icon: "🧶" },
-    { id: "forge", name: "Forge", icon: "⚒️" },
-    { id: "neoforge", name: "NeoForge", icon: "🔧" },
+    { id: "fabric", name: "Fabric", icon: "/fabric.svg" },
+    { id: "forge", name: "Forge", icon: "/forge.svg" },
+    { id: "neoforge", name: "NeoForge", icon: "/neoforge.svg" },
     { id: "quilt", name: "Quilt", icon: "🧵" },
-    { id: "vanilla", name: "Vanilla", icon: "🎮" },
+    { id: "vanilla", name: "Vanilla", icon: "/minecraft.svg" },
 ];
 
 // ========================================
@@ -248,7 +248,13 @@ export function CreateModpackModal({
                                     border: `1px solid ${loader === l.id ? colors.secondary : colors.outline}`,
                                 }}
                             >
-                                <div className="text-2xl mb-1">{l.icon}</div>
+                                <div className="text-2xl mb-1 flex justify-center">
+                                    {l.icon.startsWith("/") ? (
+                                        <img src={l.icon} alt={l.name} className="w-6 h-6" />
+                                    ) : (
+                                        l.icon
+                                    )}
+                                </div>
                                 <div className="text-xs font-medium">{l.name}</div>
                             </button>
                         ))}

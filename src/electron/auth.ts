@@ -148,6 +148,15 @@ export function loginOffline(username: string): AuthSession {
 }
 
 /**
+ * Set active session (used when switching accounts)
+ */
+export function setActiveSession(session: AuthSession): void {
+    currentSession = session;
+    saveSession();
+    console.log("[Auth] Active session switched to:", session.username);
+}
+
+/**
  * Logout from current session
  */
 export function logout(): void {

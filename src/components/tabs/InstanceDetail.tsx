@@ -1142,8 +1142,10 @@ export function InstanceDetail({
                             <div className="flex items-center gap-3">
                                 {instance.icon?.startsWith("data:") ? (
                                     <img src={instance.icon} alt="icon" className="w-6 h-6 rounded-lg object-cover" />
+                                ) : instance.icon ? (
+                                    <span className="text-xl">{instance.icon}</span>
                                 ) : (
-                                    <span className="text-xl">{instance.icon || "📦"}</span>
+                                    <Icons.Box className="w-6 h-6" style={{ color: colors.onSurfaceVariant }} />
                                 )}
                                 <span className="font-medium" style={{ color: colors.onSurface }}>{instance.name}</span>
                                 <span style={{ color: colors.onSurfaceVariant }}>›</span>
@@ -1231,8 +1233,10 @@ export function InstanceDetail({
                                                                 alt="icon"
                                                                 className="w-full h-full object-cover"
                                                             />
+                                                        ) : instance.icon ? (
+                                                            <span className="text-4xl">{instance.icon}</span>
                                                         ) : (
-                                                            instance.icon || "📦"
+                                                            <Icons.Box className="w-10 h-10" style={{ color: colors.onSurfaceVariant }} />
                                                         )}
                                                     </div>
                                                     <div
@@ -1245,7 +1249,7 @@ export function InstanceDetail({
                                                             }
                                                         }}
                                                     >
-                                                        ✏️
+                                                        <Icons.Edit className="w-3 h-3" style={{ color: colors.onSurface }} />
                                                     </div>
                                                 </div>
                                             </div>
@@ -1316,7 +1320,7 @@ export function InstanceDetail({
                                                 style={{ backgroundColor: colors.surfaceContainerHighest }}
                                             >
                                                 <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: colors.surfaceContainer }}>
-                                                    📦
+                                                    <Icons.Box className="w-6 h-6" style={{ color: colors.onSurfaceVariant }} />
                                                 </div>
                                                 <div className="flex-1">
                                                     <p className="font-medium" style={{ color: colors.onSurface }}>

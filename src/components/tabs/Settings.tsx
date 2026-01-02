@@ -37,13 +37,22 @@ export function Settings({
     setLoginDialogOpen,
 }: SettingsProps) {
     const [customColorPending, setCustomColorPending] = useState<string | null>(null);
-    const [detectedJavas, setDetectedJavas] = useState<string[]>([]);
+    const [detectedJavas, setDetectedJavas] = useState<{
+        path: string;
+        version: string;
+        majorVersion: number;
+        vendor?: string;
+        isValid: boolean;
+    }[]>([]);
     const [isDetectingJava, setIsDetectingJava] = useState(false);
+    const [testingJavaPath, setTestingJavaPath] = useState<string | null>(null);
+    const [installingJava, setInstallingJava] = useState<number | null>(null);
     const [maxRamMB, setMaxRamMB] = useState(8192);
     const [systemRamMB, setSystemRamMB] = useState(0);
     const [appVersion, setAppVersion] = useState<string>("0.0.0");
     const [isDevMode, setIsDevMode] = useState<boolean>(false);
-    const [updateStatus, setUpdateStatus] = useState<"idle" | "checking" | "available" | "downloading" | "ready">("idle");
+    type UpdateStatusType = "idle" | "checking" | "available" | "downloading" | "ready";
+    const [updateStatus, setUpdateStatus] = useState<UpdateStatusType>("idle");
     const [updateInfo, setUpdateInfo] = useState<{ version: string; releaseDate: string } | null>(null);
     const [downloadProgress, setDownloadProgress] = useState<number>(0);
 
@@ -160,14 +169,19 @@ export function Settings({
                                         <div className="flex-1">
                                             <div className="font-medium flex items-center gap-1" style={{ color: colors.onSurface }}>
                                                 {session.username}
-                                                {session.isAdmin && (
+                                                {session.isAdmin ? (
                                                     <span className="inline-flex items-center justify-center w-4 h-4 rounded-full" style={{ backgroundColor: "#fbbf24" }}>
                                                         <Icons.Check className="w-3 h-3 text-gray-900" />
                                                     </span>
-                                                )}
+                                                ) : session.type === "catid" ? (
+                                                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full" style={{ backgroundColor: "#3b82f6" }}>
+                                                        <Icons.Check className="w-3 h-3 text-white" />
+                                                    </span>
+                                                ) : session.type === "microsoft" ? (
+                                                    <img src="./microsoft_icon.svg" alt="Microsoft" className="w-4 h-4" />
+                                                ) : null}
                                             </div>
                                             <div className="text-xs flex items-center gap-2" style={{ color: colors.onSurfaceVariant }}>
-                                                <span className="w-2 h-2 rounded-full bg-green-500"></span>
                                                 {session.type === "microsoft" ? "Microsoft Account" : session.type === "catid" ? "CatID Account" : "Offline Mode"}
                                             </div>
                                         </div>
@@ -204,13 +218,21 @@ export function Settings({
                                                 <div className="flex-1">
                                                     <div className="text-sm font-medium flex items-center gap-1" style={{ color: colors.onSurface }}>
                                                         {account.username}
-                                                        {account.isAdmin && (
+                                                        {account.isAdmin ? (
                                                             <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full flex-shrink-0" style={{ backgroundColor: "#fbbf24" }}>
                                                                 <Icons.Check className="w-2.5 h-2.5 text-gray-900" />
                                                             </span>
-                                                        )}
+                                                        ) : account.type === "catid" ? (
+                                                            <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full flex-shrink-0" style={{ backgroundColor: "#3b82f6" }}>
+                                                                <Icons.Check className="w-2.5 h-2.5 text-white" />
+                                                            </span>
+                                                        ) : account.type === "microsoft" ? (
+                                                            <img src="./microsoft_icon.svg" alt="Microsoft" className="w-4 h-4" />
+                                                        ) : null}
                                                     </div>
-                                                    <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>{account.type}</div>
+                                                    <div className="text-xs flex items-center gap-1" style={{ color: colors.onSurfaceVariant }}>
+                                                        {account.type}
+                                                    </div>
                                                 </div>
                                                 {account.uuid !== session?.uuid && (
                                                     <button
@@ -769,6 +791,14 @@ export function Settings({
 
                                 <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
 
+                                {/* Dev Mode Warning */}
+                                {isDevMode && (
+                                    <div className="p-4 rounded-xl border border-orange-500/20 bg-orange-500/10 mb-4 flex items-center gap-3">
+                                        <i className="fa-solid fa-flask text-orange-500 text-lg"></i>
+                                        <span className="text-sm text-orange-700 dark:text-orange-300 font-medium">คุณกำลังใช้งานโหมด Development (bun run dev) - ระบบอัปเดตอัตโนมัติถูกปิดใช้งาน</span>
+                                    </div>
+                                )}
+
                                 {/* Update Status */}
                                 {updateStatus === "available" && updateInfo && (
                                     <div className="p-4 rounded-xl border-2" style={{ borderColor: colors.secondary, backgroundColor: colors.secondary + "15" }}>
@@ -884,12 +914,20 @@ export function Settings({
                                     </div>
                                     <button
                                         onClick={async () => {
+                                            if (updateStatus === "checking") return;
+
+                                            // Dev mode check
+                                            if (isDevMode) {
+                                                toast("ไม่สามารถตรวจสอบอัปเดตในโหมด Dev ได้ (ปิดใช้งาน)", { icon: "⚠️" });
+                                                return;
+                                            }
+
                                             setUpdateStatus("checking");
                                             toast.loading("กำลังตรวจสอบอัปเดต...", { id: "check-update" });
                                             try {
-                                                await windowApi?.checkForUpdates?.();
+                                                const result = await windowApi?.checkForUpdates?.();
                                                 setTimeout(() => {
-                                                    if (updateStatus === "checking") {
+                                                    if ((updateStatus as string) === "checking") {
                                                         setUpdateStatus("idle");
                                                         toast.success("คุณใช้เวอร์ชันล่าสุดแล้ว", { id: "check-update" });
                                                     } else {
@@ -898,11 +936,11 @@ export function Settings({
                                                 }, 3000);
                                             } catch (error) {
                                                 setUpdateStatus("idle");
-                                                toast.error("ไม่สามารถตรวจสอบอัปเดตได้", { id: "check-update" });
+                                                toast.error("ตรวจสอบอัปเดตไม่สำเร็จ", { id: "check-update" });
                                             }
                                         }}
                                         disabled={updateStatus === "checking" || isDevMode}
-                                        className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all hover:scale-105 disabled:opacity-50"
+                                        className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
                                         style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
                                     >
                                         <i className={`fa-solid ${updateStatus === "checking" ? "fa-spinner fa-spin" : "fa-sync"}`}></i>
@@ -1035,165 +1073,440 @@ export function Settings({
                                 <i className="fa-brands fa-java text-lg" style={{ color: colors.secondary }}></i>
                                 <h3 className="font-medium" style={{ color: colors.onSurface }}>Java Installations</h3>
                             </div>
-                            <div className="p-4 space-y-4">
-                                {/* Java 21 */}
+                            <div className="p-4 space-y-6">
+                                {/* Java 25 */}
                                 <div>
-                                    <p className="font-medium text-sm mb-2" style={{ color: colors.onSurface }}>Java 21 (แนะนำ)</p>
-                                    <div className="flex gap-2 mb-2">
-                                        <input
-                                            type="text"
-                                            value={config.javaPath || "ไม่ได้ตั้งค่า"}
-                                            readOnly
-                                            className="flex-1 px-4 py-2.5 rounded-xl border text-sm"
-                                            style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurface }}
-                                        />
-                                    </div>
+                                    <p className="font-medium text-sm mb-2" style={{ color: colors.onSurface }}>Java 25 location</p>
+                                    <input
+                                        type="text"
+                                        value={config.javaPaths?.java25 || "/path/to/java"}
+                                        readOnly
+                                        className="w-full px-4 py-2.5 rounded-xl border text-sm mb-2"
+                                        style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurfaceVariant }}
+                                    />
                                     <div className="flex gap-2 flex-wrap">
                                         <button
-                                            onClick={() => toast.success("ฟีเจอร์ติดตั้ง Java กำลังพัฒนา")}
+                                            onClick={async () => {
+                                                setInstallingJava(25);
+                                                try {
+                                                    const result = await windowApi?.installJava?.(25);
+                                                    if (result?.ok && result.path) {
+                                                        updateConfig({ javaPaths: { ...config.javaPaths, java25: result.path } });
+                                                        toast.success(`ติดตั้ง Java 25 สำเร็จ`);
+                                                    } else {
+                                                        toast.error(result?.error || "ติดตั้ง Java ล้มเหลว");
+                                                    }
+                                                } catch { toast.error("ติดตั้ง Java ล้มเหลว"); }
+                                                finally { setInstallingJava(null); }
+                                            }}
+                                            disabled={installingJava === 25}
                                             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
-                                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                            style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
                                         >
-                                            <i className="fa-solid fa-download"></i>
-                                            ติดตั้ง
+                                            <i className={`fa-solid ${installingJava === 25 ? "fa-spinner fa-spin" : "fa-download"}`}></i>
+                                            {installingJava === 25 ? "กำลังติดตั้ง..." : "Install"}
                                         </button>
                                         <button
                                             onClick={async () => {
-                                                if (!windowApi?.detectJavaInstallations) {
-                                                    toast.error("ฟีเจอร์นี้ต้องใช้ใน Electron");
-                                                    return;
-                                                }
                                                 setIsDetectingJava(true);
                                                 try {
-                                                    const javas = await windowApi.detectJavaInstallations();
-                                                    setDetectedJavas(javas);
-                                                    if (javas.length > 0) {
-                                                        toast.success(`พบ Java ${javas.length} ตัว`);
+                                                    const javas = await windowApi?.detectJavaInstallations?.();
+                                                    const java25 = javas?.find((j: any) => j.majorVersion >= 25);
+                                                    if (java25) {
+                                                        updateConfig({ javaPaths: { ...config.javaPaths, java25: java25.path } });
+                                                        toast.success(`พบ Java 25: ${java25.path}`);
                                                     } else {
-                                                        toast.error("ไม่พบ Java ในระบบ");
+                                                        toast.error("ไม่พบ Java 25 ในระบบ");
                                                     }
-                                                } catch (error) {
-                                                    toast.error("ค้นหา Java ล้มเหลว");
-                                                } finally {
-                                                    setIsDetectingJava(false);
-                                                }
+                                                } catch { toast.error("ค้นหา Java ล้มเหลว"); }
+                                                finally { setIsDetectingJava(false); }
                                             }}
                                             disabled={isDetectingJava}
                                             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
                                             style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                                         >
                                             <i className="fa-solid fa-magnifying-glass"></i>
-                                            ค้นหา
+                                            Detect
                                         </button>
                                         <button
                                             onClick={async () => {
                                                 const path = await windowApi?.browseJava?.();
-                                                if (path) updateConfig({ javaPath: path });
+                                                if (path) {
+                                                    updateConfig({ javaPaths: { ...config.javaPaths, java25: path } });
+                                                    toast.success("ตั้งค่า Java 25 เรียบร้อย");
+                                                }
                                             }}
                                             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
                                             style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                                         >
                                             <i className="fa-solid fa-folder-open"></i>
-                                            เลือก
+                                            Browse
                                         </button>
                                         <button
-                                            onClick={() => toast.success("ทดสอบ Java...")}
+                                            onClick={async () => {
+                                                const path = config.javaPaths?.java25;
+                                                if (!path || path === "/path/to/java") {
+                                                    toast.error("ยังไม่ได้ตั้งค่า Java 25");
+                                                    return;
+                                                }
+                                                setTestingJavaPath(path);
+                                                try {
+                                                    const result = await windowApi?.testJavaExecution?.(path);
+                                                    if (result?.ok) {
+                                                        toast.success(`Java ทำงานได้ปกติ${result.version ? ` (v${result.version})` : ""}`);
+                                                    } else {
+                                                        toast.error(result?.error || "Java ไม่สามารถใช้งานได้");
+                                                    }
+                                                } catch { toast.error("ทดสอบ Java ล้มเหลว"); }
+                                                finally { setTestingJavaPath(null); }
+                                            }}
+                                            disabled={testingJavaPath === config.javaPaths?.java25}
                                             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
                                             style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                                         >
-                                            <i className="fa-solid fa-play"></i>
-                                            ทดสอบ
+                                            <i className={`fa-solid ${testingJavaPath === config.javaPaths?.java25 ? "fa-spinner fa-spin" : "fa-play"}`}></i>
+                                            Test
                                         </button>
+                                        {config.javaPaths?.java25 && config.javaPaths.java25 !== "/path/to/java" && (
+                                            <button
+                                                onClick={() => {
+                                                    updateConfig({ javaPaths: { ...config.javaPaths, java25: undefined } });
+                                                    toast.success("ลบ Java 25 เรียบร้อย");
+                                                }}
+                                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                                                style={{ backgroundColor: "#ef444420", color: "#ef4444" }}
+                                            >
+                                                <i className="fa-solid fa-trash"></i>
+                                                Clear
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
 
-                                <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
+                                {/* Java 21 */}
+                                <div>
+                                    <p className="font-medium text-sm mb-2" style={{ color: colors.onSurface }}>Java 21 location</p>
+                                    <input
+                                        type="text"
+                                        value={config.javaPaths?.java21 || "/path/to/java"}
+                                        readOnly
+                                        className="w-full px-4 py-2.5 rounded-xl border text-sm mb-2"
+                                        style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: config.javaPaths?.java21 ? colors.onSurface : colors.onSurfaceVariant }}
+                                    />
+                                    <div className="flex gap-2 flex-wrap">
+                                        <button
+                                            onClick={async () => {
+                                                setInstallingJava(21);
+                                                try {
+                                                    const result = await windowApi?.installJava?.(21);
+                                                    if (result?.ok && result.path) {
+                                                        updateConfig({ javaPaths: { ...config.javaPaths, java21: result.path } });
+                                                        toast.success(`ติดตั้ง Java 21 สำเร็จ`);
+                                                    } else {
+                                                        toast.error(result?.error || "ติดตั้ง Java ล้มเหลว");
+                                                    }
+                                                } catch { toast.error("ติดตั้ง Java ล้มเหลว"); }
+                                                finally { setInstallingJava(null); }
+                                            }}
+                                            disabled={installingJava === 21}
+                                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                                            style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                                        >
+                                            <i className={`fa-solid ${installingJava === 21 ? "fa-spinner fa-spin" : "fa-download"}`}></i>
+                                            {installingJava === 21 ? "กำลังติดตั้ง..." : "Install"}
+                                        </button>
+                                        <button
+                                            onClick={async () => {
+                                                setIsDetectingJava(true);
+                                                try {
+                                                    const javas = await windowApi?.detectJavaInstallations?.();
+                                                    const java21 = javas?.find((j: any) => j.majorVersion >= 21 && j.majorVersion < 25);
+                                                    if (java21) {
+                                                        updateConfig({ javaPaths: { ...config.javaPaths, java21: java21.path } });
+                                                        toast.success(`พบ Java 21: ${java21.path}`);
+                                                    } else {
+                                                        toast.error("ไม่พบ Java 21 ในระบบ");
+                                                    }
+                                                } catch { toast.error("ค้นหา Java ล้มเหลว"); }
+                                                finally { setIsDetectingJava(false); }
+                                            }}
+                                            disabled={isDetectingJava}
+                                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                        >
+                                            <i className="fa-solid fa-magnifying-glass"></i>
+                                            Detect
+                                        </button>
+                                        <button
+                                            onClick={async () => {
+                                                const path = await windowApi?.browseJava?.();
+                                                if (path) {
+                                                    updateConfig({ javaPaths: { ...config.javaPaths, java21: path } });
+                                                    toast.success("ตั้งค่า Java 21 เรียบร้อย");
+                                                }
+                                            }}
+                                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                        >
+                                            <i className="fa-solid fa-folder-open"></i>
+                                            Browse
+                                        </button>
+                                        <button
+                                            onClick={async () => {
+                                                const path = config.javaPaths?.java21;
+                                                if (!path || path === "/path/to/java") {
+                                                    toast.error("ยังไม่ได้ตั้งค่า Java 21");
+                                                    return;
+                                                }
+                                                setTestingJavaPath(path);
+                                                try {
+                                                    const result = await windowApi?.testJavaExecution?.(path);
+                                                    if (result?.ok) {
+                                                        toast.success(`Java ทำงานได้ปกติ${result.version ? ` (v${result.version})` : ""}`);
+                                                    } else {
+                                                        toast.error(result?.error || "Java ไม่สามารถใช้งานได้");
+                                                    }
+                                                } catch { toast.error("ทดสอบ Java ล้มเหลว"); }
+                                                finally { setTestingJavaPath(null); }
+                                            }}
+                                            disabled={testingJavaPath === config.javaPaths?.java21}
+                                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                        >
+                                            <i className={`fa-solid ${testingJavaPath === config.javaPaths?.java21 ? "fa-spinner fa-spin" : "fa-play"}`}></i>
+                                            Test
+                                        </button>
+                                        {config.javaPaths?.java21 && config.javaPaths.java21 !== "/path/to/java" && (
+                                            <button
+                                                onClick={() => {
+                                                    updateConfig({ javaPaths: { ...config.javaPaths, java21: undefined } });
+                                                    toast.success("ลบ Java 21 เรียบร้อย");
+                                                }}
+                                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                                                style={{ backgroundColor: "#ef444420", color: "#ef4444" }}
+                                            >
+                                                <i className="fa-solid fa-trash"></i>
+                                                Clear
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
 
                                 {/* Java 17 */}
                                 <div>
-                                    <p className="font-medium text-sm mb-2" style={{ color: colors.onSurface }}>Java 17</p>
-                                    <div className="flex gap-2 mb-2">
-                                        <input
-                                            type="text"
-                                            value={config.javaPath || "ไม่ได้ตั้งค่า"}
-                                            readOnly
-                                            className="flex-1 px-4 py-2.5 rounded-xl border text-sm"
-                                            style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurface }}
-                                        />
-                                    </div>
+                                    <p className="font-medium text-sm mb-2" style={{ color: colors.onSurface }}>Java 17 location</p>
+                                    <input
+                                        type="text"
+                                        value={config.javaPaths?.java17 || "/path/to/java"}
+                                        readOnly
+                                        className="w-full px-4 py-2.5 rounded-xl border text-sm mb-2"
+                                        style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: config.javaPaths?.java17 ? colors.onSurface : colors.onSurfaceVariant }}
+                                    />
                                     <div className="flex gap-2 flex-wrap">
                                         <button
-                                            onClick={() => toast.success("ฟีเจอร์ติดตั้ง Java กำลังพัฒนา")}
+                                            onClick={async () => {
+                                                setInstallingJava(17);
+                                                try {
+                                                    const result = await windowApi?.installJava?.(17);
+                                                    if (result?.ok && result.path) {
+                                                        updateConfig({ javaPaths: { ...config.javaPaths, java17: result.path } });
+                                                        toast.success(`ติดตั้ง Java 17 สำเร็จ`);
+                                                    } else {
+                                                        toast.error(result?.error || "ติดตั้ง Java ล้มเหลว");
+                                                    }
+                                                } catch { toast.error("ติดตั้ง Java ล้มเหลว"); }
+                                                finally { setInstallingJava(null); }
+                                            }}
+                                            disabled={installingJava === 17}
                                             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
-                                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                            style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
                                         >
-                                            <i className="fa-solid fa-download"></i>
-                                            ติดตั้ง
+                                            <i className={`fa-solid ${installingJava === 17 ? "fa-spinner fa-spin" : "fa-download"}`}></i>
+                                            {installingJava === 17 ? "กำลังติดตั้ง..." : "Install"}
                                         </button>
                                         <button
-                                            onClick={() => toast.success("ค้นหา Java ในระบบ...")}
+                                            onClick={async () => {
+                                                setIsDetectingJava(true);
+                                                try {
+                                                    const javas = await windowApi?.detectJavaInstallations?.();
+                                                    const java17 = javas?.find((j: any) => j.majorVersion >= 17 && j.majorVersion < 21);
+                                                    if (java17) {
+                                                        updateConfig({ javaPaths: { ...config.javaPaths, java17: java17.path } });
+                                                        toast.success(`พบ Java 17: ${java17.path}`);
+                                                    } else {
+                                                        toast.error("ไม่พบ Java 17 ในระบบ");
+                                                    }
+                                                } catch { toast.error("ค้นหา Java ล้มเหลว"); }
+                                                finally { setIsDetectingJava(false); }
+                                            }}
+                                            disabled={isDetectingJava}
                                             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
                                             style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                                         >
                                             <i className="fa-solid fa-magnifying-glass"></i>
-                                            ค้นหา
+                                            Detect
                                         </button>
                                         <button
                                             onClick={async () => {
                                                 const path = await windowApi?.browseJava?.();
-                                                if (path) updateConfig({ javaPath: path });
+                                                if (path) {
+                                                    updateConfig({ javaPaths: { ...config.javaPaths, java17: path } });
+                                                    toast.success("ตั้งค่า Java 17 เรียบร้อย");
+                                                }
                                             }}
                                             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
                                             style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                                         >
                                             <i className="fa-solid fa-folder-open"></i>
-                                            เลือก
+                                            Browse
                                         </button>
+                                        <button
+                                            onClick={async () => {
+                                                const path = config.javaPaths?.java17;
+                                                if (!path || path === "/path/to/java") {
+                                                    toast.error("ยังไม่ได้ตั้งค่า Java 17");
+                                                    return;
+                                                }
+                                                setTestingJavaPath(path);
+                                                try {
+                                                    const result = await windowApi?.testJavaExecution?.(path);
+                                                    if (result?.ok) {
+                                                        toast.success(`Java ทำงานได้ปกติ${result.version ? ` (v${result.version})` : ""}`);
+                                                    } else {
+                                                        toast.error(result?.error || "Java ไม่สามารถใช้งานได้");
+                                                    }
+                                                } catch { toast.error("ทดสอบ Java ล้มเหลว"); }
+                                                finally { setTestingJavaPath(null); }
+                                            }}
+                                            disabled={testingJavaPath === config.javaPaths?.java17}
+                                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                        >
+                                            <i className={`fa-solid ${testingJavaPath === config.javaPaths?.java17 ? "fa-spinner fa-spin" : "fa-play"}`}></i>
+                                            Test
+                                        </button>
+                                        {config.javaPaths?.java17 && config.javaPaths.java17 !== "/path/to/java" && (
+                                            <button
+                                                onClick={() => {
+                                                    updateConfig({ javaPaths: { ...config.javaPaths, java17: undefined } });
+                                                    toast.success("ลบ Java 17 เรียบร้อย");
+                                                }}
+                                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                                                style={{ backgroundColor: "#ef444420", color: "#ef4444" }}
+                                            >
+                                                <i className="fa-solid fa-trash"></i>
+                                                Clear
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
 
-                                <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
-
                                 {/* Java 8 */}
                                 <div>
-                                    <p className="font-medium text-sm mb-2" style={{ color: colors.onSurface }}>Java 8</p>
-                                    <div className="flex gap-2 mb-2">
-                                        <input
-                                            type="text"
-                                            value={config.javaPath || "ไม่ได้ตั้งค่า"}
-                                            readOnly
-                                            className="flex-1 px-4 py-2.5 rounded-xl border text-sm"
-                                            style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurface }}
-                                        />
-                                    </div>
+                                    <p className="font-medium text-sm mb-2" style={{ color: colors.onSurface }}>Java 8 location</p>
+                                    <input
+                                        type="text"
+                                        value={config.javaPaths?.java8 || "/path/to/java"}
+                                        readOnly
+                                        className="w-full px-4 py-2.5 rounded-xl border text-sm mb-2"
+                                        style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: config.javaPaths?.java8 ? colors.onSurface : colors.onSurfaceVariant }}
+                                    />
                                     <div className="flex gap-2 flex-wrap">
                                         <button
-                                            onClick={() => toast.success("ฟีเจอร์ติดตั้ง Java กำลังพัฒนา")}
+                                            onClick={async () => {
+                                                setInstallingJava(8);
+                                                try {
+                                                    const result = await windowApi?.installJava?.(8);
+                                                    if (result?.ok && result.path) {
+                                                        updateConfig({ javaPaths: { ...config.javaPaths, java8: result.path } });
+                                                        toast.success(`ติดตั้ง Java 8 สำเร็จ`);
+                                                    } else {
+                                                        toast.error(result?.error || "ติดตั้ง Java ล้มเหลว");
+                                                    }
+                                                } catch { toast.error("ติดตั้ง Java ล้มเหลว"); }
+                                                finally { setInstallingJava(null); }
+                                            }}
+                                            disabled={installingJava === 8}
                                             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
-                                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                            style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
                                         >
-                                            <i className="fa-solid fa-download"></i>
-                                            ติดตั้ง
+                                            <i className={`fa-solid ${installingJava === 8 ? "fa-spinner fa-spin" : "fa-download"}`}></i>
+                                            {installingJava === 8 ? "กำลังติดตั้ง..." : "Install"}
                                         </button>
                                         <button
-                                            onClick={() => toast.success("ค้นหา Java ในระบบ...")}
+                                            onClick={async () => {
+                                                setIsDetectingJava(true);
+                                                try {
+                                                    const javas = await windowApi?.detectJavaInstallations?.();
+                                                    const java8 = javas?.find((j: any) => j.majorVersion >= 8 && j.majorVersion < 17);
+                                                    if (java8) {
+                                                        updateConfig({ javaPaths: { ...config.javaPaths, java8: java8.path } });
+                                                        toast.success(`พบ Java 8: ${java8.path}`);
+                                                    } else {
+                                                        toast.error("ไม่พบ Java 8 ในระบบ");
+                                                    }
+                                                } catch { toast.error("ค้นหา Java ล้มเหลว"); }
+                                                finally { setIsDetectingJava(false); }
+                                            }}
+                                            disabled={isDetectingJava}
                                             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
                                             style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                                         >
                                             <i className="fa-solid fa-magnifying-glass"></i>
-                                            ค้นหา
+                                            Detect
                                         </button>
                                         <button
                                             onClick={async () => {
                                                 const path = await windowApi?.browseJava?.();
-                                                if (path) updateConfig({ javaPath: path });
+                                                if (path) {
+                                                    updateConfig({ javaPaths: { ...config.javaPaths, java8: path } });
+                                                    toast.success("ตั้งค่า Java 8 เรียบร้อย");
+                                                }
                                             }}
                                             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
                                             style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                                         >
                                             <i className="fa-solid fa-folder-open"></i>
-                                            เลือก
+                                            Browse
                                         </button>
+                                        <button
+                                            onClick={async () => {
+                                                const path = config.javaPaths?.java8;
+                                                if (!path || path === "/path/to/java") {
+                                                    toast.error("ยังไม่ได้ตั้งค่า Java 8");
+                                                    return;
+                                                }
+                                                setTestingJavaPath(path);
+                                                try {
+                                                    const result = await windowApi?.testJavaExecution?.(path);
+                                                    if (result?.ok) {
+                                                        toast.success(`Java ทำงานได้ปกติ${result.version ? ` (v${result.version})` : ""}`);
+                                                    } else {
+                                                        toast.error(result?.error || "Java ไม่สามารถใช้งานได้");
+                                                    }
+                                                } catch { toast.error("ทดสอบ Java ล้มเหลว"); }
+                                                finally { setTestingJavaPath(null); }
+                                            }}
+                                            disabled={testingJavaPath === config.javaPaths?.java8}
+                                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                        >
+                                            <i className={`fa-solid ${testingJavaPath === config.javaPaths?.java8 ? "fa-spinner fa-spin" : "fa-play"}`}></i>
+                                            Test
+                                        </button>
+                                        {config.javaPaths?.java8 && config.javaPaths.java8 !== "/path/to/java" && (
+                                            <button
+                                                onClick={() => {
+                                                    updateConfig({ javaPaths: { ...config.javaPaths, java8: undefined } });
+                                                    toast.success("ลบ Java 8 เรียบร้อย");
+                                                }}
+                                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                                                style={{ backgroundColor: "#ef444420", color: "#ef4444" }}
+                                            >
+                                                <i className="fa-solid fa-trash"></i>
+                                                Clear
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             </div>
