@@ -3,6 +3,11 @@ import toast from "react-hot-toast";
 import { Icons } from "../ui/Icons";
 import { InstanceDetail } from "./InstanceDetail";
 import { LiveLog } from "./LiveLog";
+import minecraftIcon from "../../assets/minecraft.svg";
+import fabricIcon from "../../assets/fabric.svg";
+import forgeIcon from "../../assets/forge.svg";
+import neoforgeIcon from "../../assets/neoforge.svg";
+import quiltIcon from "../../assets/quilt.svg";
 
 // ========================================
 // Types
@@ -889,29 +894,27 @@ function CreateInstanceModal({ colors, onClose, onCreated }: CreateInstanceModal
     const loaders = [
         {
             id: "vanilla", name: "Vanilla", icon: (
-                <img src="/minecraft.svg" alt="Minecraft" className="w-5 h-5" />
+                <img src={minecraftIcon.src} alt="Minecraft" className="w-5 h-5" />
             )
         },
         {
             id: "fabric", name: "Fabric", icon: (
-                <img src="/fabric.svg" alt="Fabric" className="w-5 h-5" />
+                <img src={fabricIcon.src} alt="Fabric" className="w-5 h-5" />
             )
         },
         {
             id: "forge", name: "Forge", icon: (
-                <img src="/forge.svg" alt="Forge" className="w-5 h-5" />
+                <img src={forgeIcon.src} alt="Forge" className="w-5 h-5" />
             )
         },
         {
             id: "neoforge", name: "NeoForge", icon: (
-                <img src="/neoforge.svg" alt="NeoForge" className="w-5 h-5" />
+                <img src={neoforgeIcon.src} alt="NeoForge" className="w-5 h-5" />
             )
         },
         {
             id: "quilt", name: "Quilt", icon: (
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M2 4v16h20V4H2zm2 2h7v5H4V6zm0 12v-5h7v5H4zm16 0h-7v-5h7v5zm0-7h-7V6h7v5z" />
-                </svg>
+                <img src={quiltIcon.src} alt="Quilt" className="w-5 h-5" />
             )
         },
     ];

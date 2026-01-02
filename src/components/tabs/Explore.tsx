@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import toast from "react-hot-toast";
 import { Icons } from "../ui/Icons";
+import modrinthIcon from "../../assets/modrinth.svg";
+import curseforgeIcon from "../../assets/curseforge.svg";
 
 // ========================================
 // Constants
@@ -959,7 +961,7 @@ export function Explore({ colors }: ExploreProps) {
                             border: `1px solid ${contentSource === CONTENT_SOURCES.MODRINTH ? "transparent" : colors.outline}`,
                         }}
                     >
-                        <img src="/modrinth.svg" alt="Modrinth" className="w-5 h-5" />
+                        <img src={modrinthIcon.src} alt="Modrinth" className="w-5 h-5" />
                         Modrinth
                     </button>
                     <button
@@ -971,7 +973,7 @@ export function Explore({ colors }: ExploreProps) {
                             border: `1px solid ${contentSource === CONTENT_SOURCES.CURSEFORGE ? "transparent" : colors.outline}`,
                         }}
                     >
-                        <img src="/curseforge.svg" alt="CurseForge" className="w-5 h-5" />
+                        <img src={curseforgeIcon.src} alt="CurseForge" className="w-5 h-5" />
                         CurseForge
                     </button>
                 </div>

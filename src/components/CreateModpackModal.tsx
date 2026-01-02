@@ -1,6 +1,11 @@
 import React, { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { Icons } from "./ui/Icons";
+import fabricIcon from "../assets/fabric.svg";
+import forgeIcon from "../assets/forge.svg";
+import neoforgeIcon from "../assets/neoforge.svg";
+import minecraftIcon from "../assets/minecraft.svg";
+import quiltIcon from "../assets/quilt.svg";
 
 // ========================================
 // Types
@@ -32,11 +37,11 @@ interface GameVersion {
 // ========================================
 
 const LOADERS: { id: LoaderType; name: string; icon: string }[] = [
-    { id: "fabric", name: "Fabric", icon: "/fabric.svg" },
-    { id: "forge", name: "Forge", icon: "/forge.svg" },
-    { id: "neoforge", name: "NeoForge", icon: "/neoforge.svg" },
-    { id: "quilt", name: "Quilt", icon: "🧵" },
-    { id: "vanilla", name: "Vanilla", icon: "/minecraft.svg" },
+    { id: "fabric", name: "Fabric", icon: fabricIcon.src },
+    { id: "forge", name: "Forge", icon: forgeIcon.src },
+    { id: "neoforge", name: "NeoForge", icon: neoforgeIcon.src },
+    { id: "quilt", name: "Quilt", icon: quiltIcon.src },
+    { id: "vanilla", name: "Vanilla", icon: minecraftIcon.src },
 ];
 
 // ========================================
