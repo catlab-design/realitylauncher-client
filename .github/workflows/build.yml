@@ -24,6 +24,7 @@ env:
 jobs:
   build:
     strategy:
+      max-parallel: 1
       matrix:
         include:
           - os: [self-hosted, Windows]
@@ -40,29 +41,43 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
         with:
-          bun-version: latest
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: bun install
+        run: pnpm install
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
 
       - name: Build application
-        run: bun run build
+        run: pnpm run build
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
 
       - name: Build Electron app (Windows)
         if: matrix.platform == 'win'
-        run: bun run dist:win
+        run: pnpm run dist:win
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
 
       # macOS build disabled
       # - name: Build Electron app (macOS)
       #   if: matrix.platform == 'mac'
-      #   run: bun run dist:mac
+      #   run: pnpm run dist:mac
 
       - name: Build Electron app (Linux)
         if: matrix.platform == 'linux'
-        run: bun run dist:linux
+        run: pnpm run dist:linux
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
 
       - name: Upload Windows artifacts
         if: matrix.platform == 'win'
