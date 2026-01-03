@@ -26,9 +26,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: self-hosted-windows
+          - os: [self-hosted, Windows]
             platform: win
-          - os: self-hosted-linux
+          - os: [self-hosted, Linux]
             platform: linux
 
     runs-on: ${{ matrix.os }}
