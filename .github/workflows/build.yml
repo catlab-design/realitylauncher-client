@@ -41,33 +41,30 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install pnpm
-        run: npm install -g pnpm
-
       - name: Install dependencies
-        run: pnpm install
+        run: npm install
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
       - name: Build application
-        run: pnpm run build
+        run: npm run build
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
       - name: Build Electron app (Windows)
         if: matrix.platform == 'win'
-        run: pnpm run dist:win
+        run: npm run dist:win
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
       # macOS build disabled
       # - name: Build Electron app (macOS)
       #   if: matrix.platform == 'mac'
-      #   run: pnpm run dist:mac
+      #   run: npm run dist:mac
 
       - name: Build Electron app (Linux)
         if: matrix.platform == 'linux'
-        run: pnpm run dist:linux
+        run: npm run dist:linux
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
