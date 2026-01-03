@@ -26,11 +26,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: windows-latest
+          - os: self-hosted-windows
             platform: win
-          - os: macos-latest
-            platform: mac
-          - os: ubuntu-latest
+          - os: self-hosted-linux
             platform: linux
 
     runs-on: ${{ matrix.os }}
@@ -57,9 +55,10 @@ jobs:
         if: matrix.platform == 'win'
         run: bun run dist:win
 
-      - name: Build Electron app (macOS)
-        if: matrix.platform == 'mac'
-        run: bun run dist:mac
+      # macOS build disabled
+      # - name: Build Electron app (macOS)
+      #   if: matrix.platform == 'mac'
+      #   run: bun run dist:mac
 
       - name: Build Electron app (Linux)
         if: matrix.platform == 'linux'
@@ -76,16 +75,17 @@ jobs:
             release/latest.yml
           retention-days: 30
 
-      - name: Upload macOS artifacts
-        if: matrix.platform == 'mac'
-        uses: actions/upload-artifact@v4
-        with:
-          name: reality-launcher-macos
-          path: |
-            release/*.dmg
-            release/*.dmg.blockmap
-            release/latest-mac.yml
-          retention-days: 30
+      # macOS artifact upload disabled
+      # - name: Upload macOS artifacts
+      #   if: matrix.platform == 'mac'
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: reality-launcher-macos
+      #     path: |
+      #       release/*.dmg
+      #       release/*.dmg.blockmap
+      #       release/latest-mac.yml
+      #     retention-days: 30
 
       - name: Upload Linux artifacts
         if: matrix.platform == 'linux'
@@ -202,41 +202,42 @@ jobs:
             exit 1
           fi
 
-      - name: Upload macOS build to R2
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          set -e
-          VERSION=${{ steps.version.outputs.version }}
-          echo "=== Uploading macOS build for version $VERSION ==="
-          
-          for file in artifacts/reality-launcher-macos/*.dmg; do
-            if [ -f "$file" ]; then
-              FILENAME=$(basename "$file")
-              echo "Uploading $FILENAME to /client/$VERSION/..."
-              wrangler r2 object put --remote "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file" --content-type="application/octet-stream"
-              echo "✓ Uploaded $FILENAME"
-            fi
-          done
-          
-          for file in artifacts/reality-launcher-macos/*.blockmap; do
-            if [ -f "$file" ]; then
-              FILENAME=$(basename "$file")
-              echo "Uploading $FILENAME to /client/$VERSION/..."
-              wrangler r2 object put --remote "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file"
-              echo "✓ Uploaded $FILENAME"
-            fi
-          done
-          
-          if [ -f "artifacts/reality-launcher-macos/latest-mac.yml" ]; then
-            echo "Patching latest-mac.yml with version prefix..."
-            sed -i "s|url: |url: $VERSION/|g" artifacts/reality-launcher-macos/latest-mac.yml
-            cat artifacts/reality-launcher-macos/latest-mac.yml
-            echo "Uploading latest-mac.yml..."
-            wrangler r2 object put --remote "$R2_BUCKET/client/latest-mac.yml" --file="artifacts/reality-launcher-macos/latest-mac.yml" --content-type="text/yaml"
-            echo "✓ Uploaded latest-mac.yml"
-          fi
+      # macOS R2 upload disabled
+      # - name: Upload macOS build to R2
+      #   env:
+      #     CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      #     CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      #   run: |
+      #     set -e
+      #     VERSION=${{ steps.version.outputs.version }}
+      #     echo "=== Uploading macOS build for version $VERSION ==="
+      #     
+      #     for file in artifacts/reality-launcher-macos/*.dmg; do
+      #       if [ -f "$file" ]; then
+      #         FILENAME=$(basename "$file")
+      #         echo "Uploading $FILENAME to /client/$VERSION/..."
+      #         wrangler r2 object put --remote "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file" --content-type="application/octet-stream"
+      #         echo "✓ Uploaded $FILENAME"
+      #       fi
+      #     done
+      #     
+      #     for file in artifacts/reality-launcher-macos/*.blockmap; do
+      #       if [ -f "$file" ]; then
+      #         FILENAME=$(basename "$file")
+      #         echo "Uploading $FILENAME to /client/$VERSION/..."
+      #         wrangler r2 object put --remote "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file"
+      #         echo "✓ Uploaded $FILENAME"
+      #       fi
+      #     done
+      #     
+      #     if [ -f "artifacts/reality-launcher-macos/latest-mac.yml" ]; then
+      #       echo "Patching latest-mac.yml with version prefix..."
+      #       sed -i "s|url: |url: $VERSION/|g" artifacts/reality-launcher-macos/latest-mac.yml
+      #       cat artifacts/reality-launcher-macos/latest-mac.yml
+      #       echo "Uploading latest-mac.yml..."
+      #       wrangler r2 object put --remote "$R2_BUCKET/client/latest-mac.yml" --file="artifacts/reality-launcher-macos/latest-mac.yml" --content-type="text/yaml"
+      #       echo "✓ Uploaded latest-mac.yml"
+      #     fi
 
       - name: Upload Linux builds to R2
         env:
@@ -279,12 +280,12 @@ jobs:
           
           # Detect actual filenames
           WIN_FILE=$(basename $(ls artifacts/reality-launcher-windows/*.exe | head -n 1))
-          MAC_FILE=$(basename $(ls artifacts/reality-launcher-macos/*.dmg | head -n 1))
+          # MAC_FILE disabled - macOS build not available
           LINUX_AppImage=$(basename $(ls artifacts/reality-launcher-linux/*.AppImage | head -n 1))
           
           # URL Encode filenames (replace spaces with %20)
           WIN_URL="$CDN_URL/client/$VERSION/$(echo "$WIN_FILE" | sed 's/ /%20/g')"
-          MAC_URL="$CDN_URL/client/$VERSION/$(echo "$MAC_FILE" | sed 's/ /%20/g')"
+          # MAC_URL disabled - macOS build not available
           LINUX_URL="$CDN_URL/client/$VERSION/$(echo "$LINUX_AppImage" | sed 's/ /%20/g')"
           
           cat > latest.json <<EOF
@@ -294,7 +295,6 @@ jobs:
             "changelog": "$CHANGELOG_ESCAPED",
             "downloads": {
               "windows": "$WIN_URL",
-              "macos": "$MAC_URL",
               "linux": "$LINUX_URL"
             }
           }
@@ -335,7 +335,7 @@ jobs:
           generate_release_notes: true
           files: |
             artifacts/reality-launcher-windows/*.exe
-            artifacts/reality-launcher-macos/*.dmg
+            # artifacts/reality-launcher-macos/*.dmg  # macOS disabled
             artifacts/reality-launcher-linux/*.AppImage
             artifacts/reality-launcher-linux/*.deb
             artifacts/reality-launcher-linux/*.rpm

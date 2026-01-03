@@ -568,12 +568,10 @@ export function Explore({ colors }: ExploreProps) {
                 <button
                     onClick={() => handleInstallModpack(project)}
                     disabled={isInstallingModpack}
-                    className="w-full px-4 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+                    className="w-full px-3 py-2 rounded-md text-xs font-medium flex items-center justify-center gap-2 disabled:opacity-50"
                     style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
                 >
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
-                    </svg>
+                    <i className="fa-solid fa-download text-[10px]"></i>
                     ติดตั้งเป็น Instance ใหม่
                 </button>
             );
@@ -582,14 +580,15 @@ export function Explore({ colors }: ExploreProps) {
         return (
             <button
                 onClick={() => handleAddToInstance(project)}
-                className="w-full px-4 py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2"
+                className="w-full px-3 py-2 rounded-md text-xs font-medium flex items-center justify-center gap-2"
                 style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
             >
-                <span className="text-lg leading-none">+</span>
+                <i className="fa-solid fa-plus text-[10px]"></i>
                 เพิ่มลง Instance
             </button>
         );
     };
+
 
     return (
         <div className="space-y-4">
@@ -919,96 +918,91 @@ export function Explore({ colors }: ExploreProps) {
                 </div>
             )}
 
-            {/* Header / Search */}
-            <div className="rounded-2xl p-4 md:p-5" style={{ backgroundColor: colors.surfaceContainer }}>
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                    <div className="min-w-0">
-                        <div className="text-lg md:text-xl font-semibold" style={{ color: colors.onSurface }}>
-                            สำรวจคอนเทนต์
-                        </div>
-                        <div className="text-sm mt-1" style={{ color: colors.onSurfaceVariant }}>
-                            ค้นหา แล้วเลือกติดตั้งลง Instance
-                        </div>
+            {/* Toolbar */}
+            <div className="rounded-lg" style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}30` }}>
+                {/* Top row: Title + Search */}
+                <div className="px-4 py-3 flex items-center gap-4 border-b" style={{ borderColor: colors.outline + "30" }}>
+                    <div className="flex items-center gap-3 min-w-0">
+                        <i className="fa-solid fa-compass" style={{ color: colors.secondary }}></i>
+                        <span className="font-medium text-sm" style={{ color: colors.onSurface }}>สำรวจคอนเทนต์</span>
                     </div>
-
-                    <div className="w-full md:w-[420px] relative">
+                    <div className="flex-1 relative">
                         <input
                             type="text"
-                            placeholder={`ค้นหาใน ${projectType}...`}
+                            placeholder={`ค้นหา ${projectType === "modpack" ? "Modpacks" : projectType === "mod" ? "Mods" : projectType}...`}
                             value={searchQuery}
                             onChange={(e) => handleDebouncedSearch(e.target.value)}
                             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                            className="w-full px-4 py-3 pl-12 rounded-xl border"
+                            className="w-full px-3 py-1.5 pl-8 rounded-md text-sm"
                             style={{
                                 backgroundColor: colors.surface,
-                                borderColor: colors.outline,
+                                border: `1px solid ${colors.outline}40`,
                                 color: colors.onSurface,
                             }}
                         />
-                        <Icons.Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2" style={{ color: colors.onSurfaceVariant }} />
+                        <i className="fa-solid fa-search text-xs absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: colors.onSurfaceVariant }}></i>
+                    </div>
+
+                    {/* Source buttons */}
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => { setContentSource(CONTENT_SOURCES.MODRINTH); setPage(1); }}
+                            className="px-2.5 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors"
+                            style={{
+                                backgroundColor: contentSource === CONTENT_SOURCES.MODRINTH ? "#1bd96a" : "transparent",
+                                color: contentSource === CONTENT_SOURCES.MODRINTH ? "#000" : colors.onSurfaceVariant,
+                            }}
+                        >
+                            <img src={modrinthIcon.src} alt="" className="w-4 h-4" />
+                            Modrinth
+                        </button>
+                        <button
+                            onClick={() => { setContentSource(CONTENT_SOURCES.CURSEFORGE); setPage(1); }}
+                            className="px-2.5 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors"
+                            style={{
+                                backgroundColor: contentSource === CONTENT_SOURCES.CURSEFORGE ? "#f16436" : "transparent",
+                                color: contentSource === CONTENT_SOURCES.CURSEFORGE ? "#fff" : colors.onSurfaceVariant,
+                            }}
+                        >
+                            <img src={curseforgeIcon.src} alt="" className="w-4 h-4" />
+                            CurseForge
+                        </button>
                     </div>
                 </div>
 
-                {/* Source Selector (Modrinth / CurseForge) */}
-                <div className="mt-4 flex items-center gap-2 pb-3 border-b" style={{ borderColor: colors.outline }}>
-                    <span className="text-sm font-medium mr-2" style={{ color: colors.onSurfaceVariant }}>แหล่งที่มา:</span>
-                    <button
-                        onClick={() => { setContentSource(CONTENT_SOURCES.MODRINTH); setPage(1); }}
-                        className="px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all"
-                        style={{
-                            backgroundColor: contentSource === CONTENT_SOURCES.MODRINTH ? "#1bd96a" : colors.surface,
-                            color: contentSource === CONTENT_SOURCES.MODRINTH ? "#000" : colors.onSurfaceVariant,
-                            border: `1px solid ${contentSource === CONTENT_SOURCES.MODRINTH ? "transparent" : colors.outline}`,
-                        }}
-                    >
-                        <img src={modrinthIcon.src} alt="Modrinth" className="w-5 h-5" />
-                        Modrinth
-                    </button>
-                    <button
-                        onClick={() => { setContentSource(CONTENT_SOURCES.CURSEFORGE); setPage(1); }}
-                        className="px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all"
-                        style={{
-                            backgroundColor: contentSource === CONTENT_SOURCES.CURSEFORGE ? "#f16436" : colors.surface,
-                            color: contentSource === CONTENT_SOURCES.CURSEFORGE ? "#fff" : colors.onSurfaceVariant,
-                            border: `1px solid ${contentSource === CONTENT_SOURCES.CURSEFORGE ? "transparent" : colors.outline}`,
-                        }}
-                    >
-                        <img src={curseforgeIcon.src} alt="CurseForge" className="w-5 h-5" />
-                        CurseForge
-                    </button>
-                </div>
-
-                <div className="mt-4 flex flex-wrap items-center gap-2">
-                    {PROJECT_TABS.map((tab) => {
-                        const ActiveIcon = tab.icon;
-                        const active = projectType === tab.id;
-                        return (
-                            <button
-                                key={tab.id}
-                                onClick={() => { setProjectType(tab.id); setPage(1); }}
-                                className="px-3 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all"
-                                style={{
-                                    backgroundColor: active ? colors.secondary : colors.surface,
-                                    color: active ? "#1a1a1a" : colors.onSurfaceVariant,
-                                    border: `1px solid ${active ? "transparent" : colors.outline}`,
-                                }}
-                            >
-                                <ActiveIcon className="w-4 h-4" />
-                                {tab.label}
-                            </button>
-                        );
-                    })}
+                {/* Bottom row: Tabs + Filters */}
+                <div className="px-4 py-2 flex items-center gap-2">
+                    {/* Type tabs */}
+                    <div className="flex items-center gap-1">
+                        {PROJECT_TABS.map((tab) => {
+                            const active = projectType === tab.id;
+                            return (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => { setProjectType(tab.id); setPage(1); }}
+                                    className="px-2.5 py-1 rounded-md text-xs font-medium transition-colors"
+                                    style={{
+                                        backgroundColor: active ? colors.secondary : "transparent",
+                                        color: active ? "#1a1a1a" : colors.onSurfaceVariant,
+                                    }}
+                                >
+                                    {tab.label}
+                                </button>
+                            );
+                        })}
+                    </div>
 
                     <div className="flex-1" />
 
+                    {/* Filters */}
                     <div className="flex items-center gap-2">
                         <select
                             value={sortBy}
                             onChange={(e) => { setSortBy(e.target.value); setPage(1); }}
-                            className="px-3 py-2 rounded-xl text-sm border"
+                            className="px-2 py-1 rounded-md text-xs"
                             style={{
                                 backgroundColor: colors.surface,
-                                borderColor: colors.outline,
+                                border: `1px solid ${colors.outline}40`,
                                 color: colors.onSurface,
                             }}
                         >
@@ -1020,41 +1014,39 @@ export function Explore({ colors }: ExploreProps) {
                         <select
                             value={viewCount}
                             onChange={(e) => { setViewCount(Number(e.target.value)); setPage(1); }}
-                            className="px-3 py-2 rounded-xl text-sm border"
+                            className="px-2 py-1 rounded-md text-xs"
                             style={{
                                 backgroundColor: colors.surface,
-                                borderColor: colors.outline,
+                                border: `1px solid ${colors.outline}40`,
                                 color: colors.onSurface,
                             }}
                         >
                             {[10, 20, 50].map((n) => (
-                                <option key={n} value={n}>{n} / หน้า</option>
+                                <option key={n} value={n}>{n}</option>
                             ))}
                         </select>
 
+                        {/* Pagination */}
                         {totalPages > 0 && (
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1 ml-2">
                                 <button
                                     onClick={() => setPage(Math.max(1, page - 1))}
                                     disabled={page === 1}
-                                    className="w-9 h-9 rounded-xl flex items-center justify-center disabled:opacity-50"
-                                    style={{ backgroundColor: colors.surface, color: colors.onSurface, border: `1px solid ${colors.outline}` }}
+                                    className="w-6 h-6 rounded flex items-center justify-center disabled:opacity-40 text-xs"
+                                    style={{ backgroundColor: colors.surface, color: colors.onSurface }}
                                 >
-                                    ‹
+                                    <i className="fa-solid fa-chevron-left text-[10px]"></i>
                                 </button>
-                                <div
-                                    className="px-3 py-2 rounded-xl text-sm font-semibold"
-                                    style={{ backgroundColor: colors.surface, color: colors.onSurface, border: `1px solid ${colors.outline}` }}
-                                >
+                                <span className="text-xs px-1.5" style={{ color: colors.onSurfaceVariant }}>
                                     {page}/{totalPages}
-                                </div>
+                                </span>
                                 <button
                                     onClick={() => setPage(Math.min(totalPages, page + 1))}
                                     disabled={page >= totalPages}
-                                    className="w-9 h-9 rounded-xl flex items-center justify-center disabled:opacity-50"
-                                    style={{ backgroundColor: colors.surface, color: colors.onSurface, border: `1px solid ${colors.outline}` }}
+                                    className="w-6 h-6 rounded flex items-center justify-center disabled:opacity-40 text-xs"
+                                    style={{ backgroundColor: colors.surface, color: colors.onSurface }}
                                 >
-                                    ›
+                                    <i className="fa-solid fa-chevron-right text-[10px]"></i>
                                 </button>
                             </div>
                         )}
@@ -1062,112 +1054,83 @@ export function Explore({ colors }: ExploreProps) {
                 </div>
             </div>
 
+
             {/* Main Layout */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 mt-3">
                 {/* List */}
                 <div className="lg:col-span-7 xl:col-span-8">
-                    <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
-                        <div className="px-4 py-3 flex items-center justify-between border-b" style={{ borderColor: colors.outline }}>
-                            <div className="text-sm font-semibold" style={{ color: colors.onSurface }}>
-                                ผลลัพธ์ ({totalHits.toLocaleString()})
-                            </div>
-                            <button
-                                onClick={handleSearch}
-                                className="px-3 py-2 rounded-xl text-sm font-semibold"
-                                style={{ backgroundColor: colors.surface, color: colors.onSurface, border: `1px solid ${colors.outline}` }}
-                            >
-                                ค้นหา
-                            </button>
+                    <div className="rounded-lg overflow-hidden" style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}30` }}>
+                        <div className="px-3 py-2 flex items-center justify-between border-b" style={{ borderColor: colors.outline + "30" }}>
+                            <span className="text-xs" style={{ color: colors.onSurfaceVariant }}>
+                                {totalHits.toLocaleString()} รายการ
+                            </span>
+                            {isLoading && (
+                                <i className="fa-solid fa-spinner fa-spin text-xs" style={{ color: colors.secondary }}></i>
+                            )}
                         </div>
 
+
                         {isLoading ? (
-                            <div className="p-8 text-center" style={{ color: colors.onSurfaceVariant }}>
-                                <div className="animate-spin w-6 h-6 border-2 border-current border-t-transparent rounded-full mx-auto mb-2" style={{ color: colors.secondary }} />
-                                กำลังโหลด...
+                            <div className="p-6 text-center" style={{ color: colors.onSurfaceVariant }}>
+                                <i className="fa-solid fa-spinner fa-spin mb-2" style={{ color: colors.secondary }}></i>
+                                <p className="text-xs">กำลังโหลด...</p>
                             </div>
                         ) : results.length === 0 ? (
-                            <div className="p-8 text-center" style={{ color: colors.onSurfaceVariant }}>
-                                ไม่พบผลลัพธ์
+                            <div className="p-6 text-center" style={{ color: colors.onSurfaceVariant }}>
+                                <i className="fa-solid fa-box-open mb-2 text-lg"></i>
+                                <p className="text-xs">ไม่พบผลลัพธ์</p>
                             </div>
                         ) : (
-                            <div className="divide-y" style={{ borderColor: colors.outline }}>
-                                {results.map((project) => {
+                            <div>
+                                {results.map((project, idx) => {
                                     const active = previewProject?.project_id === project.project_id;
                                     return (
                                         <button
                                             key={project.project_id}
                                             onClick={() => setPreviewProject(project)}
-                                            className="w-full text-left px-4 py-3 flex items-center gap-3 transition-all"
+                                            className="w-full text-left px-3 py-2 flex items-center gap-3 transition-colors"
                                             style={{
-                                                backgroundColor: active ? colors.surface : colors.surfaceContainer,
+                                                backgroundColor: active ? colors.surfaceContainerHighest : "transparent",
+                                                borderBottom: idx < results.length - 1 ? `1px solid ${colors.outline}20` : undefined,
                                             }}
                                         >
                                             {/* Icon */}
                                             <div
-                                                className="w-12 h-12 rounded-xl bg-cover bg-center flex-shrink-0 flex items-center justify-center"
+                                                className="w-9 h-9 rounded-md bg-cover bg-center flex-shrink-0 flex items-center justify-center"
                                                 style={{
                                                     backgroundImage: project.icon_url ? `url(${project.icon_url})` : undefined,
                                                     backgroundColor: colors.surfaceContainerHighest,
-                                                    border: `1px solid ${colors.outline}`,
                                                 }}
                                             >
-                                                {!project.icon_url && <Icons.Box className="w-6 h-6" style={{ color: colors.onSurfaceVariant }} />}
+                                                {!project.icon_url && <i className="fa-solid fa-cube text-sm" style={{ color: colors.onSurfaceVariant }}></i>}
                                             </div>
 
                                             {/* Main */}
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2">
-                                                    <div className="font-semibold truncate" style={{ color: colors.onSurface }}>
+                                                    <span className="text-sm font-medium truncate" style={{ color: colors.onSurface }}>
                                                         {project.title}
-                                                    </div>
-                                                    <div className="text-xs truncate" style={{ color: colors.onSurfaceVariant }}>
+                                                    </span>
+                                                    <span className="text-[10px] truncate" style={{ color: colors.onSurfaceVariant }}>
                                                         {project.author}
-                                                    </div>
+                                                    </span>
                                                 </div>
-                                                <div className="text-sm truncate mt-0.5" style={{ color: colors.onSurfaceVariant }}>
+                                                <p className="text-xs truncate" style={{ color: colors.onSurfaceVariant }}>
                                                     {project.description}
-                                                </div>
-
-                                                <div className="flex items-center gap-2 mt-2 flex-wrap">
-                                                    {project.client_side && (
-                                                        <span
-                                                            className="px-2 py-0.5 rounded-lg text-xs"
-                                                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}
-                                                        >
-                                                            {project.client_side === "required" ? "Client" : "Client/Server"}
-                                                        </span>
-                                                    )}
-                                                    {project.categories.slice(0, 3).map((cat) => (
-                                                        <span
-                                                            key={cat}
-                                                            className="px-2 py-0.5 rounded-lg text-xs"
-                                                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}
-                                                        >
-                                                            {cat}
-                                                        </span>
-                                                    ))}
-                                                </div>
+                                                </p>
                                             </div>
 
-                                            {/* Mini stats */}
-                                            <div className="hidden md:flex items-center gap-3 flex-shrink-0">
-                                                <div className="flex items-center gap-1 text-xs" style={{ color: colors.onSurfaceVariant }}>
-                                                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                                                        <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z" />
-                                                    </svg>
-                                                    <span>{formatNumber(project.downloads)}</span>
-                                                </div>
-
-                                                <div
-                                                    className="w-2 h-2 rounded-full"
-                                                    style={{ backgroundColor: active ? colors.secondary : colors.outline }}
-                                                />
+                                            {/* Downloads */}
+                                            <div className="hidden sm:flex items-center gap-1 text-[10px] flex-shrink-0" style={{ color: colors.onSurfaceVariant }}>
+                                                <i className="fa-solid fa-download text-[8px]"></i>
+                                                <span>{formatNumber(project.downloads)}</span>
                                             </div>
                                         </button>
                                     );
                                 })}
                             </div>
                         )}
+
 
                         {/* Bottom Pagination */}
                         {!isLoading && results.length > 0 && totalPages > 1 && (
@@ -1189,111 +1152,114 @@ export function Explore({ colors }: ExploreProps) {
                                     className="px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-50 transition-all"
                                     style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
                                 >
-                                    หน้าถัดไป ›
+                                    หน้าถัดไป
                                 </button>
                             </div>
                         )}
                     </div>
                 </div>
 
-                {/* Preview / Actions */}
+                {/* Preview Panel */}
                 <div className="lg:col-span-5 xl:col-span-4">
-                    <div className="rounded-2xl p-4 sticky top-4" style={{ backgroundColor: colors.surfaceContainer }}>
+                    <div className="rounded-lg p-4 sticky top-4" style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}30` }}>
                         {!previewProject ? (
-                            <div className="p-8 text-center" style={{ color: colors.onSurfaceVariant }}>
-                                เลือกรายการจากฝั่งซ้ายเพื่อดูรายละเอียด
+                            <div className="p-6 text-center" style={{ color: colors.onSurfaceVariant }}>
+                                <i className="fa-solid fa-eye mb-2"></i>
+                                <p className="text-xs">เลือกรายการเพื่อดูรายละเอียด</p>
                             </div>
                         ) : (
                             <>
+                                {/* Header */}
                                 <div className="flex items-start gap-3">
                                     <div
-                                        className="w-14 h-14 rounded-2xl bg-cover bg-center flex-shrink-0 flex items-center justify-center"
+                                        className="w-12 h-12 rounded-lg bg-cover bg-center flex-shrink-0 flex items-center justify-center"
                                         style={{
                                             backgroundImage: previewProject.icon_url ? `url(${previewProject.icon_url})` : undefined,
                                             backgroundColor: colors.surfaceContainerHighest,
-                                            border: `1px solid ${colors.outline}`,
                                         }}
                                     >
-                                        {!previewProject.icon_url && <Icons.Box className="w-7 h-7" style={{ color: colors.onSurfaceVariant }} />}
+                                        {!previewProject.icon_url && <i className="fa-solid fa-cube text-lg" style={{ color: colors.onSurfaceVariant }}></i>}
                                     </div>
 
                                     <div className="min-w-0 flex-1">
-                                        <div className="text-base font-semibold truncate" style={{ color: colors.onSurface }}>
+                                        <p className="text-sm font-medium truncate" style={{ color: colors.onSurface }}>
                                             {previewProject.title}
-                                        </div>
-                                        <div className="text-sm truncate" style={{ color: colors.onSurfaceVariant }}>
-                                            โดย {previewProject.author}
-                                        </div>
+                                        </p>
+                                        <p className="text-xs truncate" style={{ color: colors.onSurfaceVariant }}>
+                                            by {previewProject.author}
+                                        </p>
                                     </div>
                                 </div>
 
-                                <div className="mt-3 text-sm" style={{ color: colors.onSurfaceVariant }}>
+                                {/* Description */}
+                                <p className="mt-3 text-xs leading-relaxed line-clamp-3" style={{ color: colors.onSurfaceVariant }}>
                                     {previewProject.description || "—"}
-                                </div>
+                                </p>
 
-                                <div className="mt-4 grid grid-cols-1 gap-2">
-                                    <div className="rounded-xl p-3" style={{ backgroundColor: colors.surface }}>
-                                        <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>
-                                            Downloads
-                                        </div>
-                                        <div className="text-sm font-semibold mt-1" style={{ color: colors.onSurface }}>
-                                            {formatNumber(previewProject.downloads)}
-                                        </div>
+                                {/* Stats row */}
+                                <div className="mt-3 flex items-center gap-4">
+                                    <div className="flex items-center gap-1.5 text-xs" style={{ color: colors.onSurfaceVariant }}>
+                                        <i className="fa-solid fa-download text-[10px]"></i>
+                                        <span>{formatNumber(previewProject.downloads)}</span>
                                     </div>
-
+                                    <div className="flex items-center gap-1.5 text-xs" style={{ color: colors.onSurfaceVariant }}>
+                                        <i className="fa-solid fa-heart text-[10px]"></i>
+                                        <span>{formatNumber(previewProject.follows)}</span>
+                                    </div>
                                 </div>
 
-                                <div className="mt-3 flex flex-wrap gap-1">
-                                    {(previewProject.categories || []).slice(0, 8).map((cat) => (
-                                        <span
-                                            key={cat}
-                                            className="px-2 py-1 rounded-xl text-xs"
-                                            style={{ backgroundColor: colors.surface, color: colors.onSurfaceVariant, border: `1px solid ${colors.outline}` }}
-                                        >
-                                            {cat}
-                                        </span>
-                                    ))}
-                                </div>
+                                {/* Categories */}
+                                {previewProject.categories?.length > 0 && (
+                                    <div className="mt-3 flex flex-wrap gap-1">
+                                        {previewProject.categories.slice(0, 5).map((cat) => (
+                                            <span
+                                                key={cat}
+                                                className="px-1.5 py-0.5 rounded text-[10px]"
+                                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}
+                                            >
+                                                {cat}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
 
+                                {/* Primary Action */}
                                 <div className="mt-4">
                                     <PrimaryAction project={previewProject} />
                                 </div>
 
+                                {/* Install Progress */}
                                 {(isInstallingModpack || installProgress) && projectType === "modpack" && (
-                                    <div className="mt-3 rounded-xl p-3" style={{ backgroundColor: colors.surface }}>
-                                        <div className="text-xs font-semibold" style={{ color: colors.onSurfaceVariant }}>
-                                            สถานะการติดตั้ง
-                                        </div>
-                                        <div className="text-sm mt-1" style={{ color: colors.onSurface }}>
-                                            {installProgress?.message || (isInstallingModpack ? "กำลังทำงาน..." : "—")}
+                                    <div className="mt-3 rounded-md p-3" style={{ backgroundColor: colors.surface }}>
+                                        <div className="flex items-center gap-2">
+                                            <i className="fa-solid fa-spinner fa-spin text-xs" style={{ color: colors.secondary }}></i>
+                                            <span className="text-xs" style={{ color: colors.onSurface }}>
+                                                {installProgress?.message || "กำลังติดตั้ง..."}
+                                            </span>
                                         </div>
                                         {typeof installProgress?.percent === "number" && (
                                             <div className="mt-2">
-                                                <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: colors.surfaceContainerHighest }}>
+                                                <div className="h-1 rounded-full overflow-hidden" style={{ backgroundColor: colors.surfaceContainerHighest }}>
                                                     <div
-                                                        className="h-full rounded-full transition-all"
+                                                        className="h-full transition-all"
                                                         style={{
                                                             width: `${Math.max(0, Math.min(100, installProgress.percent))}%`,
                                                             backgroundColor: colors.secondary,
                                                         }}
                                                     />
                                                 </div>
-                                                <div className="text-xs mt-1" style={{ color: colors.onSurfaceVariant }}>
-                                                    {Math.round(installProgress.percent)}%
-                                                </div>
                                             </div>
                                         )}
                                     </div>
                                 )}
 
+                                {/* Tip for non-modpack */}
                                 {projectType !== "modpack" && (
-                                    <div className="mt-3 rounded-xl p-3" style={{ backgroundColor: colors.surface }}>
-                                        <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>
-                                            ทิป
-                                        </div>
-                                        <div className="text-sm mt-1" style={{ color: colors.onSurface }}>
-                                            เลือก Instance แล้วเราจะหาเวอร์ชันที่เข้ากันให้เอง
-                                        </div>
+                                    <div className="mt-3 rounded-md p-2 flex items-start gap-2" style={{ backgroundColor: colors.surface }}>
+                                        <i className="fa-solid fa-lightbulb text-[10px] mt-0.5" style={{ color: colors.secondary }}></i>
+                                        <p className="text-[10px] leading-relaxed" style={{ color: colors.onSurfaceVariant }}>
+                                            เลือก Instance แล้วระบบจะหาเวอร์ชันที่เข้ากันได้ให้อัตโนมัติ
+                                        </p>
                                     </div>
                                 )}
                             </>

@@ -7,6 +7,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import toast from "react-hot-toast";
 import { Icons } from "../ui/Icons";
+import { InstanceContentBrowser } from "./InstanceContentBrowser";
 import type { GameInstance } from "../../types/launcher";
 
 // ========================================
@@ -225,6 +226,10 @@ export function InstanceDetail({
     const [shadersLoading, setShadersLoading] = useState(false);
     const [datapacks, setDatapacks] = useState<DatapackItem[]>([]);
     const [datapacksLoading, setDatapacksLoading] = useState(false);
+
+    // Content browser modal state
+    const [showContentBrowser, setShowContentBrowser] = useState(false);
+    const [browserContentType, setBrowserContentType] = useState<"mod" | "resourcepack" | "shader" | "datapack">("mod");
 
     // Check if this instance is currently playing
     const isThisInstancePlaying = isGameRunning && playingInstanceId === instance.id;
@@ -715,7 +720,7 @@ export function InstanceDetail({
                                 Mods {modsLoading ? "" : `(${mods.length})`}
                             </h3>
 
-                            {/* Search */}
+                            {/* Search + Actions */}
                             <div className="flex items-center gap-2">
                                 <div
                                     className="flex items-center gap-2 px-4 py-2 rounded-xl"
@@ -733,6 +738,14 @@ export function InstanceDetail({
                                         style={{ color: colors.onSurface }}
                                     />
                                 </div>
+                                <button
+                                    onClick={() => { setBrowserContentType("mod"); setShowContentBrowser(true); }}
+                                    className="px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 transition-all hover:opacity-90"
+                                    style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                                >
+                                    <i className="fa-solid fa-plus text-xs"></i>
+                                    ติดตั้ง Mod
+                                </button>
                                 <button
                                     onClick={loadMods}
                                     className="px-4 py-2 rounded-xl text-sm transition-all hover:opacity-80"
@@ -851,13 +864,23 @@ export function InstanceDetail({
                             <h3 className="text-lg font-medium" style={{ color: colors.onSurface }}>
                                 Resource Packs ({resourcepacks.length})
                             </h3>
-                            <button
-                                onClick={loadResourcepacks}
-                                className="px-4 py-2 rounded-xl text-sm transition-all hover:opacity-80"
-                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                            >
-                                รีเฟรช
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => { setBrowserContentType("resourcepack"); setShowContentBrowser(true); }}
+                                    className="px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 transition-all hover:opacity-90"
+                                    style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                                >
+                                    <i className="fa-solid fa-plus text-xs"></i>
+                                    ติดตั้ง
+                                </button>
+                                <button
+                                    onClick={loadResourcepacks}
+                                    className="px-4 py-2 rounded-xl text-sm transition-all hover:opacity-80"
+                                    style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                >
+                                    รีเฟรช
+                                </button>
+                            </div>
                         </div>
                         {resourcepacksLoading ? (
                             <div className="flex items-center justify-center py-12">
@@ -943,13 +966,23 @@ export function InstanceDetail({
                             <h3 className="text-lg font-medium" style={{ color: colors.onSurface }}>
                                 Datapacks ({datapacks.length})
                             </h3>
-                            <button
-                                onClick={loadDatapacks}
-                                className="px-4 py-2 rounded-xl text-sm transition-all hover:opacity-80"
-                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                            >
-                                รีเฟรช
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => { setBrowserContentType("datapack"); setShowContentBrowser(true); }}
+                                    className="px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 transition-all hover:opacity-90"
+                                    style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                                >
+                                    <i className="fa-solid fa-plus text-xs"></i>
+                                    ติดตั้ง
+                                </button>
+                                <button
+                                    onClick={loadDatapacks}
+                                    className="px-4 py-2 rounded-xl text-sm transition-all hover:opacity-80"
+                                    style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                >
+                                    รีเฟรช
+                                </button>
+                            </div>
                         </div>
                         {datapacksLoading ? (
                             <div className="flex items-center justify-center py-12">
@@ -1044,13 +1077,23 @@ export function InstanceDetail({
                             <h3 className="text-lg font-medium" style={{ color: colors.onSurface }}>
                                 Shaders ({shaders.length})
                             </h3>
-                            <button
-                                onClick={loadShaders}
-                                className="px-4 py-2 rounded-xl text-sm transition-all hover:opacity-80"
-                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                            >
-                                รีเฟรช
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => { setBrowserContentType("shader"); setShowContentBrowser(true); }}
+                                    className="px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 transition-all hover:opacity-90"
+                                    style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                                >
+                                    <i className="fa-solid fa-plus text-xs"></i>
+                                    ติดตั้ง
+                                </button>
+                                <button
+                                    onClick={loadShaders}
+                                    className="px-4 py-2 rounded-xl text-sm transition-all hover:opacity-80"
+                                    style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                >
+                                    รีเฟรช
+                                </button>
+                            </div>
                         </div>
                         {shadersLoading ? (
                             <div className="flex items-center justify-center py-12">
@@ -1386,6 +1429,23 @@ export function InstanceDetail({
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Content Browser Modal */}
+            {showContentBrowser && (
+                <InstanceContentBrowser
+                    instance={instance}
+                    contentType={browserContentType}
+                    colors={colors}
+                    onClose={() => setShowContentBrowser(false)}
+                    onInstalled={() => {
+                        // Refresh the appropriate content list after installation
+                        if (browserContentType === "mod") loadMods();
+                        else if (browserContentType === "resourcepack") loadResourcepacks();
+                        else if (browserContentType === "shader") loadShaders();
+                        else if (browserContentType === "datapack") loadDatapacks();
+                    }}
+                />
             )}
         </div>
     );

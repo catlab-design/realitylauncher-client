@@ -454,48 +454,6 @@ export default function LauncherApp() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Check for version update and show changelog modal
-  useEffect(() => {
-    if (!isInitialized) return;
-
-    (async () => {
-      try {
-        // Get current app version
-        const currentVersion = await (window as any).api?.getAppVersion?.();
-        if (!currentVersion) return;
-
-        // Load saved config to get lastSeenVersion
-        const savedConfig = await (window as any).api?.loadConfig?.();
-        const lastSeenVersion = savedConfig?.lastSeenVersion;
-
-        // If this is a new version, fetch changelog and show modal
-        if (currentVersion !== lastSeenVersion) {
-          try {
-            // Fetch latest.json from CDN to get changelog
-            const response = await fetch("https://cdn.reality.catlabdesign.space/client/latest.json");
-            if (response.ok) {
-              const data = await response.json();
-              if (data.changelog && data.version === currentVersion) {
-                setChangelogData({
-                  version: currentVersion,
-                  changelog: data.changelog
-                });
-                setChangelogModalOpen(true);
-              }
-            }
-          } catch (fetchError) {
-            console.log("[Changelog] Could not fetch changelog:", fetchError);
-          }
-
-          // Update lastSeenVersion even if we couldn't fetch changelog
-          updateConfig({ lastSeenVersion: currentVersion });
-        }
-      } catch (error) {
-        console.log("[Changelog] Version check error:", error);
-      }
-    })();
-  }, [isInitialized]);
-
   // Save accounts to localStorage when they change (only after initialization)
   useEffect(() => {
     if (!isInitialized) return;
@@ -562,43 +520,30 @@ export default function LauncherApp() {
         return;
       }
 
-      // If notifiedVersion exists (not first run) AND differs from current -> show update toast
+      // If notifiedVersion exists (not first run) AND differs from current -> show changelog modal
       if (notifiedVersion && notifiedVersion !== currentVersion) {
-        toast.dismiss(); // Clear any pending toasts
-        toast.custom((t) => (
-          <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} bg-white dark:bg-zinc-800 rounded-2xl shadow-xl w-96 overflow-hidden pointer-events-auto border-2 border-yellow-400`}>
-            <div className="p-6">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-12 h-12 rounded-full bg-yellow-400 flex items-center justify-center flex-shrink-0">
-                  <i className="fa-solid fa-check text-xl text-zinc-900"></i>
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-zinc-900 dark:text-white">อัปเดตเป็น v{currentVersion} แล้ว!</h3>
-                  <p className="text-sm text-zinc-500 dark:text-zinc-400">ดูการเปลี่ยนแปลงในเวอร์ชันนี้</p>
-                </div>
-              </div>
-
-              <button
-                onClick={() => {
-                  toast.dismiss(t.id);
-                  setChangelogModalOpen(true);
-                }}
-                className="w-full py-3 rounded-xl text-sm font-bold transition-colors mb-2"
-                style={{ backgroundColor: "#e4e4e7", color: "#18181b" }}
-              >
-                <i className="fa-solid fa-list mr-2"></i>
-                ดูรายการเปลี่ยนแปลง
-              </button>
-
-              <button
-                onClick={() => toast.dismiss(t.id)}
-                className="w-full py-3 bg-yellow-400 hover:bg-yellow-500 rounded-xl text-sm font-bold transition-colors text-zinc-900"
-              >
-                เข้าใจแล้ว!
-              </button>
-            </div>
-          </div>
-        ), { duration: 10000, position: "top-center" });
+        // Fetch changelog and show modal (similar to the version check effect)
+        try {
+          const response = await fetch("https://cdn.reality.catlabdesign.space/client/latest.json");
+          if (response.ok) {
+            const data = await response.json();
+            if (data.changelog) {
+              setChangelogData({
+                version: currentVersion,
+                changelog: data.changelog
+              });
+              setChangelogModalOpen(true);
+            }
+          }
+        } catch (fetchError) {
+          console.log("[Changelog] Could not fetch changelog:", fetchError);
+          // Show modal anyway with default message
+          setChangelogData({
+            version: currentVersion,
+            changelog: "ยินดีต้อนรับสู่เวอร์ชันใหม่!"
+          });
+          setChangelogModalOpen(true);
+        }
 
         // Mark as shown in this session
         sessionStorage.setItem("reality_update_shown", "true");
