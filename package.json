@@ -33,6 +33,14 @@
           "ml-launcher-core.exe",
           "ml-launcher-core"
         ]
+      },
+      {
+        "from": "ml-launcher-core/target/release",
+        "to": "bin",
+        "filter": [
+          "ml-launcher-core.exe",
+          "ml-launcher-core"
+        ]
       }
     ],
     "icon": "src/assets/r.png",
