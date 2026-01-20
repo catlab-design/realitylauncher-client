@@ -56,33 +56,17 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
-      - name: Checkout ml-launcher-core
-        uses: actions/checkout@v4
-        with:
-          repository: catlab-design/ml-launcher-core
-          path: ml-launcher-core
-          token: ${{ secrets.REPO_ACCESS_TOKEN }}
-
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: ml-launcher-core
+          workspaces: native
 
-      - name: Build Rust core (ml-launcher-core)
+      - name: Build Rust native module
         run: |
-          cd ml-launcher-core
+          cd native
           cargo build --release
         env:
           CARGO_TERM_COLOR: always
-
-      - name: Copy Rust binary to expected location
-        shell: bash
-        run: |
-          mkdir -p ../ml-launcher-core/target/release
-          cp -r ml-launcher-core/target/release/* ../ml-launcher-core/target/release/ 2>/dev/null || true
-          # Also try alternative: copy to local if parent doesn't work
-          mkdir -p ml-launcher-core-bin
-          cp ml-launcher-core/target/release/ml-launcher-core* ml-launcher-core-bin/ 2>/dev/null || true
 
       - name: Build application
         run: bun run build

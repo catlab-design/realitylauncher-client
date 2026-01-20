@@ -25,24 +25,7 @@
     "directories": {
       "output": "release-build"
     },
-    "extraResources": [
-      {
-        "from": "../ml-launcher-core/target/release",
-        "to": "bin",
-        "filter": [
-          "ml-launcher-core.exe",
-          "ml-launcher-core"
-        ]
-      },
-      {
-        "from": "ml-launcher-core/target/release",
-        "to": "bin",
-        "filter": [
-          "ml-launcher-core.exe",
-          "ml-launcher-core"
-        ]
-      }
-    ],
+    "extraResources": [],
     "icon": "src/assets/r.png",
     "files": [
       "dist/**/*",
