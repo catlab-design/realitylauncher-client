@@ -1,0 +1,71 @@
+﻿cargo :     Checking 
+reality-core v0.2.0 (E:\ml
+auncher\ml-client\native)
+At line:1 char:1
++ cargo check 
+--message-format=short 
+2>&1 | Out-File -Encoding 
+UTF8 com ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~
+    + CategoryInfo        
+      : NotSpecified: (   
+     Checking re...-cli   
+ ent\native):String) [    
+], RemoteException
+    + FullyQualifiedError 
+   Id : NativeCommandErr  
+  or
+ 
+src\instance\mod.rs:13:14:
+ warning: unused import: 
+`DateTime`
+src\extract\mod.rs:11:21: 
+warning: unused import: 
+`Write`
+src\forge\mod.rs:8:23: 
+warning: unused imports: 
+`SingleDownloadResult` 
+and `download_file`
+src\forge\mod.rs:11:1: 
+error[E0119]: conflicting 
+implementations of trait 
+`Clone` for type 
+`ForgeLoaderType`: 
+conflicting 
+implementation for 
+`ForgeLoaderType`
+src\forge\mod.rs:136:30: 
+error[E0599]: no method 
+named `cloned_or_else` 
+found for enum 
+`std::option::Option<T>` 
+in the current scope
+src\download\mod.rs:11:20:
+ warning: unused import: 
+`Digest`
+src\forge\mod.rs:34:5: 
+warning: unused variable: 
+`java_path`: help: if 
+this is intentional, 
+prefix it with an 
+underscore: `_java_path`
+src\forge\mod.rs:37:9: 
+warning: unused variable: 
+`client`: help: if this 
+is intentional, prefix it 
+with an underscore: 
+`_client`
+src\forge\mod.rs:61:9: 
+warning: unused variable: 
+`installer_url`: help: if 
+this is intentional, 
+prefix it with an 
+underscore: 
+`_installer_url`
+warning: `reality-core` 
+(lib) generated 7 warnings
+error: could not compile 
+`reality-core` (lib) due 
+to 2 previous errors; 7 
+warnings emitted

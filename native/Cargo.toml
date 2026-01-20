@@ -1,0 +1,50 @@
+[package]
+name = "reality-core"
+version = "0.2.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "2", features = ["napi4", "async", "tokio_rt"] }
+napi-derive = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.11", features = ["json", "stream", "rustls-tls"] }
+tokio = { version = "1", features = ["full", "sync", "fs", "io-util"] }
+futures = "0.3"
+sha1 = "0.10"
+sha2 = "0.10"
+hex = "0.4"
+zip = "0.6"
+walkdir = "2"
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "5"
+regex = "1"
+thiserror = "1"
+tracing = "0.1"
+tokio-util = { version = "0.7", features = ["io"] }
+bytes = "1"
+lzma-rs = "0.2"
+base64 = "0.21"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_Security",
+    "Win32_System_Registry"
+]}
+winreg = "0.52"
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+lto = "thin"
+opt-level = 3
+codegen-units = 8
+strip = true

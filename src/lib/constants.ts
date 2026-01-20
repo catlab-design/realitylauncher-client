@@ -8,4 +8,5 @@ export const COLOR_THEMES: Record<ColorTheme, { primary: string; name: string }>
     green: { primary: "#22c55e", name: "Green" },
     red: { primary: "#ef4444", name: "Red" },
     orange: { primary: "#f97316", name: "Orange" },
+    custom: { primary: "#888888", name: "Custom" },
 };

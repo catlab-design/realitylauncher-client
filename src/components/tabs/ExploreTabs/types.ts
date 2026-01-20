@@ -1,0 +1,78 @@
+// ========================================
+// Types for Explore Component
+// ========================================
+
+export const CONTENT_SOURCES = {
+    MODRINTH: "modrinth",
+    CURSEFORGE: "curseforge",
+} as const;
+
+export type ContentSource = typeof CONTENT_SOURCES[keyof typeof CONTENT_SOURCES];
+
+export type ProjectType = "modpack" | "mod" | "resourcepack" | "datapack" | "shader";
+
+export interface ModrinthProject {
+    slug: string;
+    title: string;
+    description: string;
+    categories: string[];
+    downloads: number;
+    icon_url: string | null;
+    project_id: string;
+    author: string;
+    versions: string[];
+    game_versions?: string[]; // Added
+    loaders?: string[];      // Added
+    follows: number;
+    client_side?: string;
+    server_side?: string;
+    gallery?: ModrinthGalleryItem[];
+    featured_gallery?: string | null;
+    color?: number | null; // Integer color from Rust
+    latest_version?: string | null;
+}
+
+export interface ModrinthGalleryItem {
+    url: string;
+    featured: boolean;
+    title?: string;
+    description?: string;
+    created: string;
+    ordering: number;
+    raw_url?: string; // From JS backend
+    rawUrl?: string; // From Native backend (camelCase)
+}
+
+export interface ExploreProps {
+    colors: any;
+}
+
+export interface GameInstance {
+    id: string;
+    name: string;
+    minecraftVersion: string;
+    loader: string;
+    loaderVersion?: string;
+}
+
+export interface ModVersion {
+    id: string;
+    name: string;
+    version_number: string;
+    game_versions: string[];
+    loaders: string[];
+    files?: { filename: string; primary: boolean; url: string }[];
+}
+
+export interface InstanceCompatibility {
+    instance: GameInstance;
+    compatible: boolean;
+    reason?: string;
+    bestVersion?: ModVersion;
+}
+
+export interface InstallProgress {
+    stage: string;
+    message: string;
+    percent?: number;
+}

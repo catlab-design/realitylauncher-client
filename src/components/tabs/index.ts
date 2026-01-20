@@ -5,3 +5,4 @@ export * from "./ModPack";
 export * from "./Explore";
 export * from "./InstanceDetail";
 export * from "./LiveLog";
+export * from "./About";

@@ -10,7 +10,22 @@
 import { app } from "electron";
 import path from "node:path";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import { getMinecraftDir } from "./config.js";
+
+// ========================================
+// Native Module Loading
+// ========================================
+
+const customRequire = createRequire(__filename);
+let nativeModule: any = null;
+
+function getNative(): any {
+    if (nativeModule) return nativeModule;
+    const nativePath = path.join(app.getAppPath(), "native", "index.cjs");
+    nativeModule = customRequire(nativePath);
+    return nativeModule;
+}
 
 // ========================================
 // Types
@@ -34,6 +49,10 @@ export interface GameInstance {
     gameDirectory: string;
     modpackId?: string; // If created from Modrinth modpack
     modpackVersionId?: string;
+    cloudId?: string;
+    autoUpdate?: boolean;
+    banner?: string;
+    lockedMods?: string[];
 }
 
 export interface CreateInstanceOptions {
@@ -58,12 +77,29 @@ export interface UpdateInstanceOptions {
     javaArguments?: string;
     lastPlayedAt?: string;
     totalPlayTime?: number;
+    autoUpdate?: boolean;
+    lockedMods?: string[];
 }
 
 // ========================================
 // Instances State
 // ========================================
 
+// ========================================
+// Instances State
+// ========================================
+
+/**
+ * Global cache of all loaded instances.
+ * This ensures that getInstance(id) acts as a reliable lookup even if the
+ * current `instances` array only contains a paginated subset.
+ */
+const instanceCache = new Map<string, GameInstance>();
+
+/**
+ * Current list of instances (could be a paginated subset).
+ * This is what is returned to the UI for display.
+ */
 let instances: GameInstance[] = [];
 
 // ========================================
@@ -113,8 +149,10 @@ export function getInstanceIconPath(instanceId: string): string {
 
 /**
  * Load instances from disk - scans all folders in instances directory
+ * Uses Native Rust Core for performance
  */
-export function loadInstances(): GameInstance[] {
+export async function loadInstances(offset: number = 0, limit: number = 1000): Promise<GameInstance[]> {
+    let nativeInstances: any[] = [];
     try {
         const instancesDir = getInstancesDir();
 
@@ -136,11 +174,10 @@ export function loadInstances(): GameInstance[] {
                 // Save each instance to its own file
                 for (const inst of oldInstances) {
                     const instDir = getInstanceDir(inst.id);
-                    if (fs.existsSync(instDir)) {
-                        const metaPath = getInstanceMetaPath(inst.id);
-                        fs.writeFileSync(metaPath, JSON.stringify(inst, null, 2));
-                        console.log("[Instances] Migrated:", inst.name);
-                    }
+                    if (!fs.existsSync(instDir)) fs.mkdirSync(instDir, { recursive: true });
+                    const metaPath = getInstanceMetaPath(inst.id);
+                    fs.writeFileSync(metaPath, JSON.stringify(inst, null, 2));
+                    console.log("[Instances] Migrated:", inst.name);
                 }
 
                 // Remove old file after migration
@@ -151,49 +188,67 @@ export function loadInstances(): GameInstance[] {
             }
         }
 
-        // Scan all subdirectories for instance.json
-        instances = [];
-        const entries = fs.readdirSync(instancesDir, { withFileTypes: true });
+        // Use Native Rust Core to list instances efficiently
+        const native = getNative();
+        // Pass base directory explicitly from JS to ensure correct path (especially in Dev)
+        nativeInstances = await native.listInstances(instancesDir, offset, limit) as any[];
 
-        for (const entry of entries) {
-            if (entry.isDirectory()) {
-                const metaPath = getInstanceMetaPath(entry.name);
-                if (fs.existsSync(metaPath)) {
-                    try {
-                        const data = fs.readFileSync(metaPath, "utf-8");
-                        const instance = JSON.parse(data) as GameInstance;
+        // Convert Native meta to GameInstance
+        const loadedInstances: GameInstance[] = nativeInstances.map(meta => ({
+            id: meta.id,
+            name: meta.name,
+            icon: meta.icon, // Already base64 from Rust
+            banner: meta.banner,
+            minecraftVersion: meta.minecraftVersion,
+            loader: meta.loader.toLowerCase() as LoaderType,
+            loaderVersion: meta.loaderVersion,
+            createdAt: meta.createdAt,
+            lastPlayedAt: meta.lastPlayedAt,
+            totalPlayTime: meta.totalPlayTime,
+            javaPath: meta.javaPath,
+            ramMB: meta.ramMB,
+            javaArguments: meta.javaArguments,
+            gameDirectory: meta.gameDirectory,
+            modpackId: meta.modpackId,
+            modpackVersionId: meta.modpackVersionId,
+            cloudId: meta.cloudId,
+            autoUpdate: meta.autoUpdate,
+            lockedMods: meta.lockedMods,
+        }));
 
-                        // Ensure gameDirectory is correct
-                        instance.gameDirectory = getInstanceDir(entry.name);
-                        instance.id = entry.name;
-
-                        // Check for icon.png and load as base64
-                        const iconPath = getInstanceIconPath(entry.name);
-                        if (fs.existsSync(iconPath)) {
-                            try {
-                                const iconData = fs.readFileSync(iconPath);
-                                const base64 = iconData.toString("base64");
-                                instance.icon = `data:image/png;base64,${base64}`;
-                            } catch (iconError) {
-                                console.warn("[Instances] Failed to read icon:", entry.name, iconError);
-                            }
-                        }
-
-                        instances.push(instance);
-                    } catch (parseError) {
-                        console.error("[Instances] Error loading instance:", entry.name, parseError);
-                    }
-                }
-            }
+        // Update Cache
+        for (const inst of loadedInstances) {
+            instanceCache.set(inst.id, inst);
         }
 
-        console.log("[Instances] Loaded", instances.length, "instances");
+        // Update the current "view" variable
+        // Update the current "view" variable
+        instances = loadedInstances;
+
+        console.log(`[Instances] Loaded ${instances.length} instances offset=${offset} limit=${limit} (Native Async). Cache size: ${instanceCache.size}`);
     } catch (error) {
         console.error("[Instances] Failed to load instances:", error);
         instances = [];
     }
+
+    // Debug Logging
+    try {
+        const logPath = path.join(app.getAppPath(), "debug-instances.log");
+        console.log("[Debug] Writing logs to:", logPath);
+        const logData = `[${new Date().toISOString()}] Loaded ${instances.length} instances: ${instances.map(i => i.id).join(", ")}\n`;
+        fs.appendFileSync(logPath, logData);
+        if (instances.length === 0) {
+            console.error("[Debug] Loaded 0 instances! Native returned:", JSON.stringify(nativeInstances));
+        }
+    } catch (e) { console.error("[Debug] Logging failed:", e); }
+
     return instances;
 }
+
+/**
+ * Cache for last saved content to avoid redundant disk writes
+ */
+const lastSavedContent = new Map<string, string>();
 
 /**
  * Save a single instance to its own instance.json file
@@ -214,10 +269,24 @@ function saveInstance(instance: GameInstance): void {
             delete saveData.icon;
         }
 
-        fs.writeFileSync(metaPath, JSON.stringify(saveData, null, 2));
+        const json = JSON.stringify(saveData, null, 2);
+
+        // Performance: Only write if content has changed
+        if (lastSavedContent.get(instance.id) === json) {
+            return;
+        }
+
+        // Atomic Write Strategy: Write to .tmp then rename
+        const tmpPath = `${metaPath}.tmp`;
+        fs.writeFileSync(tmpPath, json);
+        fs.renameSync(tmpPath, metaPath);
+
+        lastSavedContent.set(instance.id, json);
         console.log("[Instances] Saved instance:", instance.name);
     } catch (error) {
         console.error("[Instances] Failed to save instance:", instance.id, error);
+        // We do strictly throw here because if saving fails, the user should probably know, but for now log it.
+        // In the context of "update failure", the frontend will show error if IPC call throws/fails.
     }
 }
 
@@ -238,24 +307,35 @@ function saveInstances(): void {
 /**
  * Get all instances
  */
-export function getInstances(): GameInstance[] {
-    if (instances.length === 0) {
-        loadInstances();
-    }
-    return [...instances];
+export async function getInstances(offset: number = 0, limit: number = 1000): Promise<GameInstance[]> {
+    // Always reload to pick up new icons and changes
+    return await loadInstances(offset, limit);
 }
 
 /**
  * Get single instance by ID
  */
 export function getInstance(id: string): GameInstance | null {
-    return instances.find((i) => i.id === id) || null;
+    // Check cache first (contains all loaded instances)
+    if (instanceCache.has(id)) {
+        return instanceCache.get(id)!;
+    }
+
+    // Fallback to array search (redundant if cache is correct, but safe)
+    const instance = instances.find((i) => i.id === id);
+    if (!instance) {
+        try {
+            const logPath = path.join(app.getAppPath(), "debug-instances.log");
+            fs.appendFileSync(logPath, `[${new Date().toISOString()}] getInstance FAILED for ID: "${id}". Cache Size: ${instanceCache.size}. Available in View: ${instances.length}\n`);
+        } catch (e) { }
+    }
+    return instance || null;
 }
 
 /**
  * Create new instance
  */
-export function createInstance(options: CreateInstanceOptions): GameInstance {
+export async function createInstance(options: CreateInstanceOptions): Promise<GameInstance> {
     // Use sanitized profile name as ID instead of UUID
     const id = generateUniqueId(options.name);
     const gameDirectory = getInstanceDir(id);
@@ -291,71 +371,167 @@ export function createInstance(options: CreateInstanceOptions): GameInstance {
     };
 
     instances.push(instance);
-    saveInstances();
+    instanceCache.set(instance.id, instance);
+    saveInstance(instance);
 
     console.log("[Instances] Created instance:", instance.name, instance.id);
     return instance;
 }
 
 /**
+ * Import instance from cloud data
+ */
+export async function importCloudInstance(cloudData: any): Promise<GameInstance> {
+    // Use cloud ID as local ID and folder name
+    const id = cloudData.storagePath || cloudData.id;
+    const gameDirectory = getInstanceDir(id);
+    const instancesDir = getInstancesDir();
+
+    // Create instance directory if not exists via native
+    const native = getNative();
+    console.log("[Instances] Native keys:", Object.keys(native));
+    if (typeof native.createInstanceDirectories !== 'function') {
+        console.error("[Instances] CRITICAL: createInstanceDirectories is NOT a function. Available:", Object.keys(native));
+    }
+    native.createInstanceDirectories(instancesDir, id);
+
+    // Search by cloudId first if available, then fallback to id
+    let existingIndex = instances.findIndex(i => i.cloudId === cloudData.id);
+    if (existingIndex === -1) {
+        existingIndex = instances.findIndex(i => i.id === id);
+    }
+
+    const instance: GameInstance = {
+        id,
+        name: cloudData.name,
+        icon: cloudData.iconUrl || undefined, // Cloud URL or null
+        minecraftVersion: cloudData.minecraftVersion || "1.20.1",
+        loader: (cloudData.loaderType as LoaderType) || "fabric",
+        loaderVersion: cloudData.loaderVersion,
+        createdAt: cloudData.createdAt || new Date().toISOString(),
+        totalPlayTime: 0,
+        gameDirectory,
+        modpackId: cloudData.modpackType === "modrinth" ? cloudData.modpackUrl : undefined,
+        cloudId: cloudData.id,
+        autoUpdate: existingIndex !== -1 ? instances[existingIndex].autoUpdate : true,
+        banner: cloudData.bannerUrl || cloudData.image,
+    };
+
+    if (existingIndex !== -1) {
+        // Merge - keep local fields if not in cloudData
+        instances[existingIndex] = {
+            ...instances[existingIndex],
+            ...instance,
+            id: instances[existingIndex].id, // Preserve established local ID
+            gameDirectory: instances[existingIndex].gameDirectory, // Preserve directory
+            // Specifically preserve autoUpdate choice if not forced by cloud
+            autoUpdate: instances[existingIndex].autoUpdate !== undefined ? instances[existingIndex].autoUpdate : instance.autoUpdate,
+        };
+    } else {
+        instances.push(instance);
+    }
+
+    const finalInstance = existingIndex !== -1 ? instances[existingIndex] : instance;
+
+    // Update cache
+    instanceCache.set(finalInstance.id, finalInstance);
+
+    saveInstance(finalInstance);
+    console.log("[Instances] Imported cloud instance:", finalInstance.name, finalInstance.id);
+    return finalInstance;
+}
+
+/**
  * Update instance
  */
-export function updateInstance(id: string, updates: UpdateInstanceOptions): GameInstance | null {
+export async function updateInstance(id: string, updates: UpdateInstanceOptions): Promise<GameInstance | null> {
+    // Try to find in current view array
     const index = instances.findIndex((i) => i.id === id);
-    if (index === -1) {
+
+    // Also check cache (primary source of truth for all loaded instances)
+    let instance = index !== -1 ? instances[index] : instanceCache.get(id);
+
+    if (!instance) {
+        console.warn(`[Instances] updateInstance: Instance ${id} not found in array or cache.`);
         return null;
     }
 
-    instances[index] = { ...instances[index], ...updates };
-    saveInstances();
+    // Apply updates
+    const updatedInstance = { ...instance, ...updates };
+
+    // Update Cache
+    instanceCache.set(id, updatedInstance);
+
+    // Update Array if present (to keep current view in sync)
+    if (index !== -1) {
+        instances[index] = updatedInstance;
+    }
+
+    // Persist
+    saveInstance(updatedInstance);
 
     console.log("[Instances] Updated instance:", id);
-    return instances[index];
+    return updatedInstance;
 }
 
 /**
  * Delete instance
  */
-export function deleteInstance(id: string): boolean {
+export async function deleteInstance(id: string): Promise<boolean> {
     const index = instances.findIndex((i) => i.id === id);
-    if (index === -1) {
+
+    // Check cache if not in current view array
+    const instance = index !== -1 ? instances[index] : instanceCache.get(id);
+
+    if (!instance) {
+        console.warn(`[Instances] deleteInstance: Instance ${id} not found.`);
         return false;
     }
 
-    const instance = instances[index];
+    const targetDir = getInstanceDir(id);
+    console.log("[Instances] deleteInstance called for:", instance.name, "at", targetDir);
 
-    console.trace("[Instances] deleteInstance called for:", instance.name);
-
-    // Remove from array
-    // Note: No need to call saveInstances() here because each instance has its own
-    // instance.json file in its folder, which is deleted below anyway
-    instances.splice(index, 1);
-
-    // Delete directory
+    // Delete directory using Node.js directly (more robust with retries on Windows)
     try {
-        if (fs.existsSync(instance.gameDirectory)) {
-            fs.rmSync(instance.gameDirectory, { recursive: true, force: true });
-            console.log("[Instances] Deleted instance directory:", instance.gameDirectory);
+        if (fs.existsSync(targetDir)) {
+            console.log("[Instances] Deleting directory:", targetDir);
+            await fs.promises.rm(targetDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+            console.log("[Instances] Deleted instance directory:", targetDir);
+        } else {
+            console.log("[Instances] Directory already gone:", targetDir);
         }
     } catch (error) {
         console.error("[Instances] Failed to delete directory:", error);
+        // Important: Return false so frontend knows it failed
+        return false;
     }
 
-    console.log("[Instances] Deleted instance:", instance.name, id);
+    // Only remove from memory if disk delete success (or if directory was already gone)
+    if (index !== -1) {
+        instances.splice(index, 1);
+    }
+    lastSavedContent.delete(id);
+    instanceCache.delete(id);
+
+    if (instance.cloudId) {
+        console.log(`[Instances] Deleted cloud instance ${instance.cloudId}. Stay deleted.`);
+    }
+
+    console.log("[Instances] Deleted instance from state:", instance.name, id);
     return true;
 }
 
 /**
  * Duplicate instance
  */
-export function duplicateInstance(id: string): GameInstance | null {
+export async function duplicateInstance(id: string): Promise<GameInstance | null> {
     const source = getInstance(id);
     if (!source) {
         return null;
     }
 
     // Create new instance with same settings
-    const newInstance = createInstance({
+    const newInstance = await createInstance({
         name: `${source.name} (Copy)`,
         minecraftVersion: source.minecraftVersion,
         loader: source.loader,
@@ -370,13 +546,23 @@ export function duplicateInstance(id: string): GameInstance | null {
         const sourceDir = source.gameDirectory;
         const destDir = newInstance.gameDirectory;
 
-        // Copy mods, config, etc.
-        const copyDirs = ["mods", "config", "resourcepacks", "shaderpacks"];
+        // Copy mods, config, saves, etc.
+        const copyDirs = ["mods", "config", "resourcepacks", "shaderpacks", "saves", "datapacks"];
         for (const dir of copyDirs) {
             const srcPath = path.join(sourceDir, dir);
             const dstPath = path.join(destDir, dir);
             if (fs.existsSync(srcPath)) {
                 copyDirectorySync(srcPath, dstPath);
+            }
+        }
+
+        // Copy individual files (options, servers)
+        const copyFiles = ["options.txt", "servers.dat"];
+        for (const file of copyFiles) {
+            const srcPath = path.join(sourceDir, file);
+            const dstPath = path.join(destDir, file);
+            if (fs.existsSync(srcPath)) {
+                fs.copyFileSync(srcPath, dstPath);
             }
         }
     } catch (error) {
@@ -390,13 +576,74 @@ export function duplicateInstance(id: string): GameInstance | null {
 /**
  * Update last played time
  */
-export function markInstancePlayed(id: string, playTimeMinutes: number = 0): void {
+export async function markInstancePlayed(id: string, playTimeMinutes: number = 0): Promise<void> {
     const instance = getInstance(id);
     if (instance) {
-        updateInstance(id, {
+        await updateInstance(id, {
             lastPlayedAt: new Date().toISOString(),
             totalPlayTime: instance.totalPlayTime + playTimeMinutes,
         });
+    }
+}
+
+/**
+ * Set instance icon from file path or base64
+ * Saves the icon as icon.png in the instance folder
+ */
+export async function setInstanceIcon(id: string, iconData: string): Promise<{ ok: boolean; error?: string }> {
+    const instance = getInstance(id);
+    if (!instance) {
+        return { ok: false, error: "Instance not found" };
+    }
+
+    const iconPath = getInstanceIconPath(id);
+
+    try {
+        let imageBuffer: Buffer;
+
+        if (iconData.startsWith("data:image")) {
+            // Base64 data URL
+            const base64Data = iconData.replace(/^data:image\/\w+;base64,/, "");
+            imageBuffer = Buffer.from(base64Data, "base64");
+        } else if (fs.existsSync(iconData)) {
+            // File path - validate path before reading
+            const resolved = path.resolve(iconData);
+
+            // Allowed directories for icon files
+            const allowedDirs = [
+                app.getPath("pictures"),
+                app.getPath("downloads"),
+                app.getPath("desktop"),
+                app.getPath("home"),
+                getMinecraftDir(),
+            ];
+
+            const isSafe = allowedDirs.some(dir => {
+                const allowedPath = path.resolve(dir);
+                return resolved.startsWith(allowedPath);
+            });
+
+            if (!isSafe) {
+                console.warn("[Instances] Blocked path traversal attempt:", iconData);
+                return { ok: false, error: "Invalid file path - access denied" };
+            }
+
+            imageBuffer = fs.readFileSync(iconData);
+        } else {
+            return { ok: false, error: "Invalid icon data" };
+        }
+
+        // Write to icon.png
+        fs.writeFileSync(iconPath, imageBuffer);
+
+        // Reload instances to pick up the new icon
+        await loadInstances();
+
+        console.log("[Instances] Set icon for:", instance.name, "->", iconPath);
+        return { ok: true };
+    } catch (error) {
+        console.error("[Instances] Failed to set icon:", error);
+        return { ok: false, error: String(error) };
     }
 }
 
@@ -461,4 +708,4 @@ function generateUniqueId(name: string): string {
 }
 
 // Initialize on module load
-loadInstances();
+loadInstances().catch(err => console.error("[Instances] Init load failed:", err));

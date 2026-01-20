@@ -1,70 +1,207 @@
 import React, { useEffect, useState, useRef } from "react";
 import toast from "react-hot-toast";
+import { playClick, toastSuccess, toastError } from "../../lib/sounds";
 import { Icons } from "../ui/Icons";
 import { InstanceDetail } from "./InstanceDetail";
 import { LiveLog } from "./LiveLog";
-import minecraftIcon from "../../assets/minecraft.svg";
-import fabricIcon from "../../assets/fabric.svg";
-import forgeIcon from "../../assets/forge.svg";
-import neoforgeIcon from "../../assets/neoforge.svg";
-import quiltIcon from "../../assets/quilt.svg";
+import { Skeleton } from "../ui/Skeleton";
+import {
+    CreateInstanceModal,
+    ImportModpackModal,
+    InstallProgressModal,
+    DeleteConfirmModal,
+    type InstallProgress,
+    type ModInfo,
+} from "./ModPackTabs";
 
 // ========================================
 // Types
 // ========================================
 
-interface GameInstance {
-    id: string;
-    name: string;
-    icon?: string;
-    minecraftVersion: string;
-    loader: "vanilla" | "fabric" | "forge" | "neoforge" | "quilt";
-    loaderVersion?: string;
-    createdAt: string;
-    lastPlayedAt?: string;
-    totalPlayTime: number;
-    gameDirectory: string;
-}
+import { type AuthSession, type Server, type GameInstance, type LauncherConfig } from "../../types/launcher";
+
+// GameInstance imported from types
+
 
 interface ModPackProps {
     colors: any;
+    config: LauncherConfig;
     setImportModpackOpen: (open: boolean) => void;
     setActiveTab: (tab: string) => void;
-    isActive?: boolean; // Whether this tab is currently active
+    setSettingsTab?: (tab: any) => void;
+    onShowConfirm?: (options: any) => void;
+    isActive?: boolean;
+    selectedServer: Server | null;
+    session?: AuthSession | null;
+    updateConfig?: (newConfig: Partial<LauncherConfig>) => void;
 }
 
-interface InstallProgress {
-    stage: string;
-    message: string;
-    current?: number;
-    total?: number;
-    percent?: number;
-}
+// Inner component for Server Mods List
+function ServerModsList({ serverId, colors }: { serverId: string, colors: any }) {
+    const [mods, setMods] = useState<ModInfo[]>([]);
+    const [loading, setLoading] = useState(false);
 
-interface ModInfo {
-    filename: string;
-    name: string;
-    displayName: string;
-    author: string;
-    description: string;
-    icon: string | null;
-    enabled: boolean;
-    size: number;
-    modifiedAt: string;
+    useEffect(() => {
+        const fetchMods = async () => {
+            setLoading(true);
+            try {
+                // Try fetching remote mods via API if possible, or fallback to local checks
+                // For now, assuming synced instance means we can check local mods
+                const result = await (window.api as any)?.instanceListMods?.(serverId);
+                if (result?.ok) {
+                    setMods(result.mods);
+                }
+            } catch (e) {
+                console.error("Failed to fetch server mods", e);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchMods();
+    }, [serverId]);
+
+    if (loading) return <div className="text-center p-4">Loading mods...</div>;
+
+    if (mods.length === 0) return (
+        <div className="text-center p-4 text-sm" style={{ color: colors.onSurfaceVariant }}>
+            ไม่พบรายการ Mod (อาจยังไม่ได้ติดตั้งหรือเป็น Vanilla)
+        </div>
+    );
+
+    return (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-64 overflow-y-auto">
+            {mods.map((mod, idx) => (
+                <div key={`${mod.filename}-${idx}`} className="flex items-center gap-2 p-2 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHighest }}>
+                    <div className="w-8 h-8 rounded bg-gray-500/20 flex items-center justify-center flex-shrink-0">
+                        <Icons.Box className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate" style={{ color: colors.onSurface }}>{mod.name || mod.filename}</div>
+                        <div className="text-xs truncate" style={{ color: colors.onSurfaceVariant }}>{mod.filename || "Unknown filename"}</div>
+                    </div>
+                    <div className={mod.enabled ? "text-green-500" : "text-red-500"}>
+                        {mod.enabled ? "✓" : "✗"}
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
 }
 
 // ========================================
 // Component
 // ========================================
 
-export function ModPack({ colors, setImportModpackOpen, setActiveTab, isActive = true }: ModPackProps) {
+
+// Smart Image Component with caching (no timestamp cache busting)
+const imageCache = new Map<string, string>();
+
+function SmartImage({ src, alt, className, style, trigger }: { src: string | undefined, alt?: string, className?: string, style?: any, trigger?: number }) {
+    const [displaySrc, setDisplaySrc] = useState(() => {
+        if (!src) return undefined;
+        return imageCache.get(src) || src;
+    });
+    const [hasError, setHasError] = useState(false);
+
+    useEffect(() => {
+        if (!src) {
+            setDisplaySrc(undefined);
+            return;
+        }
+
+        // Use cached version if available
+        const cached = imageCache.get(src);
+        if (cached) {
+            setDisplaySrc(cached);
+            return;
+        }
+
+        setDisplaySrc(src);
+        setHasError(false);
+
+        // Skip fetch for data/blob URLs
+        if (src.startsWith("data:") || src.startsWith("blob:")) return;
+
+        // Preload image in background (no cache busting)
+        const img = new Image();
+        img.onload = () => {
+            imageCache.set(src, src);
+            setDisplaySrc(src);
+        };
+        img.onerror = () => setHasError(true);
+        img.src = src;
+    }, [src, trigger]);
+
+    if (hasError || !displaySrc) {
+        return <div className={className} style={{ ...style, backgroundColor: 'rgba(128,128,128,0.2)' }} />;
+    }
+
+    return <img src={displaySrc} alt={alt} className={className} style={style} loading="lazy" />;
+}
+
+// Smart Background Component with caching (no timestamp cache busting)
+function SmartBackground({ src, className, style, children, onClick, trigger }: { src: string | undefined, className?: string, style?: any, children?: React.ReactNode, onClick?: () => void, trigger?: number }) {
+    const [displaySrc, setDisplaySrc] = useState(() => {
+        if (!src) return undefined;
+        return imageCache.get(src) || src;
+    });
+
+    useEffect(() => {
+        if (!src) {
+            setDisplaySrc(undefined);
+            return;
+        }
+
+        // Use cached version if available
+        const cached = imageCache.get(src);
+        if (cached) {
+            setDisplaySrc(cached);
+            return;
+        }
+
+        setDisplaySrc(src);
+
+        // Skip fetch for data/blob URLs
+        if (src.startsWith("data:") || src.startsWith("blob:")) return;
+
+        // Preload image in background
+        const img = new Image();
+        img.onload = () => {
+            imageCache.set(src, src);
+            setDisplaySrc(src);
+        };
+        img.src = src;
+    }, [src, trigger]);
+
+    return (
+        <div
+            className={className}
+            style={{
+                ...style,
+                backgroundImage: displaySrc ? `url("${displaySrc}")` : style?.backgroundImage
+            }}
+            onClick={onClick}
+        >
+            {children}
+        </div>
+    );
+}
+
+
+export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, setSettingsTab,
+    onShowConfirm,
+    isActive,
+    selectedServer,
+    session,
+    updateConfig,
+}: ModPackProps) {
     const [instances, setInstances] = useState<GameInstance[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
     const [launchingId, setLaunchingId] = useState<string | null>(null);
-    const [isGameRunning, setIsGameRunning] = useState(false);
-    const [playingInstanceId, setPlayingInstanceId] = useState<string | null>(null);
+    const [playingInstances, setPlayingInstances] = useState<Set<string>>(new Set());
+
     const [showImportModal, setShowImportModal] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const [logViewerInstanceId, setLogViewerInstanceId] = useState<string | null>(null);
@@ -75,22 +212,81 @@ export function ModPack({ colors, setImportModpackOpen, setActiveTab, isActive =
 
     // Instance detail view state
     const [selectedInstance, setSelectedInstance] = useState<GameInstance | null>(null);
-    const [instanceMods, setInstanceMods] = useState<ModInfo[]>([]);
-    const [modsLoading, setModsLoading] = useState(false);
-    const [modSearchQuery, setModSearchQuery] = useState("");
+
+    // Local state for joined servers
+    const [joinedServers, setJoinedServers] = useState<Server[]>([]);
+    const [loadingServers, setLoadingServers] = useState(false);
+
+    // Trigger for background image revalidation
+    const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+    // Cache busting
+
+    // List of joined servers from Cloud
+    const loadJoinedServers = async () => {
+        if (joinedServers.length === 0) {
+            setLoadingServers(true);
+        }
+        try {
+            const result = await (window.api as any)?.instancesGetJoinedServers?.();
+            if (result?.ok && result.data) {
+                const all = [...(result.data.owned || []), ...(result.data.member || [])];
+                const unique = all.filter((v: Server, i: number, a: Server[]) => a.findIndex(t => t.id === v.id) === i);
+                setJoinedServers(unique);
+            } else if (result?.error) {
+                const errMsg = result.error;
+                if (errMsg.includes("401") || errMsg.includes("Unauthorized")) {
+                    console.warn("[ModPack] Session expired, user needs to re-login");
+                } else if (!errMsg.includes("Not logged in")) {
+                    console.error("[ModPack] Failed to fetch joined servers:", errMsg);
+                }
+            }
+        } catch (e) {
+            console.error("Failed to fetch joined servers", e);
+        } finally {
+            setLoadingServers(false);
+        }
+    };
+
+    // Fetch joined servers on mount and when session changes
+    useEffect(() => {
+        loadJoinedServers();
+    }, [session]);
 
     // Reset selectedInstance when tab becomes active (coming back from another tab)
     useEffect(() => {
         if (isActive) {
+            console.log("[ModPack] Tab active, reloading data...");
             setSelectedInstance(null);
+            setRefreshTrigger(prev => prev + 1); // Trigger background image refresh
             loadInstances();
+            loadJoinedServers();
         }
     }, [isActive]);
 
-    // Load instances on mount
+    // Load instances on mount and when session changes
     useEffect(() => {
         loadInstances();
-    }, []);
+
+        // Listen for updates from backend (e.g. after cloud sync or background changes)
+        const cleanup = window.api?.onInstancesUpdated?.(() => {
+            console.log("[ModPack] Instances updated event received, reloading...");
+            loadInstances();
+        });
+
+        return () => cleanup?.();
+    }, [session]);
+
+    // Update selectedInstance when instances list changes (to reflect background updates)
+    useEffect(() => {
+        if (selectedInstance && instances.length > 0) {
+            const fresh = instances.find(i => i.id === selectedInstance.id);
+            if (fresh && JSON.stringify(fresh) !== JSON.stringify(selectedInstance)) {
+                console.log("[ModPack] Updating selected instance with fresh data");
+                setSelectedInstance(fresh);
+            }
+        }
+    }, [instances]);
 
     // Listen for install progress
     useEffect(() => {
@@ -100,59 +296,188 @@ export function ModPack({ colors, setImportModpackOpen, setActiveTab, isActive =
         return () => cleanup?.();
     }, []);
 
-    // Track state with refs to avoid stale closures in polling
-    const shouldPollRef = useRef(false);
-    const isGameRunningRef = useRef(false);
-    const playingInstanceIdRef = useRef<string | null>(null);
-
-    // Keep refs in sync with state
+    // Check game status for all instances on load
     useEffect(() => {
-        isGameRunningRef.current = isGameRunning;
-    }, [isGameRunning]);
-
-    useEffect(() => {
-        playingInstanceIdRef.current = playingInstanceId;
-    }, [playingInstanceId]);
-
-    // Poll game running status
-    useEffect(() => {
-        const checkGameStatus = async () => {
-            try {
-                const running = await window.api?.isGameRunning?.();
-                const wasRunning = isGameRunningRef.current;
-
-                setIsGameRunning(running ?? false);
-
-                // Clear playing instance if game stopped
-                if (!running && wasRunning) {
-                    setPlayingInstanceId(null);
-                    shouldPollRef.current = false;
-                }
-            } catch (error) {
-                console.error("[ModPack] Error checking game status:", error);
-            }
+        const checkAllStatuses = async () => {
+            // We need instances list to check. 
+            // Since instances might not be loaded yet, we can't easily check here.
+            // Instead, we can try checking after loadInstances.
+            // But simpler: just listen to events.
+            // Initial check provided by "isGameRunning" call in polling was global.
         };
+    }, []);
 
-        // Check immediately on mount
-        checkGameStatus();
+    // Sync status when instances load - properly reset playingInstances based on actual state
+    useEffect(() => {
+        if (instances.length > 0) {
+            const syncStatuses = async () => {
+                const runningIds = new Set<string>();
+                for (const inst of instances) {
+                    try {
+                        const isRunning = await window.api?.isGameRunning?.(inst.id);
+                        if (isRunning) {
+                            runningIds.add(inst.id);
+                        }
+                    } catch { }
+                }
+                // Replace entire set instead of only adding
+                setPlayingInstances(runningIds);
+            };
+            syncStatuses();
+        }
+    }, [instances]);
 
-        // Poll every second for more responsive UI
-        const interval = setInterval(() => {
-            // Always poll when there's potential game activity
-            if (shouldPollRef.current || playingInstanceIdRef.current || launchingId || isGameRunningRef.current) {
-                checkGameStatus();
+    // Listen for game started/stopped events from main process
+    useEffect(() => {
+        const removeStartedListener = (window.api as any).onGameStarted((data: any) => {
+            console.log("[UI] Game Started Event:", data);
+            setLaunchingId(null);
+            setPlayingInstances(prev => new Set(prev).add(data.instanceId));
+        });
+
+        const removeStoppedListener = (window.api as any).onGameStopped((data: any) => {
+            console.log("[UI] Game Stopped Event:", data);
+            setPlayingInstances(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(data.instanceId);
+                return newSet;
+            });
+        });
+
+        return () => {
+            removeStartedListener?.();
+            removeStoppedListener?.();
+        };
+    }, []);
+
+    // Warn: Polling refactor needed?
+    // Current polling logic relies on `isGameRunning()` global.
+    // We can rely on individual checks or just events.
+    // For now, let's disable the global poller or make it check specific instances if needed.
+    // Events should be sufficient if robust.
+
+    // Debug: Log state changes
+    useEffect(() => {
+        console.log("[ModPack STATE]", { launchingId, playingInstances: Array.from(playingInstances) });
+    }, [launchingId, playingInstances]);
+
+    // Track if cancellation was requested to prevent race conditions with pending progress events
+    const isCancellingRef = useRef(false);
+
+    // Listen for cloud installation progress
+    useEffect(() => {
+        const removeListener = (window.api as any).onInstallProgress((data: any) => {
+            if (isCancellingRef.current) {
+                console.log("[ModPack] Ignoring progress event (Cancelled):", data);
+                return;
             }
-        }, 1000);
 
-        return () => clearInterval(interval);
-    }, [launchingId]); // Only depend on launchingId to minimize recreations
+            console.log("[ModPack] Install Progress:", data);
+
+            setInstallProgress({
+                stage: data.type,
+                message: data.task,
+                current: data.current,
+                total: data.total,
+                percent: data.percent
+            });
+
+            if (data.type === "complete" || data.percent === 100) {
+                // Optional: Delay close?
+                setTimeout(() => {
+                    if (!isCancellingRef.current) {
+                        setIsInstalling(false);
+                        setInstallProgress(null);
+                        loadInstances(); // Reload list
+                    }
+                }, 1000);
+            } else if (data.type === "error" || data.type === "cancelled" || data.type === "sync-error") {
+                setIsInstalling(false);
+                setInstallProgress(null);
+            } else {
+                setIsInstalling(true);
+            }
+        });
+
+        // Also listen for Modpack Import progress (local/Modrinth/CurseForge)
+        const removeModpackListener = (window.api as any).onModpackInstallProgress((data: any) => {
+            if (isCancellingRef.current) return;
+
+            console.log("[ModPack] Modpack Progress:", data);
+
+            // Map modpack progress to InstallProgress format
+            setInstallProgress({
+                stage: data.stage,
+                message: data.message,
+                current: data.current,
+                total: data.total,
+                percent: data.percent
+            });
+
+            if (data.percent === 100 || data.stage === "complete") {
+                setTimeout(() => {
+                    if (!isCancellingRef.current) {
+                        setIsInstalling(false);
+                        setInstallProgress(null);
+                        loadInstances();
+                    }
+                }, 1000);
+            } else if (data.stage === "error" || data.stage === "cancelled") {
+                setIsInstalling(false);
+                setInstallProgress(null);
+            } else {
+                setIsInstalling(true);
+            }
+        });
+
+        return () => {
+            removeListener?.();
+            removeModpackListener?.();
+        };
+    }, []);
+
+    // ... (rest of code)
+
+    // Track which instance is being installed/synced for cancellation
+    const [installingInstanceId, setInstallingInstanceId] = useState<string | null>(null);
+
+    const handleCancelInstall = async () => {
+        isCancellingRef.current = true;
+        try {
+            // If it's a cloud install/sync (we have an ID)
+            if (installingInstanceId) {
+                await (window.api as any)?.instanceCancelAction?.(installingInstanceId);
+            }
+            // Also try legacy cancellation (for local import)
+            await (window.api as any)?.modpackCancelInstall?.();
+
+            toast.error("ยกเลิกการติดตั้งแล้ว");
+            setIsInstalling(false);
+            setInstallProgress(null);
+            setInstallingInstanceId(null);
+        } catch (e) {
+            console.error("Failed to cancel install", e);
+        } finally {
+            // Reset flag after a delay to ensure pending events are flushed
+            setTimeout(() => {
+                isCancellingRef.current = false;
+            }, 1000);
+        }
+    };
 
     const loadInstances = async () => {
-        setIsLoading(true);
+        // Only show loading state if we have no instances (initial load)
+        if (instances.length === 0) {
+            setIsLoading(true);
+        }
+
         try {
-            const list = await window.api?.instancesList?.();
-            if (list) {
-                setInstances(list);
+            // Load all instances (limit 1000) at once to ensure backend "current view" is valid
+            // This prevents the backend from entering an empty state if a second "page" is requested empty
+            const allInstances = await window.api?.instancesList?.(0, 1000);
+
+            if (allInstances) {
+                setInstances(allInstances);
             }
         } catch (error) {
             console.error("[ModPack] Failed to load instances:", error);
@@ -161,78 +486,31 @@ export function ModPack({ colors, setImportModpackOpen, setActiveTab, isActive =
         }
     };
 
-    // Load mods for selected instance
-    const loadInstanceMods = async (instanceId: string) => {
-        setModsLoading(true);
-        try {
-            const result = await (window.api as any)?.instanceListMods?.(instanceId);
-            if (result?.ok) {
-                setInstanceMods(result.mods);
-            } else {
-                toast.error(result?.error || "โหลดรายการ Mods ไม่สำเร็จ");
-            }
-        } catch (error) {
-            console.error("[ModPack] Failed to load mods:", error);
-        } finally {
-            setModsLoading(false);
-        }
-    };
 
-    // Toggle mod enabled/disabled
-    const handleToggleMod = async (filename: string) => {
-        if (!selectedInstance) return;
-        try {
-            const result = await (window.api as any)?.instanceToggleMod?.(selectedInstance.id, filename);
-            if (result?.ok) {
-                // Update local state
-                setInstanceMods(prev => prev.map(mod =>
-                    mod.filename === filename
-                        ? { ...mod, filename: result.newFilename, enabled: result.enabled }
-                        : mod
-                ));
-            } else {
-                toast.error(result?.error || "เปลี่ยนสถานะ Mod ไม่สำเร็จ");
-            }
-        } catch (error) {
-            toast.error("เกิดข้อผิดพลาด");
-        }
-    };
 
-    // Delete mod from instance
-    const handleDeleteMod = async (filename: string) => {
-        if (!selectedInstance) return;
-        try {
-            const result = await (window.api as any)?.instanceDeleteMod?.(selectedInstance.id, filename);
-            if (result?.ok) {
-                setInstanceMods(prev => prev.filter(mod => mod.filename !== filename));
-                toast.success("ลบ Mod เรียบร้อย");
-            } else {
-                toast.error(result?.error || "ลบ Mod ไม่สำเร็จ");
-            }
-        } catch (error) {
-            toast.error("เกิดข้อผิดพลาด");
-        }
-    };
 
     // Open instance detail view
     const handleOpenInstanceDetail = (instance: GameInstance) => {
         setSelectedInstance(instance);
-        loadInstanceMods(instance.id);
     };
 
     const handleDelete = async (id: string) => {
+        // Optimistic UI: Remove from list immediately
+        setInstances(prev => prev.filter(inst => inst.id !== id));
+        setDeleteConfirmId(null);
+
         try {
             const success = await window.api?.instancesDelete?.(id);
             if (success) {
                 toast.success("ลบ Instance เรียบร้อย");
-                loadInstances();
             } else {
                 toast.error("ลบ Instance ไม่สำเร็จ");
+                loadInstances(); // Reload on failure
             }
         } catch (error) {
             toast.error("เกิดข้อผิดพลาด");
+            loadInstances(); // Reload on error
         }
-        setDeleteConfirmId(null);
     };
 
     const handleDuplicate = async (id: string) => {
@@ -252,20 +530,59 @@ export function ModPack({ colors, setImportModpackOpen, setActiveTab, isActive =
     };
 
     const handleUpdate = async (id: string, updates: Partial<GameInstance>) => {
+        console.log(`[ModPack] handleUpdate called for ID: ${id}`, updates);
+
+        // Optimistic Update: Update UI immediately
+        setInstances(prev => prev.map(inst =>
+            inst.id === id ? { ...inst, ...updates } : inst
+        ));
+
+        // Also update selected instance immediately if applicable
+        if (selectedInstance?.id === id) {
+            setSelectedInstance(prev => prev ? { ...prev, ...updates } : prev);
+        }
+
         try {
+            console.log("[ModPack] Sending IPC instances-update...");
             const success = await window.api?.instancesUpdate?.(id, updates);
+            console.log("[ModPack] IPC result:", success);
+
             if (success) {
-                // Update local state
+                // Confirm with server response
                 setInstances(prev => prev.map(inst =>
-                    inst.id === id ? { ...inst, ...updates } : inst
+                    inst.id === id ? success : inst
                 ));
-                // Update selected instance if it's the one being updated
                 if (selectedInstance?.id === id) {
-                    setSelectedInstance(prev => prev ? { ...prev, ...updates } : prev);
+                    setSelectedInstance(success);
                 }
+            } else {
+                // Revert on failure
+                console.error("[ModPack] Update failed (success was falsy/null), reverting...");
+                const freshInstances = await window.api?.instancesList?.();
+                if (freshInstances) setInstances(freshInstances);
+                toast.error("อัปเดตไม่สำเร็จ (API Returned Null)");
             }
         } catch (error) {
-            toast.error("อัปเดตไม่สำเร็จ");
+            console.error("[ModPack] Update error (Exception):", error);
+            // Revert on error
+            const freshInstances = await window.api?.instancesList?.();
+            if (freshInstances) setInstances(freshInstances);
+            toast.error("อัปเดตไม่สำเร็จ (Error)");
+        }
+    };
+
+    const handleRepair = async (id: string) => {
+        const toastId = toast.loading("กำลังตรวจสอบและซ่อมแซมไฟล์...");
+        try {
+            const result = await (window.api as any)?.instanceCheckIntegrity?.(id);
+            if (result?.ok) {
+                toast.success(result.message || "ซ่อมแซมเสร็จสิ้น", { id: toastId });
+                toast.success(result.message || "ซ่อมแซมเสร็จสิ้น", { id: toastId });
+            } else {
+                toast.error(result?.error || "ซ่อมแซมไม่สำเร็จ (Local Instance?)", { id: toastId });
+            }
+        } catch (error: any) {
+            toast.error(error?.message || "เกิดข้อผิดพลาด", { id: toastId });
         }
     };
 
@@ -273,65 +590,128 @@ export function ModPack({ colors, setImportModpackOpen, setActiveTab, isActive =
     const launchCancelledRef = useRef(false);
 
     const handlePlay = async (id: string) => {
-        // Prevent double-launch race condition
+        // Prevent double-launch race condition (Global lock for safety during download)
         if (launchingId !== null) {
-            console.log("[ModPack] Already launching, ignoring");
             return;
         }
 
-        launchCancelledRef.current = false;  // Reset cancel flag
-        shouldPollRef.current = true; // Start polling for game status
+        playClick(); // Play click sound on play button
+        launchCancelledRef.current = false;
         setLaunchingId(id);
-        setPlayingInstanceId(id);  // Set immediately so stop button shows
-        try {
-            const result = await window.api?.instancesLaunch?.(id);
 
-            // Check if cancelled during launch
+        // Optimistic: add to playing immediately? No, wait for success or use 'launchingId' for UI.
+
+        try {
+            const refreshResult = await (window.api as any)?.authRefreshToken?.();
+            if (refreshResult && !refreshResult.ok && refreshResult.error) {
+                if (refreshResult.error.includes("re-login")) {
+                    toastError("เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่");
+                    setLaunchingId(null);
+                    return;
+                }
+            }
+
+            // Note: instancesLaunch logic in backend now checks isGameRunning(id)
+            const result = await window.api?.instancesLaunch?.(id);
+            console.log("[ModPack] instancesLaunch result:", result);
+
             if (launchCancelledRef.current) {
-                // User clicked stop while launching - kill the game
-                await window.api?.killGame?.();
-                setIsGameRunning(false);
-                setPlayingInstanceId(null);
+                await window.api?.killGame?.(id);
+                setPlayingInstances(prev => { const s = new Set(prev); s.delete(id); return s; });
                 return;
             }
 
             if (result?.ok) {
-                toast.success(result.message || "กำลังเปิดเกม...");
-                setIsGameRunning(true);
+                toastSuccess(result.message || "กำลังเปิดเกม...");
+                setPlayingInstances(prev => new Set(prev).add(id));
             } else {
-                toast.error(result?.message || "เปิดเกมไม่สำเร็จ");
-                setPlayingInstanceId(null);  // Clear on error
+                const errorMessage = result?.message || "เปิดเกมไม่สำเร็จ";
+                const isJavaError = errorMessage.toLowerCase().includes("java") ||
+                    errorMessage.toLowerCase().includes("jre") ||
+                    errorMessage.toLowerCase().includes("java_home");
+
+                if (isJavaError && onShowConfirm && setSettingsTab) {
+                    // Try to parse Java version from error message (e.g. "Java 21+")
+                    const javaVersionMatch = errorMessage.match(/Java (\d+)/i);
+                    const requiredVersion = javaVersionMatch ? parseInt(javaVersionMatch[1]) : 0;
+
+                    onShowConfirm({
+                        title: "ไม่พบ Java ในเครื่องของคุณ",
+                        message: `${errorMessage}\nคุณต้องการติดตั้ง Java ทันทีหรือไม่?`,
+                        confirmText: "ติดตั้งตอนนี้",
+                        cancelText: "ไว้คราวหลัง",
+                        tertiaryText: "ไปหน้าติดตั้ง",
+                        confirmColor: "#22c55e", // Green for direct install
+                        onConfirm: () => {
+                            if (requiredVersion > 0 && (window.api as any)?.installJava) {
+                                setActiveTab("settings");
+                                setSettingsTab("java");
+                                toastSuccess(`กำลังเริ่มดาวน์โหลดและติดตั้ง Java ${requiredVersion}...`);
+                                setTimeout(() => {
+                                    (window.api as any).installJava(requiredVersion)
+                                        .then((result: any) => {
+                                            if (result?.ok && result.path) {
+                                                const pathKey = requiredVersion >= 21 ? "java21" : "java17";
+                                                if (updateConfig) {
+                                                    updateConfig({
+                                                        javaPaths: {
+                                                            ...config.javaPaths,
+                                                            [pathKey]: result.path
+                                                        }
+                                                    });
+                                                }
+                                                // Toast is handled by JavaTab usually, or we can show one here
+                                                toastSuccess(`ติดตั้ง Java ${requiredVersion} สำเร็จ`);
+                                            }
+                                        })
+                                        .catch((err: any) => {
+                                            toastError("ไม่สามารถเริ่มการติดตั้งได้: " + (err.message || "Unknown error"));
+                                        });
+                                }, 1000);
+                            } else {
+                                // Fallback
+                                setActiveTab("settings");
+                                setSettingsTab("java");
+                            }
+                        },
+                        onTertiary: () => {
+                            setActiveTab("settings");
+                            setSettingsTab("java");
+                        }
+                    });
+                }
+                else {
+                    toastError(errorMessage);
+                }
+                setPlayingInstances(prev => { const s = new Set(prev); s.delete(id); return s; });
             }
         } catch (error: any) {
-            toast.error(error?.message || "เกิดข้อผิดพลาด");
-            setPlayingInstanceId(null);  // Clear on error
+            toastError(error?.message || "เกิดข้อผิดพลาด");
+            setPlayingInstances(prev => { const s = new Set(prev); s.delete(id); return s; });
         } finally {
             setLaunchingId(null);
         }
     };
 
-    const handleStop = async () => {
-        // Set cancel flag for if we're still launching
-        launchCancelledRef.current = true;
+    const handleStop = async (id: string) => {
+        // If stopping the currently launching game
+        if (launchingId === id) {
+            launchCancelledRef.current = true;
+        }
 
         try {
-            const stopped = await window.api?.killGame?.();
-            // Always clear state when stop is clicked
-            setIsGameRunning(false);
-            setPlayingInstanceId(null);
-            setLaunchingId(null);
+            await window.api?.killGame?.(id);
+            setPlayingInstances(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(id);
+                return newSet;
+            });
 
-            if (stopped) {
-                toast.success("หยุดเกมแล้ว");
-            } else {
-                toast.success("ยกเลิกการเปิดเกมแล้ว");
-            }
+            if (launchingId === id) setLaunchingId(null);
+
+            toast.success("ส่งคำสั่งหยุดเกมแล้ว");
         } catch (error) {
-            // Still clear state even on error
-            setIsGameRunning(false);
-            setPlayingInstanceId(null);
-            setLaunchingId(null);
-            toast.success("ยกเลิกแล้ว");
+            toast.error("เกิดข้อผิดพลาดในการหยุดเกม");
         }
     };
 
@@ -355,13 +735,69 @@ export function ModPack({ colors, setImportModpackOpen, setActiveTab, isActive =
                 toast.success(`ติดตั้ง ${result.instance.name} เรียบร้อย!`);
                 loadInstances();
             } else {
-                toast.error(result?.error || "ติดตั้งไม่สำเร็จ");
+                // Don't show error toast if it was cancelled (already shown by handleCancelInstall)
+                if (result?.error && !result.error.includes("cancelled") && !result.error.includes("ยกเลิก")) {
+                    toast.error(result.error);
+                }
             }
         } catch (error: any) {
-            toast.error(error?.message || "เกิดข้อผิดพลาด");
+            // Don't show error toast if it was cancelled
+            if (error?.message && !error.message.includes("cancelled") && !error.message.includes("ยกเลิก")) {
+                toast.error(error.message || "เกิดข้อผิดพลาด");
+            }
         } finally {
             setIsInstalling(false);
             setInstallProgress(null);
+        }
+    };
+
+
+
+    const handleInstallServerInstance = async (id?: string) => {
+        setIsInstalling(true);
+        isCancellingRef.current = false; // Ensure flag is reset
+        // For Sync (no ID passed), we might fallback to checking selectedInstance or just handle specific Cloud Install (ID passed)
+        // If id is undefined, it's global sync... which might be iterating multiple instances or checking updates.
+        // Actually (window.api as any)?.instancesCloudSync?.() is the global sync.
+        // But wait, the cancel action requires an ID.
+        // If it's global sync, we might not have a single ID.
+        // However, the user issue is likely about specific "Server Modpack" installation (which passes ID).
+        if (id) setInstallingInstanceId(id);
+
+        const toastId = toast.loading(id ? "กำลังติดตั้ง..." : "กำลังตรวจสอบข้อมูล...");
+        try {
+            const result = id
+                ? await (window.api as any)?.instancesCloudInstall?.(id)
+                : await (window.api as any)?.instancesCloudSync?.();
+
+            if (result?.ok) {
+                toast.success("ดำเนินการเรียบร้อย", { id: toastId });
+                loadInstances();
+            } else {
+                // Check if it was cancelled (already shown by handleCancelInstall)
+                if (result?.error && (result.error.includes("cancelled") || result.error.includes("ยกเลิก"))) {
+                    toast.dismiss(toastId);
+                    return;
+                }
+                const errMsg = result?.error || "ติดตั้งไม่สำเร็จ";
+                if (errMsg.includes("401") || errMsg.includes("Unauthorized")) {
+                    toast.error("Session หมดอายุ กรุณา Login ใหม่", { id: toastId });
+                } else if (errMsg.includes("Not logged in")) {
+                    toast.error("กรุณา Login ก่อนใช้งาน", { id: toastId });
+                } else {
+                    toast.error(errMsg, { id: toastId });
+                }
+            }
+        } catch (error: any) {
+            // Check if it was cancelled (already shown by handleCancelInstall)
+            if (error?.message && (error.message.includes("cancelled") || error.message.includes("ยกเลิก"))) {
+                toast.dismiss(toastId);
+            } else {
+                toast.error(error?.message || "เกิดข้อผิดพลาด", { id: toastId });
+            }
+        } finally {
+            setIsInstalling(false);
+            setInstallingInstanceId(null);
         }
     };
 
@@ -426,17 +862,6 @@ export function ModPack({ colors, setImportModpackOpen, setActiveTab, isActive =
         return labels[loader] || loader;
     };
 
-    // Filter mods by search query
-    const filteredMods = instanceMods.filter(mod =>
-        mod.name.toLowerCase().includes(modSearchQuery.toLowerCase())
-    );
-
-    // Format file size
-    const formatSize = (bytes: number): string => {
-        if (bytes < 1024) return `${bytes} B`;
-        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    };
 
     // If an instance is selected, show detail view
     if (selectedInstance) {
@@ -449,7 +874,7 @@ export function ModPack({ colors, setImportModpackOpen, setActiveTab, isActive =
                     loadInstances(); // Reload in case of changes
                 }}
                 onPlay={handlePlay}
-                onStop={handleStop}
+                onStop={() => handleStop(selectedInstance.id)}
                 onOpenFolder={handleOpenFolder}
                 onDelete={(id) => {
                     handleDelete(id);
@@ -458,8 +883,8 @@ export function ModPack({ colors, setImportModpackOpen, setActiveTab, isActive =
                 onDuplicate={handleDuplicate}
                 onUpdate={handleUpdate}
                 launchingId={launchingId}
-                isGameRunning={isGameRunning}
-                playingInstanceId={playingInstanceId}
+                isGameRunning={playingInstances.size > 0}
+                playingInstanceId={playingInstances.has(selectedInstance.id) ? selectedInstance.id : (playingInstances.size > 0 ? "OTHER" : null)}
             />
         );
     }
@@ -476,11 +901,11 @@ export function ModPack({ colors, setImportModpackOpen, setActiveTab, isActive =
 
             <div className="space-y-6">
                 {/* Header */}
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-4">
                     <h2 className="text-xl font-medium" style={{ color: colors.onSurface }}>Mod Pack</h2>
                     <div className="flex gap-2">
                         <button
-                            onClick={() => setShowImportModal(true)}
+                            onClick={() => { playClick(); setShowImportModal(true); }}
                             disabled={isInstalling}
                             className="flex items-center gap-2 px-4 py-2 rounded-xl transition-all hover:opacity-80 disabled:opacity-50"
                             style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
@@ -491,7 +916,7 @@ export function ModPack({ colors, setImportModpackOpen, setActiveTab, isActive =
                             นำเข้า
                         </button>
                         <button
-                            onClick={() => setShowCreateModal(true)}
+                            onClick={() => { playClick(); setShowCreateModal(true); }}
                             className="flex items-center gap-2 px-4 py-2 rounded-xl transition-all hover:scale-[1.02]"
                             style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
                         >
@@ -511,39 +936,72 @@ export function ModPack({ colors, setImportModpackOpen, setActiveTab, isActive =
                             <Icons.Box className="w-7 h-7" style={{ color: colors.secondary }} />
                         </div>
                         <div>
-                            <h3 className="font-medium" style={{ color: colors.onSurface }}>สร้าง Mod Pack ของคุณเอง</h3>
-                            <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>หรือเลือก mod pack ที่ต้องการแล้วโหลดเล่นเลย</p>
+                            <h3 className="font-medium" style={{ color: colors.onSurface }}>สร้าง ModPack ของคุณเอง</h3>
+                            <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>หรือเลือก ModPack ที่ต้องการแล้วโหลดเล่นเลย</p>
                         </div>
                     </div>
                     <button
-                        onClick={() => setActiveTab("explore")}
+                        onClick={() => { playClick(); setActiveTab("explore"); }}
                         className="w-full py-3 rounded-xl border-2 border-dashed text-sm font-medium transition-all hover:opacity-80"
                         style={{ borderColor: colors.outline, color: colors.onSurfaceVariant }}
                     >
-                        + เพิ่ม Mod Pack ใหม่
+                        + เพิ่ม ModPack ใหม่
                     </button>
                 </div>
 
                 {/* My Mod Packs Section */}
                 <div>
-                    <h3 className="text-lg font-medium mb-3" style={{ color: colors.onSurface }}>Mod Pack ของฉัน</h3>
+
+
+
+
+                    <h3 className="text-lg font-medium mb-3" style={{ color: colors.onSurface }}>ModPack ของฉัน</h3>
                     {isLoading ? (
-                        <div className="rounded-2xl p-8 text-center" style={{ backgroundColor: colors.surfaceContainer }}>
-                            <div className="animate-spin w-8 h-8 border-2 border-current border-t-transparent rounded-full mx-auto mb-2" style={{ color: colors.secondary }} />
-                            <p style={{ color: colors.onSurfaceVariant }}>กำลังโหลด...</p>
+                        <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+                            {Array.from({ length: 9 }).map((_, i) => (
+                                <div
+                                    key={i}
+                                    className="rounded-xl overflow-hidden p-4 animate-skeleton-wave"
+                                    style={{
+                                        backgroundColor: `${colors.surfaceContainer}60`,
+                                        border: `1px solid ${colors.outline}15`,
+                                        animationDelay: `${Math.min(i * 30, 150)}ms`
+                                    }}
+                                >
+                                    {/* Header: Icon + Info */}
+                                    <div className="flex items-start gap-3 mb-3">
+                                        <div className="w-12 h-12 rounded-xl flex-shrink-0"
+                                            style={{ backgroundColor: colors.surfaceContainerHighest }} />
+                                        <div className="flex-1 space-y-2">
+                                            <div className="h-5 w-3/4 rounded" style={{ backgroundColor: colors.surfaceContainerHighest }} />
+                                            <div className="h-4 w-1/2 rounded" style={{ backgroundColor: colors.surfaceContainerHighest }} />
+                                        </div>
+                                    </div>
+
+                                    {/* Stats Line */}
+                                    <div className="h-4 w-1/3 rounded mb-4" style={{ backgroundColor: colors.surfaceContainerHighest }} />
+
+                                    {/* Buttons */}
+                                    <div className="flex gap-2">
+                                        <div className="h-10 flex-1 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHighest }} />
+                                        <div className="h-10 w-10 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHighest }} />
+                                        <div className="h-10 w-10 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHighest }} />
+                                    </div>
+                                </div>
+                            ))}
                         </div>
-                    ) : instances.length === 0 ? (
+                    ) : instances.filter(i => !i.cloudId).length === 0 ? (
                         <div className="rounded-2xl p-8 text-center" style={{ backgroundColor: colors.surfaceContainer }}>
                             <Icons.Box className="w-12 h-12 mx-auto mb-3" style={{ color: colors.onSurfaceVariant, opacity: 0.5 }} />
-                            <p className="font-medium mb-1" style={{ color: colors.onSurfaceVariant }}>ยังไม่มี Mod Pack</p>
-                            <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>สร้าง Mod Pack แล้วกลับมานะ</p>
+                            <p className="font-medium mb-1" style={{ color: colors.onSurfaceVariant }}>ยังไม่มี ModPack</p>
+                            <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>สร้าง ModPack แล้วกลับมานะ</p>
                         </div>
                     ) : (
                         <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-                            {instances.map((instance) => (
+                            {instances.filter(i => !i.cloudId).map((instance) => (
                                 <div
                                     key={instance.id}
-                                    onClick={() => handleOpenInstanceDetail(instance)}
+                                    onClick={() => { playClick(); handleOpenInstanceDetail(instance); }}
                                     className="p-4 rounded-xl transition-all hover:shadow-lg cursor-pointer"
                                     style={{ backgroundColor: colors.surfaceContainer }}
                                 >
@@ -554,7 +1012,7 @@ export function ModPack({ colors, setImportModpackOpen, setActiveTab, isActive =
                                             style={{ backgroundColor: colors.surfaceContainerHigh }}
                                         >
                                             {instance.icon ? (
-                                                <img src={instance.icon} alt={instance.name} className="w-full h-full object-cover rounded-xl" />
+                                                <SmartImage trigger={refreshTrigger} src={instance.icon} alt={instance.name} className="w-full h-full object-cover rounded-xl" />
                                             ) : (
                                                 <Icons.Box className="w-6 h-6" style={{ color: colors.onSurfaceVariant }} />
                                             )}
@@ -579,54 +1037,76 @@ export function ModPack({ colors, setImportModpackOpen, setActiveTab, isActive =
 
                                     {/* Actions */}
                                     <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                                        {(playingInstanceId === instance.id || launchingId === instance.id) ? (
-                                            <button
-                                                onClick={handleStop}
-                                                className="flex-1 py-2 rounded-lg font-medium transition-all hover:scale-[1.02] flex items-center justify-center gap-2"
-                                                style={{ backgroundColor: "#ef4444", color: "#ffffff" }}
-                                            >
-                                                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                                                    <rect x="6" y="6" width="12" height="12" />
-                                                </svg>
-                                                {launchingId === instance.id ? "กำลังเปิด..." : "หยุด"}
-                                            </button>
-                                        ) : (
-                                            <button
-                                                onClick={() => handlePlay(instance.id)}
-                                                disabled={launchingId !== null}
-                                                className="flex-1 py-2 rounded-lg font-medium transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed"
-                                                style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
-                                            >
-                                                ▶  เล่น
-                                            </button>
-                                        )}
+                                        {(() => {
+                                            // Determine button state - combine launching and playing
+                                            const isLaunching = launchingId === instance.id;
+                                            const isPlaying = playingInstances.has(instance.id);
+
+                                            // Show stop as long as this instance is either launching or playing
+                                            const showStop = isLaunching || isPlaying;
+
+                                            if (showStop) {
+                                                // Show stop button - loading if launching, red if playing
+                                                return (
+                                                    <button
+                                                        onClick={() => { playClick(); handleStop(instance.id); }}
+                                                        className="flex-1 h-10 px-4 rounded-xl flex items-center justify-center gap-2 transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10 shadow-sm hover:shadow-md font-bold"
+                                                        style={{
+                                                            backgroundColor: isLaunching ? colors.surfaceContainerHighest : "#ef4444",
+                                                            color: isLaunching ? colors.onSurface : "#ffffff"
+                                                        }}
+                                                    >
+                                                        {isLaunching ? (
+                                                            <>
+                                                                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                                                โหลด...
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                                                                    <rect x="6" y="6" width="12" height="12" />
+                                                                </svg>
+                                                                หยุด
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                );
+                                            }
+
+                                            // Normal play button
+                                            return (
+                                                <button
+                                                    onClick={() => { playClick(); handlePlay(instance.id); }}
+                                                    className="flex-1 h-10 px-4 rounded-xl flex items-center justify-center gap-2 transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10 shadow-sm hover:shadow-md font-bold"
+                                                    style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                                                >
+                                                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                                                        <path d="M8 5v14l11-7z" />
+                                                    </svg>
+                                                    เล่น
+                                                </button>
+                                            );
+                                        })()}
                                         <button
-                                            onClick={() => handleOpenFolder(instance.id)}
-                                            className="px-3 py-2 rounded-lg transition-all hover:opacity-80"
+                                            onClick={() => { playClick(); handleOpenFolder(instance.id); }}
+                                            className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10"
                                             style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                                             title="เปิดโฟลเดอร์"
                                         >
                                             <Icons.Folder className="w-5 h-5" />
                                         </button>
                                         <button
-                                            onClick={() => setLogViewerInstanceId(instance.id)}
-                                            className="px-3 py-2 rounded-lg transition-all hover:opacity-80"
+                                            onClick={() => { playClick(); setLogViewerInstanceId(instance.id); }}
+                                            className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10"
                                             style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                                             title="ดู Logs"
                                         >
                                             <Icons.Terminal className="w-5 h-5" />
                                         </button>
+
                                         <button
-                                            onClick={() => handleDuplicate(instance.id)}
-                                            className="px-3 py-2 rounded-lg transition-all hover:opacity-80"
-                                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                                            title="คัดลอก"
-                                        >
-                                            <Icons.Copy className="w-5 h-5" />
-                                        </button>
-                                        <button
-                                            onClick={() => setDeleteConfirmId(instance.id)}
-                                            className="px-3 py-2 rounded-lg transition-all hover:opacity-80"
+                                            onClick={() => { playClick(); setDeleteConfirmId(instance.id); }}
+                                            className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10"
                                             style={{ backgroundColor: "#ef444420", color: "#ef4444" }}
                                             title="ลบ"
                                         >
@@ -641,50 +1121,248 @@ export function ModPack({ colors, setImportModpackOpen, setActiveTab, isActive =
 
                 {/* Server Mods Section */}
                 <div>
-                    <h3 className="text-lg font-medium mb-3" style={{ color: colors.onSurface }}>Mod ของเซิร์ฟเวอร์</h3>
-                    <div className="rounded-2xl p-8 text-center" style={{ backgroundColor: colors.surfaceContainer }}>
-                        <Icons.Box className="w-12 h-12 mx-auto mb-3" style={{ color: colors.onSurfaceVariant, opacity: 0.5 }} />
-                        <p className="font-medium mb-1" style={{ color: colors.onSurfaceVariant }}>ไม่มีเซิร์ฟเวอร์</p>
-                        <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>เพิ่มเซิร์ฟเวอร์จากเมนูเซิร์ฟเวอร์ก่อน mod</p>
-                    </div>
+                    <h3 className="text-lg font-medium mb-3" style={{ color: colors.onSurface }}>ModPack ของเซิร์ฟเวอร์</h3>
+
+
+                    {loadingServers ? (
+                        <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
+                            <Skeleton className="h-48 rounded-2xl" colors={colors} />
+                            <Skeleton className="h-48 rounded-2xl" colors={colors} />
+                        </div>
+                    ) : joinedServers.length > 0 ? (
+                        <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+                            {joinedServers.map(server => {
+                                const serverInstance = instances.find(i => i.cloudId === server.id);
+
+                                if (serverInstance) {
+                                    // Installed: Show Banner Card
+                                    return (
+                                        <SmartBackground
+                                            key={serverInstance.id}
+                                            trigger={refreshTrigger}
+                                            src={serverInstance.banner || server.bannerUrl || server.iconUrl}
+                                            onClick={() => { playClick(); handleOpenInstanceDetail(serverInstance); }}
+                                            className="group relative rounded-2xl overflow-hidden cursor-pointer h-48 transition-all hover:shadow-xl"
+                                            style={{
+                                                backgroundColor: colors.surfaceContainer,
+                                                border: "2px solid transparent"
+                                            }}
+                                        >
+                                            {/* Full Background Image is handled by SmartBackground */}
+                                            <div className="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105"
+                                                style={{ backgroundImage: "inherit" }}
+                                            />
+
+                                            {/* Gradient Overlay */}
+                                            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
+
+                                            {/* Icon - Top Left */}
+                                            <div className="absolute top-2 left-2 w-12 h-12 rounded-xl bg-black/20 backdrop-blur-md border border-white/10 overflow-hidden shadow-lg z-10">
+                                                {serverInstance.icon ? (
+                                                    <SmartImage trigger={refreshTrigger} src={serverInstance.icon} alt={serverInstance.name} className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <div className="w-full h-full flex items-center justify-center bg-white/10 text-white">
+                                                        <Icons.Box className="w-6 h-6" />
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Auto Update Badge - Top Right */}
+                                            <div className="absolute top-2 right-2 z-10 select-none">
+                                                <div
+                                                    className="flex items-center gap-2 px-2 py-1 rounded-full bg-black/40 backdrop-blur-sm border border-white/10 hover:bg-black/50 transition-colors cursor-pointer"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        playClick();
+                                                        // Toggle logic: undefined (implicit ON) -> false (OFF), true -> false, false -> true
+                                                        handleUpdate(serverInstance.id, { autoUpdate: serverInstance.autoUpdate === false });
+                                                    }}
+                                                    title={serverInstance.autoUpdate !== false ? "อัปเดตอัตโนมัติ: เปิด" : "อัปเดตอัตโนมัติ: ปิด"}
+                                                >
+                                                    <div className={`w-2 h-2 rounded-full ${serverInstance.autoUpdate !== false ? "bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.5)]" : "bg-gray-400"}`} />
+                                                    <span className="text-[10px] text-white/80 pr-1">Auto Update</span>
+                                                </div>
+                                            </div>
+
+                                            {/* Content & Actions - Bottom */}
+                                            <div className="absolute bottom-0 left-0 right-0 p-4 z-10 w-full">
+                                                {/* Name - Hidden by default */}
+                                                <div className="mb-1 transition-all duration-300 opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 text-shadow-md">
+                                                    <h3 className="text-xl font-bold text-white truncate drop-shadow-md">
+                                                        {serverInstance.name}
+                                                    </h3>
+                                                </div>
+
+                                                {/* Version - Always Visible, Above Buttons */}
+                                                <div className="mb-2">
+                                                    <p className="text-sm text-gray-300 truncate drop-shadow-sm">
+                                                        {serverInstance.minecraftVersion} • {getLoaderLabel(serverInstance.loader)}
+                                                    </p>
+                                                </div>
+
+                                                {/* Buttons - Always Visible, Full Width */}
+                                                <div className="flex gap-2 w-full">
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            playClick();
+                                                            if (playingInstances.has(serverInstance.id) || launchingId === serverInstance.id) {
+                                                                handleStop(serverInstance.id);
+                                                            } else {
+                                                                handlePlay(serverInstance.id);
+                                                            }
+                                                        }}
+                                                        className="flex-1 h-10 px-4 rounded-xl flex items-center justify-center gap-2 transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10"
+                                                        style={{
+                                                            backgroundColor: launchingId === serverInstance.id
+                                                                ? colors.surfaceContainerHighest
+                                                                : playingInstances.has(serverInstance.id)
+                                                                    ? "#ef4444"
+                                                                    : colors.secondary,
+                                                            color: launchingId === serverInstance.id
+                                                                ? colors.onSurface
+                                                                : playingInstances.has(serverInstance.id)
+                                                                    ? "#fff"
+                                                                    : "#1a1a1a"
+                                                        }}
+                                                    >
+                                                        {launchingId === serverInstance.id ? (
+                                                            <>
+                                                                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                                                <span className="font-bold">โหลด...</span>
+                                                            </>
+                                                        ) : playingInstances.has(serverInstance.id) ? (
+                                                            <>
+                                                                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                                                                    <rect x="6" y="6" width="12" height="12" />
+                                                                </svg>
+                                                                <span className="font-bold">หยุด</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                                                                    <path d="M8 5v14l11-7z" />
+                                                                </svg>
+                                                                <span className="font-bold">เล่น</span>
+                                                            </>
+                                                        )}
+                                                    </button>
+
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            playClick();
+                                                            handleOpenFolder(serverInstance.id);
+                                                        }}
+                                                        className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10 shrink-0"
+                                                        style={{ backgroundColor: "rgba(255,255,255,0.1)", color: "#fff" }}
+                                                        title="เปิดโฟลเดอร์"
+                                                    >
+                                                        <Icons.Folder className="w-5 h-5" />
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            playClick();
+                                                            setLogViewerInstanceId(serverInstance.id);
+                                                        }}
+                                                        className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10 shrink-0"
+                                                        style={{ backgroundColor: "rgba(255,255,255,0.1)", color: "#fff" }}
+                                                        title="ดู Logs"
+                                                    >
+                                                        <Icons.Terminal className="w-5 h-5" />
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            playClick();
+                                                            handleRepair(serverInstance.id);
+                                                        }}
+                                                        className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-red-500/20 hover:text-red-500 active:scale-95 backdrop-blur-md border border-white/10 shrink-0"
+                                                        style={{ backgroundColor: "rgba(255,255,255,0.1)", color: "#fff" }}
+                                                        title="ซ่อมแซมไฟล์ (Force Sync)"
+                                                    >
+                                                        <Icons.Wrench className="w-5 h-5" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </SmartBackground>
+                                    );
+                                } else {
+                                    // Not Installed: Show Install Card (Banner Style)
+                                    return (
+                                        <SmartBackground
+                                            key={server.id}
+                                            trigger={refreshTrigger}
+                                            src={server.bannerUrl || server.iconUrl}
+                                            className="group relative rounded-2xl overflow-hidden h-48 transition-all hover:shadow-xl"
+                                            style={{
+                                                backgroundColor: colors.surfaceContainer,
+                                                border: "2px solid " + colors.outline
+                                            }}
+                                        >
+                                            {/* Full Background Image (Grayscale) */}
+                                            {(server.bannerUrl || server.iconUrl) && (
+                                                <div
+                                                    className="absolute inset-0 bg-cover bg-center transition-all duration-500 group-hover:scale-105 opacity-30 grayscale group-hover:grayscale-0"
+                                                    style={{ backgroundImage: "inherit" }}
+                                                />
+                                            )}
+
+                                            {/* Gradient Overlay */}
+                                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+
+                                            {/* Center Content: Install Button */}
+                                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-10 transition-opacity group-hover:opacity-100">
+                                                <button
+                                                    onClick={() => { playClick(); handleInstallServerInstance(server.id); }}
+                                                    disabled={isInstalling}
+                                                    className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition-all shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 disabled:opacity-50 disabled:pointer-events-none flex items-center gap-2"
+                                                >
+                                                    <Icons.Download className="w-5 h-5" />
+                                                    {isInstalling ? "กำลังติดตั้ง..." : "ติดตั้ง ModPack"}
+                                                </button>
+                                            </div>
+
+                                            {/* Name Bottom Left */}
+                                            <div className="absolute bottom-4 left-4 right-4 z-10 pointer-events-none">
+                                                <h3 className="text-xl font-bold text-white truncate drop-shadow-md text-center">
+                                                    {server.name}
+                                                </h3>
+                                                <p className="text-sm text-gray-400 text-center">ยังไม่ได้ติดตั้ง</p>
+                                            </div>
+                                        </SmartBackground>
+                                    );
+                                }
+                            })}
+                        </div>
+                    ) : (
+                        <div className="rounded-2xl p-8 text-center" style={{ backgroundColor: colors.surfaceContainer }}>
+                            <Icons.Box className="w-12 h-12 mx-auto mb-3" style={{ color: colors.onSurfaceVariant, opacity: 0.5 }} />
+                            <p className="font-medium mb-1" style={{ color: colors.onSurfaceVariant }}>ยังไม่ได้เข้าร่วม Server</p>
+                            <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>เข้าร่วม Server เพื่อเล่น ModPack ของเซิร์ฟเวอร์</p>
+                        </div>
+                    )}
+
                 </div>
 
 
 
                 {/* Delete Confirmation Modal */}
                 {deleteConfirmId && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                        <div className="w-full max-w-sm rounded-2xl p-6" style={{ backgroundColor: colors.surface }}>
-                            <h3 className="text-lg font-medium mb-2" style={{ color: colors.onSurface }}>
-                                ยืนยันการลบ Instance?
-                            </h3>
-                            <p className="mb-6" style={{ color: colors.onSurfaceVariant }}>
-                                การลบจะลบไฟล์ทั้งหมดใน Instance นี้ รวมถึง mods, saves, และ config
-                            </p>
-                            <div className="flex gap-3">
-                                <button
-                                    onClick={() => setDeleteConfirmId(null)}
-                                    className="flex-1 py-2 rounded-lg"
-                                    style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                                >
-                                    ยกเลิก
-                                </button>
-                                <button
-                                    onClick={() => handleDelete(deleteConfirmId)}
-                                    className="flex-1 py-2 rounded-lg font-medium"
-                                    style={{ backgroundColor: "#ef4444", color: "#ffffff" }}
-                                >
-                                    ลบ
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+                    <DeleteConfirmModal
+                        colors={colors}
+                        instanceId={deleteConfirmId}
+                        onCancel={() => setDeleteConfirmId(null)}
+                        onConfirm={handleDelete}
+                    />
                 )}
 
                 {/* Create Instance Modal */}
                 {showCreateModal && (
                     <CreateInstanceModal
                         colors={colors}
+                        config={config}
                         onClose={() => setShowCreateModal(false)}
                         onCreated={() => {
                             setShowCreateModal(false);
@@ -695,318 +1373,28 @@ export function ModPack({ colors, setImportModpackOpen, setActiveTab, isActive =
 
                 {/* Import Modal */}
                 {showImportModal && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                        <div className="w-full max-w-md rounded-2xl p-6 relative" style={{ backgroundColor: colors.surface }}>
-                            <button
-                                onClick={() => setShowImportModal(false)}
-                                className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-500/20"
-                                style={{ color: colors.onSurfaceVariant }}
-                            >
-                                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-                                </svg>
-                            </button>
-
-                            <div className="flex items-center gap-3 mb-4">
-                                <div
-                                    className="w-10 h-10 rounded-full flex items-center justify-center"
-                                    style={{ backgroundColor: colors.secondary }}
-                                >
-                                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="#1a1a1a">
-                                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
-                                    </svg>
-                                </div>
-                                <div>
-                                    <h3 className="font-semibold" style={{ color: colors.onSurface }}>นำเข้า Mod Pack</h3>
-                                    <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>รองรับ CurseForge (.zip) และ Modrinth (.mrpack)</p>
-                                </div>
-                            </div>
-
-                            {/* Drop Zone */}
-                            <div
-                                className={`rounded-xl p-8 text-center border-2 border-dashed mb-4 cursor-pointer transition-all hover:opacity-80 ${isDragging ? 'scale-[1.02] opacity-80' : ''}`}
-                                style={{
-                                    borderColor: isDragging ? colors.secondary : colors.outline,
-                                    backgroundColor: isDragging ? `${colors.secondary}15` : colors.surfaceContainer
-                                }}
-                                onClick={() => handleImportModpack()}
-                                onDragOver={handleDragOver}
-                                onDragLeave={handleDragLeave}
-                                onDrop={handleDrop}
-                            >
-                                <Icons.Box className="w-12 h-12 mx-auto mb-3" style={{ color: isDragging ? colors.secondary : colors.onSurfaceVariant }} />
-                                <p className="font-medium mb-1" style={{ color: isDragging ? colors.secondary : colors.onSurfaceVariant }}>
-                                    {isDragging ? 'วางไฟล์ที่นี่!' : 'ลากไฟล์มาวางที่นี่'}
-                                </p>
-                                <p className="text-sm mb-4" style={{ color: colors.onSurfaceVariant }}>หรือ</p>
-                                <button
-                                    disabled={isInstalling}
-                                    className="px-6 py-2 rounded-xl font-medium disabled:opacity-50"
-                                    style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
-                                >
-                                    {isInstalling ? "กำลังติดตั้ง..." : "เลือกไฟล์"}
-                                </button>
-                            </div>
-
-                            {/* Source Options */}
-                            <div className="grid grid-cols-2 gap-3">
-                                <div
-                                    className="p-3 rounded-xl flex items-center gap-2"
-                                    style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}` }}
-                                >
-                                    <div className="w-6 h-6 rounded flex items-center justify-center" style={{ backgroundColor: "#f16436" }}>
-                                        <span className="text-white text-xs font-bold">CF</span>
-                                    </div>
-                                    <div>
-                                        <div className="text-sm font-medium" style={{ color: colors.onSurface }}>CurseForge</div>
-                                        <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>.zip - Modpack จาก CurseForge</div>
-                                    </div>
-                                </div>
-                                <div
-                                    className="p-3 rounded-xl flex items-center gap-2"
-                                    style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}` }}
-                                >
-                                    <div className="w-6 h-6 rounded flex items-center justify-center" style={{ backgroundColor: "#1bd96a" }}>
-                                        <span className="text-white text-xs font-bold">M</span>
-                                    </div>
-                                    <div>
-                                        <div className="text-sm font-medium" style={{ color: colors.onSurface }}>Modrinth</div>
-                                        <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>.mrpack - Modpack จาก Modrinth</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <ImportModpackModal
+                        colors={colors}
+                        isDragging={isDragging}
+                        isInstalling={isInstalling}
+                        onClose={() => setShowImportModal(false)}
+                        onImport={() => handleImportModpack()}
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
+                    />
                 )}
 
                 {/* Installation Progress Modal */}
                 {isInstalling && installProgress && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                        <div className="w-full max-w-sm rounded-2xl p-6" style={{ backgroundColor: colors.surface }}>
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="w-10 h-10 rounded-full flex items-center justify-center animate-spin"
-                                    style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" style={{ color: colors.secondary }}>
-                                        <path d="M12 6v3l4-4-4-4v3c-4.42 0-8 3.58-8 8 0 1.57.46 3.03 1.24 4.26L6.7 14.8c-.45-.83-.7-1.79-.7-2.8 0-3.31 2.69-6 6-6zm6.76 1.74L17.3 9.2c.44.84.7 1.79.7 2.8 0 3.31-2.69 6-6 6v-3l-4 4 4 4v-3c4.42 0 8-3.58 8-8 0-1.57-.46-3.03-1.24-4.26z" />
-                                    </svg>
-                                </div>
-                                <div className="flex-1">
-                                    <h3 className="font-medium" style={{ color: colors.onSurface }}>
-                                        กำลังติดตั้ง Modpack
-                                    </h3>
-                                    <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>
-                                        {installProgress.message}
-                                    </p>
-                                </div>
-                            </div>
-
-                            {/* Progress Bar */}
-                            {installProgress.percent !== undefined && (
-                                <div className="mt-4">
-                                    <div className="flex justify-between text-sm mb-1" style={{ color: colors.onSurfaceVariant }}>
-                                        <span>{installProgress.current || 0} / {installProgress.total || "?"}</span>
-                                        <span>{installProgress.percent}%</span>
-                                    </div>
-                                    <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                                        <div
-                                            className="h-full rounded-full transition-all"
-                                            style={{
-                                                width: `${installProgress.percent}%`,
-                                                backgroundColor: colors.secondary,
-                                            }}
-                                        />
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
-            </div>
-        </>
-    );
-}
-
-// ========================================
-// Create Instance Modal
-// ========================================
-
-interface CreateInstanceModalProps {
-    colors: any;
-    onClose: () => void;
-    onCreated: () => void;
-}
-
-function CreateInstanceModal({ colors, onClose, onCreated }: CreateInstanceModalProps) {
-    const [name, setName] = useState("");
-    const [minecraftVersion, setMinecraftVersion] = useState("");
-    const [loader, setLoader] = useState<"vanilla" | "fabric" | "forge" | "neoforge" | "quilt">("vanilla");
-    const [gameVersions, setGameVersions] = useState<{ version: string; version_type: string }[]>([]);
-    const [isLoading, setIsLoading] = useState(false);
-    const [showAllVersions, setShowAllVersions] = useState(false);
-
-    useEffect(() => {
-        loadGameVersions();
-    }, []);
-
-    const loadGameVersions = async () => {
-        try {
-            const versions = await window.api?.modrinthGetGameVersions?.();
-            if (versions) {
-                setGameVersions(versions);
-                const latest = versions.find((v: { version: string; version_type: string }) => v.version_type === "release");
-                if (latest) setMinecraftVersion(latest.version);
-            }
-        } catch (error) {
-            console.error("[CreateInstance] Failed to load versions:", error);
-        }
-    };
-
-    const handleCreate = async () => {
-        if (!name.trim()) {
-            toast.error("กรุณาใส่ชื่อ Instance");
-            return;
-        }
-        if (!minecraftVersion) {
-            toast.error("กรุณาเลือก Minecraft version");
-            return;
-        }
-
-        setIsLoading(true);
-        try {
-            await window.api?.instancesCreate?.({
-                name: name.trim(),
-                minecraftVersion,
-                loader,
-            });
-            toast.success(`สร้าง ${name.trim()} เรียบร้อย`);
-            onCreated();
-        } catch (error) {
-            toast.error("สร้าง Instance ไม่สำเร็จ");
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const filteredVersions = showAllVersions
-        ? gameVersions
-        : gameVersions.filter((v) => v.version_type === "release");
-
-    const loaders = [
-        {
-            id: "vanilla", name: "Vanilla", icon: (
-                <img src={minecraftIcon.src} alt="Minecraft" className="w-5 h-5" />
-            )
-        },
-        {
-            id: "fabric", name: "Fabric", icon: (
-                <img src={fabricIcon.src} alt="Fabric" className="w-5 h-5" />
-            )
-        },
-        {
-            id: "forge", name: "Forge", icon: (
-                <img src={forgeIcon.src} alt="Forge" className="w-5 h-5" />
-            )
-        },
-        {
-            id: "neoforge", name: "NeoForge", icon: (
-                <img src={neoforgeIcon.src} alt="NeoForge" className="w-5 h-5" />
-            )
-        },
-        {
-            id: "quilt", name: "Quilt", icon: (
-                <img src={quiltIcon.src} alt="Quilt" className="w-5 h-5" />
-            )
-        },
-    ];
-
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-            <div className="w-full max-w-md rounded-2xl p-6 relative" style={{ backgroundColor: colors.surface }}>
-                {/* Close Button */}
-                <button
-                    onClick={onClose}
-                    className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-500/20"
-                    style={{ color: colors.onSurfaceVariant }}
-                >
-                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-                    </svg>
-                </button>
-
-                <h2 className="text-xl font-bold mb-6" style={{ color: colors.onSurface }}>สร้าง Instance ใหม่</h2>
-
-                {/* Name Input */}
-                <div className="mb-4">
-                    <label className="block text-sm mb-2" style={{ color: colors.onSurfaceVariant }}>ชื่อ Instance</label>
-                    <input
-                        type="text"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="My Instance"
-                        className="w-full px-4 py-3 rounded-xl border"
-                        style={{ backgroundColor: colors.surfaceContainer, borderColor: colors.outline, color: colors.onSurface }}
+                    <InstallProgressModal
+                        colors={colors}
+                        installProgress={installProgress}
+                        onCancel={handleCancelInstall}
                     />
-                </div>
+                )}
 
-                {/* Minecraft Version */}
-                <div className="mb-4">
-                    <div className="flex items-center justify-between mb-2">
-                        <label className="text-sm" style={{ color: colors.onSurfaceVariant }}>Minecraft Version</label>
-                        <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: colors.onSurfaceVariant }}>
-                            <input
-                                type="checkbox"
-                                checked={showAllVersions}
-                                onChange={(e) => setShowAllVersions(e.target.checked)}
-                                className="w-4 h-4"
-                            />
-                            แสดงทั้งหมด
-                        </label>
-                    </div>
-                    <select
-                        value={minecraftVersion}
-                        onChange={(e) => setMinecraftVersion(e.target.value)}
-                        className="w-full px-4 py-3 rounded-xl border"
-                        style={{ backgroundColor: colors.surfaceContainer, borderColor: colors.outline, color: colors.onSurface }}
-                    >
-                        {filteredVersions.map((v) => (
-                            <option key={v.version} value={v.version}>
-                                {v.version} {v.version_type !== "release" ? `(${v.version_type})` : ""}
-                            </option>
-                        ))}
-                    </select>
-                </div>
-
-                {/* Loader Selection */}
-                <div className="mb-6">
-                    <label className="block text-sm mb-2" style={{ color: colors.onSurfaceVariant }}>Mod Loader</label>
-                    <div className="grid grid-cols-5 gap-2">
-                        {loaders.map((l) => (
-                            <button
-                                key={l.id}
-                                onClick={() => setLoader(l.id as any)}
-                                className="flex flex-col items-center py-2 rounded-xl text-center transition-all"
-                                style={{
-                                    backgroundColor: loader === l.id ? colors.secondary : colors.surfaceContainerHighest,
-                                    color: loader === l.id ? "#1a1a1a" : colors.onSurface,
-                                }}
-                            >
-                                {l.icon}
-                                <div className="text-xs mt-1">{l.name}</div>
-                            </button>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Create Button */}
-                <button
-                    onClick={handleCreate}
-                    disabled={isLoading}
-                    className="w-full py-3 rounded-xl font-medium transition-all hover:scale-[1.02] disabled:opacity-50"
-                    style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
-                >
-                    {isLoading ? "กำลังสร้าง..." : "สร้าง Instance"}
-                </button>
-            </div>
-        </div>
+            </div >
+        </>
     );
 }

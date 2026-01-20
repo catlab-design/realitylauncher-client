@@ -1,7 +1,7 @@
 {
   "name": "reality-launcher",
   "type": "module",
-  "version": "0.2.6",
+  "version": "1.0.0",
   "main": "dist-electron/main.cjs",
   "author": {
     "name": "Cat Lab_ Design",
@@ -16,22 +16,39 @@
     "dist": "bun run build && electron-builder",
     "dist:win": "bun run build && electron-builder --win",
     "dist:mac": "bun run build && electron-builder --mac",
-    "dist:linux": "bun run build && electron-builder --linux"
+    "dist:linux": "bun run build && electron-builder --linux",
+    "build:rust": "cd ../ml-launcher-core && cargo build --release"
   },
   "build": {
     "appId": "net.catlab.reality-launcher",
     "productName": "Reality Launcher",
     "directories": {
-      "output": "release"
+      "output": "release-build"
     },
-    "icon": "public/r.png",
+    "extraResources": [
+      {
+        "from": "../ml-launcher-core/target/release",
+        "to": "bin",
+        "filter": [
+          "ml-launcher-core.exe",
+          "ml-launcher-core"
+        ]
+      }
+    ],
+    "icon": "src/assets/r.png",
     "files": [
       "dist/**/*",
-      "dist-electron/**/*"
+      "dist-electron/**/*",
+      "native/index.cjs",
+      "native/*.node"
     ],
     "asar": true,
+    "asarUnpack": [
+      "native/*.node"
+    ],
+    "compression": "normal",
     "win": {
-      "icon": "public/r.png",
+      "icon": "src/assets/r.png",
       "target": [
         {
           "target": "nsis",
@@ -51,7 +68,16 @@
           ]
         }
       ],
-      "category": "public.app-category.games"
+      "category": "public.app-category.games",
+      "extraResources": [
+        {
+          "from": "../ml-launcher-core/target/release",
+          "to": "bin",
+          "filter": [
+            "ml-launcher-core"
+          ]
+        }
+      ]
     },
     "linux": {
       "target": [
@@ -59,7 +85,16 @@
         "deb",
         "rpm"
       ],
-      "category": "Game"
+      "category": "Game",
+      "extraResources": [
+        {
+          "from": "../ml-launcher-core/target/release",
+          "to": "bin",
+          "filter": [
+            "ml-launcher-core"
+          ]
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,
@@ -86,6 +121,7 @@
     "discord-rpc": "^4.0.1",
     "electron-updater": "^6.6.2",
     "gsap": "^3.14.2",
+    "iconv-lite": "^0.7.1",
     "minecraft-java-core": "^3.4.3",
     "pace-js": "^1.2.4",
     "react": "^19.2.3",
@@ -96,6 +132,7 @@
     "userland": "^0.4.3"
   },
   "devDependencies": {
+    "@types/iconv-lite": "^0.0.1",
     "concurrently": "^9.2.1",
     "electron": "^39.2.7",
     "electron-builder": "^26.0.12",

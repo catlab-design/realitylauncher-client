@@ -26,3 +26,20 @@ pnpm-debug.log*
 dist-electron/
 # Release builds (too large for GitHub)
 release/
+release-build/
+
+# Rust native build artifacts
+native/target/
+target/
+*.node
+
+# Debug logs
+debug-instances.log
+*.log
+
+# Package lock files (prefer bun.lockb)
+package-lock.json
+
+# Temporary files
+*.tmp
+*.temp

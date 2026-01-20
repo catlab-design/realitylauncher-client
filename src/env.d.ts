@@ -145,13 +145,16 @@ declare global {
         message?: string;
         error?: string;
       }>;
-      pollDeviceCodeAuth: (deviceCode: string) => Promise<{
+      pollDeviceCodeAuth: (deviceCode: string, isLinking?: boolean) => Promise<{
         status: "pending" | "success" | "error" | "expired";
         error?: string;
         session?: {
           username: string;
           uuid: string;
           accessToken: string;
+          refreshToken?: string;
+          expiresIn?: number;
+          apiToken?: string;
         };
       }>;
       // CatID Authentication
@@ -161,11 +164,17 @@ declare global {
           username: string;
           uuid: string;
           token: string;
+          minecraftUuid?: string;
         };
         error?: string;
       }>;
       registerCatID: (username: string, email: string, password: string, confirmPassword?: string) => Promise<{
         ok: boolean;
+        error?: string;
+      }>;
+      authUnlink: (provider: "catid" | "microsoft") => Promise<{
+        ok: boolean;
+        session?: AuthSession;
         error?: string;
       }>;
       // Offline Account
@@ -191,6 +200,7 @@ declare global {
       modrinthGetPopular: (limit?: number) => Promise<any>;
       modrinthGetGameVersions: () => Promise<{ version: string; version_type: string }[]>;
       modrinthGetLoaders: () => Promise<{ name: string; icon: string }[]>;
+      modrinthGetLoaderVersions: (loader: string, gameVersion: string) => Promise<string[]>;
       modrinthGetInstalled: () => Promise<any[]>;
       modrinthDeleteModpack: (modpackPath: string) => Promise<boolean>;
       // CurseForge APIs
@@ -222,23 +232,30 @@ declare global {
       curseforgeGetFile: (projectId: number | string, fileId: number | string) => Promise<{ data: any }>;
       curseforgeGetDownloadUrl: (projectId: number | string, fileId: number | string) => Promise<{ data: string }>;
       // Instance Management APIs
-      instancesList: () => Promise<GameInstance[]>;
+      instancesList: (offset?: number, limit?: number) => Promise<GameInstance[]>;
       instancesCreate: (options: CreateInstanceOptions) => Promise<GameInstance>;
       instancesGet: (id: string) => Promise<GameInstance | null>;
       instancesUpdate: (id: string, updates: UpdateInstanceOptions) => Promise<GameInstance | null>;
+      instanceCancelAction: (id: string) => Promise<{ ok: boolean; error?: string }>;
       instancesDelete: (id: string) => Promise<boolean>;
       instancesDuplicate: (id: string) => Promise<GameInstance | null>;
       instancesOpenFolder: (id: string) => Promise<void>;
       instancesLaunch: (id: string) => Promise<LaunchResult>;
+      instanceJoin: (key: string) => Promise<{ ok: boolean; message?: string; instance?: any; error?: string }>;
       // Game Control
-      isGameRunning: () => Promise<boolean>;
-      killGame: () => Promise<boolean>;
+      isGameRunning: (instanceId?: string) => Promise<boolean>;
+      killGame: (instanceId?: string) => Promise<boolean>;
+      onGameStarted: (callback: (data: { instanceId: string; pid: number }) => void) => () => void;
+      onGameStopped: (callback: (data: { instanceId: string; pid: number; code: number }) => void) => () => void;
       // Content Download
-      contentDownloadToInstance: (options: { projectId: string; versionId: string; instanceId: string; contentType: string }) => Promise<{ ok: boolean; error?: string }>;
+      contentDownloadToInstance: (options: { projectId: string; versionId: string; instanceId: string; contentType: string; contentSource?: "modrinth" | "curseforge" }) => Promise<{ ok: boolean; error?: string }>;
       onLaunchProgress: (callback: (data: { type: string; task?: string; current?: number; total?: number; percent?: number }) => void) => () => void;
+      onInstancesUpdated: (callback: () => void) => () => void;
+      onDeepLinkJoinInstance: (callback: (key: string) => void) => () => void;
       // Modpack Installer APIs
       modpackInstall: (mrpackPath: string) => Promise<{ ok: boolean; instance?: GameInstance; error?: string }>;
       modpackInstallFromModrinth: (versionId: string) => Promise<{ ok: boolean; instance?: GameInstance; error?: string }>;
+      modpackInstallFromCurseforge: (projectId: string, fileId: string) => Promise<{ ok: boolean; instance?: GameInstance; error?: string }>;
       modpackCheckConflicts: (instanceId: string) => Promise<{ type: string; file1: string; file2?: string; reason: string }[]>;
       modpackParseInfo: (mrpackPath: string) => Promise<any>;
       onModpackInstallProgress: (callback: (data: { stage: string; message: string; current?: number; total?: number; percent?: number }) => void) => () => void;
@@ -270,6 +287,26 @@ declare global {
       onUpdateDownloaded: (callback: (data: { version: string; releaseDate: string }) => void) => () => void;
       onUpdateNotAvailable: (callback: () => void) => () => void;
       onUpdateError: (callback: (data: { message: string }) => void) => () => void;
+      // Notifications APIs
+      notificationsFetchAnnouncements: () => Promise<any[]>;
+      notificationsFetchUser: () => Promise<any[]>;
+      notificationsMarkRead: (notificationId: string) => Promise<boolean>;
+      notificationsDelete: (notificationId: string) => Promise<boolean>;
+      // Invitation APIs
+      invitationsFetch: () => Promise<{
+        id: string;
+        instanceId: string;
+        instanceName: string;
+        instanceIcon?: string | null;
+        invitedBy: string;
+        inviterName?: string;
+        role: 'member' | 'admin';
+        message?: string | null;
+        status: 'pending' | 'accepted' | 'rejected';
+        createdAt: string;
+      }[]>;
+      invitationsAccept: (invitationId: string) => Promise<boolean>;
+      invitationsReject: (invitationId: string) => Promise<boolean>;
     };
   }
 }

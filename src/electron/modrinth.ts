@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { app } from "electron";
 import { getMinecraftDir } from "./config.js";
+import crypto from "node:crypto";
 
 // ========================================
 // Constants
@@ -130,6 +131,7 @@ export interface ModrinthProjectFull {
     donation_urls: { id: string; platform: string; url: string }[];
     gallery: {
         url: string;
+        raw_url?: string;
         featured: boolean;
         title: string | null;
         description: string | null;
@@ -154,7 +156,8 @@ export interface SearchFilters {
 
 function fetchJSON<T>(url: string): Promise<T> {
     return new Promise((resolve, reject) => {
-        const request = https.get(
+        const protocol = url.startsWith("https") ? https : http;
+        const request = protocol.get(
             url,
             {
                 headers: {
@@ -163,6 +166,20 @@ function fetchJSON<T>(url: string): Promise<T> {
                 },
             },
             (response) => {
+                // Handle Redirects (301, 302, 307, 308)
+                if (
+                    response.statusCode === 301 ||
+                    response.statusCode === 302 ||
+                    response.statusCode === 307 ||
+                    response.statusCode === 308
+                ) {
+                    if (response.headers.location) {
+                        console.log(`[Modrinth] Following redirect: ${url} -> ${response.headers.location}`);
+                        fetchJSON<T>(response.headers.location).then(resolve).catch(reject);
+                        return;
+                    }
+                }
+
                 if (response.statusCode !== 200) {
                     reject(new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`));
                     return;
@@ -258,8 +275,24 @@ export async function getVersion(versionId: string): Promise<ModrinthVersion> {
  * Get available Minecraft versions from Modrinth
  */
 export async function getGameVersions(): Promise<{ version: string; version_type: string }[]> {
-    const url = `${MODRINTH_API}/tag/game_version`;
-    return fetchJSON<{ version: string; version_type: string }[]>(url);
+    try {
+        // Use Official Mojang Piston Meta for Java Edition versions
+        // This guarantees only Java versions (no Bedrock) and is highly reliable
+        const url = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
+        const data = await fetchJSON<{ versions: any[] }>(url);
+
+        return data.versions.map((v: any) => ({
+            version: v.id,        // Mojang uses 'id'
+            version_type: v.type  // Mojang uses 'type' ('release', 'snapshot', etc.)
+        }));
+    } catch (error) {
+        console.error("[Modrinth] Failed to fetch game versions from Mojang:", error);
+        // Fallback or re-throw? 
+        // If Mojang fails, we are in trouble. But let's return Modrinth tags as desperate fallback?
+        // No, Modrinth tags caused the Bedrock issue. Better to return empty or let it fail?
+        // Let's return empty array so UI handles it gracefully (or retry logic).
+        return [];
+    }
 }
 
 /**
@@ -269,6 +302,125 @@ export async function getLoaders(): Promise<{ name: string; icon: string }[]> {
     const url = `${MODRINTH_API}/tag/loader`;
     return fetchJSON<{ name: string; icon: string }[]>(url);
 }
+
+/**
+ * Get available versions for a specific loader and game version
+ * Supports: fabric, quilt
+ */
+export async function getLoaderVersions(loader: string, gameVersion: string): Promise<string[]> {
+    if (!gameVersion) return [];
+
+    try {
+        if (loader === "fabric") {
+            // Fetch all loader versions (they are generally version-agnostic)
+            // Using /v2/versions/loader returns all, while /v2/versions/loader/{game_version} returns compatible ones
+            // But sometimes the compatibility list is incomplete or empty for new versions
+            const url = `https://meta.fabricmc.net/v2/versions/loader`;
+            const data = await fetchJSON<any[]>(url);
+            return data.map((d: any) => d.version);
+        } else if (loader === "quilt") {
+            const url = `https://meta.quiltmc.org/v3/versions/loader`;
+            const data = await fetchJSON<any[]>(url);
+            return data.map((d: any) => d.version);
+        } else if (loader === "forge") {
+            // Use Prism Launcher Meta for robust Forge version listing
+            // promotions_slim.json is too limited (only latest/recommended)
+            // Maven metadata is hard to map to MC version without downloading POMs
+
+            const url = "https://meta.prismlauncher.org/v1/net.minecraftforge";
+            const data = await fetchJSON<{ versions: any[] }>(url);
+
+            console.log(`[Modrinth] Fetched ${data?.versions?.length} Forge versions from Prism Meta`);
+
+            const versions: string[] = [];
+
+            // Filter versions that match the requested game version
+            if (data && Array.isArray(data.versions)) {
+                for (const v of data.versions) {
+                    // Check requirements
+                    if (v.requires && Array.isArray(v.requires)) {
+                        const mcReq = v.requires.find((r: any) => r.uid === "net.minecraft");
+                        if (mcReq && mcReq.equals === gameVersion) {
+                            versions.push(v.version);
+                        }
+                    }
+                }
+            }
+            console.log(`[Modrinth] Found ${versions.length} Forge versions for ${gameVersion}`);
+
+            return versions; // Already sorted by Prism Meta (usually descending)
+        } else if (loader === "neoforge") {
+            const versions: string[] = [];
+
+            try {
+                // 1. Try Prism Launcher Meta (Preferred) - correct UID is net.neoforged
+                const url = "https://meta.prismlauncher.org/v1/net.neoforged";
+                const data = await fetchJSON<{ versions: any[] }>(url);
+
+                if (data && Array.isArray(data.versions)) {
+                    for (const v of data.versions) {
+                        if (v.requires && Array.isArray(v.requires)) {
+                            const mcReq = v.requires.find((r: any) => r.uid === "net.minecraft");
+                            if (mcReq && mcReq.equals === gameVersion) {
+                                versions.push(v.version);
+                            }
+                        }
+                    }
+                }
+                console.log(`[Modrinth] Found ${versions.length} NeoForge versions from Prism Meta for ${gameVersion}`);
+            } catch (err) {
+                console.warn("[Modrinth] Prism Meta for NeoForge failed, trying Maven fallback:", err);
+            }
+
+            // 2. Fallback to NeoForge Maven if no versions found (e.g. for very new MC versions not yet in Prism Meta)
+            if (versions.length === 0) {
+                console.log(`[Modrinth] NeoForge: No versions in Prism Meta for ${gameVersion}. Trying Maven...`);
+                try {
+                    const mavenUrl = "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge";
+                    const mavenData = await fetchJSON<{ versions: string[] }>(mavenUrl);
+
+                    if (mavenData && Array.isArray(mavenData.versions)) {
+                        // NeoForge version naming convention:
+                        // 1.20.2 -> 20.2.x, 1.20.3 -> 20.3.x, 1.20.4 -> 20.4.x, 1.20.5 -> 20.5.x, 1.20.6 -> 20.6.x
+                        // 1.21 -> 21.0.x, 1.21.1 -> 21.1.x, 1.21.2 -> 21.2.x, 1.21.3 -> 21.3.x, 1.21.4 -> 21.4.x, etc.
+                        // Special case: 1.20.1 uses legacy Forge-style "47.x"
+
+                        const parts = gameVersion.split('.');
+                        if (parts.length >= 2) {
+                            // For 1.x.y format: major = x, minor = y (or 0 if no y)
+                            const major = parts[0] === '1' ? parts[1] : parts[0];
+                            const minor = parts[2] || '0';
+
+                            // Build prefix for matching (e.g., "21.4." for 1.21.4)
+                            const prefix = `${major}.${minor}.`;
+                            const modernMatches = mavenData.versions.filter(v => v.startsWith(prefix));
+
+                            versions.push(...modernMatches.reverse()); // Maven list is ascending, we want descending
+
+                            // Special case for 1.20.1 which uses legacy "47.x" naming
+                            if (gameVersion === "1.20.1" && versions.length === 0) {
+                                const legacyMatches = mavenData.versions.filter(v => v.startsWith("47."));
+                                versions.push(...legacyMatches.reverse());
+                            }
+                        }
+                        console.log(`[Modrinth] Found ${versions.length} NeoForge versions from Maven for ${gameVersion}`);
+                    }
+                } catch (mavenErr) {
+                    console.error("[Modrinth] NeoForge Maven fallback failed:", mavenErr);
+                }
+            }
+
+            console.log(`[Modrinth] Returning ${versions.length} NeoForge versions for ${gameVersion}`);
+            return versions;
+        }
+
+        return [];
+    } catch (error) {
+        console.error(`[Modrinth] Failed to fetch loader versions for ${loader} ${gameVersion}:`, error);
+        return [];
+    }
+}
+
 
 // ========================================
 // Download Functions
@@ -289,9 +441,14 @@ type ProgressCallback = (progress: DownloadProgress) => void;
 export function downloadFile(
     url: string,
     dest: string,
-    onProgress?: ProgressCallback
+    onProgress?: ProgressCallback,
+    signal?: AbortSignal
 ): Promise<void> {
     return new Promise((resolve, reject) => {
+        if (signal?.aborted) {
+            return reject(new Error("Download cancelled"));
+        }
+
         // Ensure directory exists
         const dir = path.dirname(dest);
         if (!fs.existsSync(dir)) {
@@ -303,21 +460,25 @@ export function downloadFile(
 
         const protocol = url.startsWith("https") ? https : http;
 
+        let currentResponse: any = null;
+
         const request = protocol.get(url, { headers: { "User-Agent": USER_AGENT } }, (response) => {
+            currentResponse = response;
+
             // Handle redirects
             if (response.statusCode === 301 || response.statusCode === 302) {
                 const redirectUrl = response.headers.location;
                 if (redirectUrl) {
                     file.close();
-                    fs.unlinkSync(dest);
-                    downloadFile(redirectUrl, dest, onProgress).then(resolve).catch(reject);
+                    if (fs.existsSync(dest)) fs.rmSync(dest, { force: true });
+                    downloadFile(redirectUrl, dest, onProgress, signal).then(resolve).catch(reject);
                     return;
                 }
             }
 
             if (response.statusCode !== 200) {
                 file.close();
-                fs.unlinkSync(dest);
+                if (fs.existsSync(dest)) fs.rmSync(dest, { force: true });
                 reject(new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`));
                 return;
             }
@@ -326,6 +487,14 @@ export function downloadFile(
             let downloaded = 0;
 
             response.on("data", (chunk: Buffer) => {
+                if (signal?.aborted) {
+                    response.destroy();
+                    file.close();
+                    if (fs.existsSync(dest)) fs.rmSync(dest, { force: true });
+                    reject(new Error("Download cancelled"));
+                    return;
+                }
+
                 downloaded += chunk.length;
                 if (onProgress) {
                     onProgress({
@@ -347,16 +516,135 @@ export function downloadFile(
 
         request.on("error", (err) => {
             file.close();
-            fs.unlink(dest, () => { }); // Delete incomplete file
+            try { if (fs.existsSync(dest)) fs.rmSync(dest, { force: true }); } catch { }
             reject(err);
         });
 
         file.on("error", (err) => {
             file.close();
-            fs.unlink(dest, () => { });
+            try { if (fs.existsSync(dest)) fs.rmSync(dest, { force: true }); } catch { }
             reject(err);
         });
+
+        if (signal) {
+            signal.addEventListener("abort", () => {
+                console.log("[Modrinth] Download cancelled by user");
+                request.destroy();
+                if (currentResponse) {
+                    currentResponse.destroy();
+                }
+                file.close();
+                try { if (fs.existsSync(dest)) fs.rmSync(dest, { force: true }); } catch { }
+                reject(new Error("Download cancelled"));
+            });
+        }
     });
+}
+
+/**
+ * Calculate file hash
+ */
+export async function verifyFileHash(filePath: string, expectedHash?: string | { sha1?: string, sha512?: string }): Promise<boolean> {
+    if (!expectedHash) return true;
+
+    return new Promise((resolve) => {
+        try {
+            let hashType = "sha1";
+            let targetHash = "";
+
+            if (typeof expectedHash === "string") {
+                // Auto-detect based on length? Or default to sha1/sha256?
+                // Usually sha1 is 40 chars, sha256 is 64 chars, sha512 is 128 chars
+                if (expectedHash.length === 128) hashType = "sha512";
+                else if (expectedHash.length === 64) hashType = "sha256";
+                else hashType = "sha1";
+                targetHash = expectedHash;
+            } else {
+                if (expectedHash.sha512) {
+                    hashType = "sha512";
+                    targetHash = expectedHash.sha512;
+                } else if (expectedHash.sha1) {
+                    hashType = "sha1";
+                    targetHash = expectedHash.sha1;
+                } else {
+                    return resolve(true);
+                }
+            }
+
+            // Only try to read if file exists
+            if (!fs.existsSync(filePath)) {
+                return resolve(false);
+            }
+
+            const hash = crypto.createHash(hashType);
+            const stream = fs.createReadStream(filePath);
+
+            stream.on("data", (data) => hash.update(data));
+            stream.on("end", () => {
+                const calculatedHash = hash.digest("hex");
+                const match = calculatedHash.toLowerCase() === targetHash.toLowerCase();
+                if (!match) {
+                    console.error(`[Download] Hash mismatch for ${path.basename(filePath)}! Calculated: ${calculatedHash}, Expected: ${targetHash}`);
+                }
+                resolve(match);
+            });
+            stream.on("error", (err) => {
+                console.error(`[Download] Error calculating hash for ${filePath}:`, err);
+                resolve(false);
+            });
+        } catch (error) {
+            console.error(`[Download] Exception during hash verification:`, error);
+            resolve(false);
+        }
+    });
+}
+
+/**
+ * Download a file consistently with atomic writes and hash verification
+ */
+export async function downloadFileAtomic(
+    url: string,
+    destPath: string,
+    hashes?: string | { sha1?: string, sha512?: string },
+    onProgress?: ProgressCallback,
+    signal?: AbortSignal
+): Promise<void> {
+    const tmpPath = `${destPath}.tmp`;
+    const destDir = path.dirname(destPath);
+
+    // Ensure directory exists before download
+    if (!fs.existsSync(destDir)) {
+        fs.mkdirSync(destDir, { recursive: true });
+    }
+
+    try {
+        await downloadFile(url, tmpPath, onProgress, signal);
+
+        // Verify hash after download
+        const isHashValid = await verifyFileHash(tmpPath, hashes);
+        if (!isHashValid) {
+            fs.rmSync(tmpPath, { force: true });
+            throw new Error(`Hash verification failed for ${path.basename(destPath)}`);
+        }
+
+        // Ensure directory still exists before rename
+        if (!fs.existsSync(destDir)) {
+            fs.mkdirSync(destDir, { recursive: true });
+        }
+
+        // Verify tmp file exists before rename
+        if (!fs.existsSync(tmpPath)) {
+            throw new Error(`Download failed: temporary file not found for ${path.basename(destPath)}`);
+        }
+
+        // Atomic rename
+        fs.rmSync(destPath, { force: true });
+        fs.renameSync(tmpPath, destPath);
+
+    } catch (error) {
+        try { if (fs.existsSync(tmpPath)) fs.rmSync(tmpPath, { force: true }); } catch { }
+        throw error;
+    }
 }
 
 /**
@@ -364,7 +652,8 @@ export function downloadFile(
  */
 export async function downloadModpack(
     version: ModrinthVersion,
-    onProgress?: ProgressCallback
+    onProgress?: ProgressCallback,
+    signal?: AbortSignal
 ): Promise<string> {
     // Find the primary .mrpack file
     const mrpackFile = version.files.find((f) => f.primary) || version.files[0];
@@ -387,7 +676,7 @@ export async function downloadModpack(
 
     console.log("[Modrinth] Downloading modpack to:", mrpackPath);
 
-    await downloadFile(mrpackFile.url, mrpackPath, onProgress);
+    await downloadFile(mrpackFile.url, mrpackPath, onProgress, signal);
 
     console.log("[Modrinth] Download complete:", mrpackPath);
 

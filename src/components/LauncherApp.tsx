@@ -12,20 +12,93 @@
  * - Discord RPC Integration
  */
 
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import gsap from "gsap";
 import toast, { Toaster } from "react-hot-toast";
 import { cn } from "../lib/utils";
 import { Icons } from "./ui/Icons";
 import { MCHead } from "./ui/MCHead";
 import { ChangelogModal } from "./ui/ChangelogModal";
-import { Home, Settings, ServerMenu, ModPack, Explore } from "./tabs";
+import { NotificationInbox } from "./ui/NotificationInbox";
+import { ConfirmDialog } from "./ui/ConfirmDialog";
+import { LoadingScreen } from "./ui/LoadingScreen";
+import { AppVersionBadge } from "./ui/AppVersionBadge";
+import microsoftIcon from "../assets/microsoft_icon.svg";
+import rIcon from "../assets/r.svg";
+
+import { Home, Settings, ServerMenu, ModPack, Explore, About } from "./tabs";
 import AdminPanel from "./tabs/AdminPanel";
 import { type AuthSession, type Server, type NewsItem, type LauncherConfig, type ColorTheme } from "../types/launcher";
+import { playClick, playSucceed, playNotification, setSoundConfig } from "../lib/sounds";
 
 // ========================================
-// Types
+// Error Boundary
 // ========================================
+
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+  errorInfo: React.ErrorInfo | null;
+}
+
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("Uncaught error:", error, errorInfo);
+    this.setState({ errorInfo });
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black text-white p-8">
+          <div className="max-w-2xl w-full bg-[#1a1a1a] p-8 rounded-3xl border border-red-500/20 shadow-2xl">
+            <h1 className="text-3xl font-black text-red-500 mb-4">Critical Error</h1>
+            <p className="text-gray-400 mb-6">เกิดข้อผิดพลาดร้ายแรง ทำให้โปรแกรมไม่สามารถทำงานต่อได้</p>
+
+            <div className="bg-black/50 p-4 rounded-xl border border-white/5 font-mono text-xs text-red-400 overflow-auto max-h-[200px] mb-6 select-text">
+              {this.state.error && this.state.error.toString()}
+              {this.state.errorInfo && this.state.errorInfo.componentStack}
+            </div>
+
+            <div className="flex gap-4">
+              <button
+                onClick={() => window.location.reload()}
+                className="px-6 py-3 bg-red-600 hover:bg-red-500 rounded-xl font-bold transition-colors"
+              >
+                Reload App
+              </button>
+              <button
+                onClick={() => {
+                  window.api?.openExternal("https://discord.gg/your-discord"); // TODO: Add support link
+                }}
+                className="px-6 py-3 bg-white/5 hover:bg-white/10 rounded-xl font-bold transition-colors"
+              >
+                Contact Support
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+
 
 // Types moved to types/launcher.ts
 
@@ -49,8 +122,8 @@ import { COLOR_THEMES } from "../lib/constants";
 // Colors (dynamically based on theme)
 // ========================================
 
-function getColors(colorTheme: ColorTheme, themeMode: "light" | "dark" | "oled" | "auto", customColor?: string) {
-  const themeColor = customColor || COLOR_THEMES[colorTheme].primary;
+function getColors(colorTheme: ColorTheme, themeMode: "light" | "dark" | "oled" | "auto", customColor?: string, rainbowMode?: boolean) {
+  const themeColor = rainbowMode ? "var(--secondary-color)" : (customColor || COLOR_THEMES[colorTheme].primary);
 
   // Determine effective theme mode for "auto" - light during 6am-6pm, dark otherwise
   let effectiveMode: "light" | "dark" | "oled" = themeMode === "auto"
@@ -118,144 +191,7 @@ function getColors(colorTheme: ColorTheme, themeMode: "light" | "dark" | "oled" 
 // Loading Screen
 // ========================================
 
-function LoadingScreen({ onComplete, themeColor }: { onComplete: () => void; themeColor: string }) {
-  const logoRef = useRef<HTMLDivElement>(null);
-  const [progress, setProgress] = useState(0);
-
-  useEffect(() => {
-    let completed = false;
-
-    // Dev mode detection - localhost:4321 = Astro dev server
-    const isDevMode = typeof window !== 'undefined' &&
-      (window.location.hostname === 'localhost' || window.location.port === '4321');
-
-    const completeLoading = () => {
-      if (completed) return;
-      completed = true;
-      gsap.to(".loading-screen", { opacity: 0, duration: isDevMode ? 0.1 : 0.5, onComplete });
-    };
-
-    // Skip animation in dev mode for faster loading
-    if (isDevMode) {
-      console.log("[LoadingScreen] Dev mode - skipping animation");
-      setProgress(100);
-      setTimeout(completeLoading, 100);
-      return;
-    }
-
-    // Fallback timeout in case GSAP fails
-    const fallbackTimeout = setTimeout(() => {
-      console.log("[LoadingScreen] Fallback timeout triggered");
-      setProgress(100);
-      completeLoading();
-    }, 4000);
-
-    try {
-      const tl = gsap.timeline({
-        onComplete: () => {
-          clearTimeout(fallbackTimeout);
-          completeLoading();
-        },
-      });
-
-      // Animate progress with percentage counter (no logo animation to avoid opacity issues)
-
-      // Animate progress with percentage counter
-      tl.to({ val: 0 }, {
-        val: 100,
-        duration: 2.5,
-        ease: "power2.inOut",
-        onUpdate: function () {
-          const value = Math.round(this.targets()[0].val);
-          setProgress(value);
-        }
-      }, "-=0.3");
-    } catch (error) {
-      console.error("[LoadingScreen] GSAP error:", error);
-      clearTimeout(fallbackTimeout);
-      setProgress(100);
-      completeLoading();
-    }
-
-    return () => {
-      clearTimeout(fallbackTimeout);
-    };
-  }, [onComplete]);
-
-  return (
-    <div className="loading-screen fixed inset-0 z-50 flex flex-col" style={{ backgroundColor: themeColor }}>
-      {/* Title Bar Drag Region with Window Controls */}
-      <div className="h-10 w-full flex-shrink-0 flex items-center justify-end pr-0 drag-region">
-        {/* Window Control Buttons */}
-        <div className="flex items-center gap-0 no-drag">
-          {/* Minimize */}
-          <button
-            onClick={() => window.api?.windowMinimize()}
-            className="w-12 h-10 flex items-center justify-center transition-all hover:bg-black/10"
-            style={{ color: "#1a1a1a" }}
-            title="ย่อหน้าต่าง"
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M19 13H5v-2h14v2z" />
-            </svg>
-          </button>
-          {/* Maximize */}
-          <button
-            onClick={() => window.api?.windowMaximize()}
-            className="w-12 h-10 flex items-center justify-center transition-all hover:bg-black/10"
-            style={{ color: "#1a1a1a" }}
-            title="ขยายหน้าต่าง"
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z" />
-            </svg>
-          </button>
-          {/* Close */}
-          <button
-            onClick={() => window.api?.windowClose()}
-            className="w-12 h-10 flex items-center justify-center transition-all hover:bg-red-500 hover:!text-white"
-            style={{ color: "#1a1a1a" }}
-            title="ปิดหน้าต่าง"
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      {/* Spacer */}
-      <div className="flex-1" />
-
-      {/* Bottom Section */}
-      <div className="px-8 pb-4">
-        {/* Logo + Title + Percentage Row */}
-        <div className="flex items-center justify-between mb-4">
-          {/* Left - Logo + Title */}
-          <div ref={logoRef} className="flex items-center gap-3">
-            <img src="r.svg" alt="Reality" className="w-12 h-12 object-contain" />
-            <span className="text-2xl font-bold text-gray-900" style={{ fontFamily: "'Inter', sans-serif" }}>
-              Reality
-            </span>
-          </div>
-
-          {/* Right - Percentage */}
-          <div className="text-2xl font-bold text-gray-900 tabular-nums" style={{ fontFamily: "'Jaturat', 'Itim', sans-serif" }}>
-            {progress}%
-          </div>
-        </div>
-
-        {/* Progress Bar */}
-        <div className="w-full h-5 bg-white/50 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-gray-800 rounded-full transition-all duration-100"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
+// LoadingScreen moved to components/ui/LoadingScreen.tsx
 
 // ========================================
 // MC Head Component
@@ -267,35 +203,14 @@ function LoadingScreen({ onComplete, themeColor }: { onComplete: () => void; the
 // App Version Badge Component
 // ========================================
 
-function AppVersionBadge({ colors }: { colors: any }) {
-  const [version, setVersion] = useState<string>("...");
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const appVersion = await (window as any).api?.getAppVersion?.();
-        if (appVersion) setVersion(appVersion);
-      } catch {
-        setVersion("0.0.0");
-      }
-    })();
-  }, []);
-
-  return (
-    <span
-      className="text-xs px-2 py-0.5 rounded-full"
-      style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}
-    >
-      v{version}
-    </span>
-  );
-}
+// AppVersionBadge moved to components/ui/AppVersionBadge.tsx
 
 // ========================================
-// Main Component
+// ========================================
+// Main Component Content
 // ========================================
 
-export default function LauncherApp() {
+function LauncherAppContent() {
   const rootRef = useRef<HTMLDivElement>(null);
 
   // State
@@ -310,7 +225,7 @@ export default function LauncherApp() {
   const [importModpackOpen, setImportModpackOpen] = useState(false);
   const [accountDropdownOpen, setAccountDropdownOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [isLaunching, setIsLaunching] = useState(false);
+
   const [customColorPending, setCustomColorPending] = useState<string | null>(null);
 
   // Offline login warning states
@@ -327,11 +242,15 @@ export default function LauncherApp() {
   } | null>(null);
   const [deviceCodePolling, setDeviceCodePolling] = useState(false);
   const [deviceCodeError, setDeviceCodeError] = useState<string | null>(null);
+  const [isLinkingMicrosoft, setIsLinkingMicrosoft] = useState(false);
+  const [serverRefreshTrigger, setServerRefreshTrigger] = useState(0);
+  const [notificationRefreshTrigger, setNotificationRefreshTrigger] = useState(0);
 
   // CatID register modal state
   const [catIDRegisterOpen, setCatIDRegisterOpen] = useState(false);
   const [catIDLoginOpen, setCatIDLoginOpen] = useState(false);
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
+  const [linkCatIDOpen, setLinkCatIDOpen] = useState(false);
 
   // Admin state
   const [isAdmin, setIsAdmin] = useState(false);
@@ -340,6 +259,54 @@ export default function LauncherApp() {
   // Changelog modal state
   const [changelogModalOpen, setChangelogModalOpen] = useState(false);
   const [changelogData, setChangelogData] = useState<{ version: string; changelog: string } | null>(null);
+
+  // Confirm Dialog State
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    confirmText?: string;
+    cancelText?: string;
+    confirmColor?: string;
+    tertiaryText?: string;
+    tertiaryColor?: string;
+    onTertiary?: () => void;
+  }>({
+    open: false,
+    title: "",
+    message: "",
+    onConfirm: () => { },
+  });
+  const handleShowConfirm = useCallback((options: {
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    confirmText?: string;
+    cancelText?: string;
+    confirmColor?: string;
+    tertiaryText?: string;
+    tertiaryColor?: string;
+    onTertiary?: () => void;
+  }) => {
+    setConfirmDialog({
+      ...options,
+      open: true,
+    });
+  }, []);
+
+
+  // Inbox/Notifications modal state
+  const [inboxOpen, setInboxOpen] = useState(false);
+  const [inboxTab, setInboxTab] = useState<'news' | 'system'>('news');
+  const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [userNotifications, setUserNotifications] = useState<any[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [invitations, setInvitations] = useState<any[]>([]);
+  const [processingInvitationId, setProcessingInvitationId] = useState<string | null>(null);
+  // Refs to detect new items when polling
+  const prevInvRef = useRef<string[]>([]);
+  const prevNotifRef = useRef<string[]>([]);
 
   // Config state
   const [config, setConfig] = useState<LauncherConfig>({
@@ -355,6 +322,9 @@ export default function LauncherApp() {
     closeOnLaunch: false,
     downloadSpeedLimit: 0,
     discordRPCEnabled: true,
+    clickSoundEnabled: true,
+    notificationSoundEnabled: true,
+    rainbowMode: false,
     // New settings defaults
     fullscreen: false,
     javaArguments: "",
@@ -365,9 +335,17 @@ export default function LauncherApp() {
 
   // Get colors based on current theme (memoized for performance)
   const colors = useMemo(
-    () => getColors(config.colorTheme, config.theme, config.customColor),
-    [config.colorTheme, config.theme, config.customColor]
+    () => getColors(config.colorTheme, config.theme, config.customColor, config.rainbowMode),
+    [config.colorTheme, config.theme, config.customColor, config.rainbowMode]
   );
+
+  // Sync sound config
+  useEffect(() => {
+    setSoundConfig({
+      clickSoundEnabled: config.clickSoundEnabled,
+      notificationSoundEnabled: config.notificationSoundEnabled
+    });
+  }, [config.clickSoundEnabled, config.notificationSoundEnabled]);
 
   // Server data (will be fetched from API)
   const [servers] = useState<Server[]>([]);
@@ -375,13 +353,6 @@ export default function LauncherApp() {
   // News data (will be fetched from API)
   const [news] = useState<NewsItem[]>([]);
 
-  // Credits data
-  const credits = [
-    { name: "Sam_Su", role: "ผู้สร้างและผู้ทำลาย", description: "UI/UX Designer" },
-    { name: "realnice_k", role: "ผู้ออกแบบและผู้ช่วยพัฒนา", description: "Creator & Developer" },
-    { name: "MrPeachs", role: "ที่ปรึกษา", description: "Consultant" },
-    { name: "Kjofex2", role: "ผู้สนับสนุนรายใหญ่", description: "BigSupporter" },
-  ];
 
   // Load config, session, and accounts on mount
   useEffect(() => {
@@ -497,6 +468,147 @@ export default function LauncherApp() {
     }
   }, [config.discordRPCEnabled, isInitialized]);
 
+  // Fetch announcements on app load
+  useEffect(() => {
+    const fetchAnnouncements = async () => {
+      try {
+        const data = await window.api?.notificationsFetchAnnouncements?.();
+        if (data) {
+          setAnnouncements(data);
+          console.log("[Notifications] Loaded announcements:", data.length);
+        }
+      } catch (error) {
+        console.error("[Notifications] Error fetching announcements:", error);
+      }
+    };
+
+    fetchAnnouncements();
+  }, []);
+
+  // Poll user notifications when logged in (detect new notifications)
+  useEffect(() => {
+    let timer: NodeJS.Timeout | null = null;
+
+    const fetchAndNotify = async () => {
+      if (!session) {
+        setUserNotifications([]);
+        prevNotifRef.current = [];
+        return;
+      }
+
+      setNotificationsLoading(true);
+      try {
+        const data = await window.api?.notificationsFetchUser?.();
+        if (data) {
+          const prevIds = prevNotifRef.current || [];
+          const added = data.filter((n: any) => !prevIds.includes(n.id));
+
+          // Only show toast for newly added unread notifications
+          if (added.length > 0 && prevIds.length > 0) {
+            added.forEach((n: any) => {
+              if (!n.isRead) {
+                toast(`การแจ้งเตือน: ${n.title}`);
+              }
+            });
+          }
+
+          prevNotifRef.current = data.map((d: any) => d.id);
+          setUserNotifications(data);
+          console.log("[Notifications] Loaded user notifications:", data.length);
+        }
+      } catch (error) {
+        console.error("[Notifications] Error fetching user notifications:", error);
+      } finally {
+        setNotificationsLoading(false);
+      }
+    };
+
+    fetchAndNotify();
+    timer = setInterval(fetchAndNotify, 10000);
+
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [session, notificationRefreshTrigger]);
+
+  // Poll pending invitations when logged in (detect new ones)
+  useEffect(() => {
+    let timer: NodeJS.Timeout | null = null;
+
+    const fetchAndNotifyInvitations = async () => {
+      if (!session) {
+        setInvitations([]);
+        prevInvRef.current = [];
+        return;
+      }
+
+      try {
+        const data = await window.api?.invitationsFetch?.();
+        if (data) {
+          // Detect newly added invitation IDs
+          const prevIds = prevInvRef.current || [];
+          const added = data.filter((inv: any) => !prevIds.includes(inv.id));
+
+          // If there are new invitations (and not the initial load), notify user
+          if (added.length > 0 && prevIds.length > 0) {
+            added.forEach((inv: any) => {
+              const name = inv.inviterName || 'ผู้ใช้';
+              toast.success(`คำเชิญใหม่จาก ${name} สำหรับ ${inv.instanceName}`);
+            });
+          }
+
+          prevInvRef.current = data.map((d: any) => d.id);
+          setInvitations(data);
+          console.log("[Invitations] Loaded pending invitations:", data.length);
+        }
+      } catch (error) {
+        console.error("[Invitations] Error fetching invitations:", error);
+      }
+    };
+
+    // Initial load + polling
+    fetchAndNotifyInvitations();
+    timer = setInterval(fetchAndNotifyInvitations, 10000);
+
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [session]);
+
+  // Handle accepting invitation
+  const handleAcceptInvitation = async (invitationId: string) => {
+    setProcessingInvitationId(invitationId);
+    try {
+      const success = await window.api?.invitationsAccept?.(invitationId);
+      if (success) {
+        setInvitations(prev => prev.filter(inv => inv.id !== invitationId));
+        toast.success("รับคำเชิญเรียบร้อย!");
+      }
+    } catch (error) {
+      console.error("[Invitations] Error accepting:", error);
+      toast.error("ไม่สามารถรับคำเชิญได้");
+    } finally {
+      setProcessingInvitationId(null);
+    }
+  };
+
+  // Handle rejecting invitation
+  const handleRejectInvitation = async (invitationId: string) => {
+    setProcessingInvitationId(invitationId);
+    try {
+      const success = await window.api?.invitationsReject?.(invitationId);
+      if (success) {
+        setInvitations(prev => prev.filter(inv => inv.id !== invitationId));
+        toast.success("ปฏิเสธคำเชิญแล้ว");
+      }
+    } catch (error) {
+      console.error("[Invitations] Error rejecting:", error);
+      toast.error("ไม่สามารถปฏิเสธคำเชิญได้");
+    } finally {
+      setProcessingInvitationId(null);
+    }
+  };
+
   // Check for post-update notification
   useEffect(() => {
     const checkPostUpdate = async () => {
@@ -583,7 +695,7 @@ export default function LauncherApp() {
 
     // Listen for update error
     const unsubError = window.api.onUpdateError?.((data: { message: string }) => {
-      toast.error(`ไม่สามารถตรวจสอบอัปเดต: ${data.message}`, { id: "check-update" });
+      toast.error(`ไม่สามารถตรวจสอบอัปเดต: ${data.message} `, { id: "check-update" });
     });
 
     return () => {
@@ -609,7 +721,7 @@ export default function LauncherApp() {
       // Poll for completion
       if (window.api?.pollDeviceCodeAuth) {
         try {
-          const result = await window.api.pollDeviceCodeAuth(deviceCodeData.deviceCode);
+          const result = await window.api.pollDeviceCodeAuth(deviceCodeData.deviceCode, isLinkingMicrosoft);
 
           if (result.status === "success" && result.session) {
             // Success! Add account and close modal
@@ -617,14 +729,30 @@ export default function LauncherApp() {
               username: result.session.username,
               uuid: result.session.uuid,
               accessToken: result.session.accessToken,
+              refreshToken: result.session.refreshToken,
+              tokenExpiresAt: result.session.expiresIn ? Date.now() + (result.session.expiresIn * 1000) : undefined,
+              apiToken: result.session.apiToken,  // Reality API token from CatID link
               type: "microsoft",
+              createdAt: Date.now(),  // Add createdAt for session tracking
             };
 
-            // Add to accounts if not exists
+            // Add to accounts if not exists, or update existing
             setAccounts(prev => {
-              const exists = prev.some(acc => acc.username === newSession.username && acc.type === newSession.type);
-              if (!exists) return [...prev, newSession];
-              return prev;
+              const existingIndex = prev.findIndex(acc => acc.uuid === newSession.uuid && acc.type === newSession.type);
+              if (existingIndex >= 0) {
+                // Update existing account with new token
+                const updated = [...prev];
+                updated[existingIndex] = {
+                  ...updated[existingIndex],
+                  accessToken: newSession.accessToken,
+                  refreshToken: newSession.refreshToken,
+                  tokenExpiresAt: newSession.tokenExpiresAt,
+                  apiToken: newSession.apiToken,
+                  createdAt: newSession.createdAt
+                };
+                return updated;
+              }
+              return [...prev, newSession];
             });
 
             // Set as current session
@@ -636,7 +764,7 @@ export default function LauncherApp() {
             setDeviceCodeData(null);
             setDeviceCodeError(null);
 
-            toast.success(`ยินดีต้อนรับ, ${newSession.username}!`);
+            toast.success(`ยินดีต้อนรับ, ${newSession.username} !`);
           } else if (result.status === "expired") {
             setDeviceCodePolling(false);
             setDeviceCodeError(result.error || "รหัสหมดอายุ");
@@ -708,6 +836,7 @@ export default function LauncherApp() {
         type: "catid",
         username: result.session.username,
         uuid: result.session.uuid,
+        minecraftUuid: result.session.minecraftUuid,  // Real Minecraft UUID if linked
         accessToken: result.session.token,
       };
 
@@ -723,7 +852,7 @@ export default function LauncherApp() {
       // Set as active session
       setSession(newSession);
       setLoginDialogOpen(false);
-      toast.success(`ยินดีต้อนรับ, ${newSession.username}!`);
+      toast.success(`ยินดีต้อนรับ, ${newSession.username} !`);
 
       // Check if user is admin (CatID only)
       if (result.session.token) {
@@ -793,7 +922,7 @@ export default function LauncherApp() {
       // Set as active session
       setSession(newSession);
       setLoginDialogOpen(false);
-      toast.success(`ยินดีต้อนรับ, ${newSession.username}!`);
+      toast.success(`ยินดีต้อนรับ, ${newSession.username} !`);
     } catch (error: any) {
       toast.error(error?.message || "เข้าสู่ระบบไม่สำเร็จ");
     }
@@ -834,9 +963,16 @@ export default function LauncherApp() {
 
   // เลือกบัญชีที่จะใช้งาน
   const selectAccount = async (account: AuthSession) => {
+    // Sync session with backend FIRST to ensure data consistency
+    try {
+      await window.api?.setActiveSession?.(account);
+    } catch (err) {
+      console.error("[Auth] Failed to sync session with backend:", err);
+    }
+
     setSession(account);
     setAccountManagerOpen(false);
-    toast.success(`เปลี่ยนเป็นบัญชี ${account.username}`);
+    toast.success(`เปลี่ยนเป็นบัญชี ${account.username} `);
 
     // Check admin status if switching to CatID account
     if (account.type === "catid" && account.accessToken) {
@@ -844,9 +980,6 @@ export default function LauncherApp() {
       try {
         const adminCheck = await window.api?.checkAdminStatus(account.accessToken);
         setIsAdmin(adminCheck?.isAdmin || false);
-        if (adminCheck?.isAdmin) {
-          console.log("[Admin] Switched to admin account:", account.username);
-        }
         if (adminCheck?.isAdmin) {
           console.log("[Admin] Switched to admin account:", account.username);
         }
@@ -858,13 +991,6 @@ export default function LauncherApp() {
       // Non-CatID account - reset admin state
       setIsAdmin(false);
       setAdminToken(null);
-    }
-
-    // Sync session with backend
-    try {
-      await window.api?.setActiveSession?.(account);
-    } catch (err) {
-      console.error("[Auth] Failed to sync session with backend:", err);
     }
   };
 
@@ -892,36 +1018,39 @@ export default function LauncherApp() {
     }
   };
 
-  const handleLaunch = async () => {
-    if (!selectedServer || !session || isLaunching) return;
-    setIsLaunching(true);
-    const t = toast.loading("กำลังเปิดเกม...");
-
+  const handleLinkCatID = async (username: string, password: string) => {
+    const t = toast.loading("กำลังเชื่อมต่อ...");
     try {
-      if (config.discordRPCEnabled) {
-        await window.api?.discordRPCUpdate?.("launching", selectedServer.name);
+      if (!(window as any).api?.linkCatID) {
+        toast.error("ไม่พบฟังก์ชันเชื่อมต่อ กรุณารีสตาร์ท Launcher", { id: t });
+        return;
       }
 
-      const res = await window.api?.launchGame({
-        version: selectedServer.version,
-        username: session.username,
-        ramMB: config.ramMB,
-      });
-
+      const res = await (window as any).api.linkCatID(username, password);
       if (res?.ok) {
-        toast.success(res.message ?? "เปิดเกมแล้ว!", { id: t });
-        if (config.discordRPCEnabled) {
-          await window.api?.discordRPCUpdate?.("playing", selectedServer.name);
+        toast.success("เชื่อมต่อสำเร็จ!", { id: t });
+        setLinkCatIDOpen(false);
+
+        // Refresh session
+        const updatedSession = await window.api?.getSession?.();
+        if (updatedSession) {
+          setSession(updatedSession);
+          // Update in accounts list too
+          setAccounts(prev => prev.map(acc =>
+            acc.username === updatedSession.username && acc.type === "microsoft"
+              ? updatedSession
+              : acc
+          ));
         }
       } else {
-        toast.error(res?.message ?? "เปิดเกมไม่สำเร็จ", { id: t });
+        toast.error(res?.error || "เชื่อมต่อไม่สำเร็จ", { id: t });
       }
     } catch {
       toast.error("เกิดข้อผิดพลาด", { id: t });
-    } finally {
-      setIsLaunching(false);
     }
   };
+
+
 
   const handleBrowseJava = async () => {
     const path = await window.api?.browseJava();
@@ -937,6 +1066,43 @@ export default function LauncherApp() {
     }
   };
 
+  const handleUnlink = (provider: "catid" | "microsoft") => {
+    const isCatID = provider === "catid";
+    setConfirmDialog({
+      open: true,
+      title: isCatID ? "ยกเลิกการเชื่อมต่อ CatID" : "ยกเลิกการเชื่อมต่อ Microsoft",
+      message: isCatID
+        ? "คุณต้องการยกเลิกการเชื่อมต่อกับบัญชี CatID หรือไม่? คุณจะไม่สามารถเข้าถึงฟีเจอร์ออนไลน์บางอย่างได้จนกว่าจะเชื่อมต่อใหม่"
+        : "คุณต้องการยกเลิกการเชื่อมต่อกับบัญชี Microsoft หรือไม่? ระบบจะกลับไปใช้บัญชี CatID เดิมของคุณ",
+      confirmText: "ยกเลิกการเชื่อมต่อ",
+      confirmColor: "#ef4444",
+      onConfirm: async () => {
+        try {
+          const res = await window.api?.authUnlink(provider);
+          if (res?.ok) {
+            toast.success("ยกเลิกการเชื่อมต่อสำเร็จ");
+            // Refresh session and accounts without hard reload
+            const updatedSession = (await window.api?.getSession()) ?? null;
+            setSession(updatedSession);
+            // Refresh accounts list if necessary (or just let the user re-login if session is gone?)
+            // Actually, getSession returns the *active* session.
+            // If we unlinked CatID, we should still be Microsoft.
+            if (updatedSession) {
+              setAccounts(prev => prev.map(acc =>
+                acc.uuid === updatedSession.uuid ? updatedSession : acc
+              ));
+            }
+          } else {
+            toast.error(`${res?.error || "ไม่สามารถยกเลิกการเชื่อมต่อได้"} (Token: ${session?.apiToken})`);
+          }
+        } catch (err) {
+          toast.error("เกิดข้อผิดพลาด");
+        }
+      }
+    });
+  };
+
+
   // Show loading screen
   if (isLoading) {
     return <LoadingScreen onComplete={() => setIsLoading(false)} themeColor={colors.secondary} />;
@@ -945,42 +1111,41 @@ export default function LauncherApp() {
   // Render tabs - split into main and bottom navigation
   const mainNavItems = [
     { id: "home", icon: Icons.Home, label: "หน้าหลัก" },
-    // { id: "servers", icon: Icons.Dns, label: "เซิร์ฟเวอร์" }, // Temporarily disabled for this release
-    { id: "modpack", icon: Icons.Box, label: "Mod Pack" },
+    { id: "servers", icon: Icons.Dns, label: "เซิร์ฟเวอร์" },
+    { id: "modpack", icon: Icons.Box, label: "มอดแพ็ค" },
     { id: "explore", icon: Icons.Search, label: "สำรวจ" },
   ];
 
   // Admin tab is added dynamically based on isAdmin state
   const bottomNavItems = [
-    ...(isAdmin ? [{ id: "admin", icon: Icons.Admin, label: "Admin" }] : []),
+    ...(isAdmin ? [{ id: "admin", icon: Icons.Admin, label: "ผู้ดูแล" }] : []),
     { id: "settings", icon: Icons.Settings, label: "ตั้งค่า" },
     { id: "about", icon: Icons.Info, label: "เกี่ยวกับ" },
   ];
 
   return (
-    <div ref={rootRef} className="h-screen flex overflow-hidden" style={{ backgroundColor: colors.surface }}>
+    <div ref={rootRef} className="h-screen flex flex-col overflow-hidden bg-surface" style={{ backgroundColor: colors.surface }}>
       <Toaster
-        position="bottom-right"
+        position="top-center"
         containerStyle={{
-          bottom: 16,
-          right: 16,
+          top: 16,
         }}
         toastOptions={{
           duration: 3000,
           style: {
             background: colors.surfaceContainer,
             color: colors.onSurface,
-            borderRadius: '4px',
-            padding: '10px 14px',
+            borderRadius: '16px',
+            padding: '12px 18px',
             fontSize: '13px',
-            fontWeight: 400,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-            maxWidth: '300px',
-            borderLeft: `3px solid ${colors.primary}`,
+            fontWeight: 500,
+            boxShadow: `0 0 20px rgba(255, 0, 128, 0.5), 0 0 40px rgba(0, 255, 255, 0.3), 0 0 60px rgba(128, 0, 255, 0.2)`,
+            maxWidth: '350px',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
           },
           success: {
             style: {
-              borderLeft: '3px solid #22c55e',
+              boxShadow: `0 0 20px rgba(34, 197, 94, 0.5), 0 0 40px rgba(34, 197, 94, 0.3)`,
             },
             iconTheme: {
               primary: '#22c55e',
@@ -989,7 +1154,7 @@ export default function LauncherApp() {
           },
           error: {
             style: {
-              borderLeft: '3px solid #ef4444',
+              boxShadow: `0 0 20px rgba(239, 68, 68, 0.5), 0 0 40px rgba(239, 68, 68, 0.3)`,
             },
             iconTheme: {
               primary: '#ef4444',
@@ -998,7 +1163,7 @@ export default function LauncherApp() {
           },
           loading: {
             style: {
-              borderLeft: `3px solid ${colors.primary}`,
+              boxShadow: `0 0 20px ${colors.primary}80, 0 0 40px ${colors.primary}4d`,
             },
           },
         }}
@@ -1013,233 +1178,139 @@ export default function LauncherApp() {
         colors={colors}
       />
 
-      {/* Login Modal */}
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.open}
+        onClose={() => setConfirmDialog(prev => ({ ...prev, open: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmText={confirmDialog.confirmText}
+        cancelText={confirmDialog.cancelText}
+        confirmColor={confirmDialog.confirmColor}
+        tertiaryText={confirmDialog.tertiaryText}
+        tertiaryColor={confirmDialog.tertiaryColor}
+        onTertiary={confirmDialog.onTertiary}
+        colors={colors}
+      />
+
+
+
+      {/* Login Dialog - Horizontal Selection */}
       {loginDialogOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-3xl p-6 shadow-xl relative" style={{ backgroundColor: colors.surface }}>
-            {/* X Close Button */}
-            <button
-              onClick={() => setLoginDialogOpen(false)}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-500/20"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-              </svg>
-            </button>
-
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.secondary }}>
-                <Icons.Person className="w-6 h-6" style={{ color: "#1a1a1a" }} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="flex w-full max-w-2xl h-[480px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden" style={{ backgroundColor: colors.surface }}>
+            {/* Left Branding Side */}
+            <div className="w-[35%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5" style={{ backgroundColor: `${colors.secondary}10` }}>
+              <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-yellow-500/10 to-transparent pointer-events-none" />
+              <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-yellow-500/30 z-10" style={{ backgroundColor: colors.secondary }}>
+                <Icons.Login className="w-10 h-10" style={{ color: "#1a1a1a" }} />
               </div>
-              <div>
-                <h2 className="text-xl font-bold" style={{ color: colors.onSurface }}>เข้าสู่ระบบ</h2>
-                <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>เลือกวิธีเข้าสู่ระบบ</p>
-              </div>
+              <h2 className="text-2xl font-black tracking-tighter text-center z-10" style={{ color: colors.onSurface }}>Access</h2>
+              <div className="mt-2 px-3 py-1 rounded-full bg-yellow-500/20 text-[10px] font-black uppercase tracking-widest z-10" style={{ color: colors.secondary }}>Access Point</div>
+              <p className="mt-8 text-xs font-bold opacity-30 text-center leading-relaxed z-10" style={{ color: colors.onSurface }}>เลือกวิธีการเข้าสู่ระบบ<br />ที่คุณต้องการ</p>
             </div>
 
-            {/* Microsoft Login Button */}
-            <button
-              onClick={async () => {
-                console.log("[Auth] Microsoft login button clicked - starting device code flow");
-                setLoginDialogOpen(false);
+            {/* Right Side - Buttons */}
+            <div className="flex-1 p-10 flex flex-col relative">
+              {/* Close Button */}
+              <button
+                onClick={() => setLoginDialogOpen(false)}
+                className="absolute top-6 right-6 w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors z-20"
+                style={{ color: colors.onSurfaceVariant }}
+              >
+                <Icons.Close className="w-6 h-6" />
+              </button>
 
-                // Check if we're in Electron with API
-                if (window.api?.startDeviceCodeAuth) {
-                  try {
-                    const toastId = toast.loading("กำลังขอรหัสเข้าสู่ระบบ...");
-                    const result = await window.api.startDeviceCodeAuth();
-                    toast.dismiss(toastId);
-
-                    if (!result.ok || !result.deviceCode || !result.userCode) {
-                      toast.error(result.error || "ไม่สามารถขอรหัสได้");
-                      return;
-                    }
-
-                    // Store device code data and open modal
-                    setDeviceCodeData({
-                      deviceCode: result.deviceCode,
-                      userCode: result.userCode,
-                      verificationUri: result.verificationUri || "https://microsoft.com/devicelogin",
-                      expiresAt: Date.now() + (result.expiresIn || 900) * 1000,
-                    });
-                    setDeviceCodeError(null);
-                    setDeviceCodeModalOpen(true);
-                    setDeviceCodePolling(true);
-                  } catch (error) {
-                    console.error("[Auth] Error starting device code flow:", error);
-                    toast.error("ไม่สามารถเริ่มการเข้าสู่ระบบได้");
-                  }
-                } else {
-                  // Not in Electron or API not available - show message
-                  toast.error("Microsoft Login ต้องการ Electron - ใช้ Offline Mode แทน");
-                }
-              }}
-              className="w-full flex items-center justify-center gap-3 px-4 py-4 rounded-xl mb-3 transition-all hover:scale-[1.02]"
-              style={{ backgroundColor: "#2f2f2f", color: "#ffffff" }}
-            >
-              <svg className="w-5 h-5" viewBox="0 0 21 21" fill="currentColor">
-                <rect x="1" y="1" width="9" height="9" fill="#F25022" />
-                <rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
-                <rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
-                <rect x="11" y="11" width="9" height="9" fill="#FFB900" />
-              </svg>
-              เข้าสู่ระบบด้วย Microsoft
-            </button>
-
-            {/* Divider */}
-            <div className="flex items-center gap-3 my-4">
-              <div className="flex-1 h-px" style={{ backgroundColor: colors.outline }} />
-              <span className="text-sm" style={{ color: colors.onSurfaceVariant }}>หรือ</span>
-              <div className="flex-1 h-px" style={{ backgroundColor: colors.outline }} />
-            </div>
-
-            {/* CatID Login Button */}
-            <button
-              onClick={() => {
-                setLoginDialogOpen(false);
-                setCatIDLoginOpen(true);
-              }}
-              className="w-full flex items-center justify-center gap-3 px-4 py-4 rounded-xl mb-3 transition-all hover:scale-[1.02]"
-              style={{ backgroundColor: "#8b5cf6", color: "#ffffff" }}
-            >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 4c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm0 14c-2.03 0-4.43-.82-6.14-2.88C7.55 15.8 9.68 15 12 15s4.45.8 6.14 2.12C16.43 19.18 14.03 20 12 20z" />
-              </svg>
-              เข้าสู่ระบบด้วย CatID
-            </button>
-
-            {/* Divider */}
-            <div className="flex items-center gap-3 my-4">
-              <div className="flex-1 h-px" style={{ backgroundColor: colors.outline }} />
-              <span className="text-sm" style={{ color: colors.onSurfaceVariant }}>หรือเล่นแบบออฟไลน์</span>
-              <div className="flex-1 h-px" style={{ backgroundColor: colors.outline }} />
-            </div>
-
-            {/* Offline Account Button */}
-            <button
-              onClick={() => {
-                setLoginDialogOpen(false);
-                setOfflineWarningOpen(true);
-              }}
-              className="w-full py-3 rounded-xl font-medium transition-all hover:scale-[1.02] border border-dashed"
-              style={{ borderColor: colors.outline, color: colors.onSurfaceVariant }}
-            >
-              <span className="flex items-center justify-center gap-2">
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
-                </svg>
-                เพิ่มบัญชีออฟไลน์
-              </span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Offline Warning Modal - Scary Design */}
-      {offlineWarningOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-          <div
-            className="w-full max-w-lg rounded-3xl p-8 shadow-2xl relative overflow-hidden"
-            style={{ backgroundColor: "#1a0a0a" }}
-          >
-            {/* Scary Background Gradient */}
-            <div
-              className="absolute inset-0 opacity-30"
-              style={{
-                background: "radial-gradient(circle at center, #ef4444 0%, transparent 70%)",
-              }}
-            />
-
-            {/* X Close Button */}
-            <button
-              onClick={() => setOfflineWarningOpen(false)}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center hover:bg-red-500/30 z-10"
-              style={{ color: "#ef4444" }}
-            >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-              </svg>
-            </button>
-
-            <div className="relative z-10">
-              {/* Warning Icon */}
-              <div className="flex justify-center mb-6">
-                <div
-                  className="w-20 h-20 rounded-full flex items-center justify-center animate-pulse"
-                  style={{ backgroundColor: "#ef444430", border: "3px solid #ef4444" }}
-                >
-                  <svg className="w-10 h-10" viewBox="0 0 24 24" fill="#ef4444">
-                    <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
-                  </svg>
-                </div>
+              <div className="mb-8">
+                <h3 className="text-2xl font-black tracking-tight" style={{ color: colors.onSurface }}>เข้าสู่ระบบ</h3>
+                <p className="text-sm font-medium opacity-60" style={{ color: colors.onSurfaceVariant }}>ก้าวเข้าสู่โลกของ Minecraft ในแบบที่คุณเลือก</p>
               </div>
 
-              {/* Warning Title */}
-              <h2 className="text-2xl font-bold text-center mb-3" style={{ color: "#ef4444" }}>
-                ⚠️ คำเตือน!
-              </h2>
-
-              {/* Warning Message */}
-              <div className="space-y-4 mb-6">
-                <p className="text-center text-lg" style={{ color: "#fca5a5" }}>
-                  คุณกำลังจะเล่น <strong>โหมดออฟไลน์</strong>
-                </p>
-                <div
-                  className="p-4 rounded-xl text-sm space-y-2"
-                  style={{ backgroundColor: "#7f1d1d30", border: "1px solid #991b1b" }}
-                >
-                  <p style={{ color: "#fecaca" }}>
-                    🚫 <strong>ไม่สามารถ</strong> เข้าเซิร์ฟเวอร์ออนไลน์ที่ต้องการ Premium ได้
-                  </p>
-                  <p style={{ color: "#fecaca" }}>
-                    🚫 <strong>ไม่สามารถ</strong> ใช้สกินหรือ Cape ของคุณได้
-                  </p>
-                  <p style={{ color: "#fecaca" }}>
-                    🚫 <strong>ไม่สนับสนุน</strong> Mojang และผู้พัฒนาเกม
-                  </p>
-                </div>
-
-                <div
-                  className="p-4 rounded-xl text-center"
-                  style={{ backgroundColor: "#05966920", border: "1px solid #059669" }}
-                >
-                  <p className="text-sm mb-2" style={{ color: "#6ee7b7" }}>
-                    💚 สนับสนุนผู้พัฒนาโดยการซื้อเกมของแท้!
-                  </p>
-                  <a
-                    href="https://www.minecraft.net/store/minecraft-java-bedrock-edition-pc"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all hover:scale-105"
-                    style={{ backgroundColor: "#059669", color: "#ffffff" }}
-                  >
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
-                    </svg>
-                    ซื้อ Minecraft ของแท้
-                  </a>
-                </div>
-              </div>
-
-              {/* Buttons */}
-              <div className="flex gap-3">
+              <div className="space-y-3.5 flex-1">
+                {/* Microsoft Login Button */}
                 <button
-                  onClick={() => setOfflineWarningOpen(false)}
-                  className="flex-1 py-3 rounded-xl font-medium transition-all hover:scale-[1.02]"
-                  style={{ backgroundColor: "#374151", color: "#ffffff" }}
+                  onClick={async () => {
+                    console.log("[Auth] Microsoft login button clicked - starting device code flow");
+                    setLoginDialogOpen(false);
+                    if (window.api?.startDeviceCodeAuth) {
+                      try {
+                        const toastId = toast.loading("กำลังขอรหัสเข้าสู่ระบบ...");
+                        const result = await window.api.startDeviceCodeAuth();
+                        toast.dismiss(toastId);
+                        if (!result.ok || !result.deviceCode || !result.userCode) {
+                          toast.error(result.error || "ไม่สามารถขอรหัสได้");
+                          return;
+                        }
+                        setDeviceCodeData({
+                          deviceCode: result.deviceCode,
+                          userCode: result.userCode,
+                          verificationUri: result.verificationUri || "https://microsoft.com/devicelogin",
+                          expiresAt: Date.now() + (result.expiresIn || 900) * 1000,
+                        });
+                        setDeviceCodeError(null);
+                        setDeviceCodeModalOpen(true);
+                        setDeviceCodePolling(true);
+                      } catch (error) {
+                        console.error("[Auth] Error starting device code flow:", error);
+                        toast.error("ไม่สามารถเริ่มการเข้าสู่ระบบได้");
+                      }
+                    } else {
+                      toast.error("Microsoft Login ต้องการ Electron - ใช้ Offline Mode แทน");
+                    }
+                  }}
+                  className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all hover:scale-[1.02] active:scale-[0.98] border border-white/5 shadow-lg group"
+                  style={{ backgroundColor: "#2f2f2f", color: "#ffffff" }}
                 >
-                  ยกเลิก
+                  <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center">
+                    <svg className="w-6 h-6" viewBox="0 0 21 21" fill="currentColor">
+                      <rect x="1" y="1" width="9" height="9" fill="#F25022" />
+                      <rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
+                      <rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
+                      <rect x="11" y="11" width="9" height="9" fill="#FFB900" />
+                    </svg>
+                  </div>
+                  <div className="text-left">
+                    <div className="font-black text-base">บัญชี Microsoft</div>
+                    <div className="text-[10px] uppercase font-bold tracking-widest opacity-40">ของแท้ Premium</div>
+                  </div>
                 </button>
+
+                {/* CatID Login Button */}
                 <button
                   onClick={() => {
-                    setOfflineWarningOpen(false);
+                    setLoginDialogOpen(false);
+                    setCatIDLoginOpen(true);
+                  }}
+                  className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all hover:scale-[1.02] active:scale-[0.98] border border-white/5 shadow-lg group"
+                  style={{ backgroundColor: "#8b5cf6", color: "#ffffff" }}
+                >
+                  <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                    <Icons.Person className="w-6 h-6" />
+                  </div>
+                  <div className="text-left">
+                    <div className="font-black text-base">บัญชี CatID</div>
+                    <div className="text-[10px] uppercase font-bold tracking-widest opacity-60">บัญชี CatLab</div>
+                  </div>
+                </button>
+
+                {/* Offline Account Button */}
+                <button
+                  onClick={() => {
+                    setLoginDialogOpen(false);
                     setOfflineUsernameOpen(true);
                   }}
-                  className="flex-1 py-3 rounded-xl font-medium transition-all hover:scale-[1.02]"
-                  style={{ backgroundColor: "#991b1b", color: "#ffffff" }}
+                  className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all border-2 border-dashed hover:bg-white/5 group"
+                  style={{ borderColor: colors.outline, color: colors.onSurface }}
                 >
-                  ฉันเข้าใจ ดำเนินการต่อ
+                  <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center">
+                    <Icons.Lock className="w-6 h-6 opacity-40" />
+                  </div>
+                  <div className="text-left flex-1">
+                    <div className="font-black text-base opacity-80">โหมดออฟไลน์</div>
+                    <div className="text-[10px] uppercase font-bold tracking-widest opacity-30">เล่นในเครื่องเท่านั้น</div>
+                  </div>
+                  <Icons.ArrowDown className="w-5 h-5 -rotate-90 opacity-40 group-hover:translate-x-1 transition-transform" />
                 </button>
               </div>
             </div>
@@ -1247,56 +1318,62 @@ export default function LauncherApp() {
         </div>
       )}
 
-      {/* Offline Username Input Modal */}
-      {offlineUsernameOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-3xl p-6 shadow-xl relative" style={{ backgroundColor: colors.surface }}>
-            {/* X Close Button */}
-            <button
-              onClick={() => setOfflineUsernameOpen(false)}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-500/20"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-              </svg>
-            </button>
 
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                <Icons.Person className="w-6 h-6" style={{ color: colors.onSurfaceVariant }} />
+      {offlineUsernameOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="flex w-full max-w-xl h-[380px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden" style={{ backgroundColor: colors.surface }}>
+            {/* Left Branding Side */}
+            <div className="w-[35%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5" style={{ backgroundColor: `${colors.secondary}10` }}>
+              <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-yellow-500/10 to-transparent pointer-events-none" />
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4 shadow-2xl shadow-yellow-500/30 z-10" style={{ backgroundColor: colors.secondary }}>
+                <Icons.Person className="w-8 h-8" style={{ color: "#1a1a1a" }} />
               </div>
-              <div>
-                <h2 className="text-xl font-bold" style={{ color: colors.onSurface }}>บัญชีออฟไลน์</h2>
-                <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>กรอกชื่อผู้ใช้สำหรับเล่นออฟไลน์</p>
-              </div>
+              <h2 className="text-xl font-black tracking-tighter text-center z-10" style={{ color: colors.onSurface }}>โหมดเล่นจำกัด</h2>
+              <div className="mt-2 px-3 py-0.5 rounded-full bg-yellow-500/20 text-[9px] font-black uppercase tracking-widest z-10" style={{ color: colors.secondary }}>Local Play</div>
             </div>
 
-            <div className="space-y-4">
-              <input
-                id="offline-username-input"
-                type="text"
-                placeholder="ชื่อผู้ใช้ (3-16 ตัวอักษร)"
-                maxLength={16}
-                className="w-full px-4 py-3 rounded-xl border text-lg"
-                style={{
-                  borderColor: colors.outline,
-                  backgroundColor: colors.surfaceContainer,
-                  color: colors.onSurface,
-                }}
-                autoFocus
-                onKeyDown={async (e) => {
-                  if (e.key === "Enter") {
-                    const username = e.currentTarget.value.trim();
-                    if (username && username.length >= 3) {
-                      setOfflineUsernameOpen(false);
-                      await handleOfflineLogin(username);
-                    } else {
-                      toast.error("ชื่อผู้ใช้ต้องมีอย่างน้อย 3 ตัวอักษร");
-                    }
-                  }
-                }}
-              />
+            {/* Right Form Side */}
+            <div className="flex-1 p-10 flex flex-col relative justify-center">
+              {/* Close Button */}
+              <button
+                onClick={() => setOfflineUsernameOpen(false)}
+                className="absolute top-6 right-6 w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors z-20"
+                style={{ color: colors.onSurfaceVariant }}
+              >
+                <Icons.Close className="w-6 h-6" />
+              </button>
+
+              <div className="mb-6 mt-2">
+                <h3 className="text-2xl font-black tracking-tight" style={{ color: colors.onSurface }}>ตั้งชื่อเข้าเล่น</h3>
+                <p className="text-sm font-medium opacity-60" style={{ color: colors.onSurfaceVariant }}>กำหนดชื่อตัวละครของคุณ (ออฟไลน์)</p>
+              </div>
+
+              <div className="space-y-4 flex-1">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>ชื่อที่ต้องการใช้</label>
+                  <input
+                    id="offline-username-input"
+                    type="text"
+                    placeholder="ชื่อผู้ใช้ (3-16 ตัวอักษร)"
+                    maxLength={16}
+                    className="w-full px-5 py-3.5 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-yellow-500/10 text-lg"
+                    style={{ borderColor: 'transparent', backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
+                    autoFocus
+                    onKeyDown={async (e) => {
+                      if (e.key === "Enter") {
+                        const username = e.currentTarget.value.trim();
+                        if (username && username.length >= 3) {
+                          setOfflineUsernameOpen(false);
+                          await handleOfflineLogin(username);
+                        } else {
+                          toast.error("ชื่อผู้ใช้ต้องมีอย่างน้อย 3 ตัวอักษร");
+                        }
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+
               <button
                 onClick={async () => {
                   const usernameInput = document.getElementById("offline-username-input") as HTMLInputElement;
@@ -1308,87 +1385,99 @@ export default function LauncherApp() {
                     toast.error("ชื่อผู้ใช้ต้องมีอย่างน้อย 3 ตัวอักษร");
                   }
                 }}
-                className="w-full py-3 rounded-xl font-medium transition-all hover:scale-[1.02]"
+                className="w-full py-4 rounded-2xl font-black text-lg transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-yellow-500/20"
                 style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
               >
-                เข้าสู่ระบบ
+                เข้าเล่นเลย
               </button>
             </div>
           </div>
         </div>
       )}
-
-      {/* CatID Login Modal */}
       {catIDLoginOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-3xl p-6 shadow-xl relative" style={{ backgroundColor: colors.surface }}>
-            {/* X Close Button */}
-            <button
-              onClick={() => setCatIDLoginOpen(false)}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-500/20"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-              </svg>
-            </button>
-
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: "#8b5cf6" }}>
-                <svg className="w-6 h-6" viewBox="0 0 24 24" fill="#ffffff">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="flex w-full max-w-2xl h-[450px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden" style={{ backgroundColor: colors.surface }}>
+            {/* Left Branding Side */}
+            <div className="w-[38%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5" style={{ backgroundColor: `${"#8b5cf6"}10` }}>
+              <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-purple-500/10 to-transparent pointer-events-none" />
+              <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-purple-500/30 z-10" style={{ backgroundColor: "#8b5cf6" }}>
+                <svg className="w-10 h-10" viewBox="0 0 24 24" fill="#ffffff">
                   <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 4c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm0 14c-2.03 0-4.43-.82-6.14-2.88C7.55 15.8 9.68 15 12 15s4.45.8 6.14 2.12C16.43 19.18 14.03 20 12 20z" />
                 </svg>
               </div>
-              <div>
-                <h2 className="text-xl font-bold" style={{ color: colors.onSurface }}>เข้าสู่ระบบ CatID</h2>
-                <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>ใช้บัญชี CatID ของคุณ</p>
-              </div>
+              <h2 className="text-2xl font-black tracking-tighter text-center z-10" style={{ color: colors.onSurface }}>ID CatLab</h2>
+              <div className="mt-2 px-3 py-1 rounded-full bg-purple-500/20 text-[10px] font-black uppercase tracking-widest z-10" style={{ color: "#8b5cf6" }}>ยืนยันตัวตน</div>
+              <p className="mt-8 text-xs font-bold opacity-30 text-center leading-relaxed z-10" style={{ color: colors.onSurface }}>ประตูสู่สังคมคุณภาพของ<br />ชุมชน CatLab DESIGN</p>
             </div>
 
-            <div className="space-y-3">
-              <input
-                id="catid-username"
-                type="text"
-                placeholder="ชื่อผู้ใช้"
-                className="w-full px-4 py-3 rounded-xl border"
-                style={{
-                  borderColor: colors.outline,
-                  backgroundColor: colors.surfaceContainer,
-                  color: colors.onSurface,
-                }}
-              />
-              <input
-                id="catid-password"
-                type="password"
-                placeholder="รหัสผ่าน"
-                className="w-full px-4 py-3 rounded-xl border"
-                style={{
-                  borderColor: colors.outline,
-                  backgroundColor: colors.surfaceContainer,
-                  color: colors.onSurface,
-                }}
-                onKeyDown={async (e) => {
-                  if (e.key === "Enter") {
-                    const usernameInput = document.getElementById("catid-username") as HTMLInputElement;
-                    const passwordInput = e.currentTarget;
-                    if (usernameInput?.value && passwordInput?.value) {
-                      await handleCatIDLogin(usernameInput.value, passwordInput.value);
-                    }
-                  }
-                }}
-              />
-              {/* Forgot Password Link */}
+            {/* Right Form Side */}
+            <div className="flex-1 p-10 flex flex-col relative">
+              {/* Close Button */}
               <button
-                onClick={() => {
-                  setCatIDLoginOpen(false);
-                  setForgotPasswordOpen(true);
-                }}
-                className="text-sm text-right w-full -mt-1"
-                style={{ color: colors.secondary }}
+                onClick={() => setCatIDLoginOpen(false)}
+                className="absolute top-6 right-6 w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors z-20"
+                style={{ color: colors.onSurfaceVariant }}
               >
-                ลืมรหัสผ่าน?
+                <Icons.Close className="w-6 h-6" />
               </button>
-              <div className="flex gap-2">
+
+              <div className="mb-8">
+                <h3 className="text-2xl font-black tracking-tight" style={{ color: colors.onSurface }}>ยินดีต้อนรับกลับมา</h3>
+                <p className="text-sm font-medium opacity-60" style={{ color: colors.onSurfaceVariant }}>เข้าสู่ระบบด้วยบัญชี CatID ของคุณ</p>
+              </div>
+
+              <div className="space-y-4 flex-1">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>ชื่อผู้ใช้</label>
+                  <input
+                    id="catid-username"
+                    type="text"
+                    placeholder="ชื่อผู้ใช้"
+                    className="w-full px-5 py-3.5 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-purple-500/10"
+                    style={{
+                      borderColor: 'transparent',
+                      backgroundColor: colors.surfaceContainer,
+                      color: colors.onSurface,
+                    }}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>รหัสผ่าน</label>
+                  <input
+                    id="catid-password"
+                    type="password"
+                    placeholder="รหัสผ่าน"
+                    className="w-full px-5 py-3.5 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-purple-500/10"
+                    style={{
+                      borderColor: 'transparent',
+                      backgroundColor: colors.surfaceContainer,
+                      color: colors.onSurface,
+                    }}
+                    onKeyDown={async (e) => {
+                      if (e.key === "Enter") {
+                        const usernameInput = document.getElementById("catid-username") as HTMLInputElement;
+                        const passwordInput = e.currentTarget;
+                        if (usernameInput?.value && passwordInput?.value) {
+                          await handleCatIDLogin(usernameInput.value, passwordInput.value);
+                        }
+                      }
+                    }}
+                  />
+                </div>
+
+                <button
+                  onClick={() => {
+                    setCatIDLoginOpen(false);
+                    setForgotPasswordOpen(true);
+                  }}
+                  className="text-xs font-black text-right w-full hover:underline transition-all tracking-wide opacity-80"
+                  style={{ color: "#8b5cf6" }}
+                >
+                  ลืมรหัสผ่าน?
+                </button>
+              </div>
+
+              <div className="flex gap-3 mt-8">
                 <button
                   onClick={async () => {
                     const usernameInput = document.getElementById("catid-username") as HTMLInputElement;
@@ -1400,7 +1489,7 @@ export default function LauncherApp() {
                       toast.error("กรุณากรอกชื่อผู้ใช้และรหัสผ่าน");
                     }
                   }}
-                  className="flex-1 py-3 rounded-xl font-medium transition-all hover:scale-[1.02]"
+                  className="flex-[2] py-4 rounded-2xl font-black text-lg transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-purple-500/20"
                   style={{ backgroundColor: "#8b5cf6", color: "#ffffff" }}
                 >
                   เข้าสู่ระบบ
@@ -1410,7 +1499,7 @@ export default function LauncherApp() {
                     setCatIDLoginOpen(false);
                     setCatIDRegisterOpen(true);
                   }}
-                  className="px-4 py-3 rounded-xl border transition-all hover:scale-[1.02]"
+                  className="flex-1 py-4 rounded-2xl font-bold border-2 transition-all hover:bg-white/5"
                   style={{ borderColor: colors.outline, color: colors.onSurface }}
                 >
                   สมัครใหม่
@@ -1420,81 +1509,86 @@ export default function LauncherApp() {
           </div>
         </div>
       )}
-
-      {/* CatID Register Modal */}
       {catIDRegisterOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-3xl p-6 shadow-xl relative" style={{ backgroundColor: colors.surface }}>
-            {/* X Close Button */}
-            <button
-              onClick={() => setCatIDRegisterOpen(false)}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-500/20"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-              </svg>
-            </button>
-
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: "#8b5cf6" }}>
-                <svg className="w-6 h-6" viewBox="0 0 24 24" fill="#ffffff">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="flex w-full max-w-2xl h-[520px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden" style={{ backgroundColor: colors.surface }}>
+            {/* Left Branding Side */}
+            <div className="w-[35%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5" style={{ backgroundColor: `${"#8b5cf6"}10` }}>
+              <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-purple-500/10 to-transparent pointer-events-none" />
+              <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-purple-500/30 z-10" style={{ backgroundColor: "#8b5cf6" }}>
+                <svg className="w-10 h-10" viewBox="0 0 24 24" fill="#ffffff">
                   <path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
                 </svg>
               </div>
-              <div>
-                <h2 className="text-xl font-bold" style={{ color: colors.onSurface }}>สมัครสมาชิก CatID</h2>
-                <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>สร้างบัญชีใหม่</p>
-              </div>
+              <h2 className="text-2xl font-black tracking-tighter text-center z-10" style={{ color: colors.onSurface }}>ร่วมเดินทัพ</h2>
+              <div className="mt-2 px-3 py-1 rounded-full bg-purple-500/20 text-[10px] font-black uppercase tracking-widest z-10" style={{ color: "#8b5cf6" }}>สร้างไอดีใหม่</div>
+              <p className="mt-8 text-xs font-bold opacity-30 text-center leading-relaxed z-10" style={{ color: colors.onSurface }}>สร้างตัวตนของคุณใน<br />โลกของ CatLab ได้แล้ววันนี้</p>
             </div>
 
-            <div className="space-y-3">
-              <input
-                id="catid-reg-username"
-                type="text"
-                placeholder="ชื่อผู้ใช้"
-                className="w-full px-4 py-3 rounded-xl border"
-                style={{
-                  borderColor: colors.outline,
-                  backgroundColor: colors.surfaceContainer,
-                  color: colors.onSurface,
-                }}
-              />
-              <input
-                id="catid-reg-email"
-                type="email"
-                placeholder="อีเมล"
-                className="w-full px-4 py-3 rounded-xl border"
-                style={{
-                  borderColor: colors.outline,
-                  backgroundColor: colors.surfaceContainer,
-                  color: colors.onSurface,
-                }}
-              />
-              <input
-                id="catid-reg-password"
-                type="password"
-                placeholder="รหัสผ่าน"
-                className="w-full px-4 py-3 rounded-xl border"
-                style={{
-                  borderColor: colors.outline,
-                  backgroundColor: colors.surfaceContainer,
-                  color: colors.onSurface,
-                }}
-              />
-              <input
-                id="catid-reg-confirm"
-                type="password"
-                placeholder="ยืนยันรหัสผ่าน"
-                className="w-full px-4 py-3 rounded-xl border"
-                style={{
-                  borderColor: colors.outline,
-                  backgroundColor: colors.surfaceContainer,
-                  color: colors.onSurface,
-                }}
-              />
+            {/* Right Form Side */}
+            <div className="flex-1 p-10 flex flex-col relative">
+              {/* Close Button */}
+              <button
+                onClick={() => setCatIDRegisterOpen(false)}
+                className="absolute top-6 right-6 w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors z-20"
+                style={{ color: colors.onSurfaceVariant }}
+              >
+                <Icons.Close className="w-6 h-6" />
+              </button>
 
-              <div className="flex gap-2 mt-4">
+              <div className="mb-6">
+                <h3 className="text-2xl font-black tracking-tight" style={{ color: colors.onSurface }}>สร้างบัญชีใหม่</h3>
+                <p className="text-sm font-medium opacity-60" style={{ color: colors.onSurfaceVariant }}>เริ่มต้นการเดินทางครั้งใหม่กับเรา</p>
+              </div>
+
+              <div className="space-y-3.5 flex-1">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>ชื่อผู้ใช้</label>
+                    <input
+                      id="catid-reg-username"
+                      type="text"
+                      placeholder="ชื่อผู้ใช้"
+                      className="w-full px-4 py-3 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-purple-500/10"
+                      style={{ borderColor: 'transparent', backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>อีเมล</label>
+                    <input
+                      id="catid-reg-email"
+                      type="email"
+                      placeholder="อีเมล"
+                      className="w-full px-4 py-3 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-purple-500/10"
+                      style={{ borderColor: 'transparent', backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>รหัสผ่าน</label>
+                  <input
+                    id="catid-reg-password"
+                    type="password"
+                    placeholder="รหัสผ่าน"
+                    className="w-full px-5 py-3 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-purple-500/10"
+                    style={{ borderColor: 'transparent', backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>ยืนยันรหัสผ่านอีกครั้ง</label>
+                  <input
+                    id="catid-reg-confirm"
+                    type="password"
+                    placeholder="ยืนยันรหัสผ่าน"
+                    className="w-full px-5 py-3 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-purple-500/10"
+                    style={{ borderColor: 'transparent', backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 mt-8">
                 <button
                   onClick={async () => {
                     const username = (document.getElementById("catid-reg-username") as HTMLInputElement)?.value;
@@ -1514,813 +1608,946 @@ export default function LauncherApp() {
                       toast.error("รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร");
                       return;
                     }
-
                     await handleCatIDRegister(username, email, password, confirm);
                   }}
-                  className="flex-1 py-3 rounded-xl font-medium transition-all hover:scale-[1.02]"
+                  className="w-full py-4 rounded-2xl font-black text-lg transition-all hover:scale-[1.02] shadow-lg shadow-purple-500/20"
                   style={{ backgroundColor: "#8b5cf6", color: "#ffffff" }}
                 >
-                  สมัครสมาชิก
+                  สมัครสมาชิกตอนนี้
                 </button>
                 <button
                   onClick={() => {
                     setCatIDRegisterOpen(false);
                     setCatIDLoginOpen(true);
                   }}
-                  className="px-4 py-3 rounded-xl border transition-all hover:scale-[1.02]"
-                  style={{ borderColor: colors.outline, color: colors.onSurface }}
+                  className="w-full py-3 rounded-2xl font-bold opacity-60 hover:opacity-100 transition-all text-sm"
+                  style={{ color: colors.onSurface }}
                 >
-                  เข้าสู่ระบบ
+                  มีบัญชีอยู่แล้ว? เข้าสู่ระบบ
                 </button>
               </div>
             </div>
           </div>
         </div>
       )}
-
-      {/* Forgot Password Modal - พร้อม meme gif */}
       {forgotPasswordOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-3xl p-6 shadow-xl text-center relative" style={{ backgroundColor: colors.surface }}>
-            {/* X Close Button */}
-            <button
-              onClick={() => setForgotPasswordOpen(false)}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-500/20"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              <Icons.Close className="w-5 h-5" />
-            </button>
-
-            <h2 className="text-xl font-bold mb-4" style={{ color: colors.onSurface }}>
-              ลืมรหัสผ่าน
-            </h2>
-
-            {/* Random Meme GIF */}
-            <img
-              src={`https://media.giphy.com/media/${["3o7btPCcdNniyf0ArS", "l2SpMDbxEdUXtBHqM", "10h8CdMQUWoZ8Y", "xT5LMHxhOfscxPfIfm", "3og0INyCmHlNylks9O", "26FPy3QZQqGtDcrja"][Math.floor(Math.random() * 6)]}/giphy.gif`}
-              alt="meme"
-              className="w-48 h-48 mx-auto rounded-xl object-cover mb-4"
-            />
-
-            <p className="text-lg mb-6" style={{ color: colors.onSurfaceVariant }}>
-              🧘 หายใจเข้าลึกๆ และนึกดีๆ ก่อนใส่ใหม่
-            </p>
-
-            <button
-              onClick={() => {
-                setForgotPasswordOpen(false);
-                setCatIDLoginOpen(true);
-              }}
-              className="px-6 py-3 rounded-xl font-medium transition-all hover:scale-[1.02]"
-              style={{ backgroundColor: colors.secondary, color: colors.onPrimary }}
-            >
-              ← กลับไปหน้าเข้าสู่ระบบ
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Account Manager Modal */}
-      {accountManagerOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-3xl p-6 shadow-xl" style={{ backgroundColor: colors.surface }}>
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.secondary }}>
-                <Icons.Person className="w-6 h-6" style={{ color: "#1a1a1a" }} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="flex w-full max-w-2xl h-[450px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden" style={{ backgroundColor: colors.surface }}>
+            {/* Left Branding Side */}
+            <div className="w-[38%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5" style={{ backgroundColor: `${colors.secondary}10` }}>
+              <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-yellow-500/10 to-transparent pointer-events-none" />
+              <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-yellow-500/30 z-10" style={{ backgroundColor: colors.secondary }}>
+                <Icons.Info className="w-10 h-10 text-black" />
               </div>
-              <div>
-                <h2 className="text-xl font-bold" style={{ color: colors.onSurface }}>จัดการบัญชี</h2>
-                <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>เลือกหรือจัดการบัญชีที่เพิ่มไว้</p>
-              </div>
+              <h2 className="text-2xl font-black tracking-tighter text-center z-10" style={{ color: colors.onSurface }}>กู้คืนไอดี</h2>
+              <div className="mt-2 px-3 py-1 rounded-full bg-yellow-500/20 text-[10px] font-black uppercase tracking-widest z-10" style={{ color: colors.secondary }}>ฝ่ายสนับสนุน</div>
+              <p className="mt-8 text-xs font-bold opacity-30 text-center leading-relaxed z-10" style={{ color: colors.onSurface }}>หายใจเข้าลึกๆ<br />แล้วพยายามนึกให้ออกนะครับ</p>
             </div>
 
-            {/* Account List */}
-            <div className="space-y-2 max-h-64 overflow-y-auto mb-4">
-              {accounts.map((account, index) => (
-                <div
-                  key={`${account.type}-${account.username}-${index}`}
-                  className="flex items-center gap-3 p-3 rounded-xl transition-all"
-                  style={{
-                    backgroundColor: session?.username === account.username && session?.type === account.type
-                      ? colors.surfaceContainerHighest
-                      : colors.surfaceContainer,
-                    border: session?.username === account.username && session?.type === account.type
-                      ? `2px solid ${colors.secondary}`
-                      : "2px solid transparent",
-                  }}
-                >
-                  <MCHead username={account.username} size={40} className="rounded-full" />
-                  <div className="flex-1">
-                    <div className="font-medium flex items-center gap-1" style={{ color: colors.onSurface }}>
-                      {account.username}
-                      {account.isAdmin && (
-                        <span title="Admin" className="inline-flex items-center justify-center w-4 h-4 rounded-full" style={{ backgroundColor: "#fbbf24" }}>
-                          <Icons.Check className="w-3 h-3 text-gray-900" />
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>
-                      {account.type === "microsoft" ? "Microsoft Account" : account.type === "catid" ? "CatID Account" : "Offline Mode"}
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => selectAccount(account)}
-                      className="px-3 py-1.5 rounded-lg text-sm"
-                      style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
-                    >
-                      เลือก
-                    </button>
-                    <button
-                      onClick={() => removeAccount(account)}
-                      className="px-3 py-1.5 rounded-lg text-sm"
-                      style={{ backgroundColor: "#ef4444", color: "#ffffff" }}
-                    >
-                      ลบ
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+            {/* Right Side */}
+            <div className="flex-1 p-10 flex flex-col items-center justify-center relative">
+              {/* Close Button */}
+              <button
+                onClick={() => setForgotPasswordOpen(false)}
+                className="absolute top-6 right-6 w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors z-20"
+                style={{ color: colors.onSurfaceVariant }}
+              >
+                <Icons.Close className="w-6 h-6" />
+              </button>
 
-            {/* Add Account Button */}
-            <button
-              onClick={() => {
-                setAccountManagerOpen(false);
-                setLoginDialogOpen(true);
-              }}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border mb-3"
-              style={{ borderColor: colors.outline, color: colors.onSurface }}
-            >
-              <Icons.Login className="w-5 h-5" />
-              เพิ่มบัญชีใหม่
-            </button>
+              <h2 className="text-2xl font-black mb-8 tracking-tight" style={{ color: colors.onSurface }}>
+                ลืมรหัสผ่านใช่ไหม?
+              </h2>
 
-            {/* Close Button */}
-            <button
-              onClick={() => setAccountManagerOpen(false)}
-              className="w-full px-4 py-3 rounded-xl"
-              style={{ backgroundColor: colors.surfaceContainerHigh, color: colors.onSurface }}
-            >
-              ปิด
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Import Modpack Modal */}
-      {importModpackOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-lg rounded-3xl p-6 shadow-xl relative" style={{ backgroundColor: colors.surface }}>
-            {/* X Close Button */}
-            <button
-              onClick={() => {
-                setImportModpackOpen(false);
-                setIsDragging(false);
-              }}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-500/20"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-              </svg>
-            </button>
-
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.secondary }}>
-                <svg className="w-6 h-6" viewBox="0 0 24 24" fill="#1a1a1a">
-                  <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
-                </svg>
+              {/* Random Meme GIF - Modern Container */}
+              <div className="relative w-44 h-44 mb-8 rounded-3xl overflow-hidden shadow-2xl border-4 border-white/5 group">
+                <img
+                  src={`https://media.giphy.com/media/${["3o7btPCcdNniyf0ArS", "l2SpMDbxEdUXtBHqM", "10h8CdMQUWoZ8Y", "xT5LMHxhOfscxPfIfm", "3og0INyCmHlNylks9O", "26FPy3QZQqGtDcrja"][Math.floor(Math.random() * 6)]}/giphy.gif`}
+                  alt="meme"
+                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                />
               </div>
-              <div>
-                <h2 className="text-xl font-bold" style={{ color: colors.onSurface }}>นำเข้า Mod Pack</h2>
-                <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>รองรับ CurseForge (.zip) และ Modrinth (.mrpack)</p>
-              </div>
-            </div>
 
-            {/* Drop Zone */}
-            <div
-              className={`relative border-2 border-dashed rounded-2xl p-8 text-center transition-all ${isDragging ? "scale-105" : ""}`}
-              style={{
-                borderColor: isDragging ? colors.secondary : colors.outline,
-                backgroundColor: isDragging ? `${colors.secondary}20` : colors.surfaceContainer,
-              }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setIsDragging(true);
-              }}
-              onDragLeave={() => setIsDragging(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setIsDragging(false);
-                const files = Array.from(e.dataTransfer.files);
-                const validFile = files.find(f => f.name.endsWith('.zip') || f.name.endsWith('.mrpack'));
-                if (validFile) {
-                  toast.success(`กำลังนำเข้า: ${validFile.name}`);
-                  setImportModpackOpen(false);
-                  // TODO: Process the file
-                } else {
-                  toast.error("รองรับเฉพาะไฟล์ .zip และ .mrpack");
-                }
-              }}
-            >
-              <Icons.Box className="w-16 h-16 mx-auto mb-4" style={{ color: isDragging ? colors.secondary : colors.onSurfaceVariant }} />
-              <p className="text-lg font-medium mb-2" style={{ color: colors.onSurface }}>
-                {isDragging ? "ปล่อยไฟล์ที่นี่" : "ลากไฟล์มาวางที่นี่"}
+              <p className="text-lg font-bold mb-8 opacity-60 text-center" style={{ color: colors.onSurface }}>
+                <span>หายใจเข้าลึกๆ และนึกดีๆ ก่อนใส่ใหม่นะ</span>
               </p>
-              <p className="text-sm mb-4" style={{ color: colors.onSurfaceVariant }}>
-                หรือ
-              </p>
+
               <button
                 onClick={() => {
-                  // Create hidden file input and trigger
-                  const input = document.createElement('input');
-                  input.type = 'file';
-                  input.accept = '.zip,.mrpack';
-                  input.onchange = (e) => {
-                    const file = (e.target as HTMLInputElement).files?.[0];
-                    if (file) {
-                      toast.success(`กำลังนำเข้า: ${file.name}`);
-                      setImportModpackOpen(false);
-                      // TODO: Process the file
-                    }
-                  };
-                  input.click();
+                  setForgotPasswordOpen(false);
+                  setCatIDLoginOpen(true);
                 }}
-                className="px-6 py-3 rounded-xl font-medium transition-all hover:scale-105"
-                style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                className="w-full py-4 rounded-2xl font-black text-lg transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-yellow-500/20"
+                style={{ backgroundColor: colors.secondary, color: colors.onPrimary }}
               >
-                เลือกไฟล์
+                ← กลับไปหน้าเข้าสู่ระบบ
               </button>
-            </div>
-
-            {/* File Types */}
-            <div className="mt-6 grid grid-cols-2 gap-3">
-              <div className="p-3 rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-6 h-6 rounded bg-orange-500 flex items-center justify-center text-white text-xs font-bold">CF</div>
-                  <span className="font-medium" style={{ color: colors.onSurface }}>CurseForge</span>
-                </div>
-                <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>.zip - Modpack จาก CurseForge</p>
-              </div>
-              <div className="p-3 rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-6 h-6 rounded bg-green-500 flex items-center justify-center text-white text-xs font-bold">MR</div>
-                  <span className="font-medium" style={{ color: colors.onSurface }}>Modrinth</span>
-                </div>
-                <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>.mrpack - Modpack จาก Modrinth</p>
-              </div>
             </div>
           </div>
         </div>
       )}
+      {linkCatIDOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="flex w-full max-w-2xl h-[450px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden" style={{ backgroundColor: colors.surface }}>
+            {/* Left Branding Side */}
+            <div className="w-[38%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5" style={{ backgroundColor: `${colors.secondary}10` }}>
+              <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-yellow-500/10 to-transparent pointer-events-none" />
+              <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-yellow-500/30 z-10" style={{ backgroundColor: colors.secondary }}>
+                <Icons.Refresh className="w-10 h-10" style={{ color: colors.onPrimary }} />
+              </div>
+              <h2 className="text-2xl font-black tracking-tighter text-center z-10" style={{ color: colors.onSurface }}>Connect account</h2>
+              <div className="mt-2 px-3 py-1 rounded-full bg-yellow-500/20 text-[10px] font-black uppercase tracking-widest z-10" style={{ color: colors.secondary }}>ซิงค์บัญชี</div>
+              <p className="mt-8 text-xs font-bold opacity-30 text-center leading-relaxed z-10" style={{ color: colors.onSurface }}>ซิงค์ความคืบหน้า<br />การเล่นเกมของคุณ</p>
+            </div>
 
-      {/* Device Code Authentication Modal */}
+            {/* Right Form Side */}
+            <div className="flex-1 p-10 flex flex-col relative">
+              {/* Close Button */}
+              <button
+                onClick={() => setLinkCatIDOpen(false)}
+                className="absolute top-6 right-6 w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors z-20"
+                style={{ color: colors.onSurfaceVariant }}
+              >
+                <Icons.Close className="w-6 h-6" />
+              </button>
+
+              <div className="mb-8">
+                <h3 className="text-2xl font-black tracking-tight" style={{ color: colors.onSurface }}>เชื่อมต่อกับบัญชี CatID</h3>
+                <p className="text-sm font-medium opacity-60" style={{ color: colors.onSurfaceVariant }}>ใส่รหัสผ่าน CatID ของคุณเพื่อทำการเชื่อมต่อ</p>
+              </div>
+
+              <div className="space-y-4 flex-1">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>ชื่อผู้ใช้ CatID</label>
+                  <input
+                    id="link-catid-username"
+                    type="text"
+                    placeholder="ชื่อผู้ใช้ CatID"
+                    className="w-full px-5 py-3.5 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-yellow-500/10"
+                    style={{ borderColor: 'transparent', backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>รหัสผ่าน</label>
+                  <input
+                    id="link-catid-password"
+                    type="password"
+                    placeholder="รหัสผ่าน CatID"
+                    className="w-full px-5 py-3.5 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-yellow-500/10"
+                    style={{ borderColor: 'transparent', backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
+                  />
+                </div>
+              </div>
+
+              <button
+                onClick={async () => {
+                  const username = (document.getElementById("link-catid-username") as HTMLInputElement)?.value;
+                  const password = (document.getElementById("link-catid-password") as HTMLInputElement)?.value;
+
+                  if (!username || !password) {
+                    toast.error("กรุณากรอกข้อมูลให้ครบ");
+                    return;
+                  }
+                  await handleLinkCatID(username, password);
+                }}
+                className="w-full py-4 rounded-2xl font-black text-lg transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-yellow-500/20 mt-8"
+                style={{ backgroundColor: colors.secondary, color: colors.onPrimary }}
+              >
+                เชื่อมต่อทันที
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {accountManagerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="flex w-full max-w-3xl h-[600px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden" style={{ backgroundColor: colors.surface }}>
+            {/* Left Branding Side */}
+            <div className="w-[30%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5" style={{ backgroundColor: `${colors.secondary}10` }}>
+              <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-yellow-500/10 to-transparent pointer-events-none" />
+              <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-yellow-500/30 z-10" style={{ backgroundColor: colors.secondary }}>
+                <Icons.Person className="w-10 h-10" style={{ color: "#1a1a1a" }} />
+              </div>
+              <h2 className="text-2xl font-black tracking-tighter text-center z-10" style={{ color: colors.onSurface }}>บัญชี</h2>
+              <div className="mt-2 px-3 py-1 rounded-full bg-yellow-500/20 text-[10px] font-black uppercase tracking-widest z-10" style={{ color: colors.secondary }}>การจัดการ</div>
+              <p className="mt-8 text-xs font-bold opacity-30 text-center leading-relaxed z-10" style={{ color: colors.onSurface }}>สลับหรือลบบัญชี<br />ที่คุณมีอยู่ในเครื่อง</p>
+            </div>
+
+            {/* Right Side - Account List */}
+            <div className="flex-1 p-10 flex flex-col relative">
+              {/* Close Button */}
+              <button
+                onClick={() => setAccountManagerOpen(false)}
+                className="absolute top-6 right-6 w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors z-20"
+                style={{ color: colors.onSurfaceVariant }}
+              >
+                <Icons.Close className="w-6 h-6" />
+              </button>
+
+              <div className="mb-8">
+                <h3 className="text-2xl font-black tracking-tight" style={{ color: colors.onSurface }}>จัดการบัญชี</h3>
+                <p className="text-sm font-medium opacity-60" style={{ color: colors.onSurfaceVariant }}>เลือกบัญชีที่คุณต้องการเล่น</p>
+              </div>
+
+              <div className="space-y-3 flex-1 overflow-y-auto px-1 custom-scrollbar mb-6">
+                {accounts.map((account, index) => {
+                  const isActive = session?.username === account.username && session?.type === account.type;
+                  return (
+                    <div
+                      key={`${account.type}-${account.username}-${index}`}
+                      className="group flex items-center gap-4 p-4 rounded-3xl transition-all border-2 relative overflow-hidden"
+                      style={{
+                        backgroundColor: isActive ? `${colors.secondary}15` : colors.surfaceContainer,
+                        borderColor: isActive ? colors.secondary : 'transparent',
+                      }}
+                    >
+                      <div className="relative shrink-0">
+                        <MCHead username={account.username} size={54} className="rounded-2xl shadow-lg border-2 border-white/5" />
+                        {isActive && (
+                          <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-green-500 border-4 border-[#1e1e2e] flex items-center justify-center shadow-lg">
+                            <Icons.Check className="w-3 h-3 text-white" />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="font-black text-lg flex items-center gap-2" style={{ color: colors.onSurface }}>
+                          <span className="truncate">{account.username}</span>
+                          {account.isAdmin && (
+                            <div className="bg-yellow-500/20 px-2 py-0.5 rounded text-[10px] font-black text-yellow-500 uppercase">ผู้ดูแล</div>
+                          )}
+                        </div>
+                        <div className="text-xs font-bold uppercase tracking-widest opacity-30 mt-0.5" style={{ color: colors.onSurface }}>
+                          บัญชีแบบ {account.type}
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        {!isActive && (
+                          <button
+                            onClick={() => selectAccount(account)}
+                            className="bg-white/5 hover:bg-yellow-500 hover:text-black w-10 h-10 rounded-xl flex items-center justify-center transition-all shadow-lg active:scale-90"
+                          >
+                            <Icons.Play className="w-5 h-5 ml-0.5" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => removeAccount(account)}
+                          className="bg-white/5 hover:bg-red-500 hover:text-white w-10 h-10 rounded-xl flex items-center justify-center transition-all shadow-lg active:scale-90"
+                        >
+                          <Icons.Trash className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {accounts.length === 0 && (
+                  <div className="h-full flex flex-col items-center justify-center opacity-30 py-12">
+                    <Icons.Person className="w-16 h-16 mb-4" />
+                    <p className="font-black uppercase tracking-widest">ไม่พบบัญชีผู้ใช้</p>
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={() => setAccountManagerOpen(false)}
+                className="w-full py-4 rounded-2xl font-black text-lg transition-all hover:bg-white/5 border-2 border-white/5 active:scale-[0.98]"
+                style={{ color: colors.onSurface }}
+              >
+                กลับสู่หน้าหลัก
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+      }
+
+      {/* Import Modpack Modal - Horizontal */}
+      {
+        importModpackOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+            <div className="flex w-full max-w-3xl h-[520px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden" style={{ backgroundColor: colors.surface }}>
+              {/* Left Branding Side */}
+              <div className="w-[32%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5" style={{ backgroundColor: `${colors.secondary}10` }}>
+                <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-yellow-500/10 to-transparent pointer-events-none" />
+                <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-yellow-500/30 z-10" style={{ backgroundColor: colors.secondary }}>
+                  <Icons.Download className="w-10 h-10 -rotate-180" style={{ color: "#1a1a1a" }} />
+                </div>
+                <h2 className="text-2xl font-black tracking-tighter text-center z-10" style={{ color: colors.onSurface }}>นำเข้า</h2>
+                <div className="mt-2 px-3 py-1 rounded-full bg-yellow-500/20 text-[10px] font-black uppercase tracking-widest z-10" style={{ color: colors.secondary }}>มอดแพ็ค</div>
+                <p className="mt-8 text-xs font-bold opacity-30 text-center leading-relaxed z-10" style={{ color: colors.onSurface }}>ขยายโลกของคุณ<br />ด้วยเนื้อหาใหม่ๆ</p>
+              </div>
+
+              {/* Right Content Side */}
+              <div className="flex-1 p-10 flex flex-col relative">
+                {/* Close Button */}
+                <button
+                  onClick={() => {
+                    setImportModpackOpen(false);
+                    setIsDragging(false);
+                  }}
+                  className="absolute top-6 right-6 w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors z-20"
+                  style={{ color: colors.onSurfaceVariant }}
+                >
+                  <Icons.Close className="w-6 h-6" />
+                </button>
+
+                <div className="mb-6">
+                  <h3 className="text-2xl font-black tracking-tight" style={{ color: colors.onSurface }}>นำเข้าเนื้อหา</h3>
+                  <p className="text-sm font-medium opacity-60" style={{ color: colors.onSurfaceVariant }}>ลากและวางไฟล์ หรือเลือกไฟล์จากเครื่องของคุณ</p>
+                </div>
+
+                {/* Drop Zone */}
+                <div
+                  className={`relative flex-1 border-2 border-dashed rounded-3xl p-8 flex flex-col items-center justify-center transition-all ${isDragging ? "scale-105" : "hover:border-yellow-500/30"}`}
+                  style={{
+                    borderColor: isDragging ? colors.secondary : colors.outline,
+                    backgroundColor: isDragging ? `${colors.secondary}15` : colors.surfaceContainer,
+                  }}
+                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                    const files = Array.from(e.dataTransfer.files);
+                    const validFile = files.find(f => f.name.endsWith('.zip') || f.name.endsWith('.mrpack'));
+                    if (validFile) {
+                      toast.success(`กำลังนำเข้า: ${validFile.name}`);
+                      setImportModpackOpen(false);
+                    } else {
+                      toast.error("รองรับเฉพาะไฟล์ .zip และ .mrpack");
+                    }
+                  }}
+                >
+                  <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                    <Icons.Box className="w-10 h-10 opacity-40" style={{ color: isDragging ? colors.secondary : colors.onSurface }} />
+                  </div>
+                  <p className="text-lg font-black tracking-tight" style={{ color: colors.onSurface }}>
+                    {isDragging ? "ปล่อยทันทีเพื่อนำเข้า" : "ลากไฟล์มาวางที่นี่"}
+                  </p>
+                  <p className="text-xs font-bold opacity-30 mt-1 uppercase tracking-widest">รองรับไฟล์ .zip และ .mrpack</p>
+
+                  <button
+                    onClick={() => {
+                      const input = document.createElement('input');
+                      input.type = 'file';
+                      input.accept = '.zip,.mrpack';
+                      input.onchange = (e) => {
+                        const file = (e.target as HTMLInputElement).files?.[0];
+                        if (file) {
+                          toast.success(`กำลังนำเข้า: ${file.name}`);
+                          setImportModpackOpen(false);
+                        }
+                      };
+                      input.click();
+                    }}
+                    className="mt-6 px-8 py-3 rounded-2xl font-black text-sm transition-all hover:scale-105 shadow-xl"
+                    style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                  >
+                    เลือกไฟล์จากเครื่อง
+                  </button>
+                </div>
+
+                {/* Platform Info */}
+                <div className="mt-6 flex gap-4">
+                  <div className="flex-1 p-3 rounded-2xl flex items-center gap-3 border border-white/5" style={{ backgroundColor: colors.surfaceContainer }}>
+                    <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-500 font-black text-xs">CF</div>
+                    <div>
+                      <div className="text-xs font-black" style={{ color: colors.onSurface }}>CurseForge</div>
+                      <div className="text-[10px] opacity-40 uppercase font-bold">Standard .ZIP</div>
+                    </div>
+                  </div>
+                  <div className="flex-1 p-3 rounded-2xl flex items-center gap-3 border border-white/5" style={{ backgroundColor: colors.surfaceContainer }}>
+                    <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center text-green-500 font-black text-xs">MR</div>
+                    <div>
+                      <div className="text-xs font-black" style={{ color: colors.onSurface }}>Modrinth</div>
+                      <div className="text-[10px] opacity-40 uppercase font-bold">Native .MRPACK</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
       {deviceCodeModalOpen && deviceCodeData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md rounded-3xl p-6 shadow-xl relative" style={{ backgroundColor: colors.surface }}>
-            {/* X Close Button */}
-            <button
-              onClick={() => {
-                setDeviceCodeModalOpen(false);
-                setDeviceCodePolling(false);
-                setDeviceCodeData(null);
-                setDeviceCodeError(null);
-              }}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-500/20"
-              style={{ color: colors.onSurfaceVariant }}
-            >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-              </svg>
-            </button>
-
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: "#2f2f2f" }}>
-                <svg className="w-6 h-6" viewBox="0 0 21 21" fill="currentColor">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="flex w-full max-w-2xl h-[450px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden" style={{ backgroundColor: colors.surface }}>
+            {/* Left Branding Side */}
+            <div className="w-[35%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5" style={{ backgroundColor: "#2f2f2f10" }}>
+              <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl z-10" style={{ backgroundColor: "#2f2f2f" }}>
+                <svg className="w-10 h-10" viewBox="0 0 21 21" fill="currentColor">
                   <rect x="1" y="1" width="9" height="9" fill="#F25022" />
                   <rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
                   <rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
                   <rect x="11" y="11" width="9" height="9" fill="#FFB900" />
                 </svg>
               </div>
-              <div>
-                <h2 className="text-xl font-bold" style={{ color: colors.onSurface }}>เข้าสู่ระบบ Microsoft</h2>
-                <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>ใช้รหัสด้านล่างที่ microsoft.com/link</p>
-              </div>
+              <h2 className="text-2xl font-black tracking-tighter text-center z-10" style={{ color: colors.onSurface }}>ยืนยันตัวตน</h2>
+              <div className="mt-2 px-3 py-1 rounded-full bg-white/5 text-[10px] font-black uppercase tracking-widest z-10" style={{ color: colors.onSurfaceVariant }}>ระบบตรวจสอบสิทธิ์</div>
+              <p className="mt-8 text-xs font-bold opacity-30 text-center leading-relaxed z-10" style={{ color: colors.onSurface }}>เชื่อมต่อไอดีของคุณ<br />ผ่านเซิร์ฟเวอร์ MICROSOFT</p>
             </div>
 
-            {/* User Code Display */}
-            <div
-              className="p-6 rounded-2xl text-center mb-4"
-              style={{ backgroundColor: colors.surfaceContainer }}
-            >
-              <p className="text-sm mb-2" style={{ color: colors.onSurfaceVariant }}>รหัสของคุณ</p>
-              <div
-                className="text-4xl font-mono font-bold tracking-[0.3em] mb-3 select-all"
-                style={{ color: colors.onSurface }}
-              >
-                {deviceCodeData.userCode}
-              </div>
-
-              {/* Copy Button */}
+            {/* Right Side */}
+            <div className="flex-1 p-10 flex flex-col relative justify-center">
+              {/* Close Button */}
               <button
-                onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(deviceCodeData.userCode);
-                    toast.success("คัดลอกรหัสแล้ว!");
-                  } catch {
-                    toast.error("ไม่สามารถคัดลอกได้");
-                  }
+                onClick={() => {
+                  setDeviceCodeModalOpen(false);
+                  setDeviceCodePolling(false);
+                  setDeviceCodeData(null);
+                  setDeviceCodeError(null);
                 }}
-                className="px-4 py-2 rounded-lg text-sm transition-all hover:scale-105"
-                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                className="absolute top-6 right-6 w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors z-20"
+                style={{ color: colors.onSurfaceVariant }}
               >
-                <i className="fa-solid fa-copy mr-1"></i> คัดลอกรหัส
+                <Icons.Close className="w-6 h-6" />
               </button>
-            </div>
 
-            {/* Open Browser Button */}
-            <button
-              onClick={async () => {
-                try {
-                  // Copy code first
-                  await navigator.clipboard.writeText(deviceCodeData.userCode);
-                  toast.success("คัดลอกรหัสแล้ว!");
-                  // Open microsoft.com/link in default browser
-                  if ((window as any).api?.openExternal) {
-                    await (window as any).api.openExternal("https://microsoft.com/link");
-                  } else {
-                    window.open("https://microsoft.com/link", "_blank");
-                  }
-                } catch (error) {
-                  console.error("Failed to open browser:", error);
-                  window.open("https://microsoft.com/link", "_blank");
-                }
-              }}
-              className="w-full flex items-center justify-center gap-2 px-4 py-4 rounded-xl mb-4 transition-all hover:scale-[1.02]"
-              style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
-            >
-              <i className="fa-solid fa-globe mr-2"></i> เปิด microsoft.com/link
-            </button>
-
-            {/* Error Display */}
-            {deviceCodeError && (
-              <div className="p-3 rounded-xl mb-4 text-center" style={{ backgroundColor: "#ef444420", color: "#ef4444" }}>
-                {deviceCodeError}
+              <div className="mb-8">
+                <h3 className="text-2xl font-black tracking-tight" style={{ color: colors.onSurface }}>ยืนยันตัวตน</h3>
+                <p className="text-sm font-medium opacity-60" style={{ color: colors.onSurfaceVariant }}>ทำตามขั้นตอนด้านล่างเพื่อเชื่อมต่อบัญชี</p>
               </div>
-            )}
 
-            {/* Polling Status */}
-            <div className="text-center">
-              {deviceCodePolling ? (
-                <div className="flex items-center justify-center gap-2" style={{ color: colors.onSurfaceVariant }}>
-                  <div className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: colors.secondary, borderTopColor: "transparent" }} />
-                  <span className="text-sm">รอการยืนยัน...</span>
+              <div className="space-y-6 flex-1">
+                <div className="p-5 rounded-2xl bg-white/5 border border-white/5">
+                  <p className="text-sm font-bold mb-4 opacity-70" style={{ color: colors.onSurface }}>1. ไปที่เว็บไซต์ Microsoft</p>
+                  <a
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      window.api?.openExternal?.(deviceCodeData.verificationUri);
+                    }}
+                    className="text-blue-400 font-black text-lg underline break-all hover:text-blue-300 transition-colors cursor-pointer"
+                  >
+                    {deviceCodeData.verificationUri}
+                  </a>
                 </div>
-              ) : (
-                <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>
-                  การเข้าสู่ระบบถูกยกเลิก
-                </p>
-              )}
-            </div>
 
-            {/* Expiry Timer */}
-            <p className="text-xs text-center mt-4" style={{ color: colors.onSurfaceVariant }}>
-              รหัสจะหมดอายุใน {Math.max(0, Math.floor((deviceCodeData.expiresAt - Date.now()) / 60000))} นาที
-            </p>
+                <div>
+                  <p className="text-sm font-bold mb-2 opacity-70 ml-1" style={{ color: colors.onSurface }}>2. ใส่รหัสต่อไปนี้</p>
+                  <div
+                    className="w-full py-5 rounded-2xl text-center text-4xl font-black tracking-[0.3em] shadow-inner select-all cursor-copy group relative"
+                    style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.primary }}
+                    onClick={() => {
+                      navigator.clipboard.writeText(deviceCodeData.userCode);
+                      toast.success("คัดลอกรหัสแล้ว!");
+                    }}
+                  >
+                    {deviceCodeData.userCode}
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-black/40 backdrop-blur-sm rounded-2xl transition-opacity">
+                      <span className="text-sm font-black text-white tracking-normal uppercase">คลิกเพื่อคัดลอกรหัส</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(deviceCodeData.userCode);
+                  window.api?.openExternal?.(deviceCodeData.verificationUri);
+                  toast.success("คัดลอกรหัสแล้ว!");
+                }}
+                className="w-full mt-6 py-3 rounded-xl font-bold text-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
+                style={{ backgroundColor: colors.primary, color: colors.onPrimary }}
+              >
+                คัดลอกรหัสและเปิดหน้าเข้าสู่ระบบ
+              </button>
+
+              <div className="mt-6 flex items-center justify-center gap-3 opacity-40">
+                <Icons.Spinner className="w-5 h-5 animate-spin" />
+                <span className="text-xs font-bold uppercase tracking-widest">กำลังรอการอนุมัติ</span>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Sidebar */}
-      <nav className="w-20 flex flex-col items-center" style={{ backgroundColor: colors.secondary }}>
-        {/* Top Section - Logo and Main Nav */}
-        <div className="flex-1 flex flex-col items-center gap-2">
-          {/* Drag region for sidebar top */}
-          <div className="w-full pt-2 pb-2 flex justify-center drag-region">
-            <div className="w-12 h-12 rounded-2xl overflow-hidden">
-              <img src="./r.svg" alt="Logo" className="w-full h-full object-cover" />
-            </div>
-          </div>
+      {/* Inbox/Notifications Modal */}
 
-          {/* Main Navigation Items */}
-          {mainNavItems.map(({ id, icon: Icon, label }) => (
-            <div key={id} className="relative group">
-              <button
-                onClick={() => setActiveTab(id)}
-                className="w-14 h-14 rounded-2xl flex items-center justify-center transition-all hover:scale-105 no-drag"
-                style={{
-                  backgroundColor: activeTab === id ? "rgba(255,255,255,0.9)" : "transparent",
-                  color: "#1a1a1a"
-                }}
-              >
-                <Icon className="w-6 h-6" />
-              </button>
-              {/* Hover Tooltip */}
-              <div
-                className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-3 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 translate-x-2 group-hover:translate-x-0 transition-all duration-200 pointer-events-none z-50"
-                style={{
-                  backgroundColor: "rgba(0,0,0,0.8)",
-                  color: "#fff",
-                  fontSize: "0.75rem"
-                }}
-              >
-                {label}
+
+      {/* Main App Layout */}
+      <div className={`flex-1 flex overflow-hidden ${config.rainbowMode ? 'rainbow-mode' : ''}`}>
+        {/* Sidebar */}
+        <nav className="w-20 flex flex-col items-center" style={{ backgroundColor: colors.secondary }}>
+          {/* Top Section - Logo and Main Nav */}
+          <div className="flex-1 flex flex-col items-center gap-2">
+            {/* Drag region for sidebar top */}
+            <div className="w-full pt-2 pb-2 flex justify-center drag-region">
+              <div className="w-12 h-12 rounded-2xl overflow-hidden">
+                <img src={rIcon.src} alt="Logo" className="w-full h-full object-cover" />
               </div>
             </div>
-          ))}
-        </div>
 
-        {/* Bottom Section - Settings and About */}
-        <div className="flex flex-col items-center gap-2 pb-4">
-          {bottomNavItems.map(({ id, icon: Icon, label }) => (
-            <div key={id} className="relative group">
-              <button
-                onClick={() => setActiveTab(id)}
-                className="w-14 h-14 rounded-2xl flex items-center justify-center transition-all hover:scale-105 no-drag"
-                style={{
-                  backgroundColor: activeTab === id ? "rgba(255,255,255,0.9)" : "transparent",
-                  color: "#1a1a1a"
-                }}
-              >
-                <Icon className="w-6 h-6" />
-              </button>
-              {/* Hover Tooltip */}
-              <div
-                className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-3 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 translate-x-2 group-hover:translate-x-0 transition-all duration-200 pointer-events-none z-50"
-                style={{
-                  backgroundColor: "rgba(0,0,0,0.8)",
-                  color: "#fff",
-                  fontSize: "0.75rem"
-                }}
-              >
-                {label}
-              </div>
-            </div>
-          ))}
-        </div>
-      </nav>
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header with Drag Region */}
-        <header
-          className="h-16 flex items-center justify-between pl-6 pr-0 drag-region"
-          style={{ backgroundColor: colors.surface }}
-        >
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold" style={{ fontFamily: "'Inter', sans-serif", color: colors.onSurface }}>Reality</h1>
-            <AppVersionBadge colors={colors} />
-          </div>
-
-          {/* Right Side - Account - Fixed at top */}
-          <div className="fixed top-0 right-36 h-10 flex items-center no-drag z-[99]">
-            {/* Account Section */}
-            <div className="relative">
-              {/* Account Button */}
-              <button
-                onClick={() => setAccountDropdownOpen(!accountDropdownOpen)}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm transition-all hover:scale-105 hover:bg-black/5"
-                style={{ color: colors.onSurface }}
-              >
-                {session ? (
-                  <MCHead username={session.username} size={22} className="rounded-full" />
-                ) : (
-                  <Icons.Person className="w-4 h-4" />
-                )}
-                {session?.username || "Account"}
-                {session?.isAdmin ? (
-                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full" style={{ backgroundColor: "#fbbf24" }}>
-                    <Icons.Check className="w-3 h-3 text-gray-900" />
-                  </span>
-                ) : session?.type === "catid" ? (
-                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full" style={{ backgroundColor: "#3b82f6" }}>
-                    <Icons.Check className="w-3 h-3 text-white" />
-                  </span>
-                ) : session?.type === "microsoft" ? (
-                  <img src="./microsoft_icon.svg" alt="Microsoft" className="w-4 h-4" />
-                ) : null}
-                <svg className={`w-3 h-3 transition-transform ${accountDropdownOpen ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M7 10l5 5 5-5z" />
-                </svg>
-              </button>
-
-              {/* Account Dropdown */}
-              {accountDropdownOpen && (
-                <div
-                  className="absolute top-full right-0 mt-2 w-64 rounded-2xl shadow-xl p-4 z-50"
-                  style={{ backgroundColor: colors.surface, border: `1px solid ${colors.outline}` }}
+            {/* Main Navigation Items */}
+            {mainNavItems.map(({ id, icon: Icon, label }) => (
+              <div key={id} className="relative group">
+                <button
+                  onClick={() => { playClick(); setActiveTab(id); }}
+                  className="w-14 h-14 rounded-2xl flex items-center justify-center transition-all hover:scale-105 no-drag"
+                  style={{
+                    backgroundColor: activeTab === id ? "rgba(255,255,255,0.9)" : "transparent",
+                    color: "#1a1a1a"
+                  }}
                 >
-                  <p className="text-xs font-medium mb-3" style={{ color: colors.onSurfaceVariant }}>Account</p>
+                  <Icon className="w-6 h-6" />
+                </button>
+                {/* Hover Tooltip */}
+                <div
+                  className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-3 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 translate-x-2 group-hover:translate-x-0 transition-all duration-200 pointer-events-none z-50"
+                  style={{
+                    backgroundColor: "rgba(0,0,0,0.8)",
+                    color: "#fff",
+                    fontSize: "0.75rem"
+                  }}
+                >
+                  {label}
+                </div>
+              </div>
+            ))}
+          </div>
 
-                  {/* Account List */}
-                  <div className="space-y-2 mb-4">
-                    {accounts.length > 0 ? (
-                      accounts.map((account, index) => (
-                        <div
-                          key={`${account.type}-${account.username}-${index}`}
-                          className="flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-all hover:bg-gray-500/10"
-                          style={{
-                            backgroundColor: session?.username === account.username ? colors.surfaceContainerHighest : "transparent",
-                            border: session?.username === account.username ? `1px solid ${colors.secondary}` : "1px solid transparent",
-                          }}
-                          onClick={() => {
-                            selectAccount(account);
-                            setAccountDropdownOpen(false);
-                          }}
-                        >
-                          <MCHead username={account.username} size={32} className="rounded-full" />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium truncate flex items-center gap-1" style={{ color: colors.onSurface }}>
-                              {account.username}
-                              {account.isAdmin ? (
-                                <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full flex-shrink-0" style={{ backgroundColor: "#fbbf24" }}>
-                                  <Icons.Check className="w-2.5 h-2.5 text-gray-900" />
-                                </span>
-                              ) : account.type === "catid" ? (
-                                <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full flex-shrink-0" style={{ backgroundColor: "#3b82f6" }}>
-                                  <Icons.Check className="w-2.5 h-2.5 text-white" />
-                                </span>
-                              ) : account.type === "microsoft" ? (
-                                <img src="./microsoft_icon.svg" alt="Microsoft" className="w-4 h-4" />
-                              ) : null}
-                            </div>
-                            <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>
-                              {account.type === "microsoft" ? "Microsoft" : account.type === "catid" ? "CatID Account" : "Offline Account"}
-                            </div>
-                          </div>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removeAccount(account);
-                            }}
-                            className="w-6 h-6 rounded-full flex items-center justify-center hover:bg-red-500/20"
-                            style={{ color: colors.onSurfaceVariant }}
-                          >
-                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                              <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-                            </svg>
-                          </button>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-sm text-center py-2" style={{ color: colors.onSurfaceVariant }}>ยังไม่มีบัญชี</p>
+          {/* Bottom Section - Settings and About */}
+          <div className="flex flex-col items-center gap-2 pb-4">
+            {bottomNavItems.map(({ id, icon: Icon, label }) => (
+              <div key={id} className="relative group">
+                <button
+                  onClick={() => { playClick(); setActiveTab(id); }}
+                  className="w-14 h-14 rounded-2xl flex items-center justify-center transition-all hover:scale-105 no-drag"
+                  style={{
+                    backgroundColor: activeTab === id ? "rgba(255,255,255,0.9)" : "transparent",
+                    color: "#1a1a1a"
+                  }}
+                >
+                  <Icon className="w-6 h-6" />
+                </button>
+                {/* Hover Tooltip */}
+                <div
+                  className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-3 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 translate-x-2 group-hover:translate-x-0 transition-all duration-200 pointer-events-none z-50"
+                  style={{
+                    backgroundColor: "rgba(0,0,0,0.8)",
+                    color: "#fff",
+                    fontSize: "0.75rem"
+                  }}
+                >
+                  {label}
+                </div>
+              </div>
+            ))}
+          </div>
+        </nav>
+
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Header with Drag Region */}
+          <header
+            className="h-16 flex items-center justify-between pl-6 pr-0 drag-region"
+            style={{ backgroundColor: colors.surface }}
+          >
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold" style={{ fontFamily: "'Inter', sans-serif", color: colors.onSurface }}>Reality</h1>
+              <AppVersionBadge colors={colors} />
+            </div>
+
+            {/* Right Side - Notifications and Account - Fixed at top */}
+            <div className="fixed top-0 right-36 h-10 flex items-center gap-2 no-drag z-[99]">
+              {/* Notifications/Inbox Button - Only show when logged in */}
+              {session && (
+                <div className="relative">
+                  <button
+                    onClick={() => setInboxOpen(!inboxOpen)}
+                    className="w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 hover:bg-black/10 relative"
+                    style={{ color: colors.onSurfaceVariant }}
+                    title="ข่าวสารและการแจ้งเตือน"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                    </svg>
+                    {invitations.length > 0 && (
+                      <span
+                        className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold"
+                        style={{ backgroundColor: '#22c55e', color: 'white' }}
+                      >
+                        {invitations.length > 9 ? '9+' : invitations.length}
+                      </span>
                     )}
-                  </div>
+                  </button>
+                  <NotificationInbox
+                    isOpen={inboxOpen}
+                    onClose={() => setInboxOpen(false)}
+                    announcements={announcements}
+                    notifications={userNotifications}
+                    colors={colors}
+                    isFullscreen={config.fullscreen}
+                    onInvitationAccepted={() => {
+                      if (window.api?.invitationsFetch) {
+                        window.api.invitationsFetch().then(setInvitations);
+                      }
+                      setServerRefreshTrigger(prev => prev + 1);
+                    }}
+                    onNotificationChanged={() => setNotificationRefreshTrigger(prev => prev + 1)}
+                  />
+                </div>
+              )}
 
-                  {/* Divider */}
-                  <div className="h-px mb-3" style={{ backgroundColor: colors.outline }} />
+              {/* Account Section */}
+              <div className="relative">
+                {/* Account Button */}
+                <button
+                  onClick={() => setAccountDropdownOpen(!accountDropdownOpen)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm transition-all hover:scale-105 hover:bg-black/5"
+                  style={{ color: colors.onSurface }}
+                >
+                  {session ? (
+                    <MCHead username={session.username} size={22} className="rounded-full" />
+                  ) : (
+                    <Icons.Person className="w-4 h-4" />
+                  )}
+                  {session?.username || "Account"}
+                  {session?.isAdmin ? (
+                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full" style={{ backgroundColor: "#fbbf24" }}>
+                      <Icons.Check className="w-3 h-3 text-gray-900" />
+                    </span>
+                  ) : session?.type === "catid" ? (
+                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full" style={{ backgroundColor: "#3b82f6" }}>
+                      <Icons.Check className="w-3 h-3 text-white" />
+                    </span>
+                  ) : session?.type === "microsoft" ? (
+                    <>
+                      <img src={microsoftIcon.src} alt="Microsoft" className="w-5 h-5" />
+                      {session.apiToken && (
+                        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full" style={{ backgroundColor: "#fbbf24" }}>
+                          <Icons.Check className="w-3 h-3 text-white" />
+                        </span>
+                      )}
+                    </>
+                  ) : null}
+                  <svg className={`w-3 h-3 transition-transform ${accountDropdownOpen ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M7 10l5 5 5-5z" />
+                  </svg>
+                </button>
 
-                  {/* Actions */}
-                  <p className="text-xs font-medium mb-2" style={{ color: colors.onSurfaceVariant }}>Actions</p>
-                  <div className="space-y-1">
-                    <button
-                      onClick={() => {
-                        setAccountDropdownOpen(false);
-                        setLoginDialogOpen(true);
-                      }}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all hover:bg-gray-500/10"
-                      style={{ color: colors.onSurface }}
-                    >
-                      <span style={{ color: colors.secondary }}>+</span>
-                      เพิ่มบัญชีผู้ใช้
-                    </button>
-                    {session && (
+                {/* Account Dropdown */}
+                {accountDropdownOpen && (
+                  <div
+                    className="absolute top-full right-0 mt-2 w-64 rounded-2xl shadow-xl p-4 z-50"
+                    style={{ backgroundColor: colors.surface, border: `1px solid ${colors.outline}` }}
+                  >
+                    <p className="text-xs font-medium mb-3" style={{ color: colors.onSurfaceVariant }}>Account</p>
+
+                    {/* Account List */}
+                    <div className="space-y-2 mb-4">
+                      {accounts.length > 0 ? (
+                        accounts.map((account, index) => (
+                          <div
+                            key={`${account.type}-${account.username}-${index}`}
+                            className="flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-all hover:bg-gray-500/10"
+                            style={{
+                              backgroundColor: session?.username === account.username ? colors.surfaceContainerHighest : "transparent",
+                              border: session?.username === account.username ? `1px solid ${colors.secondary}` : "1px solid transparent",
+                            }}
+                            onClick={() => {
+                              selectAccount(account);
+                              setAccountDropdownOpen(false);
+                            }}
+                          >
+                            <MCHead username={account.username} size={32} className="rounded-full" />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium truncate flex items-center gap-1" style={{ color: colors.onSurface }}>
+                                {account.username}
+                                {account.isAdmin ? (
+                                  <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full flex-shrink-0" style={{ backgroundColor: "#fbbf24" }}>
+                                    <Icons.Check className="w-2.5 h-2.5 text-gray-900" />
+                                  </span>
+                                ) : account.type === "catid" ? (
+                                  <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full flex-shrink-0" style={{ backgroundColor: "#3b82f6" }}>
+                                    <Icons.Check className="w-2.5 h-2.5 text-white" />
+                                  </span>
+                                ) : account.type === "microsoft" ? (
+                                  <img src={microsoftIcon.src} alt="Microsoft" className="w-5 h-5" />
+                                ) : null}
+                                {account.type === "microsoft" && account.apiToken && (
+                                  <span title="เชื่อมต่อกับ CatID แล้ว" className="ml-1 opacity-80 inline-flex items-center justify-center w-4 h-4 rounded-full" style={{ backgroundColor: "#fbbf24" }}>
+                                    <Icons.Check className="w-3 h-3 text-white" />
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>
+                                {account.type === "microsoft" ? "Microsoft" : account.type === "catid" ? "CatID Account" : "Offline Account"}
+                              </div>
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeAccount(account);
+                              }}
+                              className="w-6 h-6 rounded-full flex items-center justify-center hover:bg-red-500/20"
+                              style={{ color: colors.onSurfaceVariant }}
+                            >
+                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+                              </svg>
+                            </button>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-sm text-center py-2" style={{ color: colors.onSurfaceVariant }}>ยังไม่มีบัญชี</p>
+                      )}
+                    </div>
+
+                    {/* Divider */}
+                    <div className="h-px mb-3" style={{ backgroundColor: colors.outline }} />
+
+                    {/* Actions */}
+                    <p className="text-xs font-medium mb-2" style={{ color: colors.onSurfaceVariant }}>Actions</p>
+                    <div className="space-y-1">
+                      <button
+                        onClick={() => {
+                          setAccountDropdownOpen(false);
+                          setLoginDialogOpen(true);
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all hover:bg-gray-500/10"
+                        style={{ color: colors.onSurface }}
+                      >
+                        <span className="flex items-center justify-center w-5 h-5 text-lg" style={{ color: colors.secondary }}>+</span>
+                        <span className="text-sm">เพิ่มบัญชีผู้ใช้</span>
+                      </button>
+
+                      {/* Link CatID (for Microsoft users) */}
+                      {session && session.type === "microsoft" && !session.apiToken && (
+                        <button
+                          onClick={() => {
+                            setAccountDropdownOpen(false);
+                            setLinkCatIDOpen(true);
+                          }}
+                          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all hover:bg-gray-500/10"
+                          style={{ color: colors.onSurface }}
+                        >
+                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full" style={{ backgroundColor: "#fbbf24" }}>
+                            <Icons.Check className="w-3.5 h-3.5 text-white" />
+                          </span>
+                          <span className="text-sm">เชื่อมต่อ CatID</span>
+                        </button>
+                      )}
+
+                      {/* Disconnect buttons moved to Settings > Account */}
+
+
+                      {/* Link Microsoft (for CatID users) */}
+                      {session && session.type === "catid" && (
+                        <button
+                          onClick={async () => {
+                            setAccountDropdownOpen(false);
+                            console.log("[Auth] Link Microsoft clicked");
+
+                            if (window.api?.startDeviceCodeAuth) {
+                              try {
+                                const t = toast.loading("กำลังขอรหัสเชื่อมต่อ...");
+                                const result = await window.api.startDeviceCodeAuth();
+                                toast.dismiss(t);
+
+                                if (!result.ok || !result.deviceCode || !result.userCode) {
+                                  toast.error(result.error || "ไม่สามารถขอรหัสได้");
+                                  return;
+                                }
+
+                                setDeviceCodeData({
+                                  deviceCode: result.deviceCode,
+                                  userCode: result.userCode,
+                                  verificationUri: result.verificationUri || "https://microsoft.com/link",
+                                  expiresAt: Date.now() + ((result.expiresIn || 900) * 1000),
+                                });
+                                // Set flag for linking mode if I add it to state, or just reuse modal 
+                                // For now, I'll rely on the modal's polling call checking a new state or just standard poll
+                                // I need to update the polling logic to pass 'isLinking'
+                                setDeviceCodePolling(true);
+                                setDeviceCodeModalOpen(true);
+                                // Actually, I need a state to tell the modal this is a LINK operation, not a LOGIN
+                                setIsLinkingMicrosoft(true);
+                              } catch (error) {
+                                toast.error("เกิดข้อผิดพลาด");
+                              }
+                            }
+                          }}
+                          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all hover:bg-gray-500/10"
+                          style={{ color: colors.onSurface }}
+                        >
+                          {/* Use Microsoft Icon */}
+                          <svg className="w-5 h-5" viewBox="0 0 21 21" fill="currentColor">
+                            <rect x="1" y="1" width="9" height="9" fill="#F25022" />
+                            <rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
+                            <rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
+                            <rect x="11" y="11" width="9" height="9" fill="#FFB900" />
+                          </svg>
+                          <span className="text-sm">เชื่อมต่อ Microsoft</span>
+                        </button>
+                      )}
+
                       <button
                         onClick={() => {
                           handleLogout();
                           setAccountDropdownOpen(false);
                         }}
-                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all hover:bg-gray-500/10"
+                        className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all hover:bg-gray-500/10"
                         style={{ color: colors.onSurface }}
                       >
-                        <span>←</span>
-                        ออกจากระบบ
+                        <span className="w-5 h-5 flex items-center justify-center text-lg">←</span>
+                        <span className="text-sm">ออกจากระบบ</span>
                       </button>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Backdrop to close dropdown */}
-              {accountDropdownOpen && (
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setAccountDropdownOpen(false)}
-                />
-              )}
-            </div>
-
-            {/* Window Control Buttons - Fixed at top-right corner */}
-            <div className="fixed top-0 right-0 flex items-center gap-0 z-[100] no-drag" style={{ pointerEvents: "auto" }}>
-              {/* Minimize */}
-              <button
-                onClick={() => window.api?.windowMinimize()}
-                className="w-12 h-10 flex items-center justify-center transition-all hover:bg-black/10"
-                style={{ color: colors.onSurfaceVariant }}
-                title="ย่อหน้าต่าง"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M19 13H5v-2h14v2z" />
-                </svg>
-              </button>
-              {/* Maximize / Fullscreen */}
-              <button
-                onClick={async () => {
-                  await window.api?.windowMaximize();
-                  // Sync with fullscreen setting
-                  const isMaximized = await window.api?.windowIsMaximized?.();
-                  updateConfig({ fullscreen: isMaximized ?? false });
-                }}
-                className="w-12 h-10 flex items-center justify-center transition-all hover:bg-black/10"
-                style={{ color: config.fullscreen ? colors.secondary : colors.onSurfaceVariant }}
-                title={config.fullscreen ? "ย่อกลับ" : "ขยายหน้าต่าง"}
-              >
-                {config.fullscreen ? (
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
-                  </svg>
-                ) : (
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z" />
-                  </svg>
-                )}
-              </button>
-              {/* Close */}
-              <button
-                onClick={() => window.api?.windowClose()}
-                className="w-12 h-10 flex items-center justify-center transition-all hover:bg-red-500 hover:!text-white"
-                style={{ color: colors.onSurfaceVariant }}
-                title="ปิดหน้าต่าง"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </header>
-
-        {/* Content */}
-        <main className="flex-1 overflow-auto p-6">
-          {activeTab === "home" && (
-            <Home
-              session={session}
-              news={news}
-              servers={servers}
-              selectedServer={selectedServer}
-              setSelectedServer={setSelectedServer}
-              colors={colors}
-            />
-          )}
-
-          {/* Servers Tab */}
-          {activeTab === "servers" && (
-            <ServerMenu
-              servers={servers}
-              selectedServer={selectedServer}
-              setSelectedServer={setSelectedServer}
-              colors={colors}
-            />
-          )}
-
-          {/* Modpack Tab - Always render to preserve game state */}
-          <div style={{ display: activeTab === "modpack" ? "contents" : "none" }}>
-            <ModPack
-              colors={colors}
-              setImportModpackOpen={setImportModpackOpen}
-              setActiveTab={setActiveTab}
-              isActive={activeTab === "modpack"}
-            />
-          </div>
-
-          {/* Explore Tab */}
-          {activeTab === "explore" && (
-            <Explore colors={colors} />
-          )}
-
-          {/* Settings Tab */}
-          {activeTab === "settings" && (
-            <Settings
-              config={config}
-              updateConfig={updateConfig}
-              colors={colors}
-              setSettingsTab={setSettingsTab}
-              settingsTab={settingsTab}
-              handleBrowseJava={handleBrowseJava}
-              handleBrowseMinecraftDir={handleBrowseMinecraftDir}
-              session={session}
-              accounts={accounts}
-              handleLogout={handleLogout}
-              selectAccount={selectAccount}
-              removeAccount={removeAccount}
-              setLoginDialogOpen={setLoginDialogOpen}
-            />
-          )}
-
-          {/* Admin Panel Tab - Only for admins */}
-          {activeTab === "admin" && isAdmin && adminToken && (
-            <AdminPanel colors={colors} adminToken={adminToken} />
-          )}
-
-          {/* About Tab - Minimal Clean Style */}
-          {
-            activeTab === "about" && (
-              <div className="h-full flex flex-col p-8 overflow-y-auto">
-                {/* Centered Content Container */}
-                <div className="max-w-3xl mx-auto w-full space-y-12">
-
-                  {/* Header - Simple & Clean */}
-                  <div className="text-center space-y-4">
-                    <img src="./r_background.svg" alt="Reality" className="w-16 h-16 mx-auto rounded-xl" />
-                    <div>
-                      <h1
-                        className="text-3xl font-bold"
-                        style={{ fontFamily: "'Inter', sans-serif", color: colors.onSurface }}
-                      >
-                        Reality
-                      </h1>
-                      <p className="text-sm mt-1" style={{ color: colors.onSurfaceVariant }}>
-                        Minecraft Launcher · v0.1.0
-                      </p>
                     </div>
                   </div>
+                )}
 
-                  {/* Mission - Simple Text */}
-                  <div className="text-center max-w-md mx-auto">
-                    <p className="text-base leading-relaxed" style={{ color: colors.onSurfaceVariant }}>
-                      สร้างขึ้นเพื่อให้การเข้าถึง Minecraft Server ต่างๆ ได้ง่ายขึ้น
-                      และขยายโอกาสให้ทุกคนได้สนุกกับ Minecraft
-                    </p>
-                  </div>
-
-                  {/* Divider */}
-                  <div className="flex items-center gap-4">
-                    <div className="flex-1 h-px" style={{ backgroundColor: colors.outline }} />
-                    <span className="text-xs" style={{ color: colors.onSurfaceVariant }}>ทีมพัฒนา</span>
-                    <div className="flex-1 h-px" style={{ backgroundColor: colors.outline }} />
-                  </div>
-
-                  {/* Team - Simple Row */}
-                  <div className="flex flex-wrap justify-center gap-8">
-                    {credits.map((person) => (
-                      <div
-                        key={person.name}
-                        className="flex flex-col items-center gap-3 group"
-                      >
-                        <MCHead
-                          username={person.name}
-                          size={56}
-                          className="rounded-full transition-transform duration-300 group-hover:scale-110"
-                        />
-                        <div className="text-center">
-                          <p className="text-sm font-medium" style={{ color: colors.onSurface }}>
-                            {person.name}
-                          </p>
-                          <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>
-                            {person.role}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Spacer */}
-                  <div className="flex-1" />
-
-                  {/* Footer - Minimal */}
-                  <div className="text-center space-y-2 pt-8">
-                    <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>
-                      Made with ❤️ in Thailand
-                    </p>
-                    <p className="text-xs" style={{ color: colors.outline }}>
-                      © 2024 Cat Lab_ Design
-                    </p>
-                  </div>
-                </div>
+                {/* Backdrop to close dropdown */}
+                {accountDropdownOpen && (
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setAccountDropdownOpen(false)}
+                  />
+                )}
               </div>
-            )
-          }
-        </main >
-      </div >
 
-      {/* FAB */}
-      {
-        selectedServer && session && (
-          <button
-            onClick={handleLaunch}
-            disabled={isLaunching}
-            className="fixed bottom-6 right-6 flex items-center gap-2 px-6 py-4 rounded-2xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50"
-            style={{ backgroundColor: colors.secondary, color: colors.primary }}
-          >
-            <Icons.Play className="w-6 h-6" />
-            <span className="font-medium">{isLaunching ? "กำลังเปิด..." : "เล่นเกม"}</span>
-          </button>
-        )
-      }
-    </div >
+              {/* Window Control Buttons - Fixed at top-right corner */}
+              <div className="fixed top-0 right-0 flex items-center gap-0 z-[100] no-drag" style={{ pointerEvents: "auto" }}>
+                {/* Minimize */}
+                <button
+                  onClick={() => window.api?.windowMinimize()}
+                  className="w-12 h-10 flex items-center justify-center transition-all hover:bg-black/10"
+                  style={{ color: colors.onSurfaceVariant }}
+                  title="ย่อหน้าต่าง"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19 13H5v-2h14v2z" />
+                  </svg>
+                </button>
+                {/* Maximize / Fullscreen */}
+                <button
+                  onClick={async () => {
+                    await window.api?.windowMaximize();
+                    // Sync with fullscreen setting
+                    const isMaximized = await window.api?.windowIsMaximized?.();
+                    updateConfig({ fullscreen: isMaximized ?? false });
+                  }}
+                  className="w-12 h-10 flex items-center justify-center transition-all hover:bg-black/10"
+                  style={{ color: config.fullscreen ? colors.secondary : colors.onSurfaceVariant }}
+                  title={config.fullscreen ? "ย่อกลับ" : "ขยายหน้าต่าง"}
+                >
+                  {config.fullscreen ? (
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z" />
+                    </svg>
+                  )}
+                </button>
+                {/* Close */}
+                <button
+                  onClick={() => window.api?.windowClose()}
+                  className="w-12 h-10 flex items-center justify-center transition-all hover:bg-red-500 hover:!text-white"
+                  style={{ color: colors.onSurfaceVariant }}
+                  title="ปิดหน้าต่าง"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </header>
+
+          {/* Content */}
+          <main className="flex-1 overflow-auto p-6">
+            {activeTab === "home" && (
+              <Home
+                session={session}
+                news={news}
+                servers={servers}
+                selectedServer={selectedServer}
+                setSelectedServer={setSelectedServer}
+                colors={colors}
+                setActiveTab={setActiveTab}
+              />
+            )}
+
+            {activeTab === "servers" && (
+              <ServerMenu
+                colors={colors}
+                servers={servers}
+                selectedServer={selectedServer}
+                setSelectedServer={setSelectedServer}
+                session={session}
+                setActiveTab={setActiveTab}
+                refreshTrigger={serverRefreshTrigger}
+              />
+            )}
+
+
+
+            {/* Modpack Tab - Always render to preserve game state */}
+            <div style={{ display: activeTab === "modpack" ? "contents" : "none" }}>
+              <ModPack
+                colors={colors}
+                config={config}
+                setImportModpackOpen={setImportModpackOpen}
+                setActiveTab={setActiveTab}
+                setSettingsTab={setSettingsTab}
+                onShowConfirm={handleShowConfirm}
+                isActive={activeTab === "modpack"}
+                selectedServer={selectedServer}
+                session={session}
+                updateConfig={updateConfig}
+              />
+            </div>
+
+            {/* Explore Tab */}
+            {activeTab === "explore" && (
+              <Explore colors={colors} />
+            )}
+
+            {/* Settings Tab */}
+            {activeTab === "settings" && (
+              <Settings
+                config={config}
+                updateConfig={updateConfig}
+                colors={colors}
+                setSettingsTab={setSettingsTab}
+                settingsTab={settingsTab}
+                handleBrowseJava={handleBrowseJava}
+                handleBrowseMinecraftDir={handleBrowseMinecraftDir}
+                session={session}
+                accounts={accounts}
+                handleLogout={handleLogout}
+                selectAccount={selectAccount}
+                removeAccount={removeAccount}
+                setLoginDialogOpen={setLoginDialogOpen}
+                handleUnlink={handleUnlink}
+                setLinkCatIDOpen={setLinkCatIDOpen}
+              />
+            )}
+
+            {/* Admin Panel Tab - Only for admins */}
+            {activeTab === "admin" && isAdmin && adminToken && (
+              <AdminPanel colors={colors} adminToken={adminToken} />
+            )}
+
+            {/* About Tab - New Premium Component */}
+            {activeTab === "about" && <About colors={colors} />}
+          </main>
+        </div>
+      </div>
+    </div>
   );
 }
 
+// Export the wrapped component
+export default function LauncherApp() {
+  return (
+    <ErrorBoundary>
+      <LauncherAppContent />
+    </ErrorBoundary>
+  );
+}
 

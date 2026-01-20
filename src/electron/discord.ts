@@ -9,7 +9,10 @@
  * bun add discord-rpc
  */
 
-// CommonJS format - require is available natively
+import { createRequire } from "module";
+
+// CJS-compatible require for discord-rpc (esbuild outputs CJS)
+const customRequire = createRequire(__filename);
 
 // Discord Application ID (ต้องสร้างใน Discord Developer Portal)
 const CLIENT_ID = "1449834700079366174"; // TODO: เปลี่ยนเป็น ID จริง
@@ -26,6 +29,7 @@ interface RPCActivity {
     smallImageKey?: string;
     smallImageText?: string;
     startTimestamp?: number;
+    buttons?: { label: string; url: string }[];
 }
 
 // ========================================
@@ -50,10 +54,10 @@ export async function initDiscordRPC(): Promise<boolean> {
     if (!rpcEnabled) return false;
 
     try {
-        // ใช้ require แทน dynamic import
+        // ใช้ customRequire สำหรับ CJS compatibility
         let RPC: any;
         try {
-            RPC = require("discord-rpc");
+            RPC = customRequire("discord-rpc");
         } catch (e) {
             console.log("[Discord RPC] Package not installed, skipping");
             return false;
@@ -61,12 +65,12 @@ export async function initDiscordRPC(): Promise<boolean> {
 
         rpcClient = new RPC.Client({ transport: "ipc" });
 
-        rpcClient.on("ready", () => {
+        rpcClient!.on("ready", () => {
             console.log("[Discord RPC] Connected!");
             updateRPC("idle");
         });
 
-        await rpcClient.login({ clientId: CLIENT_ID });
+        await rpcClient!.login({ clientId: CLIENT_ID });
         return true;
     } catch (error) {
         console.error("[Discord RPC] Failed to initialize:", error);
@@ -88,6 +92,9 @@ export async function updateRPC(
             largeImageKey: "logo",
             largeImageText: "Reality Launcher",
             startTimestamp,
+            buttons: [
+                { label: "เข้าชมเว็บไซต์", url: "https://reality.catlabdesign.space/" }
+            ],
         };
 
         switch (status) {

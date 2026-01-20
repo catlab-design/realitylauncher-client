@@ -1,46 +1,62 @@
-# Astro Starter Kit: Basics
+# Reality Launcher (Client)
 
-```sh
-bun create astro@latest -- --template basics
+The desktop client for Reality Launcher. Built with Electron, Astro, React, and a Rust core for high-performance process management.
+
+## Tech Stack
+
+*   **Frontend**: [Astro](https://astro.build/) + React
+*   **Shell**: [Electron](https://www.electronjs.org/)
+*   **Core Logic**: Rust (ml-launcher-core)
+*   **Styling**: Tailwind CSS
+*   **Bundler**: Vite (via Astro)
+
+## Prerequisites
+
+*   [Node.js](https://nodejs.org/) (v18+)
+*   [Rust](https://www.rust-lang.org/tools/install) (latest stable) - Required for building `ml-launcher-core`.
+
+## Setup
+
+1.  Install Node dependencies:
+    ```bash
+    npm install
+    # or
+    bun install
+    ```
+
+2.  Build the Rust Core:
+    The launcher relies on a Rust binary for heavy lifting (game launch, process monitoring).
+    ```bash
+    npm run build:rust
+    ```
+    *This compiles the code in `../ml-launcher-core`.*
+
+## Development
+
+Run the app in development mode (hot-reload enabled):
+
+```bash
+npm run dev
 ```
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+## Build & Distribute
 
-## 🚀 Project Structure
+Build the production executable (calls `build:rust` internally if configured, otherwise ensure rust is built):
 
-Inside of your Astro project, you'll see the following folders and files:
+```bash
+# For current OS
+npm run dist
 
-```text
-/
-├── public/
-│   └── favicon.svg
-├── src
-│   ├── assets
-│   │   └── astro.svg
-│   ├── components
-│   │   └── Welcome.astro
-│   ├── layouts
-│   │   └── Layout.astro
-│   └── pages
-│       └── index.astro
-└── package.json
+# Specific platforms (requires appropriate build tools)
+npm run dist:win
+npm run dist:mac
+npm run dist:linux
 ```
 
-To learn more about the folder structure of an Astro project, refer to [our guide on project structure](https://docs.astro.build/en/basics/project-structure/).
+Output files will be in the `release` directory.
 
-## 🧞 Commands
+## Architecture
 
-All commands are run from the root of the project, from a terminal:
-
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `bun install`             | Installs dependencies                            |
-| `bun dev`             | Starts local dev server at `localhost:4321`      |
-| `bun build`           | Build your production site to `./dist/`          |
-| `bun preview`         | Preview your build locally, before deploying     |
-| `bun astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `bun astro -- --help` | Get help using the Astro CLI                     |
-
-## 👀 Want to learn more?
-
-Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+*   `src/electron`: Main process code (IPC, Node.js APIs).
+*   `src/pages`, `src/components`: UI code (Astro/React).
+*   `../ml-launcher-core`: Rust implementation for game launching logic.

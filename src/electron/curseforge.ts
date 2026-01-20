@@ -108,11 +108,15 @@ function constructFallbackUrl(fileId: number): string | null {
 
 export async function installCurseForgeModpack(
     zipPath: string,
-    onProgress?: (progress: InstallProgress) => void
+    onProgress?: (progress: InstallProgress) => void,
+    signal?: AbortSignal
 ): Promise<InstallResult> {
     console.log("[CurseForge] Installing modpack:", zipPath);
+    let createdInstance: GameInstance | null = null;
 
     try {
+        if (signal?.aborted) throw new Error("Installation cancelled");
+
         const zip = new AdmZip(zipPath);
         const manifestEntry = zip.getEntry("manifest.json");
 
@@ -159,14 +163,19 @@ export async function installCurseForgeModpack(
             }
         }
 
-        const instance = createInstance({
+        const instance = await createInstance({
             name: manifest.name,
             minecraftVersion: manifest.minecraft.version,
             loader: loaderType,
             loaderVersion,
         });
 
+        createdInstance = instance;
+        console.log("[CurseForge] Created instance:", instance.id, instance.name);
+
         // Step 2: Download Mods
+        if (signal?.aborted) throw new Error("Installation cancelled");
+
         const files = manifest.files;
         let completed = 0;
         const total = files.length;
@@ -175,9 +184,13 @@ export async function installCurseForgeModpack(
         const batchSize = 5; // Smaller batch size for API usage
 
         for (let i = 0; i < files.length; i += batchSize) {
+            if (signal?.aborted) throw new Error("Installation cancelled");
+
             const batch = files.slice(i, i + batchSize);
 
             await Promise.all(batch.map(async (fileInfo) => {
+                if (signal?.aborted) return;
+
                 try {
                     // Resolve URL
                     const downloadUrl = await resolveFileUrl(fileInfo.projectID, fileInfo.fileID);
@@ -197,7 +210,7 @@ export async function installCurseForgeModpack(
                     }
 
                     // Download
-                    await downloadFile(downloadUrl, destPath);
+                    await downloadFile(downloadUrl, destPath, undefined, signal);
                     completed++;
 
                     if (onProgress) {
@@ -210,7 +223,8 @@ export async function installCurseForgeModpack(
                         });
                     }
 
-                } catch (error) {
+                } catch (error: any) {
+                    if (error.message === "Download cancelled") throw error;
                     console.error(`[CurseForge] Failed to process file ${fileInfo.fileID}:`, error);
                 }
             }));
@@ -262,6 +276,18 @@ export async function installCurseForgeModpack(
         };
 
     } catch (error: any) {
+        // Cleanup: Delete the instance if installation was cancelled or failed
+        if (createdInstance) {
+            console.log("[CurseForge] Installation failed or cancelled, cleaning up instance:", createdInstance.id);
+            try {
+                const { deleteInstance } = await import("./instances.js");
+                await deleteInstance(createdInstance.id);
+                console.log("[CurseForge] Cleanup complete");
+            } catch (cleanupError) {
+                console.error("[CurseForge] Failed to cleanup instance:", cleanupError);
+            }
+        }
+
         console.error("[CurseForge] Install error:", error);
         return {
             ok: false,

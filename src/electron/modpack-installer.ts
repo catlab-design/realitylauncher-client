@@ -13,9 +13,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createInstance, type GameInstance, type LoaderType } from "./instances.js";
-import { downloadFile, type DownloadProgress } from "./modrinth.js";
+import { downloadFile, downloadFileAtomic, verifyFileHash, type DownloadProgress } from "./modrinth.js";
 import { installCurseForgeModpack } from "./curseforge.js";
 import AdmZip from "adm-zip";
+import crypto from "node:crypto";
 
 // ========================================
 // Types
@@ -111,6 +112,14 @@ function extractZipEntry(zipPath: string, entryPath: string): Buffer | null {
 }
 
 
+const PRESERVED_FILES = [
+    "options.txt",
+    "servers.dat",
+    "optionsof.txt",
+    "optionsshaders.txt",
+    "usercache.json"
+];
+
 /**
  * Extract a subdirectory from ZIP to destination
  */
@@ -127,7 +136,15 @@ function extractZipToDirectory(zipPath: string, destDir: string, subPath?: strin
                 if (entry.entryName.startsWith(normalizedSubPath) && !entry.isDirectory) {
                     const relativePath = entry.entryName.substring(normalizedSubPath.length);
                     if (relativePath) {
+                        // Check if file should be preserved
+                        const fileName = path.basename(relativePath);
                         const destPath = path.join(destDir, relativePath);
+
+                        if (PRESERVED_FILES.includes(fileName) && fs.existsSync(destPath)) {
+                            console.log(`[ModpackInstaller] Skipping preserved file: ${relativePath}`);
+                            continue;
+                        }
+
                         const destDirPath = path.dirname(destPath);
 
                         if (!fs.existsSync(destDirPath)) {
@@ -149,6 +166,7 @@ function extractZipToDirectory(zipPath: string, destDir: string, subPath?: strin
         throw error;
     }
 }
+
 
 // ========================================
 // Parse Modpack Index
@@ -200,10 +218,13 @@ function getLoaderFromDependencies(deps: ModpackDependencies): { type: LoaderTyp
 // Download Modpack Files
 // ========================================
 
+// Local verifyFileHash removed, imported from modrinth.ts
+
 async function downloadModpackFiles(
     files: ModpackFile[],
     destDir: string,
-    onProgress?: ProgressCallback
+    onProgress?: ProgressCallback,
+    signal?: AbortSignal
 ): Promise<void> {
     const clientFiles = files.filter(f =>
         !f.env || f.env.client !== "unsupported"
@@ -214,13 +235,18 @@ async function downloadModpackFiles(
     let completed = 0;
     const total = clientFiles.length;
 
-    // Download in batches of 10 for better performance
-    const batchSize = 10;
+    // Use a concurrency pool for better performance
+    // Reduced to 15 to prevent rate limiting and network saturation
+    const concurrency = 15;
 
-    for (let i = 0; i < clientFiles.length; i += batchSize) {
-        const batch = clientFiles.slice(i, i + batchSize);
+    const queue = [...clientFiles];
+    const activeWorkers = Array(Math.min(concurrency, queue.length)).fill(null).map(async () => {
+        while (queue.length > 0) {
+            if (signal?.aborted) throw new Error("Installation cancelled");
 
-        await Promise.all(batch.map(async (file) => {
+            const file = queue.shift();
+            if (!file) break;
+
             const destPath = path.join(destDir, file.path);
             const destDirPath = path.dirname(destPath);
 
@@ -229,43 +255,96 @@ async function downloadModpackFiles(
                 fs.mkdirSync(destDirPath, { recursive: true });
             }
 
-            // Skip if already exists with correct size
+            // Skip if already exists with correct size and hash
+            let shouldDownload = true;
             if (fs.existsSync(destPath)) {
                 const stat = fs.statSync(destPath);
                 if (stat.size === file.fileSize) {
-                    console.log(`[ModpackInstaller] Skipping (exists): ${file.path}`);
-                    completed++;
-                    return;
+                    // Also verify hash if available
+                    const isHashValid = await verifyFileHash(destPath, file.hashes);
+                    if (isHashValid) {
+                        console.log(`[ModpackInstaller] Skipping (exists & valid): ${file.path}`);
+                        completed++;
+                        shouldDownload = false;
+                    } else {
+                        console.warn(`[ModpackInstaller] File exists but hash mismatch, re-downloading: ${file.path}`);
+                        fs.rmSync(destPath, { force: true });
+                    }
+                } else {
+                    console.warn(`[ModpackInstaller] File exists but size mismatch (${stat.size} vs ${file.fileSize}), re-downloading: ${file.path}`);
+                    fs.rmSync(destPath, { force: true });
                 }
             }
 
-            // Download from first available URL
-            const url = file.downloads[0];
-            if (!url) {
-                console.warn(`[ModpackInstaller] No download URL for: ${file.path}`);
-                return;
-            }
+            if (shouldDownload) {
+                // Download from first available URL
+                const url = file.downloads[0];
+                if (!url) {
+                    console.warn(`[ModpackInstaller] No download URL for: ${file.path}`);
+                    continue;
+                }
 
-            console.log(`[ModpackInstaller] Downloading: ${file.path}`);
+                console.log(`[ModpackInstaller] Downloading: ${file.path}`);
 
-            try {
-                await downloadFile(url, destPath);
-                completed++;
+                try {
+                    const tmpPath = `${destPath}.tmp`;
+                    try {
+                        await Promise.race([
+                            downloadFile(url, tmpPath, undefined, signal),
+                            new Promise((_, reject) => setTimeout(() => reject(new Error("Download timeout")), 60000))
+                        ]);
 
+                        const isHashValid = await verifyFileHash(tmpPath, file.hashes);
+                        if (!isHashValid) {
+                            fs.rmSync(tmpPath, { force: true });
+                            throw new Error(`Hash verification failed for ${file.path}`);
+                        }
+
+                        fs.rmSync(destPath, { force: true });
+                        fs.renameSync(tmpPath, destPath);
+                        completed++;
+                    } catch (error) {
+                        try { if (fs.existsSync(tmpPath)) fs.rmSync(tmpPath, { force: true }); } catch { }
+                        throw error;
+                    }
+                } catch (error: any) {
+                    if (error.message === "Download cancelled" || signal?.aborted) throw error;
+
+                    console.error(`[ModpackInstaller] Download failed: ${file.path}`, error);
+                    // We still count it as "processed" for the progress bar so it doesn't hang forever
+                    // Ideally we should track errors separately, but for now ensure the UI finishes
+                    completed++;
+                } finally {
+                    if (onProgress) {
+                        // Strip Minecraft color codes (e.g. §r, §l, §4) from filename for display
+                        const cleanFilename = path.basename(file.path).replace(/§[0-9a-fk-or]/g, "");
+
+                        onProgress({
+                            stage: "downloading",
+                            message: `กำลังดาวน์โหลด: ${cleanFilename}`,
+                            current: completed,
+                            total,
+                            percent: Math.round((completed / total) * 100),
+                        });
+                    }
+                }
+            } else {
+                // Update progress even for skipped files
                 if (onProgress) {
+                    const cleanFilename = path.basename(file.path).replace(/§[0-9a-fk-or]/g, "");
                     onProgress({
                         stage: "downloading",
-                        message: `กำลังดาวน์โหลด: ${path.basename(file.path)}`,
+                        message: `ตรวจสอบไฟล์แล้ว: ${cleanFilename}`,
                         current: completed,
                         total,
                         percent: Math.round((completed / total) * 100),
                     });
                 }
-            } catch (error) {
-                console.error(`[ModpackInstaller] Download failed: ${file.path}`, error);
             }
-        }));
-    }
+        }
+    });
+
+    await Promise.all(activeWorkers);
 
     console.log(`[ModpackInstaller] Download complete: ${completed}/${total} files`);
 }
@@ -363,7 +442,7 @@ export function deduplicateMods(modsDir: string): void {
                 // Delete existing, keep new
                 console.log(`[ModpackInstaller] Removing duplicate mod: ${existing.filename} (keeping ${file})`);
                 try {
-                    fs.unlinkSync(existing.path);
+                    fs.rmSync(existing.path, { force: true });
                 } catch (err) {
                     console.error(`[ModpackInstaller] Failed to delete duplicate: ${existing.filename}`, err);
                 }
@@ -372,7 +451,7 @@ export function deduplicateMods(modsDir: string): void {
                 // Delete new, keep existing
                 console.log(`[ModpackInstaller] Removing duplicate mod: ${file} (keeping ${existing.filename})`);
                 try {
-                    fs.unlinkSync(filePath);
+                    fs.rmSync(filePath, { force: true });
                 } catch (err) {
                     console.error(`[ModpackInstaller] Failed to delete duplicate: ${file}`, err);
                 }
@@ -418,30 +497,34 @@ async function extractOverrides(
     }
 }
 
-// ========================================
-// Main Install Function
-// ========================================
-
 export async function installModpack(
     mrpackPath: string,
-    onProgress?: ProgressCallback
+    onProgress?: ProgressCallback,
+    signal?: AbortSignal
 ): Promise<InstallResult> {
     console.log("[ModpackInstaller] Installing modpack:", mrpackPath);
 
     try {
+        if (signal?.aborted) throw new Error("Installation cancelled");
+
         // Peek at ZIP content to determine type
         const zip = new AdmZip(mrpackPath);
 
         if (zip.getEntry("modrinth.index.json")) {
             // Modrinth Format
-            return await installModrinthModpack(mrpackPath, onProgress);
+            return await installModrinthModpack(mrpackPath, onProgress, signal);
         } else if (zip.getEntry("manifest.json")) {
             // CurseForge Format
-            return await installCurseForgeModpack(mrpackPath, onProgress);
+            return await installCurseForgeModpack(mrpackPath, onProgress, signal); // CurseForge unimplemented signal for now
         } else {
             throw new Error("ไม่รู้จักรูปแบบไฟล์ Modpack (ต้องมี modrinth.index.json หรือ manifest.json)");
         }
     } catch (error: any) {
+        if (error.message === "Installation cancelled") {
+            console.log("[ModpackInstaller] Installation cancelled by user");
+            return { ok: false, error: "ยกเลิกการติดตั้งแล้ว" };
+        }
+
         console.error("[ModpackInstaller] Installation failed:", error);
         return {
             ok: false,
@@ -452,9 +535,14 @@ export async function installModpack(
 
 async function installModrinthModpack(
     mrpackPath: string,
-    onProgress?: ProgressCallback
+    onProgress?: ProgressCallback,
+    signal?: AbortSignal
 ): Promise<InstallResult> {
+    let createdInstance: GameInstance | null = null;
+
     try {
+        if (signal?.aborted) throw new Error("Installation cancelled");
+
         // Step 1: Parse modpack index
         if (onProgress) {
             onProgress({
@@ -475,19 +563,22 @@ async function installModrinthModpack(
 
         const loader = getLoaderFromDependencies(index.dependencies);
 
-        const instance = createInstance({
+        const instance = await createInstance({
             name: index.name,
             minecraftVersion: index.dependencies.minecraft,
             loader: loader.type,
             loaderVersion: loader.version,
         });
 
+        createdInstance = instance;
         console.log("[ModpackInstaller] Created instance:", instance.id, instance.name);
 
         // Step 3: Download all mods
-        await downloadModpackFiles(index.files, instance.gameDirectory, onProgress);
+        if (signal?.aborted) throw new Error("Installation cancelled");
+        await downloadModpackFiles(index.files, instance.gameDirectory, onProgress, signal);
 
         // Step 4: Extract overrides
+        if (signal?.aborted) throw new Error("Installation cancelled");
         await extractOverrides(mrpackPath, instance.gameDirectory, onProgress);
 
         // Step 5: Deduplicate mods (remove duplicates from downloaded + overrides)
@@ -512,6 +603,17 @@ async function installModrinthModpack(
             instance,
         };
     } catch (error: any) {
+        // Cleanup: Delete the instance if installation was cancelled or failed
+        if (createdInstance) {
+            console.log("[ModpackInstaller] Installation failed or cancelled, cleaning up instance:", createdInstance.id);
+            try {
+                const { deleteInstance } = await import("./instances.js");
+                await deleteInstance(createdInstance.id);
+                console.log("[ModpackInstaller] Cleanup complete");
+            } catch (cleanupError) {
+                console.error("[ModpackInstaller] Failed to cleanup instance:", cleanupError);
+            }
+        }
         throw error;
     }
 }

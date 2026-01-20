@@ -10,20 +10,26 @@ export interface AuthSession {
     type: "catid" | "microsoft" | "offline";
     username: string;
     uuid: string;
+    minecraftUuid?: string;  // Real Minecraft UUID (from Microsoft linking)
     accessToken?: string;
     refreshToken?: string;
     expiresAt?: number;
+    tokenExpiresAt?: number;
+    createdAt?: number;
     skinUrl?: string;
     isAdmin?: boolean;
+    apiToken?: string;
 }
 
 // Server Definition
 export interface Server {
     id: string;
     name: string;
-    version: string;
+    version?: string;
     icon?: string;
+    iconUrl?: string; // From API
     image?: string;
+    bannerUrl?: string; // From API
     description?: string;
     playerCount?: number;
     maxPlayers?: number;
@@ -31,6 +37,10 @@ export interface Server {
     modpack?: string;
     status?: "online" | "offline";
     players?: { online: number; max: number };
+    minecraftVersion?: string;
+    loaderType?: string;
+    loaderVersion?: string;
+    storagePath?: string;
 }
 
 // News Item
@@ -87,6 +97,10 @@ export interface LauncherConfig {
     telemetryEnabled: boolean;
     autoUpdateEnabled: boolean;
     lastSeenVersion?: string; // Track last version user has seen for changelog modal
+    // UI Effects
+    clickSoundEnabled: boolean; // เสียงคลิกปุ่ม
+    notificationSoundEnabled: boolean; // เสียงแจ้งเตือน
+    rainbowMode: boolean; // Rainbow mode สำหรับ UI
 }
 
 // Launcher Info
@@ -127,6 +141,10 @@ export interface GameInstance {
     gameDirectory: string;
     modpackId?: string;
     modpackVersionId?: string;
+    cloudId?: string;
+    autoUpdate?: boolean;
+    banner?: string;
+    lockedMods?: string[];
 }
 
 export interface CreateInstanceOptions {
@@ -147,4 +165,5 @@ export interface UpdateInstanceOptions {
     javaPath?: string;
     ramMB?: number;
     javaArguments?: string;
+    autoUpdate?: boolean;
 }

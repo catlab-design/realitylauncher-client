@@ -7,7 +7,7 @@
  * ใช้ proxy ผ่าน ml-api เพื่อซ่อน API Key
  */
 
-const ML_API_URL = process.env.ML_API_URL || "https://api.reality.notpumpkins.com";
+const ML_API_URL = "https://api.reality.notpumpkins.com";
 
 // ========================================
 // Types
@@ -187,18 +187,46 @@ export async function getCurseForgeProject(projectId: number | string): Promise<
 }
 
 /**
- * Get project files/versions
+ * Get project files/versions with pagination support
  */
 export async function getCurseForgeFiles(
     projectId: number | string,
-    gameVersion?: string
+    gameVersion?: string,
+    maxFiles: number = 200  // Get up to 200 files (4 pages)
 ): Promise<{ data: CurseForgeFile[] }> {
-    const params = new URLSearchParams();
-    if (gameVersion) params.set("gameVersion", gameVersion);
+    const pageSize = 50; // Maximum allowed by API
+    const maxPages = Math.ceil(maxFiles / pageSize);
+    const allFiles: CurseForgeFile[] = [];
 
-    const queryStr = params.toString();
-    const url = `${ML_API_URL}/curseforge/project/${projectId}/files${queryStr ? `?${queryStr}` : ""}`;
-    return fetchJSON<{ data: CurseForgeFile[] }>(url);
+    for (let page = 0; page < maxPages; page++) {
+        const params = new URLSearchParams();
+        if (gameVersion) params.set("gameVersion", gameVersion);
+        params.set("pageSize", pageSize.toString());
+        params.set("index", (page * pageSize).toString());
+
+        const queryStr = params.toString();
+        const url = `${ML_API_URL}/curseforge/project/${projectId}/files?${queryStr}`;
+        
+        try {
+            const result = await fetchJSON<{ data: CurseForgeFile[] }>(url);
+            if (result?.data && result.data.length > 0) {
+                allFiles.push(...result.data);
+                
+                // If we got less than pageSize, we've reached the end
+                if (result.data.length < pageSize) {
+                    break;
+                }
+            } else {
+                // No more files
+                break;
+            }
+        } catch (error) {
+            console.warn(`[CurseForge] Failed to fetch page ${page}:`, error);
+            break;
+        }
+    }
+
+    return { data: allFiles };
 }
 
 /**

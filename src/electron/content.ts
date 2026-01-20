@@ -21,6 +21,7 @@ export interface DownloadToInstanceOptions {
     versionId: string;
     instanceId: string;
     contentType: ContentType;
+    contentSource?: "modrinth" | "curseforge";
 }
 
 export interface DownloadResult {
@@ -87,9 +88,9 @@ export async function downloadContentToInstance(
     options: DownloadToInstanceOptions,
     onProgress?: (progress: DownloadProgress) => void
 ): Promise<DownloadResult> {
-    const { projectId, versionId, instanceId, contentType } = options;
+    const { projectId, versionId, instanceId, contentType, contentSource = "modrinth" } = options;
 
-    console.log(`[Content] Downloading ${contentType} to instance:`, { projectId, versionId, instanceId });
+    console.log(`[Content] Downloading ${contentType} from ${contentSource} to instance:`, { projectId, versionId, instanceId });
 
     // Get instance
     const instance = getInstance(instanceId);
@@ -98,46 +99,74 @@ export async function downloadContentToInstance(
     }
 
     try {
-        // Get version info from Modrinth
-        const version = await getVersion(versionId);
+        let fileUrl: string;
+        let filename: string;
 
-        // Find appropriate file for content type
-        // First try to find a primary file with valid extension
-        // Then try any file with valid extension
-        // Finally fallback to primary or first file
-        let file = version.files.find(f => f.primary && isValidFileForContentType(f.filename, contentType));
-        if (!file) {
-            file = version.files.find(f => isValidFileForContentType(f.filename, contentType));
-        }
-        if (!file) {
-            // Fallback to primary or first file if no valid extension found
-            file = version.files.find(f => f.primary) || version.files[0];
-        }
-        if (!file) {
-            return { ok: false, error: "No files found in version" };
-        }
+        if (contentSource === "curseforge") {
+            // CurseForge download
+            const { getCurseForgeFile, getCurseForgeDownloadUrl } = await import("./curseforge-api.js");
 
-        // Warn if file doesn't match expected type
-        if (!isValidFileForContentType(file.filename, contentType)) {
-            console.warn(`[Content] Warning: File ${file.filename} may not be correct type for ${contentType}`);
+            // Get file info
+            const fileResult = await getCurseForgeFile(projectId, versionId);
+            if (!fileResult?.data) {
+                return { ok: false, error: "Failed to get CurseForge file info" };
+            }
+
+            filename = fileResult.data.fileName;
+
+            // Get download URL - CurseForge may have null downloadUrl for some mods
+            if (fileResult.data.downloadUrl) {
+                fileUrl = fileResult.data.downloadUrl;
+            } else {
+                // Use proxy API to get download URL
+                const urlResult = await getCurseForgeDownloadUrl(projectId, versionId);
+                if (!urlResult?.data) {
+                    return { ok: false, error: "Failed to get CurseForge download URL" };
+                }
+                fileUrl = urlResult.data;
+            }
+
+            console.log(`[Content] CurseForge file: ${filename}, URL: ${fileUrl}`);
+        } else {
+            // Modrinth download (existing logic)
+            const version = await getVersion(versionId);
+
+            // Find appropriate file for content type
+            let file = version.files.find(f => f.primary && isValidFileForContentType(f.filename, contentType));
+            if (!file) {
+                file = version.files.find(f => isValidFileForContentType(f.filename, contentType));
+            }
+            if (!file) {
+                file = version.files.find(f => f.primary) || version.files[0];
+            }
+            if (!file) {
+                return { ok: false, error: "No files found in version" };
+            }
+
+            if (!isValidFileForContentType(file.filename, contentType)) {
+                console.warn(`[Content] Warning: File ${file.filename} may not be correct type for ${contentType}`);
+            }
+
+            fileUrl = file.url;
+            filename = file.filename;
         }
 
         // Determine target folder
         const contentFolder = getContentFolder(contentType);
         const targetDir = path.join(instance.gameDirectory, contentFolder);
-        const targetPath = path.join(targetDir, file.filename);
+        const targetPath = path.join(targetDir, filename);
 
         console.log(`[Content] Downloading to:`, targetPath);
 
         // Download file
-        await downloadFile(file.url, targetPath, onProgress);
+        await downloadFile(fileUrl, targetPath, onProgress);
 
-        console.log(`[Content] Download complete:`, file.filename);
+        console.log(`[Content] Download complete:`, filename);
 
         return {
             ok: true,
             filepath: targetPath,
-            filename: file.filename,
+            filename: filename,
         };
     } catch (error: any) {
         console.error(`[Content] Download error:`, error);

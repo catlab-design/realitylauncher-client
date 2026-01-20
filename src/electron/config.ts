@@ -27,6 +27,12 @@ export interface LauncherConfig {
     minRamMB: number;
     ramMB: number;
     javaPath: string;
+    javaPaths?: {
+        java25?: string;
+        java21?: string;
+        java17?: string;
+        java8?: string;
+    };
     javaArguments: string;
     customMinecraftDir?: string;
 
@@ -50,6 +56,14 @@ export interface LauncherConfig {
 
     // Auto Update
     autoUpdateEnabled: boolean; // ผู้ใช้เปิด/ปิด auto update ได้
+
+    // UI Effects
+    clickSoundEnabled: boolean; // เสียงคลิกปุ่ม (default: true)
+    notificationSoundEnabled: boolean; // เสียงแจ้งเตือน (default: true)
+    rainbowMode: boolean; // Rainbow mode สำหรับ UI
+
+    // Hidden/Ignored Cloud Instances
+    ignoredCloudIds?: string[];
 }
 
 // ========================================
@@ -83,6 +97,9 @@ const DEFAULT_CONFIG: LauncherConfig = {
     discordRPCEnabled: true,
     telemetryEnabled: true,
     autoUpdateEnabled: true, // เปิด auto update เป็น default
+    clickSoundEnabled: true, // เปิด click sound เป็น default
+    notificationSoundEnabled: true, // เปิด notification sound เป็น default
+    rainbowMode: false, // ปิด rainbow mode เป็น default
 };
 
 // ========================================

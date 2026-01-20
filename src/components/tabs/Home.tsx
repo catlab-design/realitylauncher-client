@@ -21,6 +21,17 @@ interface HomeProps {
     selectedServer: Server | null;
     setSelectedServer: (server: Server) => void;
     colors: any;
+    setActiveTab?: (tab: string) => void;
+}
+
+interface GameInstance {
+    id: string;
+    name: string;
+    icon?: string;
+    minecraftVersion: string;
+    loader: string;
+    lastPlayedAt?: string;
+    totalPlayTime: number;
 }
 
 export function Home({
@@ -30,11 +41,13 @@ export function Home({
     selectedServer,
     setSelectedServer,
     colors,
+    setActiveTab,
 }: HomeProps) {
     const [newsletters, setNewsletters] = useState<Newsletter[]>([]);
     const [newsletterLoading, setNewsletterLoading] = useState(true);
     const [currentSlide, setCurrentSlide] = useState(0);
     const [isHovering, setIsHovering] = useState(false);
+    const [recentInstances, setRecentInstances] = useState<GameInstance[]>([]);
 
     const fetchNewsletters = useCallback(async () => {
         try {
@@ -66,6 +79,30 @@ export function Home({
         }, delay);
         return () => clearInterval(slideInterval);
     }, [newsletters.length, isHovering]);
+
+    // Fetch recently played instances
+    useEffect(() => {
+        const loadRecentInstances = async () => {
+            try {
+                const instances = await window.api?.instancesList?.();
+                if (instances) {
+                    // Sort by lastPlayedAt descending, take top 4
+                    const sorted = [...instances]
+                        .filter((i: GameInstance) => i.lastPlayedAt)
+                        .sort((a: GameInstance, b: GameInstance) => {
+                            const aDate = new Date(a.lastPlayedAt!).getTime();
+                            const bDate = new Date(b.lastPlayedAt!).getTime();
+                            return bDate - aDate;
+                        })
+                        .slice(0, 4);
+                    setRecentInstances(sorted);
+                }
+            } catch {
+                // Silent fail
+            }
+        };
+        loadRecentInstances();
+    }, []);
 
     // Get current hour for greeting
     const hour = new Date().getHours();
@@ -355,6 +392,56 @@ export function Home({
                         </div>
                     )}
                 </div>
+
+                {/* Recently Played Section */}
+                {recentInstances.length > 0 && (
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-lg font-semibold flex items-center gap-2" style={{ color: colors.onSurface }}>
+                                <span className="w-1 h-5 rounded-full" style={{ backgroundColor: colors.primary }} />
+                                เล่นล่าสุด
+                            </h3>
+                            <button
+                                onClick={() => setActiveTab?.("modpack")}
+                                className="text-sm px-3 py-1 rounded-lg transition-all hover:opacity-80"
+                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.secondary }}
+                            >
+                                ดูทั้งหมด
+                            </button>
+                        </div>
+                        <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
+                            {recentInstances.map((instance) => (
+                                <button
+                                    key={instance.id}
+                                    onClick={() => setActiveTab?.("modpack")}
+                                    className="p-4 rounded-2xl text-left transition-all hover:scale-[1.02] hover:shadow-lg group"
+                                    style={{ backgroundColor: colors.surfaceContainer }}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div
+                                            className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden"
+                                            style={{ backgroundColor: colors.surfaceContainerHighest }}
+                                        >
+                                            {instance.icon ? (
+                                                <img src={instance.icon} alt={instance.name} className="w-full h-full object-cover" />
+                                            ) : (
+                                                <Icons.Box className="w-6 h-6" style={{ color: colors.onSurfaceVariant }} />
+                                            )}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="font-medium truncate" style={{ color: colors.onSurface }}>
+                                                {instance.name}
+                                            </p>
+                                            <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>
+                                                {instance.minecraftVersion} • {instance.loader}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {/* Servers Section - Takes 1 column */}
                 <div className="space-y-4">

@@ -27,10 +27,12 @@ jobs:
       max-parallel: 1
       matrix:
         include:
-          - os: [self-hosted, Windows]
+          - os: [windows-latest]
             platform: win
-          - os: [self-hosted, Linux]
+          - os: [ubuntu-latest]
             platform: linux
+          - os: [macos-latest]
+            platform: mac
 
     runs-on: ${{ matrix.os }}
     
@@ -41,19 +43,46 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Install dependencies
-        run: npm install
+        run: bun install
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
+      - name: Checkout ml-launcher-core
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/ml-launcher-core
+          path: ../ml-launcher-core
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ../ml-launcher-core
+
+      - name: Build Rust core (ml-launcher-core)
+        run: |
+          cd ../ml-launcher-core
+          cargo build --release
+        env:
+          CARGO_TERM_COLOR: always
+
       - name: Build application
-        run: npm run build
+        run: bun run build
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
       - name: Build Electron app (Windows)
         if: matrix.platform == 'win'
-        run: npm run dist:win
+        run: bun run dist:win
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
@@ -64,7 +93,13 @@ jobs:
 
       - name: Build Electron app (Linux)
         if: matrix.platform == 'linux'
-        run: npm run dist:linux
+        run: bun run dist:linux
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+
+      - name: Build Electron app (macOS)
+        if: matrix.platform == 'mac'
+        run: bun run dist:mac
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
@@ -103,6 +138,17 @@ jobs:
             release/latest-linux.yml
           retention-days: 30
 
+      - name: Upload macOS artifacts
+        if: matrix.platform == 'mac'
+        uses: actions/upload-artifact@v4
+        with:
+          name: reality-launcher-macos
+          path: |
+            release/*.dmg
+            release/*.dmg.blockmap
+            release/latest-mac.yml
+          retention-days: 30
+
   release:
     needs: build
     runs-on: ubuntu-latest
@@ -138,7 +184,7 @@ jobs:
           node-version: '20'
 
       - name: Install wrangler
-        run: npm install -g wrangler
+        run: bun install -g wrangler
 
       - name: Verify R2 credentials
         env:
@@ -206,42 +252,41 @@ jobs:
             exit 1
           fi
 
-      # macOS R2 upload disabled
-      # - name: Upload macOS build to R2
-      #   env:
-      #     CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      #     CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      #   run: |
-      #     set -e
-      #     VERSION=${{ steps.version.outputs.version }}
-      #     echo "=== Uploading macOS build for version $VERSION ==="
-      #     
-      #     for file in artifacts/reality-launcher-macos/*.dmg; do
-      #       if [ -f "$file" ]; then
-      #         FILENAME=$(basename "$file")
-      #         echo "Uploading $FILENAME to /client/$VERSION/..."
-      #         wrangler r2 object put --remote "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file" --content-type="application/octet-stream"
-      #         echo "✓ Uploaded $FILENAME"
-      #       fi
-      #     done
-      #     
-      #     for file in artifacts/reality-launcher-macos/*.blockmap; do
-      #       if [ -f "$file" ]; then
-      #         FILENAME=$(basename "$file")
-      #         echo "Uploading $FILENAME to /client/$VERSION/..."
-      #         wrangler r2 object put --remote "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file"
-      #         echo "✓ Uploaded $FILENAME"
-      #       fi
-      #     done
-      #     
-      #     if [ -f "artifacts/reality-launcher-macos/latest-mac.yml" ]; then
-      #       echo "Patching latest-mac.yml with version prefix..."
-      #       sed -i "s|url: |url: $VERSION/|g" artifacts/reality-launcher-macos/latest-mac.yml
-      #       cat artifacts/reality-launcher-macos/latest-mac.yml
-      #       echo "Uploading latest-mac.yml..."
-      #       wrangler r2 object put --remote "$R2_BUCKET/client/latest-mac.yml" --file="artifacts/reality-launcher-macos/latest-mac.yml" --content-type="text/yaml"
-      #       echo "✓ Uploaded latest-mac.yml"
-      #     fi
+      - name: Upload macOS build to R2
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -e
+          VERSION=${{ steps.version.outputs.version }}
+          echo "=== Uploading macOS build for version $VERSION ==="
+          
+          for file in artifacts/reality-launcher-macos/*.dmg; do
+            if [ -f "$file" ]; then
+              FILENAME=$(basename "$file")
+              echo "Uploading $FILENAME to /client/$VERSION/..."
+              wrangler r2 object put --remote "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file" --content-type="application/octet-stream"
+              echo "✓ Uploaded $FILENAME"
+            fi
+          done
+          
+          for file in artifacts/reality-launcher-macos/*.blockmap; do
+            if [ -f "$file" ]; then
+              FILENAME=$(basename "$file")
+              echo "Uploading $FILENAME to /client/$VERSION/..."
+              wrangler r2 object put --remote "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file"
+              echo "✓ Uploaded $FILENAME"
+            fi
+          done
+          
+          if [ -f "artifacts/reality-launcher-macos/latest-mac.yml" ]; then
+            echo "Patching latest-mac.yml with version prefix..."
+            sed -i "s|url: |url: $VERSION/|g" artifacts/reality-launcher-macos/latest-mac.yml
+            cat artifacts/reality-launcher-macos/latest-mac.yml
+            echo "Uploading latest-mac.yml..."
+            wrangler r2 object put --remote "$R2_BUCKET/client/latest-mac.yml" --file="artifacts/reality-launcher-macos/latest-mac.yml" --content-type="text/yaml"
+            echo "✓ Uploaded latest-mac.yml"
+          fi
 
       - name: Upload Linux builds to R2
         env:
@@ -284,12 +329,12 @@ jobs:
           
           # Detect actual filenames
           WIN_FILE=$(basename $(ls artifacts/reality-launcher-windows/*.exe | head -n 1))
-          # MAC_FILE disabled - macOS build not available
+          MAC_FILE=$(basename $(ls artifacts/reality-launcher-macos/*.dmg | head -n 1))
           LINUX_AppImage=$(basename $(ls artifacts/reality-launcher-linux/*.AppImage | head -n 1))
           
           # URL Encode filenames (replace spaces with %20)
           WIN_URL="$CDN_URL/client/$VERSION/$(echo "$WIN_FILE" | sed 's/ /%20/g')"
-          # MAC_URL disabled - macOS build not available
+          MAC_URL="$CDN_URL/client/$VERSION/$(echo "$MAC_FILE" | sed 's/ /%20/g')"
           LINUX_URL="$CDN_URL/client/$VERSION/$(echo "$LINUX_AppImage" | sed 's/ /%20/g')"
           
           cat > latest.json <<EOF
@@ -299,6 +344,7 @@ jobs:
             "changelog": "$CHANGELOG_ESCAPED",
             "downloads": {
               "windows": "$WIN_URL",
+              "mac": "$MAC_URL",
               "linux": "$LINUX_URL"
             }
           }
@@ -339,7 +385,7 @@ jobs:
           generate_release_notes: true
           files: |
             artifacts/reality-launcher-windows/*.exe
-            # artifacts/reality-launcher-macos/*.dmg  # macOS disabled
+            artifacts/reality-launcher-macos/*.dmg
             artifacts/reality-launcher-linux/*.AppImage
             artifacts/reality-launcher-linux/*.deb
             artifacts/reality-launcher-linux/*.rpm

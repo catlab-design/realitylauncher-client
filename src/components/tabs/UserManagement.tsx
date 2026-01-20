@@ -5,6 +5,8 @@
 
 import { useState, useEffect } from "react";
 import { Icons } from "../ui/Icons";
+import { Skeleton } from "../ui/Skeleton";
+
 
 interface User {
     id: string;
@@ -222,8 +224,23 @@ export default function UserManagement({ colors, adminToken }: Props) {
 
             {/* User List */}
             {loading ? (
-                <div className="flex justify-center py-8">
-                    <Icons.Spinner className="w-6 h-6 animate-spin" style={{ color: colors.secondary }} />
+                <div className="space-y-2">
+                    {Array.from({ length: 8 }).map((_, i) => (
+                        <div key={i} className="flex items-center justify-between p-3 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHigh }}>
+                            <div className="flex-1 space-y-2">
+                                <div className="flex items-center gap-2">
+                                    <Skeleton className="h-4 w-32" colors={colors} />
+                                    <Skeleton className="h-4 w-12 rounded" colors={colors} />
+                                </div>
+                                <Skeleton className="h-3 w-48" colors={colors} />
+                            </div>
+                            <div className="flex gap-1">
+                                <Skeleton className="w-8 h-8 rounded-lg" colors={colors} />
+                                <Skeleton className="w-8 h-8 rounded-lg" colors={colors} />
+                                <Skeleton className="w-8 h-8 rounded-lg" colors={colors} />
+                            </div>
+                        </div>
+                    ))}
                 </div>
             ) : (
                 <div className="space-y-2">
@@ -234,7 +251,12 @@ export default function UserManagement({ colors, adminToken }: Props) {
                             <div key={user.id} className="flex items-center justify-between p-3 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHigh }}>
                                 <div className="flex-1">
                                     <div className="flex items-center gap-2">
-                                        <span style={{ color: colors.onSurface }}>{user.catidUsername || user.email}</span>
+                                        <span style={{ color: colors.onSurface }}>
+                                            {user.minecraftUsername
+                                                ? `${user.minecraftUsername} (${user.catidUsername})`
+                                                : (user.catidUsername || user.email)
+                                            }
+                                        </span>
                                         {user.isAdmin && <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400">Admin</span>}
                                         {user.isBanned && <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/20 text-red-400">Banned</span>}
                                     </div>
