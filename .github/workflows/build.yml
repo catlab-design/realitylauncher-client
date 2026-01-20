@@ -59,9 +59,9 @@ jobs:
       - name: Checkout ml-launcher-core
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.repository_owner }}/ml-launcher-core
+          repository: catlab-design/ml-launcher-core
           path: ml-launcher-core
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
