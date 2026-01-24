@@ -92,13 +92,7 @@ pub struct DirectorySizeInfo {
     pub folder_count: u32,
 }
 
-/// Get the base instances directory
-fn get_instances_base_dir() -> PathBuf {
-    let app_data = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(app_data)
-        .join("RealityLauncher")
-        .join("instances")
-}
+
 
 /// Get instance directory path
 #[napi]
@@ -178,7 +172,7 @@ pub fn load_instance_meta(base_dir: String, instance_id: String) -> napi::Result
 pub async fn list_instances(base_dir: String, offset: Option<u32>, limit: Option<u32>) -> napi::Result<Vec<InstanceMeta>> {
     println!("[Rust Core] list_instances called with base_dir: '{}'", base_dir);
     let base = std::path::PathBuf::from(&base_dir);
-    let mut instances = Vec::new();
+    let instances = Vec::new();
 
     if !base.exists() {
         println!("[Rust Core] base_dir does not exist: {:?}", base);

@@ -399,8 +399,10 @@ pub fn launch_game(
     game_args: Vec<String>,
     game_dir: String,
 ) -> napi::Result<LaunchResult> {
+    #[cfg(windows)]
     use std::os::windows::process::CommandExt;
     
+    #[cfg(windows)]
     const CREATE_NO_WINDOW: u32 = 0x08000000;
     
     let mut cmd = Command::new(&java_path);
@@ -411,10 +413,13 @@ pub fn launch_game(
         .args(&game_args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .creation_flags(CREATE_NO_WINDOW);
+        .stderr(Stdio::piped());
+    
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
     
     // Set environment variables
+    #[cfg(windows)]
     cmd.env("APPDATA", std::env::var("APPDATA").unwrap_or_default());
     
     match cmd.spawn() {
