@@ -86,12 +86,15 @@ type ProgressCallback = (progress: InstallProgress) => void;
 // ========================================
 
 /**
- * Extract a single entry from ZIP file
+ * Extract a single entry from ZIP file (async version to prevent UI blocking)
  */
-function extractZipEntry(zipPath: string, entryPath: string): Buffer | null {
+async function extractZipEntry(zipPath: string, entryPath: string): Promise<Buffer | null> {
     try {
         console.log("[ModpackInstaller] Extracting entry:", entryPath, "from:", zipPath);
-        const zip = new AdmZip(zipPath);
+
+        // Read file async to prevent blocking
+        const buffer = await fs.promises.readFile(zipPath);
+        const zip = new AdmZip(buffer);
         const entry = zip.getEntry(entryPath);
 
         if (!entry) {
@@ -121,12 +124,15 @@ const PRESERVED_FILES = [
 ];
 
 /**
- * Extract a subdirectory from ZIP to destination
+ * Extract a subdirectory from ZIP to destination (async version)
  */
-function extractZipToDirectory(zipPath: string, destDir: string, subPath?: string): void {
+async function extractZipToDirectory(zipPath: string, destDir: string, subPath?: string): Promise<void> {
     try {
         console.log("[ModpackInstaller] Extracting to directory:", destDir, "subPath:", subPath || "(none)");
-        const zip = new AdmZip(zipPath);
+
+        // Read file async to prevent blocking
+        const buffer = await fs.promises.readFile(zipPath);
+        const zip = new AdmZip(buffer);
 
         if (subPath) {
             // Extract only entries under the subPath
@@ -148,10 +154,10 @@ function extractZipToDirectory(zipPath: string, destDir: string, subPath?: strin
                         const destDirPath = path.dirname(destPath);
 
                         if (!fs.existsSync(destDirPath)) {
-                            fs.mkdirSync(destDirPath, { recursive: true });
+                            await fs.promises.mkdir(destDirPath, { recursive: true });
                         }
 
-                        fs.writeFileSync(destPath, entry.getData());
+                        await fs.promises.writeFile(destPath, entry.getData());
                     }
                 }
             }
@@ -175,7 +181,7 @@ function extractZipToDirectory(zipPath: string, destDir: string, subPath?: strin
 export async function parseModpackIndex(mrpackPath: string): Promise<ModpackIndex> {
     console.log("[ModpackInstaller] Parsing:", mrpackPath);
 
-    const content = extractZipEntry(mrpackPath, "modrinth.index.json");
+    const content = await extractZipEntry(mrpackPath, "modrinth.index.json");
 
     if (!content) {
         throw new Error("Could not find modrinth.index.json in modpack");
@@ -482,7 +488,7 @@ async function extractOverrides(
 
     try {
         // Extract overrides folder
-        extractZipToDirectory(mrpackPath, destDir, "overrides");
+        await extractZipToDirectory(mrpackPath, destDir, "overrides");
         console.log("[ModpackInstaller] Overrides extracted successfully");
     } catch (error) {
         console.log("[ModpackInstaller] No overrides folder or extraction error:", error);
@@ -490,7 +496,7 @@ async function extractOverrides(
 
     try {
         // Also check for client-overrides
-        extractZipToDirectory(mrpackPath, destDir, "client-overrides");
+        await extractZipToDirectory(mrpackPath, destDir, "client-overrides");
         console.log("[ModpackInstaller] Client overrides extracted successfully");
     } catch (error) {
         // client-overrides is optional
@@ -507,15 +513,48 @@ export async function installModpack(
     try {
         if (signal?.aborted) throw new Error("Installation cancelled");
 
-        // Peek at ZIP content to determine type
-        const zip = new AdmZip(mrpackPath);
+        // Show progress while reading ZIP (can be slow for large files)
+        if (onProgress) {
+            onProgress({
+                stage: "extracting",
+                message: "กำลังอ่านไฟล์ modpack...",
+            });
+        }
+
+        // Check file exists first
+        if (!fs.existsSync(mrpackPath)) {
+            throw new Error("ไม่พบไฟล์ modpack ที่ระบุ");
+        }
+
+        // Check file size to warn about large files
+        const stats = fs.statSync(mrpackPath);
+        const fileSizeMB = stats.size / (1024 * 1024);
+        console.log(`[ModpackInstaller] File size: ${fileSizeMB.toFixed(2)} MB`);
+
+        if (fileSizeMB > 500) {
+            console.warn("[ModpackInstaller] Large modpack file, this may take a while...");
+        }
+
+        // Read ZIP asynchronously to prevent UI blocking
+        const zipBuffer = await fs.promises.readFile(mrpackPath);
+
+        if (signal?.aborted) throw new Error("Installation cancelled");
+
+        // Parse ZIP in a try-catch to handle corrupt files
+        let zip: AdmZip;
+        try {
+            zip = new AdmZip(zipBuffer);
+        } catch (zipError: any) {
+            console.error("[ModpackInstaller] Failed to parse ZIP:", zipError);
+            throw new Error("ไฟล์ modpack เสียหายหรือไม่ใช่ไฟล์ ZIP ที่ถูกต้อง");
+        }
 
         if (zip.getEntry("modrinth.index.json")) {
             // Modrinth Format
             return await installModrinthModpack(mrpackPath, onProgress, signal);
         } else if (zip.getEntry("manifest.json")) {
             // CurseForge Format
-            return await installCurseForgeModpack(mrpackPath, onProgress, signal); // CurseForge unimplemented signal for now
+            return await installCurseForgeModpack(mrpackPath, onProgress, signal);
         } else {
             throw new Error("ไม่รู้จักรูปแบบไฟล์ Modpack (ต้องมี modrinth.index.json หรือ manifest.json)");
         }

@@ -5,10 +5,12 @@ import { playClick } from "../../../lib/sounds";
 import { getContrastColor } from "../../../lib/utils";
 import type { ColorTheme, LauncherConfig } from "../../../types/launcher";
 import type { SettingsTabProps } from "./AccountTab";
+import { useTranslation } from "../../../hooks/useTranslation";
 
 
 export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps) {
     const [customColorPending, setCustomColorPending] = useState<string | null>(null);
+    const { t } = useTranslation(config.language);
 
     const handleUpdate = (updates: Partial<LauncherConfig>) => {
         if (updates.clickSoundEnabled === true || updates.notificationSoundEnabled === true) {
@@ -26,7 +28,7 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
             {/* Standard Header */}
             <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "40" }}>
                 <i className="fa-solid fa-palette text-lg" style={{ color: colors.secondary }}></i>
-                <h3 className="font-medium" style={{ color: colors.onSurface }}>การแสดงผลและธีม</h3>
+                <h3 className="font-medium" style={{ color: colors.onSurface }}>{t('appearance_and_themes')}</h3>
             </div>
 
             <div className="p-6 space-y-8">
@@ -34,21 +36,21 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
                 <section>
                     <div className="flex items-center gap-2 mb-4">
                         <i className="fa-solid fa-moon text-xs opacity-40" style={{ color: colors.onSurface }}></i>
-                        <h4 className="text-xs font-black uppercase tracking-widest opacity-40" style={{ color: colors.onSurface }}>โหมดสี (Theme)</h4>
+                        <h4 className="text-xs font-black uppercase tracking-widest opacity-40" style={{ color: colors.onSurface }}>{t('theme_mode')}</h4>
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                         {[
-                            { id: "light", icon: "fa-sun", label: "โหมดสว่าง", desc: "Light Mode" },
-                            { id: "dark", icon: "fa-moon", label: "โหมดมืด", desc: "Dark Mode" },
-                            { id: "oled", icon: "fa-circle", label: "โหมด OLED", desc: "Pure Black" },
-                            { id: "auto", icon: "fa-clock", label: "ตามระบบ", desc: "Automatic" }
-                        ].map((t) => {
-                            const isActive = config.theme === t.id;
+                            { id: "light", icon: "fa-sun", label: t('light_mode'), desc: t('light_mode_desc') },
+                            { id: "dark", icon: "fa-moon", label: t('dark_mode'), desc: t('dark_mode_desc') },
+                            { id: "oled", icon: "fa-circle", label: t('oled_mode'), desc: t('oled_mode_desc') },
+                            { id: "auto", icon: "fa-clock", label: t('follow_system'), desc: t('follow_system_desc') }
+                        ].map((item) => {
+                            const isActive = config.theme === item.id;
                             return (
                                 <button
-                                    key={t.id}
-                                    onClick={() => handleUpdate({ theme: t.id as any })}
+                                    key={item.id}
+                                    onClick={() => handleUpdate({ theme: item.id as any })}
                                     className={`group relative h-24 rounded-2xl border transition-all duration-300 flex flex-col items-center justify-center gap-1.5 overflow-hidden ${isActive ? 'scale-[1.02] shadow-lg' : 'hover:bg-black/5 hover:border-white/10'}`}
                                     style={{
                                         backgroundColor: isActive ? colors.surface : "transparent",
@@ -61,9 +63,9 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
                                         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-current to-transparent opacity-50"
                                             style={{ color: colors.primary }}></div>
                                     )}
-                                    <i className={`fa-solid ${t.icon} text-lg mb-0.5 ${isActive ? 'scale-110' : 'opacity-40 group-hover:opacity-100'}`}></i>
-                                    <span className="font-black text-[11px] uppercase tracking-wider">{t.label}</span>
-                                    <span className="text-[9px] font-bold opacity-30 uppercase">{t.desc}</span>
+                                    <i className={`fa-solid ${item.icon} text-lg mb-0.5 ${isActive ? 'scale-110' : 'opacity-40 group-hover:opacity-100'}`}></i>
+                                    <span className="font-black text-[11px] uppercase tracking-wider">{item.label}</span>
+                                    <span className="text-[9px] font-bold opacity-30 uppercase">{item.desc}</span>
                                 </button>
                             );
                         })}
@@ -77,7 +79,7 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
                     <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-2">
                             <i className="fa-solid fa-brush text-xs opacity-40" style={{ color: colors.onSurface }}></i>
-                            <h4 className="text-xs font-black uppercase tracking-widest opacity-40" style={{ color: colors.onSurface }}>เฉดสีหลัก (Accent Color)</h4>
+                            <h4 className="text-xs font-black uppercase tracking-widest opacity-40" style={{ color: colors.onSurface }}>{t('accent_color')}</h4>
                         </div>
                     </div>
 
@@ -87,7 +89,7 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
                                 <div className="absolute inset-0 z-20 flex items-center justify-center">
                                     <div className="px-4 py-2 rounded-xl bg-black/60 backdrop-blur-sm shadow-lg border border-white/10 flex items-center gap-3 animate-in zoom-in fade-in duration-300">
                                         <i className="fa-solid fa-lock text-white text-sm"></i>
-                                        <span className="text-xs font-bold text-white">Rainbow Mode เปิดอยู่</span>
+                                        <span className="text-xs font-bold text-white">{t('rainbow_mode_active')}</span>
                                     </div>
                                 </div>
                             )}
@@ -155,7 +157,7 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
                                     onClick={() => {
                                         handleUpdate({ customColor: customColorPending, rainbowMode: false });
                                         setCustomColorPending(null);
-                                        toast.success("บันทึกสีใหม่เรียบร้อย");
+                                        toast.success(t('custom_color_saved'));
                                     }}
                                     className="px-4 py-2 rounded-xl text-xs font-bold shadow-lg transition-all flex items-center gap-2 active:scale-95"
                                     style={{
@@ -163,7 +165,7 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
                                         color: getContrastColor(customColorPending)
                                     }}
                                 >
-                                    <i className="fa-solid fa-save"></i> บันทึกสีคัสตอม
+                                    <i className="fa-solid fa-save"></i> {t('save_custom_color')}
                                 </button>
                             </div>
                         )}
@@ -192,10 +194,10 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
                                 </div>
                                 <div className="space-y-0.5">
                                     <div className="flex items-center gap-2">
-                                        <h4 className={`font-black text-sm tracking-tight ${config.rainbowMode ? 'rainbow-text' : ''}`} style={{ color: colors.onSurface }}>RAINBOW MODE</h4>
-                                        <span className="text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider" style={{ backgroundColor: config.rainbowMode ? colors.primary : colors.secondary, color: config.rainbowMode ? colors.onPrimary : "#1a1a1a" }}>BETA</span>
+                                        <h4 className={`font-black text-sm tracking-tight ${config.rainbowMode ? 'rainbow-text' : ''}`} style={{ color: colors.onSurface }}>{t('rainbow_mode').toUpperCase()}</h4>
+                                        <span className="text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider" style={{ backgroundColor: config.rainbowMode ? colors.primary : colors.secondary, color: config.rainbowMode ? colors.onPrimary : "#1a1a1a" }}>{t('beta')}</span>
                                     </div>
-                                    <p className="text-[10px] font-bold opacity-30 uppercase tracking-widest" style={{ color: colors.onSurface }}>สีเปลี่ยนอัตโนมัติแบบ RGB ตลอดเวลา</p>
+                                    <p className="text-[10px] font-bold opacity-30 uppercase tracking-widest" style={{ color: colors.onSurface }}>{t('rainbow_mode_desc')}</p>
                                 </div>
                             </div>
 
@@ -226,13 +228,13 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
                 <section>
                     <div className="flex items-center gap-2 mb-4">
                         <i className="fa-solid fa-volume-high text-xs opacity-40" style={{ color: colors.onSurface }}></i>
-                        <h4 className="text-xs font-black uppercase tracking-widest opacity-40" style={{ color: colors.onSurface }}>เสียง (Audio)</h4>
+                        <h4 className="text-xs font-black uppercase tracking-widest opacity-40" style={{ color: colors.onSurface }}>{t('audio_header')}</h4>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {[
-                            { id: "clickSoundEnabled", label: "เสียงคลิกเมาส์", icon: "fa-computer-mouse", desc: "ได้ยินเสียงเมื่อคลิกปุ่มต่างๆ" },
-                            { id: "notificationSoundEnabled", label: "เสียงแจ้งเตือน", icon: "fa-bell", desc: "แจ้งเตือนเมื่อมีกิจกรรมใหม่" }
+                            { id: "clickSoundEnabled", label: t('click_sound'), icon: "fa-computer-mouse", desc: t('click_sound_desc') },
+                            { id: "notificationSoundEnabled", label: t('notification_sound'), icon: "fa-bell", desc: t('notification_sound_desc') }
                         ].map((item) => (
                             <div key={item.id}
                                 className="flex items-center justify-between p-4 rounded-2xl transition-all border border-transparent hover:border-white/5"

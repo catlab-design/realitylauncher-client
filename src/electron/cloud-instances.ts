@@ -494,7 +494,12 @@ export async function syncServerMods(
                     }
 
                     console.log(`[Cloud Sync] Removing extra mod: ${file} (Not in server list: ${Array.from(serverModPaths).slice(0, 3).join(", ")}...)`);
-                    fs.unlinkSync(path.join(modsDir, file));
+                    try {
+                        fs.unlinkSync(path.join(modsDir, file));
+                    } catch (unlinkErr: any) {
+                        // File may be locked by game process
+                        console.warn(`[Cloud Sync] Could not delete ${file}: ${unlinkErr.message}. File may be in use.`);
+                    }
                 } else {
                     // console.log(`[Cloud Sync] Keeping server mod: ${file}`);
                 }

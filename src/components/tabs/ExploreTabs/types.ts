@@ -45,6 +45,7 @@ export interface ModrinthGalleryItem {
 
 export interface ExploreProps {
     colors: any;
+    config?: { language?: "th" | "en" };
 }
 
 export interface GameInstance {

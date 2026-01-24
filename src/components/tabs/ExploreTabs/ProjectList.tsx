@@ -3,8 +3,10 @@
 // ========================================
 
 import React from "react";
+import { useTranslation } from "../../../hooks/useTranslation";
 import type { ModrinthProject } from "./types";
 import { ProjectCard } from "./ProjectCard";
+import { Icons } from "../../ui/Icons";
 
 interface ProjectListProps {
     colors: any;
@@ -31,17 +33,18 @@ export function ProjectList({
     onSelectProject,
     onPageChange,
 }: ProjectListProps) {
+    const { t } = useTranslation();
     return (
         <div className="flex flex-col h-full gap-4">
             {/* Header Stats */}
             {!isLoading && (
                 <div className="flex items-center justify-between px-1">
                     <span className="text-xs font-medium" style={{ color: colors.onSurfaceVariant }}>
-                        ผลลัพธ์ {totalHits.toLocaleString()} รายการ
+                        {t('items_count').replace('{count}', ((totalHits && totalHits > 0) ? totalHits : results.length).toLocaleString())}
                     </span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full"
                         style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}>
-                        Page {page} of {Math.max(1, totalPages)}
+                        {t('page_of').replace('{page}', String(page)).replace('{totalPages}', String(Math.max(1, totalPages)))}
                     </span>
                 </div>
             )}
@@ -84,10 +87,10 @@ export function ProjectList({
                     style={{ borderColor: colors.outline + "40", color: colors.onSurfaceVariant }}>
                     <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4"
                         style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                        <i className="fa-solid fa-box-open text-2xl opacity-50"></i>
+                        <Icons.Box className="w-8 h-8 opacity-50" style={{ color: colors.onSurfaceVariant }} />
                     </div>
-                    <h3 className="text-sm font-medium mb-1" style={{ color: colors.onSurface }}>ไม่พบรายการ</h3>
-                    <p className="text-xs opacity-70">ลองเปลี่ยนคำค้นหาหรือตัวกรองดูนะครับ</p>
+                    <h3 className="text-sm font-medium mb-1" style={{ color: colors.onSurface }}>{t('no_results')}</h3>
+                    <p className="text-xs opacity-70">{t('try_change_filters')}</p>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 pb-4">
@@ -125,7 +128,7 @@ export function ProjectList({
                             style={{ color: colors.onSurface }}
                         >
                             <i className="fa-solid fa-chevron-left text-[10px]"></i>
-                            ก่อนหน้า
+                                {t('previous' as any)}
                         </button>
 
                         <div className="px-3 min-w-[80px] text-center" style={{ color: colors.onSurfaceVariant }}>
@@ -144,7 +147,7 @@ export function ProjectList({
                             className="px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-1.5"
                             style={{ color: colors.onSurface }}
                         >
-                            ถัดไป
+                            {t('next' as any)}
                             <i className="fa-solid fa-chevron-right text-[10px]"></i>
                         </button>
                     </div>

@@ -1,28 +1,70 @@
 import toast from "react-hot-toast";
 import type { LauncherConfig } from "../../../types/launcher";
 import type { SettingsTabProps } from "./AccountTab";
+import { useTranslation } from "../../../hooks/useTranslation";
 
 export function LauncherTab({ config, updateConfig, colors }: SettingsTabProps) {
     const windowApi = (window as any).api;
+    const { t } = useTranslation(config.language);
 
     return (
         <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
             <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "40" }}>
                 <i className="fa-solid fa-rocket text-lg" style={{ color: colors.secondary }}></i>
-                <h3 className="font-medium" style={{ color: colors.onSurface }}>Launcher</h3>
+                <h3 className="font-medium" style={{ color: colors.onSurface }}>{t('launcher_settings')}</h3>
             </div>
             <div className="p-4 space-y-4">
+                {/* Language Selector */}
+                <div className="flex items-center justify-between">
+                    <div>
+                        <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('language')}</p>
+                        <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t('select_language')}</p>
+                    </div>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => updateConfig({ language: "th" })}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${config.language === "th"
+                                ? "bg-primary/20 border-primary text-primary"
+                                : "bg-transparent border-transparent hover:bg-white/5"
+                                }`}
+                            style={{
+                                backgroundColor: config.language === "th" ? colors.secondary + "20" : "transparent",
+                                borderColor: config.language === "th" ? colors.secondary : "transparent",
+                                color: config.language === "th" ? colors.secondary : colors.onSurfaceVariant
+                            }}
+                        >
+                            ไทย
+                        </button>
+                        <button
+                            onClick={() => updateConfig({ language: "en" })}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${config.language === "en"
+                                ? "bg-primary/20 border-primary text-primary"
+                                : "bg-transparent border-transparent hover:bg-white/5"
+                                }`}
+                            style={{
+                                backgroundColor: config.language === "en" ? colors.secondary + "20" : "transparent",
+                                borderColor: config.language === "en" ? colors.secondary : "transparent",
+                                color: config.language === "en" ? colors.secondary : colors.onSurfaceVariant
+                            }}
+                        >
+                            English
+                        </button>
+                    </div>
+                </div>
+
+                <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
+
                 {/* Fullscreen Toggle */}
                 <div className="flex items-center justify-between">
                     <div>
-                        <p className="font-medium text-sm" style={{ color: colors.onSurface }}>เต็มหน้าจอ (Fullscreen)</p>
-                        <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>ขยายหน้าต่าง Launcher เต็มจอ</p>
+                        <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('fullscreen')}</p>
+                        <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t('fullscreen_desc')}</p>
                     </div>
                     <div className="relative inline-flex items-center cursor-pointer">
                         <button
                             onClick={async () => {
                                 if (!windowApi) {
-                                    toast.error("ฟีเจอร์นี้ต้องใช้ใน Electron App");
+                                    toast.error(t('electron_required'));
                                     return;
                                 }
                                 await windowApi.windowMaximize();
@@ -46,11 +88,11 @@ export function LauncherTab({ config, updateConfig, colors }: SettingsTabProps) 
                 <div>
                     <div className="flex items-center justify-between mb-2">
                         <div>
-                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>ขนาดหน้าต่างเกม</p>
-                            <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>กำหนดขนาดหน้าต่างเมื่อเปิดเกม</p>
+                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('window_size')}</p>
+                            <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t('window_size_desc')}</p>
                         </div>
                         <div className="flex items-center gap-2">
-                            <span className="text-xs" style={{ color: colors.onSurfaceVariant }}>อัตโนมัติ</span>
+                            <span className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t('auto')}</span>
                             <div className="relative inline-flex items-center cursor-pointer">
                                 <button
                                     onClick={() => updateConfig({ windowAuto: !config.windowAuto })}
@@ -68,7 +110,7 @@ export function LauncherTab({ config, updateConfig, colors }: SettingsTabProps) 
                     {!config.windowAuto && (
                         <div className="flex gap-3 mt-3">
                             <div className="flex-1">
-                                <label className="text-xs mb-1 block" style={{ color: colors.onSurfaceVariant }}>กว้าง (px)</label>
+                                <label className="text-xs mb-1 block" style={{ color: colors.onSurfaceVariant }}>{t('width')}</label>
                                 <input
                                     type="number"
                                     value={config.windowWidth}
@@ -78,7 +120,7 @@ export function LauncherTab({ config, updateConfig, colors }: SettingsTabProps) 
                                 />
                             </div>
                             <div className="flex-1">
-                                <label className="text-xs mb-1 block" style={{ color: colors.onSurfaceVariant }}>สูง (px)</label>
+                                <label className="text-xs mb-1 block" style={{ color: colors.onSurfaceVariant }}>{t('height')}</label>
                                 <input
                                     type="number"
                                     value={config.windowHeight}
@@ -96,8 +138,8 @@ export function LauncherTab({ config, updateConfig, colors }: SettingsTabProps) 
                 {/* Close on Launch */}
                 <div className="flex items-center justify-between">
                     <div>
-                        <p className="font-medium text-sm" style={{ color: colors.onSurface }}>ปิด Launcher เมื่อเปิดเกม</p>
-                        <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>ปิดหน้าต่าง Launcher อัตโนมัติหลังเริ่มเกม</p>
+                        <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('close_on_launch')}</p>
+                        <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t('close_on_launch_desc')}</p>
                     </div>
                     <div className="relative inline-flex items-center cursor-pointer">
                         <button
@@ -116,3 +158,4 @@ export function LauncherTab({ config, updateConfig, colors }: SettingsTabProps) 
         </div>
     );
 }
+

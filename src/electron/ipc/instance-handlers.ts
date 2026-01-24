@@ -16,6 +16,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { net } from "electron";
 import AdmZip from "adm-zip";
+import { dedupeResourcepacks, dedupeShaders, dedupeDatapacks } from "./dedupe";
 import {
     getInstances,
     getInstance,
@@ -29,7 +30,7 @@ import {
     type CreateInstanceOptions,
     type UpdateInstanceOptions,
 } from "../instances.js";
-import { getConfig } from "../config.js";
+import { getConfig, getAppDataDir } from "../config.js";
 import { getSession } from "../auth.js";
 import {
     launchGame,
@@ -50,8 +51,219 @@ interface ModMetadataCache {
     id?: string; // The internal Mod ID (slug)
 }
 const modMetadataCache = new Map<string, ModMetadataCache>();
+// Persistent Cache Logic
+const METADATA_CACHE_FILE = "metadata-cache.json";
+let metadataCacheLoaded = false;
+let saveTimeout: NodeJS.Timeout | null = null;
+
+function getMetadataCachePath() {
+    return path.join(getAppDataDir(), METADATA_CACHE_FILE);
+}
+
+function loadMetadataCache() {
+    if (metadataCacheLoaded) return;
+    try {
+        const cachePath = getMetadataCachePath();
+        if (fs.existsSync(cachePath)) {
+            const data = fs.readFileSync(cachePath, "utf-8");
+            const json = JSON.parse(data);
+            // Restore map
+            for (const [key, value] of Object.entries(json)) {
+                modMetadataCache.set(key, value as ModMetadataCache);
+            }
+        }
+    } catch (e) {
+        console.error("Failed to load metadata cache:", e);
+    }
+    metadataCacheLoaded = true;
+}
+
+function saveMetadataCache() {
+    if (saveTimeout) clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(() => {
+        try {
+            const cachePath = getMetadataCachePath();
+            const obj = Object.fromEntries(modMetadataCache);
+            fs.writeFileSync(cachePath, JSON.stringify(obj));
+        } catch (e) {
+            console.error("Failed to save metadata cache:", e);
+        }
+    }, 2000); // Debounce 2s to avoid frequent writes
+}
+
+// Ensure loaded on start
+loadMetadataCache();
+
 // Cache for project ID -> icon URL to avoid re-fetching project info
 const modrinthProjectCache = new Map<string, string>();
+
+// Cache for content icon (shaders, resourcepacks) - name -> icon URL
+// Cache expires after 30 minutes to allow refresh
+const contentIconCache = new Map<string, { url: string | null; timestamp: number }>();
+const ICON_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
+function getIconFromCache(key: string): string | null | undefined {
+    const cached = contentIconCache.get(key);
+    if (!cached) return undefined; // Not in cache
+    if (Date.now() - cached.timestamp > ICON_CACHE_TTL) {
+        contentIconCache.delete(key);
+        return undefined; // Expired
+    }
+    return cached.url;
+}
+
+function setIconCache(key: string, url: string | null): void {
+    contentIconCache.set(key, { url, timestamp: Date.now() });
+}
+
+/**
+ * Calculate similarity ratio between two strings (0-1)
+ */
+function stringSimilarity(s1: string, s2: string): number {
+    const longer = s1.length > s2.length ? s1 : s2;
+    const shorter = s1.length > s2.length ? s2 : s1;
+    if (longer.length === 0) return 1.0;
+
+    // Check if one contains the other
+    if (longer.includes(shorter)) {
+        return shorter.length / longer.length;
+    }
+
+    // Simple word-based matching
+    const words1 = s1.split(/\s+/).filter(w => w.length > 2);
+    const words2 = s2.split(/\s+/).filter(w => w.length > 2);
+    if (words1.length === 0 || words2.length === 0) return 0;
+
+    let matches = 0;
+    for (const w1 of words1) {
+        for (const w2 of words2) {
+            if (w1.includes(w2) || w2.includes(w1)) {
+                matches++;
+                break;
+            }
+        }
+    }
+    return matches / Math.max(words1.length, words2.length);
+}
+
+/**
+ * Fetch icon from Modrinth first, then CurseForge if not found
+ * Uses strict matching to avoid wrong icons
+ * @param name - Content name to search for
+ * @param contentType - "shader" | "resourcepack"
+ * @returns Icon URL or null if not found
+ */
+async function fetchIconFromOnline(name: string, contentType: "shader" | "resourcepack"): Promise<string | null> {
+    // Check cache first
+    const cacheKey = `${contentType}:${name.toLowerCase()}`;
+    const cached = getIconFromCache(cacheKey);
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    // Clean up name for search (remove version numbers, special chars)
+    const cleanName = name
+        .replace(/[-_]?v?\d+\.\d+(\.\d+)?[-_]?/gi, " ") // Remove version numbers like v2.0.4
+        .replace(/\(.*?\)/g, " ") // Remove parentheses content
+        .replace(/[-_+]/g, " ") // Replace separators with spaces
+        .replace(/\s+/g, " ") // Collapse multiple spaces
+        .trim();
+
+    // Extract main name (first significant part)
+    const mainName = cleanName.split(/\s+/).slice(0, 3).join(" ");
+
+    if (!mainName || mainName.length < 3) {
+        setIconCache(cacheKey, null);
+        return null;
+    }
+
+    const projectType = contentType === "shader" ? "shader" : "resourcepack";
+    const normalizedSearch = mainName.toLowerCase();
+
+    try {
+        // Try Modrinth first
+        const modrinthUrl = `https://api.modrinth.com/v2/search?query=${encodeURIComponent(mainName)}&facets=[["project_type:${projectType}"]]&limit=5`;
+        const modrinthRes = await fetch(modrinthUrl, {
+            headers: { "User-Agent": "Reality-Launcher/1.0" }
+        });
+
+        if (modrinthRes.ok) {
+            const modrinthData = await modrinthRes.json();
+            if (modrinthData.hits && modrinthData.hits.length > 0) {
+                // Find best match with strict criteria
+                let bestMatch: any = null;
+                let bestScore = 0;
+
+                for (const hit of modrinthData.hits) {
+                    const hitTitle = (hit.title || "").toLowerCase();
+                    const hitSlug = (hit.slug || "").toLowerCase().replace(/-/g, " ");
+
+                    // Calculate similarity scores
+                    const titleScore = stringSimilarity(normalizedSearch, hitTitle);
+                    const slugScore = stringSimilarity(normalizedSearch, hitSlug);
+                    const score = Math.max(titleScore, slugScore);
+
+                    // Require reasonable similarity (50%+) to use online icon
+                    if (score > bestScore && score >= 0.5 && hit.icon_url) {
+                        bestScore = score;
+                        bestMatch = hit;
+                    }
+                }
+
+                if (bestMatch) {
+                    console.log(`[IconFetch] Found Modrinth icon for "${name}" (score: ${bestScore.toFixed(2)}): ${bestMatch.icon_url}`);
+                    setIconCache(cacheKey, bestMatch.icon_url);
+                    return bestMatch.icon_url;
+                }
+            }
+        }
+
+        // Try CurseForge as fallback with same strict matching
+        const cfClassId = contentType === "shader" ? 6552 : 12;
+        const cfUrl = `https://api.curseforge.com/v1/mods/search?gameId=432&classId=${cfClassId}&searchFilter=${encodeURIComponent(mainName)}&pageSize=5`;
+        const cfRes = await fetch(cfUrl, {
+            headers: {
+                "x-api-key": "$2a$10$bL4bIL5pUWqfcO7KQtnMReakwtfHbNKh6v1uTpKlzhwoueEJQnPnm",
+                "Accept": "application/json"
+            }
+        });
+
+        if (cfRes.ok) {
+            const cfData = await cfRes.json();
+            if (cfData.data && cfData.data.length > 0) {
+                let bestMatch: any = null;
+                let bestScore = 0;
+
+                for (const mod of cfData.data) {
+                    const modName = (mod.name || "").toLowerCase();
+                    const modSlug = (mod.slug || "").toLowerCase().replace(/-/g, " ");
+
+                    const nameScore = stringSimilarity(normalizedSearch, modName);
+                    const slugScore = stringSimilarity(normalizedSearch, modSlug);
+                    const score = Math.max(nameScore, slugScore);
+
+                    if (score > bestScore && score >= 0.5 && mod.logo?.url) {
+                        bestScore = score;
+                        bestMatch = mod;
+                    }
+                }
+
+                if (bestMatch) {
+                    console.log(`[IconFetch] Found CurseForge icon for "${name}" (score: ${bestScore.toFixed(2)}): ${bestMatch.logo.url}`);
+                    setIconCache(cacheKey, bestMatch.logo.url);
+                    return bestMatch.logo.url;
+                }
+            }
+        }
+    } catch (error) {
+        console.warn(`[IconFetch] Failed to fetch icon for "${name}":`, error);
+    }
+
+    // Cache null to avoid re-fetching
+    console.log(`[IconFetch] No match found for "${name}", using local icon`);
+    setIconCache(cacheKey, null);
+    return null;
+}
 
 function getModCacheKey(filepath: string, size: number, mtime: string): string {
     return `${filepath}|${size}|${mtime}`;
@@ -81,7 +293,13 @@ async function extractModInfo(jarPath: string): Promise<ModMetadataCache> {
         const fabricEntry = zip.getEntry("fabric.mod.json");
         if (fabricEntry) {
             const content = fabricEntry.getData().toString("utf8");
-            const json = JSON.parse(content);
+            let json: any;
+            try {
+                json = JSON.parse(content);
+            } catch (parseErr) {
+                console.warn(`[ModInfo] Failed to parse fabric.mod.json in ${jarPath}:`, parseErr);
+                return {};
+            }
 
             let icon: string | undefined;
             if (json.icon) {
@@ -101,8 +319,8 @@ async function extractModInfo(jarPath: string): Promise<ModMetadataCache> {
                 id: json.id,
                 displayName: json.name || json.id,
                 author: Array.isArray(json.authors)
-                    ? json.authors.map((a: any) => typeof a === "string" ? a : a.name).join(", ")
-                    : json.authors,
+                    ? json.authors.map((a: any) => typeof a === "string" ? a : a?.name || "").filter(Boolean).join(", ")
+                    : (json.authors || "Unknown"),
                 description: json.description,
                 icon,
             };
@@ -261,6 +479,54 @@ const ModrinthAPI = {
             }
         }
         return results;
+    },
+
+    async searchByName(name: string): Promise<any | null> {
+        try {
+            // Clean up name for search (improved v3)
+            // Remove version patterns like: 1.0.0, v1.2.3, -beta.1, _1.20.1
+            const versionRegex = /(?:v?[\d]+\.[\d]+(?:[\._-][\w\d]+)*)/g;
+
+            const cleanName = name
+                .replace(/\.jar(\.disabled)?$/, "")
+                .replace(/[\(\[\{].*?[\)\]\}]/g, "") // Remove (...) content
+                .replace(versionRegex, "") // Remove complex versions
+                .replace(/([a-z])([A-Z])/g, "$1 $2") // CamelCase -> Camel Case
+                .replace(/[-_]/g, " ")
+                .replace(/\s+/g, " ")
+                .trim();
+
+            if (cleanName.length < 3) {
+                console.log(`[Modrinth] Search skipped (too short): "${name}" -> "${cleanName}"`);
+                return null;
+            }
+
+            const url = `https://api.modrinth.com/v2/search?query=${encodeURIComponent(cleanName)}&facets=[["project_type:mod"]]&limit=1`;
+            const resp = await fetch(url, { headers: { "User-Agent": "RealityLauncher/0.0.1" } });
+
+            if (resp.ok) {
+                const data = await resp.json() as any;
+                if (data.hits && data.hits.length > 0) {
+                    const hit = data.hits[0];
+                    if (hit.title) {
+                        console.log(`[Modrinth] Search success: "${name}" -> Clean: "${cleanName}" -> Found: "${hit.title}"`);
+                        return {
+                            icon: hit.icon_url,
+                            title: hit.title,
+                            author: hit.author,
+                            description: hit.description
+                        };
+                    } else if (hit.icon_url) {
+                        return { icon: hit.icon_url };
+                    }
+                } else {
+                    console.log(`[Modrinth] Search failed for "${name}" -> Clean: "${cleanName}"`);
+                }
+            }
+            return null;
+        } catch (e) {
+            return null;
+        }
     }
 };
 
@@ -285,15 +551,18 @@ export function registerInstanceHandlers(getMainWindow: () => BrowserWindow | nu
         if (!metadata) {
             metadata = await extractModInfo(filePath);
             modMetadataCache.set(cacheKey, metadata);
+            saveMetadataCache(); // Save new local data
         }
 
         // 3. Modrinth Lookup (if no icon)
-        if (!metadata.icon && metadata.modrinthId !== "checked") {
+        // Note: We use "checked_missing" to distinguish from old "checked" status, forcing a re-check with new logic
+        if (!metadata.icon && metadata.modrinthId !== "checked_missing" && metadata.modrinthId !== "found") {
             try {
                 // Calculate Hash
                 const hash = metadata.hash || await calculateSha1(filePath);
                 metadata.hash = hash;
                 modMetadataCache.set(cacheKey, metadata);
+                // No save here yet, wait for lookup
 
                 // Hash Lookup
                 const modrinthIcons = await ModrinthAPI.resolveHashes([hash]);
@@ -302,6 +571,7 @@ export function registerInstanceHandlers(getMainWindow: () => BrowserWindow | nu
                     metadata.icon = modrinthIcons[hash];
                     metadata.modrinthId = "found";
                     modMetadataCache.set(cacheKey, metadata);
+                    saveMetadataCache(); // Save found icon
                     if (instanceId) getMainWindow()?.webContents.send("instance-mods-icons-updated", instanceId);
                     return metadata;
                 }
@@ -314,14 +584,39 @@ export function registerInstanceHandlers(getMainWindow: () => BrowserWindow | nu
                         metadata.icon = slugIcons[metadata.id];
                         metadata.modrinthId = "found";
                         modMetadataCache.set(cacheKey, metadata);
+                        saveMetadataCache(); // Save found icon
                         if (instanceId) getMainWindow()?.webContents.send("instance-mods-icons-updated", instanceId);
                         return metadata;
                     }
                 }
 
-                // Mark checked
-                metadata.modrinthId = "checked";
+                // 4. Fallback: Search by Filename
+                // Always try fallback search if we don't have an icon yet (and haven't definitively found it) Or if it was marked checked/checked_missing
+                if (!metadata.icon || metadata.modrinthId === "found_fuzzy" || metadata.modrinthId === "checked") {
+                    const searchName = metadata.displayName || path.basename(filePath);
+
+                    // Search if not already found strictly
+                    if (metadata.modrinthId !== "found") {
+                        const foundData = await ModrinthAPI.searchByName(searchName);
+                        if (foundData) {
+                            if (foundData.icon) metadata.icon = foundData.icon;
+                            if (foundData.title) metadata.displayName = foundData.title;
+                            if (foundData.author) metadata.author = foundData.author;
+                            if (foundData.description) metadata.description = foundData.description;
+
+                            metadata.modrinthId = "found_fuzzy";
+                            modMetadataCache.set(cacheKey, metadata);
+                            saveMetadataCache();
+                            if (instanceId) getMainWindow()?.webContents.send("instance-mods-icons-updated", instanceId);
+                            return metadata;
+                        }
+                    }
+                }
+
+                // Mark checked (missing)
+                metadata.modrinthId = "checked_missing";
                 modMetadataCache.set(cacheKey, metadata);
+                saveMetadataCache(); // Save checked status
             } catch (e) {
                 console.error(`[Mods] Failed ensureModMetadata for ${filePath}:`, e);
             }
@@ -603,8 +898,8 @@ export function registerInstanceHandlers(getMainWindow: () => BrowserWindow | nu
         try {
             const files = await fs.promises.readdir(modsDir);
             const jarFiles = files.filter(f => f.endsWith(".jar") || f.endsWith(".jar.disabled"));
-            const uncached: string[] = [];
 
+            // Load all metadata in parallel (backend-first approach)
             const mods = await Promise.all(jarFiles.map(async (file) => {
                 const filePath = path.join(modsDir, file);
                 try {
@@ -620,15 +915,8 @@ export function registerInstanceHandlers(getMainWindow: () => BrowserWindow | nu
                         name = file.replace(".jar", "");
                     }
 
-                    const cacheKey = getModCacheKey(filePath, stats.size, mtime);
-                    const metadata = modMetadataCache.get(cacheKey);
-
-                    // Add to processing queue if:
-                    // 1. No metadata exists
-                    // 2. Metadata exists but no icon AND we haven't checked Modrinth yet (modrinthId marker)
-                    if (!metadata || (!metadata.icon && !metadata.modrinthId)) {
-                        uncached.push(file);
-                    }
+                    // Ensure metadata is loaded (no lazy loading)
+                    const metadata = await ensureModMetadata(filePath, instanceId);
 
                     return {
                         filename: file,
@@ -651,7 +939,7 @@ export function registerInstanceHandlers(getMainWindow: () => BrowserWindow | nu
 
             // logical sort
             validMods.sort((a, b) => a.displayName.localeCompare(b.displayName));
-            return { ok: true, mods: validMods, hasUncached: uncached.length > 0 };
+            return { ok: true, mods: validMods };
         } catch (error: any) {
             return { ok: false, error: error.message, mods: [] };
         }
@@ -784,7 +1072,9 @@ export function registerInstanceHandlers(getMainWindow: () => BrowserWindow | nu
 
         try {
             const files = await fs.promises.readdir(dir);
-            const items = await Promise.all(files.map(async (file) => {
+
+            // Get basic info without icons (fast) - icons will be loaded lazily
+            const basicItems = await Promise.all(files.map(async (file) => {
                 const filePath = path.join(dir, file);
                 try {
                     const stats = await fs.promises.stat(filePath);
@@ -804,25 +1094,29 @@ export function registerInstanceHandlers(getMainWindow: () => BrowserWindow | nu
                         displayName = file.replace(".zip", "");
                     }
 
-                    // For now, let's not extract icons here if it's slow.
-                    // But if we want to keep it, we should do it cautiously.
-                    let icon: string | null = null;
-                    if (file.endsWith(".zip") || file.endsWith(".zip.disabled") || isDirectory) {
-                        // Minimal try-catch to not block the whole list
+                    const cacheKey = `resourcepack:${displayName.toLowerCase()}`;
+                    const cachedIcon = getIconFromCache(cacheKey);
+
+                    // Try to read icon from pack.png if not in cache
+                    let icon = cachedIcon || null;
+                    if (!icon) {
                         try {
-                            if (!isDirectory) {
-                                // Extract zip icon only if it's small or we have a cache?
-                                // For scale, icons are mandatory for "premium" feel.
-                                const zip = new AdmZip(filePath);
+                            if (file.endsWith(".zip") || file.endsWith(".zip.disabled")) {
+                                const buffer = await fs.promises.readFile(filePath);
+                                const zip = new AdmZip(buffer);
                                 const packPng = zip.getEntry("pack.png");
-                                if (packPng) icon = `data:image/png;base64,${packPng.getData().toString("base64")}`;
-                            } else {
+                                if (packPng) {
+                                    icon = `data:image/png;base64,${packPng.getData().toString("base64")}`;
+                                }
+                            } else if (isDirectory) {
                                 const packPngPath = path.join(filePath, "pack.png");
                                 if (fs.existsSync(packPngPath)) {
-                                    icon = `data:image/png;base64,${fs.readFileSync(packPngPath).toString("base64")}`;
+                                    icon = `data:image/png;base64,${(await fs.promises.readFile(packPngPath)).toString("base64")}`;
                                 }
                             }
-                        } catch { }
+                        } catch (e) {
+                            // Ignore errors reading icon
+                        }
                     }
 
                     return {
@@ -839,7 +1133,11 @@ export function registerInstanceHandlers(getMainWindow: () => BrowserWindow | nu
                 }
             }));
 
-            return { ok: true, items: items.filter(i => i !== null) };
+            const validItems = basicItems.filter(i => i !== null);
+
+            // Use dedupe helper
+            const rpItems = dedupeResourcepacks(validItems as any[]);
+            return { ok: true, items: rpItems };
         } catch (error: any) {
             return { ok: false, error: error.message };
         }
@@ -908,7 +1206,9 @@ export function registerInstanceHandlers(getMainWindow: () => BrowserWindow | nu
 
         try {
             const files = await fs.promises.readdir(dir);
-            const items = await Promise.all(files.map(async (file) => {
+
+            // First pass: get basic info without icons (fast)
+            const basicItems = await Promise.all(files.map(async (file) => {
                 const filePath = path.join(dir, file);
                 try {
                     const stats = await fs.promises.stat(filePath);
@@ -928,33 +1228,6 @@ export function registerInstanceHandlers(getMainWindow: () => BrowserWindow | nu
                         displayName = file.replace(".zip", "");
                     }
 
-                    let icon: string | null = null;
-                    try {
-                        if (file.endsWith(".zip") || file.endsWith(".zip.disabled")) {
-                            const zip = new AdmZip(filePath);
-                            const possibleIcons = ["shaders/logo.png", "logo.png", "pack.png"];
-                            for (const iconPath of possibleIcons) {
-                                const iconEntry = zip.getEntry(iconPath);
-                                if (iconEntry) {
-                                    icon = `data:image/png;base64,${iconEntry.getData().toString("base64")}`;
-                                    break;
-                                }
-                            }
-                        } else if (isDirectory) {
-                            const possiblePaths = [
-                                path.join(filePath, "shaders", "logo.png"),
-                                path.join(filePath, "logo.png"),
-                                path.join(filePath, "pack.png")
-                            ];
-                            for (const iconPath of possiblePaths) {
-                                if (fs.existsSync(iconPath)) {
-                                    icon = `data:image/png;base64,${fs.readFileSync(iconPath).toString("base64")}`;
-                                    break;
-                                }
-                            }
-                        }
-                    } catch { }
-
                     return {
                         filename: file,
                         name: displayName,
@@ -962,14 +1235,67 @@ export function registerInstanceHandlers(getMainWindow: () => BrowserWindow | nu
                         size: stats.size,
                         modifiedAt: stats.mtime.toISOString(),
                         enabled,
-                        icon
+                        icon: null as string | null,
+                        filePath
                     };
                 } catch {
                     return null;
                 }
             }));
 
-            return { ok: true, items: items.filter(i => i !== null) };
+            const validItems = basicItems.filter(i => i !== null);
+
+            // Second pass: fetch icons in parallel (Modrinth/CurseForge first, then fallback to ZIP)
+            const itemsWithIcons = await Promise.all(validItems.map(async (item) => {
+                // 1. Try local ZIP/directory icon first (Fast & Accurate)
+                let icon: string | null = null;
+                try {
+                    if (item.filename.endsWith(".zip") || item.filename.endsWith(".zip.disabled")) {
+                        const buffer = await fs.promises.readFile(item.filePath);
+                        const zip = new AdmZip(buffer);
+                        const possibleIcons = ["shaders/logo.png", "logo.png", "pack.png", "icon.png"];
+                        for (const iconPath of possibleIcons) {
+                            const iconEntry = zip.getEntry(iconPath);
+                            if (iconEntry) {
+                                icon = `data:image/png;base64,${iconEntry.getData().toString("base64")}`;
+                                break;
+                            }
+                        }
+                    } else if (item.isDirectory) {
+                        const possiblePaths = [
+                            path.join(item.filePath, "shaders", "logo.png"),
+                            path.join(item.filePath, "logo.png"),
+                            path.join(item.filePath, "pack.png"),
+                            path.join(item.filePath, "icon.png")
+                        ];
+                        for (const iconPath of possiblePaths) {
+                            if (fs.existsSync(iconPath)) {
+                                icon = `data:image/png;base64,${(await fs.promises.readFile(iconPath)).toString("base64")}`;
+                                break;
+                            }
+                        }
+                    }
+                } catch { }
+
+                // 2. Fallback to online icon if local not found (Slow / Heuristic)
+                if (!icon) {
+                    icon = await fetchIconFromOnline(item.name, "shader");
+                }
+
+                return {
+                    filename: item.filename,
+                    name: item.name,
+                    isDirectory: item.isDirectory,
+                    size: item.size,
+                    modifiedAt: item.modifiedAt,
+                    enabled: item.enabled,
+                    icon
+                };
+            }));
+
+            // Use dedupe helper
+            const resultItems = dedupeShaders(itemsWithIcons);
+            return { ok: true, items: resultItems };
         } catch (error: any) {
             return { ok: false, error: error.message };
         }
@@ -1067,12 +1393,50 @@ export function registerInstanceHandlers(getMainWindow: () => BrowserWindow | nu
                         if (file.endsWith(".zip") || file.endsWith(".zip.disabled") ||
                             file.endsWith(".jar") || file.endsWith(".jar.disabled")) {
                             const zip = new AdmZip(filePath);
-                            const packPng = zip.getEntry("pack.png");
+
+                            // Try standard pack.png
+                            const packPng = zip.getEntry("pack.png") || zip.getEntry("assets/pack.png");
                             if (packPng) icon = `data:image/png;base64,${packPng.getData().toString("base64")}`;
+
+                            // Fallback: find first png file in zip root or assets
+                            if (!icon) {
+                                const entries = zip.getEntries();
+                                for (const e of entries) {
+                                    if (!e.isDirectory && /(^|\/)\w+\.png$/i.test(e.entryName)) {
+                                        try {
+                                            const data = e.getData();
+                                            if (data && data.length > 0) {
+                                                icon = `data:image/png;base64,${data.toString("base64")}`;
+                                                break;
+                                            }
+                                        } catch { }
+                                    }
+                                }
+                            }
                         } else if (isDir) {
                             const packPngPath = path.join(filePath, "pack.png");
                             if (fs.existsSync(packPngPath)) {
                                 icon = `data:image/png;base64,${fs.readFileSync(packPngPath).toString("base64")}`;
+                            } else {
+                                // Fallback: search for first png inside directory
+                                const allFiles = await (async function walk(dirPath: string) {
+                                    const acc: string[] = [];
+                                    const list = await fs.promises.readdir(dirPath);
+                                    for (const f of list) {
+                                        const p = path.join(dirPath, f);
+                                        try {
+                                            const st = await fs.promises.stat(p);
+                                            if (st.isDirectory()) acc.push(...await walk(p));
+                                            else if (/\.png$/i.test(f)) acc.push(p);
+                                        } catch { }
+                                    }
+                                    return acc;
+                                })(filePath);
+                                if (allFiles && allFiles.length > 0) {
+                                    try {
+                                        icon = `data:image/png;base64,${fs.readFileSync(allFiles[0]).toString("base64")}`;
+                                    } catch { }
+                                }
                             }
                         }
                     } catch { }
@@ -1112,7 +1476,9 @@ export function registerInstanceHandlers(getMainWindow: () => BrowserWindow | nu
             } catch { }
         }
 
-        return { ok: true, items };
+        // Use dedupe helper
+        const sorted = dedupeDatapacks(items);
+        return { ok: true, items: sorted };
     });
 
     ipcMain.handle("instance-toggle-datapack", async (_event, instanceId: string, worldName: string, filename: string) => {

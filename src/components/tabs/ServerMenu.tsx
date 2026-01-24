@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useTranslation } from "../../hooks/useTranslation";
 import { playClick } from "../../lib/sounds";
 import { cn } from "../../lib/utils";
 import type { Server } from "../../types/launcher";
@@ -32,6 +33,7 @@ interface ServerMenuProps {
     session: AuthSession | null;
     setActiveTab?: (tab: string) => void;
     refreshTrigger?: number;
+    language?: "th" | "en";
 }
 
 import { JoinInstanceDialog } from "../dialogs/JoinInstanceDialog";
@@ -45,7 +47,9 @@ export function ServerMenu({
     session,
     setActiveTab,
     refreshTrigger = 0,
+    language = "th",
 }: ServerMenuProps) {
+    const { t } = useTranslation(language);
     const [instances, setInstances] = useState<{ owned: Instance[]; member: Instance[] } | null>(null);
     const [loading, setLoading] = useState(true);
     const [showJoinDialog, setShowJoinDialog] = useState(false);
@@ -148,7 +152,7 @@ export function ServerMenu({
             const refreshResult = await (window.api as any)?.authRefreshToken?.();
             if (refreshResult && !refreshResult.ok && refreshResult.error) {
                 if (refreshResult.error.includes("re-login")) {
-                    toast.error("เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่");
+                    toast.error(t('session_expired_login_server'));
                     setLaunchingId(null);
                     return;
                 }
@@ -165,14 +169,14 @@ export function ServerMenu({
             }
 
             if (res?.ok) {
-                toast.success(res.message || "กำลังเปิดเกม...");
+                toast.success(res.message || t('launching'));
                 setPlayingInstances(prev => new Set(prev).add(instance.id));
             } else {
-                toast.error(res?.message || "เปิดเกมไม่สำเร็จ");
+                toast.error(res?.message || t('launch_failed_server') || t('error_occurred'));
                 setPlayingInstances(prev => { const s = new Set(prev); s.delete(instance.id); return s; });
             }
         } catch (err: any) {
-            toast.error(err.message || "เกิดข้อผิดพลาด");
+            toast.error(err.message || t('error_occurred'));
             setPlayingInstances(prev => { const s = new Set(prev); s.delete(instance.id); return s; });
         } finally {
             setLaunchingId(null);
@@ -197,9 +201,9 @@ export function ServerMenu({
             // If it was launching, clear the loading state immediately (optimistic update)
             if (launchingId === instanceId) setLaunchingId(null);
 
-            toast.success("ส่งคำสั่งหยุดเกมแล้ว");
+            toast.success(t('stop_command_sent'));
         } catch (error) {
-            toast.error("เกิดข้อผิดพลาดในการหยุดเกม");
+            toast.error(t('stop_failed_server'));
         }
     };
 
@@ -350,26 +354,26 @@ export function ServerMenu({
 
             // 3. Trigger install via IPC
             console.log("[ServerMenu] Calling instancesCloudInstall for:", instance.id);
-            toast.success("กำลังเริ่มติดตั้ง...");
+            toast.success(t('starting_install'));
             const res = await (window.api as any)?.instancesCloudInstall?.(instance.id);
             console.log("[ServerMenu] Install result:", res);
 
             if (res?.ok) {
                 // Success handled by toast/progress events
             } else {
-                const errMsg = res?.error || "ติดตั้งไม่สำเร็จ";
+                const errMsg = res?.error || t('install_failed_server');
                 console.error("[ServerMenu] Install failed:", errMsg);
                 if (errMsg.includes("401") || errMsg.includes("Unauthorized")) {
-                    toast.error("Session หมดอายุ กรุณา Login ใหม่");
+                    toast.error(t('session_expired_login_server'));
                 } else if (errMsg.includes("Not logged in")) {
-                    toast.error("กรุณา Login ก่อนใช้งาน");
+                    toast.error(t('please_login_session'));
                 } else {
                     toast.error(errMsg);
                 }
             }
         } catch (error: any) {
             console.error("[ServerMenu] Install exception:", error);
-            toast.error("เกิดข้อผิดพลาดในการติดตั้ง: " + error.message);
+            toast.error(t('error_occurred') + ": " + error.message);
         }
     };
 
@@ -386,10 +390,10 @@ export function ServerMenu({
             <div className="flex justify-between items-center mb-6 gap-4">
                 <div className="flex-1">
                     <h2 className="text-2xl font-bold mb-1" style={{ color: colors.onSurface }}>
-                        {showPublic ? "สำรวจ Server" : "รายการ Server"}
+                        {showPublic ? t('explore_servers') : t('server_list')}
                     </h2>
                     <p className="text-sm opacity-70" style={{ color: colors.onSurfaceVariant }}>
-                        {showPublic ? "ค้นหา Server ที่น่าสนใจจากชุมชน" : "เลือก Server ที่ต้องการเล่น"}
+                        {showPublic ? t('explore_community_desc') : t('select_server_desc')}
                     </p>
                 </div>
 
@@ -397,7 +401,7 @@ export function ServerMenu({
                 <form onSubmit={handleSearchSubmit} className="flex-1 max-w-sm relative group">
                     <input
                         type="text"
-                        placeholder="ค้นหา Server สาธารณะ..."
+                        placeholder={t('search_public_servers')}
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         className="w-full px-4 py-2 pl-10 rounded-xl outline-none transition-all placeholder:text-gray-500/50 border border-transparent focus:border-white/10"
@@ -426,10 +430,10 @@ export function ServerMenu({
                             color: showPublic ? colors.onPrimary : colors.onSurface,
                             borderColor: showPublic ? "transparent" : colors.outline
                         }}
-                        title="สำรวจ Server สาธารณะ"
+                        title={t('explore_servers')}
                     >
                         <Icons.Compass className="w-5 h-5" />
-                        <span className="hidden sm:inline">สำรวจ</span>
+                        <span className="hidden sm:inline">{t('explore')}</span>
                     </button>
 
                     <button
@@ -438,7 +442,7 @@ export function ServerMenu({
                         style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
                     >
                         <span>+</span>
-                        <span className="hidden sm:inline">ใส่ Key</span>
+                        <span className="hidden sm:inline">{t('enter_key')}</span>
                     </button>
                 </div>
             </div>
@@ -463,10 +467,10 @@ export function ServerMenu({
                     </div>
                     <div className="text-center">
                         <h3 className="text-xl font-bold mb-2" style={{ color: colors.onSurface }}>
-                            กรุณาเข้าสู่ระบบ
+                            {t('please_login_session')}
                         </h3>
                         <p className="mb-4" style={{ color: colors.onSurfaceVariant }}>
-                            เชื่อมต่อบัญชี Microsoft เพื่อดู Server ของคุณ
+                            {t('connect_microsoft_desc')}
                         </p>
                     </div>
                 </div>
@@ -480,10 +484,10 @@ export function ServerMenu({
                     </div>
                     <div className="text-center">
                         <h3 className="text-xl font-bold mb-2" style={{ color: colors.onSurface }}>
-                            เชื่อมต่อ CatID
+                            {t('connect_catid')}
                         </h3>
                         <p className="mb-4" style={{ color: colors.onSurfaceVariant }}>
-                            กรุณาเชื่อมต่อบัญชี CatID เพื่อเข้าถึง Server ของคุณ
+                            {t('connect_catid_desc')}
                         </p>
                     </div>
                 </div>
@@ -528,14 +532,14 @@ export function ServerMenu({
                     </div>
                     <div className="text-center">
                         <h3 className="text-xl font-bold mb-2" style={{ color: colors.onSurface }}>
-                            {showPublic ? "ไม่พบ Server สาธารณะ" : session?.type === "offline" ? "โหมดออฟไลน์" : "ไม่พบ Server"}
+                            {showPublic ? t('no_public_servers') : session?.type === "offline" ? t('offline_mode') : t('no_servers_found_in_list')}
                         </h3>
                         <p style={{ color: colors.onSurfaceVariant }}>
                             {showPublic
-                                ? "ไม่พบผลลัพธ์ที่ตรงกับคำค้นหา"
+                                ? t('no_search_results')
                                 : session?.type === "offline"
-                                    ? "กรุณาใช้งานบัญชี CatID เพื่อเข้าเล่น"
-                                    : <>คุณยังไม่มี Server ในบัญชี<br />ลองขอ Invite Key จากแอดมินดูสิ</>
+                                    ? t('use_catid_to_play')
+                                    : t('no_server_invite_desc')
                             }
                         </p>
                     </div>
@@ -573,7 +577,7 @@ export function ServerMenu({
                                                     ? `url(${getWithTimestamp(instance.iconUrl)})`
                                                     : undefined,
                                             backgroundColor: (instance.bannerUrl || instance.iconUrl) ? undefined : colors.surfaceContainer,
-                                            filter: !isInstalled ? "grayscale(100%) brightness(0.7)" : undefined
+                                            filter: (!isInstalled && !showPublic) ? "grayscale(100%) brightness(0.7)" : undefined
                                         }}
                                     >
                                         {(!instance.bannerUrl && !instance.iconUrl) && (
@@ -621,7 +625,7 @@ export function ServerMenu({
 
                                         {!isInstalled && (
                                             <span className="text-[10px] bg-gray-500/80 text-white px-2 py-0.5 rounded-full font-bold backdrop-blur-sm border border-white/20">
-                                                ไม่ได้ติดตั้ง
+                                                {t('not_installed')}
                                             </span>
                                         )}
                                     </div>
@@ -661,23 +665,23 @@ export function ServerMenu({
                                                                 playClick();
                                                                 setConfirmDialog({
                                                                     isOpen: true,
-                                                                    title: "ยืนยันการเข้าร่วม",
-                                                                    message: `คุณต้องการเข้าร่วม Server "${instance.name}" หรือไม่?`,
-                                                                    confirmText: "เข้าร่วม",
+                                                                    title: t('confirm_join'),
+                                                                    message: t('join_server_ask').replace("{name}", instance.name),
+                                                                    confirmText: t('join'),
                                                                     confirmColor: colors.primary,
                                                                     onConfirm: async () => {
-                                                                        const toastId = toast.loading("กำลังเข้าร่วม...");
+                                                                        const toastId = toast.loading(t('loading'));
                                                                         try {
                                                                             const res = await (window.api as any).instanceJoinPublic(instance.id);
                                                                             if (res?.ok) {
-                                                                                toast.success("เข้าร่วมสำเร็จ!", { id: toastId });
+                                                                                toast.success(t('join_success'), { id: toastId });
                                                                                 fetchInstances();     // Refresh local instances
                                                                                 setShowPublic(false); // Go back to list
                                                                             } else {
-                                                                                toast.error(res?.error || "เข้าร่วมไม่สำเร็จ", { id: toastId });
+                                                                                toast.error(res?.error || t('join_failed'), { id: toastId });
                                                                             }
                                                                         } catch (err: any) {
-                                                                            toast.error("เกิดข้อผิดพลาด: " + err.message, { id: toastId });
+                                                                            toast.error(t('error_occurred') + ": " + err.message, { id: toastId });
                                                                         }
                                                                     }
                                                                 });
@@ -686,7 +690,7 @@ export function ServerMenu({
                                                             style={{ backgroundColor: colors.primary, color: colors.onPrimary }}
                                                         >
                                                             <Icons.UserPlus className="w-5 h-5" />
-                                                            <span className="font-bold">เข้าร่วม</span>
+                                                            <span className="font-bold">{t('join')}</span>
                                                         </button>
                                                     );
                                                 }
@@ -714,21 +718,21 @@ export function ServerMenu({
                                                                 {launchingId === instance.id ? (
                                                                     <>
                                                                         <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                                                        <span className="font-bold">โหลด...</span>
+                                                                        <span className="font-bold">{t('loading')}</span>
                                                                     </>
                                                                 ) : playingInstances.has(instance.id) ? (
                                                                     <>
                                                                         <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                                                                             <path d="M6 6h12v12H6z" />
                                                                         </svg>
-                                                                        <span className="font-bold">หยุด</span>
+                                                                        <span className="font-bold">{t('stop')}</span>
                                                                     </>
                                                                 ) : (
                                                                     <>
                                                                         <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                                                                             <path d="M8 5v14l11-7z" />
                                                                         </svg>
-                                                                        <span className="font-bold">เล่น</span>
+                                                                        <span className="font-bold">{t('play')}</span>
                                                                     </>
                                                                 )}
                                                             </button>
@@ -737,7 +741,7 @@ export function ServerMenu({
                                                                 onClick={(e) => { playClick(); handleOpenFolder(e, instance.id); }}
                                                                 className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10"
                                                                 style={{ backgroundColor: "rgba(255,255,255,0.1)", color: "#fff" }}
-                                                                title="เปิดโฟลเดอร์"
+                                                                title={t('open_folder')}
                                                             >
                                                                 <Icons.Folder className="w-5 h-5" />
                                                             </button>
@@ -750,7 +754,7 @@ export function ServerMenu({
                                                                 }}
                                                                 className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10"
                                                                 style={{ backgroundColor: "rgba(255,255,255,0.1)", color: "#fff" }}
-                                                                title="Logs / Console"
+                                                                title={t('logs_console')}
                                                             >
                                                                 <Icons.Terminal className="w-5 h-5" />
                                                             </button>
@@ -766,9 +770,9 @@ export function ServerMenu({
                                                                             playClick();
                                                                             setConfirmDialog({
                                                                                 isOpen: true,
-                                                                                title: "ยืนยันการออก",
-                                                                                message: `คุณต้องการออกจาก Server "${instance.name}" หรือไม่?`,
-                                                                                confirmText: "ออก",
+                                                                                title: t('confirm_leave'),
+                                                                                message: t('leave_server_ask').replace("{name}", instance.name),
+                                                                                confirmText: t('leave'),
                                                                                 confirmColor: "#f97316",
                                                                                 onConfirm: async () => {
                                                                                     try {
@@ -776,13 +780,13 @@ export function ServerMenu({
                                                                                         fetchInstances();
                                                                                     } catch (err) {
                                                                                         console.error("Leave failed", err);
-                                                                                        toast.error("ออกไม่สำเร็จ: " + err);
+                                                                                        toast.error(t('leave_failed') + ": " + err);
                                                                                     }
                                                                                 }
                                                                             });
                                                                         }}
                                                                         className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-orange-500/20 active:scale-95 backdrop-blur-md border border-orange-500/30 text-orange-500 hover:text-orange-400"
-                                                                        title="ออกจาก Server (Leave)"
+                                                                        title={t('leave_server_title')}
                                                                     >
                                                                         <Icons.Logout className="w-5 h-5" />
                                                                     </button>
@@ -800,7 +804,7 @@ export function ServerMenu({
                                                                 onClick={(e) => { playClick(); handleInstall(e, instance); }}
                                                             >
                                                                 <Icons.Download className="w-5 h-5" />
-                                                                <span className="font-bold">ติดตั้ง</span>
+                                                                <span className="font-bold">{t('install')}</span>
                                                             </button>
 
                                                             {!isOwned && (
@@ -809,9 +813,9 @@ export function ServerMenu({
                                                                         e.stopPropagation();
                                                                         setConfirmDialog({
                                                                             isOpen: true,
-                                                                            title: "ยืนยันการออก",
-                                                                            message: `คุณต้องการออกจาก Server "${instance.name}" หรือไม่?`,
-                                                                            confirmText: "ออก",
+                                                                            title: t('confirm_leave'),
+                                                                            message: t('leave_server_ask').replace("{name}", instance.name),
+                                                                            confirmText: t('leave'),
                                                                             confirmColor: "#f97316",
                                                                             onConfirm: async () => {
                                                                                 try {
@@ -819,13 +823,13 @@ export function ServerMenu({
                                                                                     fetchInstances();
                                                                                 } catch (err) {
                                                                                     console.error("Leave failed", err);
-                                                                                    (window as any).toast?.error("ออกไม่สำเร็จ: " + err);
+                                                                                    toast.error(t('leave_failed') + ": " + err);
                                                                                 }
                                                                             }
                                                                         });
                                                                     }}
                                                                     className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-orange-500/20 active:scale-95 backdrop-blur-md border border-orange-500/30 text-orange-500 hover:text-orange-400"
-                                                                    title="ออกจาก Server (Leave)"
+                                                                    title={t('leave_server_title')}
                                                                 >
                                                                     <Icons.Logout className="w-5 h-5" />
                                                                 </button>
@@ -895,7 +899,7 @@ export function ServerMenu({
                                             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                                                 <path d="M8 5v14l11-7z" />
                                             </svg>
-                                            <span className="font-bold">เล่น</span>
+                                            <span className="font-bold">{t('play')}</span>
                                         </button>
                                     </div>
                                 </div>

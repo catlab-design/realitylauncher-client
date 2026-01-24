@@ -3,6 +3,7 @@
 // ========================================
 
 import React from "react";
+import { useTranslation } from "../../../hooks/useTranslation";
 import type { GameInstance, InstanceCompatibility, ModVersion } from "./types";
 
 interface InstanceSelectModalProps {
@@ -26,6 +27,7 @@ export function InstanceSelectModal({
     onClose,
     onSelectInstance,
 }: InstanceSelectModalProps) {
+    const { t } = useTranslation();
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
             <div className="w-full max-w-md rounded-2xl p-6 relative" style={{ backgroundColor: colors.surface }}>
@@ -40,20 +42,20 @@ export function InstanceSelectModal({
                 </button>
 
                 <h3 className="text-lg font-semibold mb-1" style={{ color: colors.onSurface }}>
-                    เลือก Instance
+                    {t('select_instance')}
                 </h3>
                 <p className="text-sm mb-4" style={{ color: colors.onSurfaceVariant }}>
-                    เพิ่ม "{selectedProjectTitle}" ไปยัง Instance ไหน?
+                    {t('add_project_to_instance').replace('{project}', selectedProjectTitle)}
                 </p>
 
                 {isCheckingCompatibility ? (
                     <div className="p-6 text-center rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
                         <div className="animate-spin w-6 h-6 border-2 border-current border-t-transparent rounded-full mx-auto mb-2" style={{ color: colors.secondary }} />
-                        <p style={{ color: colors.onSurfaceVariant }}>กำลังตรวจสอบความเข้ากัน...</p>
+                        <p style={{ color: colors.onSurfaceVariant }}>{t('checking_compatibility')}</p>
                     </div>
                 ) : instances.length === 0 ? (
                     <div className="p-6 text-center rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
-                        <p style={{ color: colors.onSurfaceVariant }}>ไม่มี Instance กรุณาสร้างก่อน</p>
+                        <p style={{ color: colors.onSurfaceVariant }}>{t('no_instances_create_first')}</p>
                     </div>
                 ) : (
                     <div className="space-y-2 max-h-64 overflow-y-auto">
@@ -74,7 +76,7 @@ export function InstanceSelectModal({
                                             {instance.name}
                                             {compatible && (
                                                 <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: '#22c55e20', color: '#22c55e' }}>
-                                                    ✓ รองรับ
+                                                    {t('compatible_tag')}
                                                 </span>
                                             )}
                                         </div>
@@ -100,7 +102,7 @@ export function InstanceSelectModal({
 
                 {isDownloading && (
                     <div className="mt-4 text-center" style={{ color: colors.onSurfaceVariant }}>
-                        กำลังดาวน์โหลด...
+                        {t('downloading')}
                     </div>
                 )}
             </div>

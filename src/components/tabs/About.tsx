@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import gsap from "gsap";
+import { useTranslation } from "../../hooks/useTranslation";
 import { Icons } from "../ui/Icons";
 import { MCHead } from "../ui/MCHead";
 
@@ -43,9 +44,38 @@ const TEAM: TeamMember[] = [
     }
 ];
 
-export function About({ colors }: { colors: any }) {
+export function About({ colors, config }: { colors: any; config?: { language?: "th" | "en" } }) {
+    const { t } = useTranslation(config?.language);
     const containerRef = useRef<HTMLDivElement>(null);
     const [version, setVersion] = React.useState("v0.3.4");
+
+    const TEAM: TeamMember[] = [
+        {
+            name: "Sam_Su",
+            userGame: "Sam_Su",
+            role: t('role_ceo_founder'),
+            subRole: t('role_designer_dev'),
+            description: t('desc_sam_su')
+        },
+        {
+            name: "Jo",
+            userGame: "Kjofex2",
+            role: t('role_co_ceo'),
+            description: t('desc_jo')
+        },
+        {
+            name: "Pumpkins",
+            userGame: "realnice_k",
+            role: t('role_it'),
+            description: t('desc_pumpkins')
+        },
+        {
+            name: "MrPeachs",
+            userGame: "MrPeachs",
+            role: t('role_it_staff'),
+            description: t('desc_mrpeachs')
+        }
+    ];
 
     useEffect(() => {
         const ctx = gsap.context(() => {
@@ -96,17 +126,17 @@ export function About({ colors }: { colors: any }) {
                 <div className="fade-up relative">
                     <div className="absolute left-0 top-0 w-1.5 h-full rounded-full opacity-40" style={{ backgroundColor: colors.primary }} />
                     <div className="pl-8 space-y-3">
-                        <p className="text-[12px] font-black uppercase opacity-60" style={{ color: colors.onSurface }}>Passion</p>
-                        <p className="text-xl font-medium leading-relaxed tracking-tight" style={{ color: colors.onSurface }}>
-                            Reality เราต้องการสร้างพื้นที่สำหรับชุมชน <span style={{ color: colors.primary, fontWeight: 700 }}>Minecraft</span> ให้สามารถเชื่อมต่อและสร้างสรรค์เรื่องราวร่วมกันได้อย่างไร้ขีดจำกัด ผ่านเทคโนโลยี Launcher ที่ทุกคนเข้าถึงได้ง่ายที่สุด
-                        </p>
+                        <p className="text-[12px] font-black uppercase opacity-60" style={{ color: colors.onSurface }}>{t('about_passion_title')}</p>
+                        <p className="text-xl font-medium leading-relaxed tracking-tight" style={{ color: colors.onSurface }}
+                            dangerouslySetInnerHTML={{ __html: t('about_passion_desc') }}
+                        />
                     </div>
                 </div>
 
                 {/* Partners Section (Centered & Colored) */}
                 <div className="fade-up space-y-12 py-4 text-center">
                     <div className="flex flex-col items-center gap-3">
-                        <h2 className="text-xs font-black uppercase opacity-50" style={{ color: colors.onSurface }}>ผู้มีส่วนร่วม / Partners</h2>
+                        <h2 className="text-xs font-black uppercase opacity-50" style={{ color: colors.onSurface }}>{t('about_partners_title')}</h2>
                         <div className="w-12 h-1 rounded-full opacity-30" style={{ backgroundColor: colors.primary }} />
                     </div>
 
@@ -123,10 +153,12 @@ export function About({ colors }: { colors: any }) {
                             />
                             <div className="flex flex-col items-center gap-1 transition-all">
                                 <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-all">
+                                    {/* Ghost element for optical centering vs icon */}
+                                    <div className="w-2.5 h-2.5" />
                                     <span className="text-[10px] font-black opacity-80 uppercase tracking-[0.1em]" style={{ color: colors.onSurface }}>Q Team Studio</span>
                                     <Icons.ExternalLink className="w-2.5 h-2.5" />
                                 </div>
-                                <span className="text-[9px] font-bold opacity-40 uppercase tracking-[0.1em]" style={{ color: colors.onSurface }}>เจ้าของ Reality</span>
+                                <span className="text-[9px] font-bold opacity-40 uppercase tracking-[0.1em]" style={{ color: colors.onSurface }}>{t('about_owner')}</span>
                             </div>
                         </div>
 
@@ -145,7 +177,7 @@ export function About({ colors }: { colors: any }) {
                                     <span className="text-[10px] font-black uppercase tracking-[0.05em]" style={{ color: colors.onSurface }}>Ren Dear Co(de) Working Studio</span>
                                     <Icons.ExternalLink className="w-2.5 h-2.5" />
                                 </div>
-                                <span className="text-[9px] font-bold opacity-40 uppercase tracking-[0.1em]" style={{ color: colors.onSurface }}>Partner (Special Thanks)</span>
+                                <span className="text-[9px] font-bold opacity-40 uppercase tracking-[0.1em]" style={{ color: colors.onSurface }}>{t('partner_special_thanks')}</span>
                             </div>
                         </div>
 
@@ -155,7 +187,7 @@ export function About({ colors }: { colors: any }) {
                 {/* Team List (Detailed List) */}
                 <div className="fade-up space-y-10">
                     <div className="flex items-center gap-5">
-                        <h2 className="text-xs font-black uppercase opacity-50 whitespace-nowrap" style={{ color: colors.onSurface }}>ทีมผู้พัฒนา</h2>
+                        <h2 className="text-xs font-black uppercase opacity-50 whitespace-nowrap" style={{ color: colors.onSurface }}>{t('about_dev_team')}</h2>
                         <div className="flex-1 h-px opacity-20" style={{ backgroundColor: colors.onSurface }} />
                     </div>
 
@@ -199,11 +231,11 @@ export function About({ colors }: { colors: any }) {
                 {/* Compact Footer Section */}
                 <div className="fade-up pt-12 border-t flex flex-col sm:flex-row items-center justify-between gap-4" style={{ borderColor: colors.outlineVariant || colors.outline }}>
                     <div className="flex items-center gap-6 opacity-50">
-                        <span className="text-[9px] font-black uppercase tracking-[0.3em]" style={{ color: colors.onSurface }}>Made in Thailand</span>
+                        <span className="text-[9px] font-black uppercase tracking-[0.3em]" style={{ color: colors.onSurface }}>{t('about_made_in')}</span>
                         <Icons.Heart className="w-3 h-3" style={{ fill: colors.secondary }} />
                     </div>
                     <p className="text-[10px] font-bold opacity-40 uppercase tracking-[0.1em]" style={{ color: colors.onSurface }}>
-                        © 2026 Project Reality. All rights reserved.
+                        {t('about_copyright')}
                     </p>
                 </div>
 

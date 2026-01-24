@@ -42,6 +42,7 @@ import type { Client as DiscordRPCClient } from "discord-rpc";
 let rpcEnabled = true;
 let rpcClient: DiscordRPCClient | null = null;
 let startTimestamp = Date.now();
+let isReady = false;
 
 // ========================================
 // Functions
@@ -67,13 +68,16 @@ export async function initDiscordRPC(): Promise<boolean> {
 
         rpcClient!.on("ready", () => {
             console.log("[Discord RPC] Connected!");
-            updateRPC("idle");
+            isReady = true;
+            // Add small delay to ensure socket is fully initialized
+            setTimeout(() => updateRPC("idle"), 500);
         });
 
         await rpcClient!.login({ clientId: CLIENT_ID });
         return true;
     } catch (error) {
         console.error("[Discord RPC] Failed to initialize:", error);
+        isReady = false;
         return false;
     }
 }
@@ -85,7 +89,7 @@ export async function updateRPC(
     status: "idle" | "playing" | "launching",
     serverName?: string
 ): Promise<void> {
-    if (!rpcClient || !rpcEnabled) return;
+    if (!rpcClient || !rpcEnabled || !isReady) return;
 
     try {
         let activity: RPCActivity = {
@@ -136,6 +140,7 @@ export async function destroyRPC(): Promise<void> {
         try {
             rpcClient.destroy();
             rpcClient = null;
+            isReady = false;
             console.log("[Discord RPC] Disconnected");
         } catch {
             // ignore

@@ -3,6 +3,7 @@ import toast from "react-hot-toast";
 import { playClick } from "../../../lib/sounds";
 import type { LauncherConfig } from "../../../types/launcher";
 import type { SettingsTabProps } from "./AccountTab";
+import { useTranslation } from "../../../hooks/useTranslation";
 
 interface JavaInstallProgress {
     majorVersion: number;
@@ -17,6 +18,7 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
     const [installingJava, setInstallingJava] = useState<number | null>(null);
     const [deletingJava, setDeletingJava] = useState<number | null>(null);
     const [installProgress, setInstallProgress] = useState<JavaInstallProgress | null>(null);
+    const { t } = useTranslation(config.language);
 
     const windowApi = (window as any).api;
 
@@ -44,7 +46,7 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
 
         return (
             <div>
-                <p className="font-medium text-sm mb-2" style={{ color: colors.onSurface }}>ตำแหน่งติดตั้ง Java {label}</p>
+                <p className="font-medium text-sm mb-2" style={{ color: colors.onSurface }}>{t('java_install_path').replace('{version}', label)}</p>
                 <input
                     type="text"
                     value={config.javaPaths?.[pathKey] || "/path/to/java"}
@@ -85,11 +87,11 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                                 const result = await windowApi?.installJava?.(version);
                                 if (result?.ok && result.path) {
                                     updateConfig({ javaPaths: { ...config.javaPaths, [pathKey]: result.path } });
-                                    toast.success(`ติดตั้ง Java ${label} สำเร็จ`);
+                                    toast.success(t('java_install_success').replace('{version}', label));
                                 } else {
-                                    toast.error(result?.error || "ติดตั้ง Java ล้มเหลว");
+                                    toast.error(result?.error || t('java_install_failed'));
                                 }
-                            } catch { toast.error("ติดตั้ง Java ล้มเหลว"); }
+                            } catch { toast.error(t('java_install_failed')); }
                             finally { setInstallingJava(null); }
                         }}
                         disabled={isInstallingThis}
@@ -101,7 +103,7 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                         }}
                     >
                         <i className={`fa-solid ${isInstallingThis ? "fa-spinner fa-spin" : "fa-download"}`}></i>
-                        {isInstallingThis ? (progressForThis?.message?.substring(0, 20) || "กำลังติดตั้ง...") : "ติดตั้ง (Install)"}
+                        {isInstallingThis ? (progressForThis?.message?.substring(0, 20) || t('installing')) : t('install')}
                     </button>
                     <button
                         onClick={async () => {
@@ -112,11 +114,11 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                                 const java = javas?.find((j: any) => detectCondition(j.majorVersion));
                                 if (java) {
                                     updateConfig({ javaPaths: { ...config.javaPaths, [pathKey]: java.path } });
-                                    toast.success(`พบ Java ${label}: ${java.path}`);
+                                    toast.success(t('java_found_with_version').replace('{version}', label).replace('{path}', java.path));
                                 } else {
-                                    toast.error(`ไม่พบ Java ${label} ในระบบ`);
+                                    toast.error(t('java_not_found_with_version').replace('{version}', label));
                                 }
-                            } catch { toast.error("ค้นหา Java ล้มเหลว"); }
+                            } catch { toast.error(t('java_detect_failed')); }
                             finally { setIsDetectingJava(false); }
                         }}
                         disabled={isDetectingJava}
@@ -124,7 +126,7 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                         style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                     >
                         <i className="fa-solid fa-magnifying-glass"></i>
-                        ค้นหา (Detect)
+                        {t('detect')}
                     </button>
                     <button
                         onClick={async () => {
@@ -132,32 +134,32 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                             const path = await windowApi?.browseJava?.();
                             if (path) {
                                 updateConfig({ javaPaths: { ...config.javaPaths, [pathKey]: path } });
-                                toast.success(`ตั้งค่า Java ${label} เรียบร้อย`);
+                                toast.success(t('java_configured_successfully').replace('{version}', label));
                             }
                         }}
                         className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
                         style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                     >
                         <i className="fa-solid fa-folder-open"></i>
-                        เลือกไฟล์ (Browse)
+                        {t('browse')}
                     </button>
                     <button
                         onClick={async () => {
                             if (config.clickSoundEnabled) playClick();
                             const path = config.javaPaths?.[pathKey];
                             if (!path || path === "/path/to/java") {
-                                toast.error(`ยังไม่ได้ตั้งค่า Java ${label}`);
+                                toast.error(t('java_not_configured').replace('{version}', label));
                                 return;
                             }
                             setTestingJavaPath(path);
                             try {
                                 const result = await windowApi?.testJavaExecution?.(path);
                                 if (result?.ok) {
-                                    toast.success(`Java ทำงานได้ปกติ${result.version ? ` (v${result.version})` : ""}`);
+                                    toast.success(t('java_test_success').replace('{version}', result.version ? ` (v${result.version})` : ""));
                                 } else {
-                                    toast.error(result?.error || "Java ไม่สามารถใช้งานได้");
+                                    toast.error(result?.error || t('java_test_failed'));
                                 }
-                            } catch { toast.error("ทดสอบ Java ล้มเหลว"); }
+                            } catch { toast.error(t('java_test_failed')); }
                             finally { setTestingJavaPath(null); }
                         }}
                         disabled={testingJavaPath === config.javaPaths?.[pathKey]}
@@ -165,7 +167,7 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                         style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                     >
                         <i className={`fa-solid ${testingJavaPath === config.javaPaths?.[pathKey] ? "fa-spinner fa-spin" : "fa-play"}`}></i>
-                        ทดสอบ (Test)
+                        {t('test')}
                     </button>
                     {config.javaPaths?.[pathKey] && config.javaPaths[pathKey] !== "/path/to/java" && (
                         <button
@@ -177,9 +179,9 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                                     await windowApi?.deleteJava?.(version);
                                     // ลบ config
                                     updateConfig({ javaPaths: { ...config.javaPaths, [pathKey]: undefined } });
-                                    toast.success(`ลบ Java ${label} เรียบร้อย`);
+                                    toast.success(t('java_deleted_successfully').replace('{version}', label));
                                 } catch {
-                                    toast.error(`ลบ Java ${label} ล้มเหลว`);
+                                    toast.error(t('java_delete_failed').replace('{version}', label));
                                 } finally {
                                     setDeletingJava(null);
                                 }
@@ -189,7 +191,7 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                             style={{ backgroundColor: "#ef444420", color: "#ef4444" }}
                         >
                             <i className={`fa-solid ${deletingJava === version ? "fa-spinner fa-spin" : "fa-trash"}`}></i>
-                            {deletingJava === version ? "กำลังลบ..." : "ล้างค่า (Clear)"}
+                            {deletingJava === version ? t('deleting') : t('clear')}
                         </button>
                     )}
                 </div>
@@ -201,7 +203,7 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
         <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
             <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "40" }}>
                 <i className="fa-brands fa-java text-lg" style={{ color: colors.secondary }}></i>
-                <h3 className="font-medium" style={{ color: colors.onSurface }}>การจัดการเวอร์ชัน Java</h3>
+                <h3 className="font-medium" style={{ color: colors.onSurface }}>{t('tab_java')}</h3>
             </div>
             <div className="p-4 space-y-6">
                 {renderJavaSection(25, "25", "java25", (v) => v >= 25)}

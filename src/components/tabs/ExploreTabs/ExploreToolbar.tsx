@@ -3,6 +3,8 @@
 // ========================================
 
 import React from "react";
+import { useTranslation } from "../../../hooks/useTranslation";
+import type { TranslationKey } from "../../../i18n/translations";
 import modrinthIcon from "../../../assets/modrinth.svg";
 import curseforgeIcon from "../../../assets/curseforge.svg";
 import { CONTENT_SOURCES, type ContentSource, type ProjectType } from "./types";
@@ -46,18 +48,23 @@ export function ExploreToolbar({
     onViewCountChange,
     onPageChange,
 }: ExploreToolbarProps) {
+    const { t } = useTranslation();
+    const currentTab = PROJECT_TABS.find((p) => p.id === projectType);
+    const projectTypeLabel = currentTab ? t(currentTab.labelKey as TranslationKey) : (projectType === "mod" ? t('mods' as TranslationKey) : projectType);
     return (
         <div className="rounded-lg" style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}30` }}>
             {/* Top row: Title + Search */}
             <div className="px-4 py-3 flex items-center gap-4 border-b" style={{ borderColor: colors.outline + "30" }}>
                 <div className="flex items-center gap-3 min-w-0">
                     <i className="fa-solid fa-compass" style={{ color: colors.secondary }}></i>
-                    <span className="font-medium text-sm" style={{ color: colors.onSurface }}>สำรวจคอนเทนต์</span>
+                    <span className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('explore')}</span>
                 </div>
                 <div className="flex-1 relative">
                     <input
                         type="text"
-                        placeholder={`ค้นหา ${projectType === "modpack" ? "Modpacks" : projectType === "mod" ? "Mods" : projectType}...`}
+                        placeholder={
+                            t('search_placeholder').replace('{type}', projectTypeLabel)
+                        }
                         value={searchQuery}
                         onChange={(e) => onSearchChange(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && onSearchSubmit()}
@@ -102,7 +109,7 @@ export function ExploreToolbar({
             <div className="px-4 py-2 flex items-center gap-2">
                 {/* Type tabs */}
                 <div className="flex items-center gap-1">
-                    {PROJECT_TABS.map((tab) => {
+                        {PROJECT_TABS.map((tab) => {
                         const active = projectType === tab.id;
                         return (
                             <button
@@ -113,9 +120,9 @@ export function ExploreToolbar({
                                     backgroundColor: active ? colors.secondary : "transparent",
                                     color: active ? "#1a1a1a" : colors.onSurfaceVariant,
                                 }}
-                            >
-                                {tab.label}
-                            </button>
+                                    >
+                                        {t(tab.labelKey as TranslationKey)}
+                                    </button>
                         );
                     })}
                 </div>
@@ -135,7 +142,7 @@ export function ExploreToolbar({
                         }}
                     >
                         {SORT_OPTIONS.map((opt) => (
-                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            <option key={opt.value} value={opt.value}>{t(opt.labelKey as TranslationKey)}</option>
                         ))}
                     </select>
 

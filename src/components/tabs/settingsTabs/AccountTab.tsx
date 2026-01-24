@@ -2,6 +2,7 @@ import type { AuthSession, LauncherConfig } from "../../../types/launcher";
 import { Icons } from "../../ui/Icons";
 import { MCHead } from "../../ui/MCHead";
 import microsoftIcon from "../../../assets/microsoft_icon.svg";
+import { useTranslation } from "../../../hooks/useTranslation";
 
 export interface SettingsTabProps {
     config: LauncherConfig;
@@ -33,11 +34,13 @@ export function AccountTab({
     handleUnlink,
     setLinkCatIDOpen,
 }: AccountTabProps) {
+    const { t, language } = useTranslation(config.language);
+
     return (
         <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
             <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "40" }}>
                 <i className="fa-solid fa-user text-lg" style={{ color: colors.secondary }}></i>
-                <h3 className="font-medium" style={{ color: colors.onSurface }}>บัญชีผู้ใช้</h3>
+                <h3 className="font-medium" style={{ color: colors.onSurface }}>{t('user_account')}</h3>
             </div>
             <div className="p-4 space-y-3">
                 {/* Current Account */}
@@ -69,8 +72,8 @@ export function AccountTab({
                                 </div>
                                 <div className="text-xs flex items-center gap-2" style={{ color: colors.onSurfaceVariant }}>
                                     {session.type === "microsoft"
-                                        ? (session.apiToken ? "บัญชี CatID และ Microsoft" : "บัญชี Microsoft")
-                                        : session.type === "catid" ? "บัญชี CatID" : "โหมดออฟไลน์"}
+                                        ? (session.apiToken ? t('catid_and_microsoft_account') : t('microsoft_account'))
+                                        : session.type === "catid" ? t('catid_account') : t('offline_mode')}
                                 </div>
                                 {/* Session status for CatID accounts only (7 days from login) */}
                                 {session.type === "catid" && (
@@ -85,7 +88,7 @@ export function AccountTab({
                                         const daysRemaining = Math.floor(timeRemaining / (1000 * 60 * 60 * 24));
                                         const hoursRemaining = Math.floor((timeRemaining % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
                                         const minutesRemaining = Math.floor((timeRemaining % (1000 * 60 * 60)) / (1000 * 60));
-                                        const expiryDate = new Date(expiresAt).toLocaleString("th-TH", {
+                                        const expiryDate = new Date(expiresAt).toLocaleString(language === "th" ? "th-TH" : "en-US", {
                                             dateStyle: "short",
                                             timeStyle: "short"
                                         });
@@ -95,22 +98,28 @@ export function AccountTab({
                                                 {isExpired ? (
                                                     <span className="flex items-center gap-1">
                                                         <i className="fa-solid fa-exclamation-triangle" />
-                                                        เซสชันหมดอายุ - กรุณาเข้าสู่ระบบใหม่
+                                                        {t('session_expired')}
                                                     </span>
                                                 ) : timeRemaining < 60 * 60 * 1000 ? (
                                                     <span className="flex items-center gap-1">
                                                         <i className="fa-solid fa-clock" />
-                                                        ใกล้หมดอายุ: เหลือ {minutesRemaining} นาที
+                                                        {t('near_expiry').replace('{minutes}', minutesRemaining.toString())}
                                                     </span>
                                                 ) : daysRemaining > 0 ? (
                                                     <span className="flex items-center gap-1">
                                                         <i className="fa-regular fa-clock" />
-                                                        หมดอายุ: {expiryDate} (เหลือ {daysRemaining}ว. {hoursRemaining}ชม.)
+                                                        {t('expires_at_long')
+                                                            .replace('{date}', expiryDate)
+                                                            .replace('{days}', daysRemaining.toString())
+                                                            .replace('{hours}', hoursRemaining.toString())}
                                                     </span>
                                                 ) : (
                                                     <span className="flex items-center gap-1">
                                                         <i className="fa-regular fa-clock" />
-                                                        หมดอายุ: {expiryDate} (เหลือ {hoursRemaining}ชม. {minutesRemaining}น.)
+                                                        {t('expires_at_short')
+                                                            .replace('{date}', expiryDate)
+                                                            .replace('{hours}', hoursRemaining.toString())
+                                                            .replace('{minutes}', minutesRemaining.toString())}
                                                     </span>
                                                 )}
                                             </div>
@@ -123,14 +132,14 @@ export function AccountTab({
                                 className="px-3 py-1.5 rounded-lg text-sm transition-all hover:scale-105"
                                 style={{ backgroundColor: "#ef444420", color: "#ef4444" }}
                             >
-                                ออกจากระบบ
+                                {t('logout')}
                             </button>
                         </div>
 
                         {/* Linked Accounts Actions */}
                         {session.type === "microsoft" && (
                             <div className="pt-3 border-t flex flex-col gap-2" style={{ borderColor: colors.outline + "20" }}>
-                                <div className="text-xs font-medium" style={{ color: colors.onSurfaceVariant }}>การเชื่อมต่อบัญชี</div>
+                                <div className="text-xs font-medium" style={{ color: colors.onSurfaceVariant }}>{t('account_connections')}</div>
                                 <div className="flex gap-2">
                                     {session.apiToken ? (
                                         <button
@@ -139,7 +148,7 @@ export function AccountTab({
                                             style={{ backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
                                         >
                                             <Icons.Check className="w-4 h-4" style={{ color: colors.secondary }} />
-                                            <span>ยกเลิกการเชื่อมต่อ CatID</span>
+                                            <span>{t('unlink_catid')}</span>
                                         </button>
                                     ) : (
                                         <button
@@ -150,7 +159,7 @@ export function AccountTab({
                                             <span className="inline-flex items-center justify-center w-5 h-5 rounded-full" style={{ backgroundColor: "#fbbf24" }}>
                                                 <Icons.Check className="w-3.5 h-3.5 text-white" />
                                             </span>
-                                            <span>เชื่อมต่อกับ CatID</span>
+                                            <span>{t('link_catid')}</span>
                                         </button>
                                     )}
                                 </div>
@@ -160,7 +169,7 @@ export function AccountTab({
                 ) : (
                     <div className="p-4 rounded-xl text-center" style={{ backgroundColor: colors.surfaceContainerHigh }}>
                         <Icons.Person className="w-10 h-10 mx-auto mb-2" style={{ color: colors.onSurfaceVariant }} />
-                        <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>ยังไม่ได้เข้าสู่ระบบ</p>
+                        <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>{t('not_logged_in')}</p>
                     </div>
                 )}
 
@@ -203,8 +212,8 @@ export function AccountTab({
                                     </div>
                                     <div className="text-xs flex items-center gap-1" style={{ color: colors.onSurfaceVariant }}>
                                         {account.type === "microsoft"
-                                            ? (account.apiToken ? "บัญชี CatID และ Microsoft" : "บัญชี Microsoft")
-                                            : account.type === "catid" ? "บัญชี CatID" : "โหมดออฟไลน์"}
+                                            ? (account.apiToken ? t('catid_and_microsoft_account') : t('microsoft_account'))
+                                            : account.type === "catid" ? t('catid_account') : t('offline_mode')}
                                         {/* Show expired warning for CatID accounts only */}
                                         {account.type === "catid" && (() => {
                                             const sevenDays = 7 * 24 * 60 * 60 * 1000;
@@ -213,7 +222,7 @@ export function AccountTab({
                                             const isExpired = Date.now() > expiresAt;
                                             return isExpired ? (
                                                 <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: "#ef444420", color: "#ef4444" }}>
-                                                    หมดอายุ
+                                                    {t('expired')}
                                                 </span>
                                             ) : null;
                                         })()}
@@ -245,7 +254,7 @@ export function AccountTab({
                     }}
                 >
                     <i className="fa-solid fa-plus mr-2"></i>
-                    เพิ่มบัญชีใหม่
+                    {t('add_new_account')}
                 </button>
             </div>
         </div>

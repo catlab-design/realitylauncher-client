@@ -64,8 +64,17 @@ export const Icons = {
         </svg>
     ),
     Box: (props: IconProps) => (
-        <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
-            <path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18-.21 0-.41-.06-.57-.18l-7.9-4.44A.991.991 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18.21 0 .41.06.57.18l7.9 4.44c.32.17.53.5.53.88v9zM12 4.15L6.04 7.5 12 10.85l5.96-3.35L12 4.15zM5 15.91l6 3.38v-6.71L5 9.21v6.7zm14 0v-6.7l-6 3.37v6.71l6-3.38z" />
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <path d="M21 16V8a1 1 0 0 0-.53-.88l-7.9-4.44a1 1 0 0 0-.94 0L3.53 7.12A1 1 0 0 0 3 8v8a1 1 0 0 0 .53.88l7.9 4.44a1 1 0 0 0 .94 0l7.9-4.44A1 1 0 0 0 21 16z" />
+            <path d="M12 10.85V4.15" />
+            <path d="M3 9.21l9 5.7 9-5.7" />
+        </svg>
+    ),
+    Modpack: (props: IconProps) => (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <path d="M21 16V8a1 1 0 0 0-.53-.88l-7.9-4.44a1 1 0 0 0-.94 0L3.53 7.12A1 1 0 0 0 3 8v8a1 1 0 0 0 .53.88l7.9 4.44a1 1 0 0 0 .94 0l7.9-4.44A1 1 0 0 0 21 16z" />
+            <path d="M12 10.85V4.15" />
+            <path d="M3 9.21l9 5.7 9-5.7" />
         </svg>
     ),
     Search: (props: IconProps) => (
@@ -133,6 +142,11 @@ export const Icons = {
             <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" />
         </svg>
     ),
+    ChevronLeft: (props: IconProps) => (
+        <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+            <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+        </svg>
+    ),
     Spinner: (props: IconProps) => (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
             <path d="M21 12a9 9 0 1 1-6.219-8.56" />
@@ -187,6 +201,24 @@ export const Icons = {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
             <circle cx="12" cy="12" r="10" />
             <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+        </svg>
+    ),
+    Explore: (props: IconProps) => (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <circle cx="12" cy="12" r="10" />
+            <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+        </svg>
+    ),
+    Email: (props: IconProps) => (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+            <polyline points="22,6 12,13 2,6" />
+        </svg>
+    ),
+    Timer: (props: IconProps) => (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
         </svg>
     ),
     ExternalLink: (props: IconProps) => (

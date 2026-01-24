@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { useTranslation } from "../hooks/useTranslation";
 import { Icons } from "./ui/Icons";
 import fabricIcon from "../assets/fabric.svg";
 import forgeIcon from "../assets/forge.svg";
@@ -106,13 +107,15 @@ export function CreateModpackModal({
         input.click();
     };
 
+    const { t } = useTranslation();
+
     const handleCreate = () => {
         if (!name.trim()) {
-            toast.error("กรุณาใส่ชื่อ Mod Pack");
+            toast.error(t("create_modpack_error_name_required"));
             return;
         }
         if (!gameVersion) {
-            toast.error("กรุณาเลือก Minecraft version");
+            toast.error(t("create_modpack_error_version_required"));
             return;
         }
 
@@ -145,7 +148,7 @@ export function CreateModpackModal({
                 {/* Header */}
                 <div className="flex items-center justify-between mb-6">
                     <h2 className="text-xl font-semibold" style={{ color: colors.onSurface }}>
-                        สร้าง Mod Pack ใหม่
+                        {t("create_modpack_title")}
                     </h2>
                     <button
                         onClick={onClose}
@@ -173,9 +176,9 @@ export function CreateModpackModal({
                         )}
                     </button>
                     <div>
-                        <p className="font-medium" style={{ color: colors.onSurface }}>ไอคอน</p>
+                        <p className="font-medium" style={{ color: colors.onSurface }}>{t("create_modpack_icon_label")}</p>
                         <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>
-                            คลิกเพื่อเลือกรูปภาพ
+                            {t("create_modpack_icon_desc")}
                         </p>
                     </div>
                 </div>
@@ -183,13 +186,13 @@ export function CreateModpackModal({
                 {/* Name Input */}
                 <div className="mb-4">
                     <label className="block text-sm font-medium mb-2" style={{ color: colors.onSurface }}>
-                        ชื่อ Mod Pack
+                        {t("create_modpack_name_label")}
                     </label>
                     <input
                         type="text"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        placeholder="My Awesome Modpack"
+                        placeholder={t("create_modpack_name_placeholder")}
                         className="w-full px-4 py-3 rounded-xl border"
                         style={{
                             backgroundColor: colors.surfaceContainer,
@@ -203,14 +206,14 @@ export function CreateModpackModal({
                 <div className="mb-4">
                     <div className="flex items-center justify-between mb-2">
                         <label className="text-sm font-medium" style={{ color: colors.onSurface }}>
-                            Minecraft Version
+                            {t("minecraft_version_label")}
                         </label>
                         <button
                             onClick={() => setShowAllVersions(!showAllVersions)}
                             className="text-xs underline"
                             style={{ color: colors.secondary }}
                         >
-                            {showAllVersions ? "แสดงเฉพาะ release" : "แสดงทั้งหมด"}
+                            {showAllVersions ? t("create_modpack_show_release") : t("create_modpack_show_all")}
                         </button>
                     </div>
                     <select
@@ -225,7 +228,7 @@ export function CreateModpackModal({
                         }}
                     >
                         {isLoading ? (
-                            <option>กำลังโหลด...</option>
+                            <option>{t("create_modpack_loading")}</option>
                         ) : (
                             displayVersions.map((v) => (
                                 <option key={v.version} value={v.version}>
@@ -239,7 +242,7 @@ export function CreateModpackModal({
                 {/* Loader Selection */}
                 <div className="mb-6">
                     <label className="block text-sm font-medium mb-2" style={{ color: colors.onSurface }}>
-                        Mod Loader
+                        {t("mod_loader_label")}
                     </label>
                     <div className="grid grid-cols-5 gap-2">
                         {LOADERS.map((l) => (
@@ -273,14 +276,14 @@ export function CreateModpackModal({
                         className="px-6 py-2.5 rounded-xl border"
                         style={{ borderColor: colors.outline, color: colors.onSurface }}
                     >
-                        ยกเลิก
+                        {t("create_modpack_cancel")}
                     </button>
                     <button
                         onClick={handleCreate}
                         className="px-6 py-2.5 rounded-xl font-medium"
                         style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
                     >
-                        สร้าง Mod Pack
+                        {t("create_modpack_create")}
                     </button>
                 </div>
             </div>

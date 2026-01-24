@@ -147,14 +147,16 @@ export function registerLauncherHandlers(getMainWindow: () => BrowserWindow | nu
     /**
      * kill-game - หยุดเกม
      */
-    ipcMain.handle("kill-game", async (_event, instanceId?: string): Promise<boolean> => {
-        // If no instanceId, kill all? Or default?
-        // Default behavior: if string passed, kill specific. If undefined, kill default or all?
-        // For safety, let's say if undefined it kills "default".
-        // But killAll is better if we want a global stop?
-        // Let's assume instanceId is required for specific stop, or "default" if missing.
-        await killGame(instanceId || "default");
-        return true;
+    ipcMain.handle("kill-game", async (_event, instanceId?: string): Promise<{ ok: boolean; error?: string }> => {
+        try {
+            const targetId = instanceId || "default";
+            await killGame(targetId);
+            console.log(`[IPC] Game killed successfully for instance: ${targetId}`);
+            return { ok: true };
+        } catch (error: any) {
+            console.error("[IPC] Failed to kill game:", error);
+            return { ok: false, error: error?.message || "Failed to kill game" };
+        }
     });
 
     console.log("[IPC] Launcher handlers registered");

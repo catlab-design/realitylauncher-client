@@ -4,6 +4,7 @@
 
 import React from "react";
 import { Icons } from "../../ui/Icons";
+import { useTranslation } from "../../../hooks/useTranslation";
 
 export interface ImportModpackModalProps {
     colors: any;
@@ -14,6 +15,7 @@ export interface ImportModpackModalProps {
     onDragOver: (e: React.DragEvent) => void;
     onDragLeave: (e: React.DragEvent) => void;
     onDrop: (e: React.DragEvent) => void;
+    language: "th" | "en";
 }
 
 export function ImportModpackModal({
@@ -25,7 +27,10 @@ export function ImportModpackModal({
     onDragOver,
     onDragLeave,
     onDrop,
+    language,
 }: ImportModpackModalProps) {
+    const { t } = useTranslation(language);
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
             <div className="w-full max-w-md rounded-2xl p-6 relative" style={{ backgroundColor: colors.surface }}>
@@ -49,8 +54,8 @@ export function ImportModpackModal({
                         </svg>
                     </div>
                     <div>
-                        <h3 className="font-semibold" style={{ color: colors.onSurface }}>นำเข้า Mod Pack</h3>
-                        <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>รองรับ CurseForge (.zip) และ Modrinth (.mrpack)</p>
+                        <h3 className="font-semibold" style={{ color: colors.onSurface }}>{t('import_modpack_title')}</h3>
+                        <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>{t('import_modpack_desc')}</p>
                     </div>
                 </div>
 
@@ -68,7 +73,7 @@ export function ImportModpackModal({
                 >
                     <Icons.Box className="w-12 h-12 mx-auto mb-3" style={{ color: isDragging ? colors.secondary : colors.onSurfaceVariant }} />
                     <p className="font-medium mb-1" style={{ color: isDragging ? colors.secondary : colors.onSurfaceVariant }}>
-                        {isDragging ? 'วางไฟล์ที่นี่!' : 'ลากไฟล์มาวางที่นี่'}
+                        {isDragging ? t('drop_now_to_import') : t('drag_file_here')}
                     </p>
                     <p className="text-sm mb-4" style={{ color: colors.onSurfaceVariant }}>หรือ</p>
                     <button
@@ -76,7 +81,7 @@ export function ImportModpackModal({
                         className="px-6 py-2 rounded-xl font-medium disabled:opacity-50"
                         style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
                     >
-                        {isInstalling ? "กำลังติดตั้ง..." : "เลือกไฟล์"}
+                        {isInstalling ? t('installing') : t('select_file')}
                     </button>
                 </div>
 
@@ -91,7 +96,7 @@ export function ImportModpackModal({
                         </div>
                         <div>
                             <div className="text-sm font-medium" style={{ color: colors.onSurface }}>CurseForge</div>
-                            <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>.zip - Modpack จาก CurseForge</div>
+                            <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t('curseforge_desc')}</div>
                         </div>
                     </div>
                     <div
@@ -103,7 +108,7 @@ export function ImportModpackModal({
                         </div>
                         <div>
                             <div className="text-sm font-medium" style={{ color: colors.onSurface }}>Modrinth</div>
-                            <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>.mrpack - Modpack จาก Modrinth</div>
+                            <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t('modrinth_desc')}</div>
                         </div>
                     </div>
                 </div>

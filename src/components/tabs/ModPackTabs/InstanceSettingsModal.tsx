@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 import { Icons } from "../../ui/Icons";
 import type { GameInstance } from "../../../types/launcher";
 import { playClick } from "../../../lib/sounds";
+import { useTranslation } from "../../../hooks/useTranslation";
 
 type SettingsTab = "general" | "installation";
 type LoaderType = "vanilla" | "fabric" | "forge" | "neoforge" | "quilt";
@@ -18,6 +19,7 @@ export interface InstanceSettingsModalProps {
     onUpdate: (id: string, updates: Partial<GameInstance>) => void;
     onDelete: (id: string) => void;
     onDuplicate: (id: string) => void;
+    language: "th" | "en";
 }
 
 export function InstanceSettingsModal({
@@ -27,7 +29,9 @@ export function InstanceSettingsModal({
     onUpdate,
     onDelete,
     onDuplicate,
+    language,
 }: InstanceSettingsModalProps) {
+    const { t } = useTranslation(language);
     const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
     const [editedName, setEditedName] = useState(instance.name);
     const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -114,9 +118,9 @@ export function InstanceSettingsModal({
                 loaderVersion: editedLoader === "vanilla" ? undefined : editedLoaderVersion,
                 minecraftVersion: editedVersion,
             });
-            toast.success("บันทึกการตั้งค่าเรียบร้อย");
+            toast.success(t('settings_saved_success'));
         } catch (error) {
-            toast.error("บันทึกไม่สำเร็จ");
+            toast.error(t('save_failed'));
         } finally {
             setIsSavingInstallation(false);
         }
@@ -129,7 +133,7 @@ export function InstanceSettingsModal({
     const handleSaveName = () => {
         if (editedName.trim() && editedName !== instance.name) {
             onUpdate(instance.id, { name: editedName.trim() });
-            toast.success("บันทึกชื่อเรียบร้อย");
+            toast.success(t('name_saved_success'));
         }
     };
 
@@ -162,7 +166,7 @@ export function InstanceSettingsModal({
                         )}
                         <span className="font-medium" style={{ color: colors.onSurface }}>{instance.name}</span>
                         <span style={{ color: colors.onSurfaceVariant }}>›</span>
-                        <span className="font-medium" style={{ color: colors.onSurface }}>ตั้งค่า</span>
+                        <span className="font-medium" style={{ color: colors.onSurface }}>{t('settings')}</span>
                     </div>
                     <button
                         onClick={() => { playClick(); onClose(); }}
@@ -184,7 +188,7 @@ export function InstanceSettingsModal({
                                 color: settingsTab === "general" ? "#1a1a1a" : colors.onSurfaceVariant
                             }}
                         >
-                            <i className="fa-solid fa-circle-info w-4" /> ทั่วไป
+                            <i className="fa-solid fa-circle-info w-4" /> {t('general')}
                         </button>
                         <button
                             onClick={() => { playClick(); setSettingsTab("installation"); }}
@@ -194,7 +198,7 @@ export function InstanceSettingsModal({
                                 color: settingsTab === "installation" ? "#1a1a1a" : colors.onSurfaceVariant
                             }}
                         >
-                            <i className="fa-solid fa-download w-4" /> การติดตั้ง
+                            <i className="fa-solid fa-download w-4" /> {t('installation')}
                         </button>
                     </div>
 
@@ -205,7 +209,7 @@ export function InstanceSettingsModal({
                                 {/* Name */}
                                 <div className="flex gap-6">
                                     <div className="flex-1">
-                                        <label className="block text-sm font-medium mb-2" style={{ color: colors.onSurface }}>ชื่อ</label>
+                                        <label className="block text-sm font-medium mb-2" style={{ color: colors.onSurface }}>{t('instance_name')}</label>
                                         <div className="flex gap-2">
                                             <input
                                                 type="text"
@@ -221,7 +225,7 @@ export function InstanceSettingsModal({
                                                     className="px-4 py-2 rounded-xl text-sm"
                                                     style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
                                                 >
-                                                    บันทึก
+                                                    {t('save')}
                                                 </button>
                                             )}
                                         </div>
@@ -229,7 +233,7 @@ export function InstanceSettingsModal({
 
                                     {/* Icon picker */}
                                     <div>
-                                        <label className="block text-sm font-medium mb-2" style={{ color: colors.onSurface }}>ไอคอน</label>
+                                        <label className="block text-sm font-medium mb-2" style={{ color: colors.onSurface }}>{t('icon')}</label>
                                         <div className="relative group">
                                             <div
                                                 className={`w-20 h-20 rounded-2xl flex items-center justify-center text-3xl transition-all overflow-hidden ${instance.cloudId ? "" : "cursor-pointer hover:opacity-80"}`}
@@ -241,10 +245,10 @@ export function InstanceSettingsModal({
                                                     if (result) {
                                                         const saveResult = await (window.api as any)?.instancesSetIcon?.(instance.id, result);
                                                         if (saveResult?.ok) {
-                                                            toast.success("บันทึกไอคอนเรียบร้อย");
+                                                            toast.success(t('icon_saved_success'));
                                                             onUpdate(instance.id, {});
                                                         } else {
-                                                            toast.error(saveResult?.error || "บันทึกไอคอนไม่สำเร็จ");
+                                                            toast.error(saveResult?.error || t('icon_save_failed'));
                                                         }
                                                     }
                                                 }}
@@ -267,10 +271,10 @@ export function InstanceSettingsModal({
                                                         if (result) {
                                                             const saveResult = await (window.api as any)?.instancesSetIcon?.(instance.id, result);
                                                             if (saveResult?.ok) {
-                                                                toast.success("บันทึกไอคอนเรียบร้อย");
+                                                                toast.success(t('icon_saved_success'));
                                                                 onUpdate(instance.id, {});
                                                             } else {
-                                                                toast.error(saveResult?.error || "บันทึกไอคอนไม่สำเร็จ");
+                                                                toast.error(saveResult?.error || t('icon_save_failed'));
                                                             }
                                                         }
                                                     }}
@@ -288,9 +292,9 @@ export function InstanceSettingsModal({
                                 {/* Duplicate - Only for Local Instances */}
                                 {!instance.cloudId && (
                                     <div>
-                                        <h4 className="font-medium mb-1" style={{ color: colors.onSurface }}>สำเนา Instance</h4>
+                                        <h4 className="font-medium mb-1" style={{ color: colors.onSurface }}>{t('duplicate_instance_title')}</h4>
                                         <p className="text-sm mb-2" style={{ color: colors.onSurfaceVariant }}>
-                                            สร้างสำเนาของ Instance นี้ รวม worlds, configs, mods
+                                            {t('duplicate_instance_desc')}
                                         </p>
                                         <button
                                             onClick={() => {
@@ -301,18 +305,18 @@ export function InstanceSettingsModal({
                                             className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm transition-all hover:opacity-80"
                                             style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                                         >
-                                            <i className="fa-regular fa-copy" /> สำเนา
+                                            <i className="fa-regular fa-copy" /> {t('duplicate')}
                                         </button>
                                     </div>
                                 )}
 
                                 {/* Delete - For All Instances */}
                                 <div>
-                                    <h4 className="font-medium mb-1" style={{ color: colors.onSurface }}>ลบ Instance</h4>
+                                    <h4 className="font-medium mb-1" style={{ color: colors.onSurface }}>{t('delete_instance_title')}</h4>
                                     <p className="text-sm mb-2" style={{ color: colors.onSurfaceVariant }}>
                                         {instance.cloudId
-                                            ? "ลบ Instance นี้ออกจากรายการ (จะจำสถานะการลบไว้)"
-                                            : "ลบ Instance นี้อย่างถาวร รวม worlds, configs และเนื้อหาทั้งหมด"
+                                            ? t('server_instance_delete_desc')
+                                            : t('local_instance_delete_desc')
                                         }
                                     </p>
                                     {deleteConfirm ? (
@@ -325,176 +329,175 @@ export function InstanceSettingsModal({
                                                 }}
                                                 className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm bg-red-500 text-white"
                                             >
-                                                <i className="fa-solid fa-trash" /> ยืนยันลบ
+                                                <i className="fa-solid fa-trash" /> {t('confirm_delete_btn')}
                                             </button>
                                             <button
                                                 onClick={() => { playClick(); setDeleteConfirm(false); }}
                                                 className="px-4 py-2 rounded-xl text-sm"
                                                 style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                                             >
-                                                ยกเลิก
+                                                {t('cancel')}
                                             </button>
                                         </div>
-                                    ) : (
-                                        <button
-                                            onClick={() => { playClick(); setDeleteConfirm(true); }}
-                                            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm border border-red-500 text-red-500 hover:bg-red-500/10"
-                                        >
-                                            <i className="fa-solid fa-trash" /> ลบ Instance
-                                        </button>
+                                ) : (
+                                <button
+                                    onClick={() => { playClick(); setDeleteConfirm(true); }}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm border border-red-500 text-red-500 hover:bg-red-500/10"
+                                >
+                                    <i className="fa-solid fa-trash" /> {t('delete_instance_title')}
+                                </button>
                                     )}
-                                </div>
+                            </div>
                             </div>
                         )}
 
-                        {settingsTab === "installation" && (
-                            <div className="space-y-6">
-                                {/* Currently installed */}
-                                <div>
-                                    <h4 className="font-medium mb-3" style={{ color: colors.onSurface }}>ติดตั้งอยู่</h4>
-                                    <div
-                                        className="flex items-center gap-4 p-4 rounded-xl"
-                                        style={{ backgroundColor: colors.surfaceContainerHighest }}
-                                    >
-                                        <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: colors.surfaceContainer }}>
-                                            <Icons.Box className="w-6 h-6" style={{ color: colors.onSurfaceVariant }} />
-                                        </div>
-                                        <div className="flex-1">
-                                            <p className="font-medium" style={{ color: colors.onSurface }}>
-                                                Minecraft {instance.minecraftVersion}
-                                            </p>
-                                            <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>
-                                                {getLoaderLabel(instance.loader)} {instance.loaderVersion || ""}
-                                            </p>
-                                        </div>
+                    {settingsTab === "installation" && (
+                        <div className="space-y-6">
+                            {/* Currently installed */}
+                            <div>
+                                <h4 className="font-medium mb-3" style={{ color: colors.onSurface }}>{t('currently_installed')}</h4>
+                                <div
+                                    className="flex items-center gap-4 p-4 rounded-xl"
+                                    style={{ backgroundColor: colors.surfaceContainerHighest }}
+                                >
+                                    <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: colors.surfaceContainer }}>
+                                        <Icons.Box className="w-6 h-6" style={{ color: colors.onSurfaceVariant }} />
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className="font-medium" style={{ color: colors.onSurface }}>
+                                            Minecraft {instance.minecraftVersion}
+                                        </p>
+                                        <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>
+                                            {getLoaderLabel(instance.loader)} {instance.loaderVersion || ""}
+                                        </p>
                                     </div>
                                 </div>
+                            </div>
 
-                                {/* Edit Controls - Only for Local Instances */}
-                                {!instance.cloudId ? (
-                                    <>
-                                        {/* Platform */}
-                                        <div>
-                                            <h4 className="font-medium mb-3" style={{ color: colors.onSurface }}>Platform</h4>
-                                            <div className="flex flex-wrap gap-2">
-                                                {(["vanilla", "fabric", "forge", "neoforge", "quilt"] as LoaderType[]).map((loader) => (
-                                                    <button
-                                                        key={loader}
-                                                        onClick={() => {
-                                                            playClick();
-                                                            setEditedLoader(loader);
-                                                            setLoaderVersions([]); // Clear list
-                                                            setEditedLoaderVersion(undefined); // Clear selection
-                                                        }}
-                                                        className="px-4 py-2 rounded-lg text-sm transition-all hover:opacity-80"
-                                                        style={{
-                                                            backgroundColor: editedLoader === loader ? colors.secondary : colors.surfaceContainerHighest,
-                                                            color: editedLoader === loader ? "#000000ff" : colors.onSurface,
-                                                            border: editedLoader === loader ? "none" : `1px solid ${colors.outline}30`
-                                                        }}
-                                                    >
-                                                        {editedLoader === loader && <span className="mr-1">✓</span>}
-                                                        {getLoaderLabel(loader)}
-                                                    </button>
-                                                ))}
-                                            </div>
+                            {/* Edit Controls - Only for Local Instances */}
+                            {!instance.cloudId ? (
+                                <>
+                                    {/* Platform */}
+                                    <div>
+                                        <h4 className="font-medium mb-3" style={{ color: colors.onSurface }}>Platform</h4>
+                                        <div className="flex flex-wrap gap-2">
+                                            {(["vanilla", "fabric", "forge", "neoforge", "quilt"] as LoaderType[]).map((loader) => (
+                                                <button
+                                                    key={loader}
+                                                    onClick={() => {
+                                                        playClick();
+                                                        setEditedLoader(loader);
+                                                        setLoaderVersions([]); // Clear list
+                                                        setEditedLoaderVersion(undefined); // Clear selection
+                                                    }}
+                                                    className="px-4 py-2 rounded-lg text-sm transition-all hover:opacity-80"
+                                                    style={{
+                                                        backgroundColor: editedLoader === loader ? colors.secondary : colors.surfaceContainerHighest,
+                                                        color: editedLoader === loader ? "#000000ff" : colors.onSurface,
+                                                        border: editedLoader === loader ? "none" : `1px solid ${colors.outline}30`
+                                                    }}
+                                                >
+                                                    {editedLoader === loader && <span className="mr-1">✓</span>}
+                                                    {getLoaderLabel(loader)}
+                                                </button>
+                                            ))}
                                         </div>
+                                    </div>
 
-                                        {/* Game version */}
-                                        <div>
-                                            <div className="flex items-center justify-between mb-2">
-                                                <h4 className="font-medium" style={{ color: colors.onSurface }}>เวอร์ชันเกม</h4>
-                                                <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: colors.onSurfaceVariant }}>
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={showAllVersions}
-                                                        onChange={(e) => { playClick(); setShowAllVersions(e.target.checked); }}
-                                                        className="w-4 h-4"
-                                                    />
-                                                    แสดงทั้งหมด
-                                                </label>
-                                            </div>
+                                    {/* Game version */}
+                                    <div>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <h4 className="font-medium" style={{ color: colors.onSurface }}>{t('minecraft_version_label')}</h4>
+                                            <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: colors.onSurfaceVariant }}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={showAllVersions}
+                                                    onChange={(e) => { playClick(); setShowAllVersions(e.target.checked); }}
+                                                    className="w-4 h-4"
+                                                />
+                                                {t('include_snapshots')}
+                                            </label>
+                                        </div>
+                                        <select
+                                            value={editedVersion}
+                                            onChange={(e) => { playClick(); setEditedVersion(e.target.value); }}
+                                            className="w-full px-4 py-3 rounded-xl border cursor-pointer"
+                                            style={{ backgroundColor: colors.surfaceContainerHighest, borderColor: colors.outline + "30", color: colors.onSurface }}
+                                        >
+                                            {/* Always include current version */}
+                                            {!filteredVersions.find(v => v.version === editedVersion) && (
+                                                <option value={editedVersion}>{editedVersion}</option>
+                                            )}
+                                            {filteredVersions.map((v) => (
+                                                <option key={v.version} value={v.version}>
+                                                    {v.version} {v.version_type !== "release" ? `(${v.version_type})` : ""}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* Loader Version Selection */}
+                                    {editedLoader !== "vanilla" && (
+                                        <div className="mt-4">
+                                            <label className="block text-sm font-medium mb-2" style={{ color: colors.onSurface }}>Loader Version</label>
                                             <select
-                                                value={editedVersion}
-                                                onChange={(e) => { playClick(); setEditedVersion(e.target.value); }}
+                                                value={editedLoaderVersion || ""}
+                                                onChange={(e) => { playClick(); setEditedLoaderVersion(e.target.value); }}
+                                                disabled={loadingLoaderVersions}
                                                 className="w-full px-4 py-3 rounded-xl border cursor-pointer"
                                                 style={{ backgroundColor: colors.surfaceContainerHighest, borderColor: colors.outline + "30", color: colors.onSurface }}
                                             >
-                                                {/* Always include current version */}
-                                                {!filteredVersions.find(v => v.version === editedVersion) && (
-                                                    <option value={editedVersion}>{editedVersion}</option>
-                                                )}
-                                                {filteredVersions.map((v) => (
-                                                    <option key={v.version} value={v.version}>
-                                                        {v.version} {v.version_type !== "release" ? `(${v.version_type})` : ""}
+                                                {loadingLoaderVersions && <option>{t('loading')}</option>}
+                                                {!loadingLoaderVersions && loaderVersions.length === 0 && <option value="">{t('no_loader_version_found')}</option>}
+                                                {loaderVersions.map((v) => (
+                                                    <option key={v} value={v}>
+                                                        {v}
                                                     </option>
                                                 ))}
                                             </select>
                                         </div>
+                                    )}
 
-                                        {/* Loader Version Selection */}
-                                        {editedLoader !== "vanilla" && (
-                                            <div className="mt-4">
-                                                <label className="block text-sm font-medium mb-2" style={{ color: colors.onSurface }}>Loader Version</label>
-                                                <select
-                                                    value={editedLoaderVersion || ""}
-                                                    onChange={(e) => { playClick(); setEditedLoaderVersion(e.target.value); }}
-                                                    disabled={loadingLoaderVersions}
-                                                    className="w-full px-4 py-3 rounded-xl border cursor-pointer"
-                                                    style={{ backgroundColor: colors.surfaceContainerHighest, borderColor: colors.outline + "30", color: colors.onSurface }}
-                                                >
-                                                    {loadingLoaderVersions && <option>Loading...</option>}
-                                                    {!loadingLoaderVersions && loaderVersions.length === 0 && <option value="">No versions found</option>}
-                                                    {loaderVersions.map((v) => (
-                                                        <option key={v} value={v}>
-                                                            {v}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        )}
-
-                                        {/* Warning about changing settings */}
-                                        {hasInstallationChanges && (
-                                            <div className="p-3 rounded-xl text-sm" style={{ backgroundColor: "#f59e0b20", color: "#f59e0b" }}>
-                                                <i className="fa-solid fa-triangle-exclamation mr-2" />
-                                                การเปลี่ยน Platform หรือ Version อาจทำให้ Mod ที่ติดตั้งไว้ไม่สามารถใช้งานได้
-                                            </div>
-                                        )}
-
-                                        {/* Save button */}
-                                        {hasInstallationChanges && (
-                                            <button
-                                                onClick={() => { playClick(); handleSaveInstallation(); }}
-                                                disabled={isSavingInstallation || loadingLoaderVersions}
-                                                className="w-full py-3 rounded-xl font-medium transition-all hover:scale-[1.02] disabled:opacity-50"
-                                                style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
-                                            >
-                                                {isSavingInstallation ? "กำลังบันทึก..." : loadingLoaderVersions ? "กำลังโหลดเวอร์ชัน..." : "บันทึกการเปลี่ยนแปลง"}
-                                            </button>
-                                        )}
-                                    </>
-                                ) : (
-                                    /* Server Managed Message */
-                                    <div className="flex flex-col items-center justify-center py-12 text-center space-y-4 rounded-2xl border-2 border-dashed"
-                                        style={{ borderColor: colors.outline + "40" }}>
-                                        <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                                            <Icons.Info className="w-8 h-8" style={{ color: colors.primary }} />
+                                    {/* Warning about changing settings */}
+                                    {hasInstallationChanges && (
+                                        <div className="p-3 rounded-xl text-sm" style={{ backgroundColor: "#f59e0b20", color: "#f59e0b" }}>
+                                            <i className="fa-solid fa-triangle-exclamation mr-2" />
+                                            {t('installation_change_warning')}
                                         </div>
-                                        <div>
-                                            <h3 className="text-lg font-bold mb-1" style={{ color: colors.onSurface }}>จัดการโดยเซิร์ฟเวอร์</h3>
-                                            <p className="text-sm max-w-xs mx-auto" style={{ color: colors.onSurfaceVariant }}>
-                                                การตั้งค่านี้ถูกกำหนดโดยเซิร์ฟเวอร์เพื่อให้เข้าเล่นได้ถูกต้อง คุณไม่สามารถแก้ไขได้ด้วยตนเอง
-                                            </p>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
+                                    )}
+
+                                    {/* Save button */}
+                                    {hasInstallationChanges && (
+                                        <button
+                                            onClick={handleSaveInstallation}
+                                            className="w-full py-3 rounded-xl font-medium transition-all hover:scale-[1.02] disabled:opacity-50"
+                                            style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                                        >
+                                            {isSavingInstallation ? t('saving') : loadingLoaderVersions ? t('loading_versions') : t('save_changes')}
+                                        </button>
+                                    )}
+                        </>
+                    ) : (
+                    /* Server Managed Message */
+                    <div className="flex flex-col items-center justify-center py-12 text-center space-y-4 rounded-2xl border-2 border-dashed"
+                        style={{ borderColor: colors.outline + "40" }}>
+                        <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ backgroundColor: colors.surfaceContainerHighest }}>
+                            <Icons.Info className="w-8 h-8" style={{ color: colors.primary }} />
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-bold mb-1" style={{ color: colors.onSurface }}>{t('managed_by_server')}</h3>
+                            <p className="text-sm max-w-xs mx-auto" style={{ color: colors.onSurfaceVariant }}>
+                                {t('server_managed_settings_desc')}
+                            </p>
+                        </div>
                     </div>
+                                )}
                 </div>
-
+                        )}
             </div>
         </div>
+
+            </div >
+        </div >
     );
 }

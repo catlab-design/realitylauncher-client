@@ -82,3 +82,29 @@ export function matchesVersion(modVersion: string, instanceVersion: string): boo
 
     return false;
 }
+
+/**
+ * Normalize image value to an absolute URL string or null.
+ * Supports string, object shapes from native modules, protocol-relative URLs ("//host/path")
+ * and simple relative paths ("/path") which are assumed to be Modrinth CDN paths.
+ */
+export function normalizeImageUrl(raw: any, source: 'modrinth' | 'curseforge' | 'unknown' = 'unknown'): string | null {
+    if (!raw) return null;
+    if (typeof raw === 'object') {
+        return raw.url || raw.rawUrl || raw.raw_url || null;
+    }
+    if (typeof raw !== 'string') return null;
+
+    let s = raw.trim();
+    if (!s) return null;
+
+    // protocol-relative -> add https:
+    if (s.startsWith('//')) s = 'https:' + s;
+
+    // relative path starting with '/' - assume Modrinth CDN when source is modrinth
+    if (s.startsWith('/') && source === 'modrinth') {
+        return 'https://cdn.modrinth.com' + s;
+    }
+
+    return s;
+}

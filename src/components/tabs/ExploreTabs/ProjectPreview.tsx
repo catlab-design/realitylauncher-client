@@ -3,10 +3,12 @@
 // ========================================
 
 import React from "react";
+import { useTranslation } from "../../../hooks/useTranslation";
 import type { ModrinthProject, ProjectType, InstallProgress } from "./types";
 import { formatNumber } from "./helpers";
 import { ImagePreviewModal } from "./ImagePreviewModal";
 import bannerImage from "../../../assets/banner.png";
+import { Icons } from "../../ui/Icons";
 
 interface ProjectPreviewProps {
     colors: any;
@@ -35,6 +37,7 @@ export function ProjectPreview({
     onAddToInstance,
     isLoading = false,
 }: ProjectPreviewProps) {
+    const { t } = useTranslation();
     const [selectedImageIndex, setSelectedImageIndex] = React.useState<number | null>(null);
 
     // Reset selected image when project changes
@@ -99,6 +102,8 @@ export function ProjectPreview({
         );
     }
 
+
+
     if (!project) {
         return (
             <div className="h-full rounded-2xl flex flex-col items-center justify-center p-8 text-center sticky top-4 min-h-[400px]"
@@ -111,9 +116,9 @@ export function ProjectPreview({
                     style={{ backgroundColor: `${colors.surfaceContainerHighest}80` }}>
                     <i className="fa-solid fa-eye text-3xl opacity-30" style={{ color: colors.onSurfaceVariant }}></i>
                 </div>
-                <h3 className="text-sm font-medium mb-1" style={{ color: colors.onSurface }}>เลือกรายการเพื่อดูรายละเอียด</h3>
+                <h3 className="text-sm font-medium mb-1" style={{ color: colors.onSurface }}>{t('select_item_to_view')}</h3>
                 <p className="text-xs opacity-60 max-w-[200px]" style={{ color: colors.onSurfaceVariant }}>
-                    คลิกที่การ์ดทางซ้ายเพื่อดูข้อมูลเพิ่มเติม รูปภาพ และเวอร์ชัน
+                    {t('click_card_left_to_view')}
                 </p>
             </div>
         );
@@ -201,12 +206,14 @@ export function ProjectPreview({
                         style={{ backgroundColor: colors.surface }}>
                         <div className="w-full h-full rounded-[14px] bg-cover bg-center overflow-hidden"
                             style={{
-                                backgroundImage: project.icon_url ? `url(${project.icon_url})` : undefined,
+                                backgroundImage: project.icon_url ? `url('${project.icon_url}')` : undefined,
                                 backgroundColor: colors.surfaceContainerHighest
                             }}>
-                            {!project.icon_url && (
+                            {project.icon_url ? (
+                                <img src={project.icon_url} alt={project.title} className="w-full h-full object-cover" />
+                            ) : (
                                 <div className="w-full h-full flex items-center justify-center">
-                                    <i className="fa-solid fa-cube text-3xl opacity-50"></i>
+                                    <Icons.Box className="w-8 h-8 opacity-50" style={{ color: colors.onSurfaceVariant }} />
                                 </div>
                             )}
                         </div>
@@ -220,7 +227,7 @@ export function ProjectPreview({
                             {project.title}
                         </h2>
                         <div className="flex items-center gap-2 text-xs" style={{ color: colors.onSurfaceVariant }}>
-                            <span>by <span className="font-medium" style={{ color: colors.primary }}>{project.author}</span></span>
+                            <span>{t('by')} <span className="font-medium" style={{ color: colors.primary }}>{project.author}</span></span>
                             <span>•</span>
                             <div className="flex items-center gap-1">
                                 <i className="fa-solid fa-download text-[10px]"></i>
@@ -255,7 +262,7 @@ export function ProjectPreview({
                                 <div className="flex flex-col items-center gap-2">
                                     <i className="fa-solid fa-spinner fa-spin text-xl mb-1" style={{ color: colors.secondary }}></i>
                                     <span className="text-sm font-medium" style={{ color: colors.onSurface }}>
-                                        {installProgress?.message || "กำลังดำเนินการ..."}
+                                        {installProgress?.message || t('processing')}
                                     </span>
                                     {typeof installProgress?.percent === "number" && (
                                         <div className="w-full h-1.5 rounded-full mt-1 overflow-hidden"
@@ -278,12 +285,12 @@ export function ProjectPreview({
                                 {projectType === "modpack" ? (
                                     <>
                                         <i className="fa-solid fa-download"></i>
-                                        ติดตั้งเป็น Instance ใหม่
+                                        {t('install_as_new_instance')}
                                     </>
                                 ) : (
                                     <>
                                         <i className="fa-solid fa-plus"></i>
-                                        เพิ่มลง Instance
+                                        {t('add_to_instance')}
                                     </>
                                 )}
                             </button>
@@ -293,7 +300,7 @@ export function ProjectPreview({
                     {/* Description */}
                     <div className="mb-6">
                         <h4 className="text-xs font-bold uppercase tracking-wider mb-2 opacity-70" style={{ color: colors.onSurfaceVariant }}>
-                            เกี่ยวกับ
+                            {t('about')}
                         </h4>
                         <p className="text-xs leading-relaxed opacity-90 whitespace-pre-line" style={{ color: colors.onSurface }}>
                             {project.description}
@@ -304,7 +311,7 @@ export function ProjectPreview({
                     {project.gallery && project.gallery.length > 0 && (
                         <div className="mb-4">
                             <h4 className="text-xs font-bold uppercase tracking-wider mb-2 opacity-70" style={{ color: colors.onSurfaceVariant }}>
-                                แกลเลอรี
+                                {t('gallery')}
                             </h4>
                             <div className="grid grid-cols-2 gap-2">
                                 {project.gallery.slice(0, 4).map((img, idx) => {
@@ -322,7 +329,7 @@ export function ProjectPreview({
                                         >
                                             <img
                                                 src={url}
-                                                alt="Gallery"
+                                                alt={t('gallery')}
                                                 className="w-full h-full object-cover"
                                             />
                                         </div>
@@ -337,9 +344,9 @@ export function ProjectPreview({
                         style={{ borderColor: `${colors.outline}20`, color: colors.onSurfaceVariant }}>
                         <span>ID: {project.project_id}</span>
                         {project.latest_version && (
-                            <span>Version: {project.latest_version}</span>
+                            <span>{t('version_label').replace('{version}', project.latest_version)}</span>
                         )}
-                        <span>{project.client_side === "required" ? "Client Required" : "Client Optional"}</span>
+                        <span>{project.client_side === "required" ? t('client_required') : t('client_optional')}</span>
                     </div>
 
                     {/* Supported Versions (Footer/Extra) */}
@@ -347,13 +354,13 @@ export function ProjectPreview({
                         <div className="pt-2 text-[10px] opacity-70 flex flex-wrap gap-2" style={{ color: colors.onSurfaceVariant }}>
                             {project.loaders && project.loaders.length > 0 && (
                                 <div className="flex gap-1">
-                                    <span className="font-bold">Loaders:</span>
+                                    <span className="font-bold">{t('loaders_label')}</span>
                                     <span>{project.loaders.join(", ")}</span>
                                 </div>
                             )}
                             {project.game_versions && project.game_versions.length > 0 && (
                                 <div className="flex gap-1">
-                                    <span className="font-bold">Versions:</span>
+                                    <span className="font-bold">{t('versions_label')}</span>
                                     <span>{project.game_versions.slice(0, 5).join(", ")}{project.game_versions.length > 5 ? "..." : ""}</span>
                                 </div>
                             )}

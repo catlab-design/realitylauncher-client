@@ -3,9 +3,11 @@
 // ========================================
 
 import React, { useState } from "react";
+import { useTranslation } from "../../../hooks/useTranslation";
 import type { ModrinthProject } from "./types";
 import { formatNumber } from "./helpers";
 import { playClick } from "../../../lib/sounds";
+import { Icons } from "../../ui/Icons";
 
 interface ProjectCardProps {
     colors: any;
@@ -16,6 +18,7 @@ interface ProjectCardProps {
 
 export function ProjectCard({ colors, project, isActive, onClick }: ProjectCardProps) {
     const [isHovered, setIsHovered] = useState(false);
+    const { t } = useTranslation();
 
     // Convert integer color to hex string if available
     const accentColor = project.color
@@ -49,16 +52,18 @@ export function ProjectCard({ colors, project, isActive, onClick }: ProjectCardP
             <div className="p-4 flex items-start gap-4 reltive z-10">
                 {/* Icon */}
                 <div
-                    className="w-12 h-12 rounded-xl bg-cover bg-center flex-shrink-0 shadow-sm group-hover:shadow-md transition-shadow"
+                    className="w-12 h-12 rounded-xl bg-cover bg-center flex-shrink-0 shadow-sm group-hover:shadow-md transition-shadow overflow-hidden"
                     style={{
-                        backgroundImage: project.icon_url ? `url(${project.icon_url})` : undefined,
+                        backgroundImage: project.icon_url ? `url('${project.icon_url}')` : undefined,
                         backgroundColor: colors.surfaceContainerHighest,
                         border: `1px solid ${colors.outline}10`
                     }}
                 >
-                    {!project.icon_url && (
+                    {project.icon_url ? (
+                        <img src={project.icon_url} alt={project.title} className="w-full h-full object-cover" />
+                    ) : (
                         <div className="w-full h-full flex items-center justify-center">
-                            <i className="fa-solid fa-cube text-xl" style={{ color: colors.onSurfaceVariant }}></i>
+                            <Icons.Box className="w-5 h-5" style={{ color: colors.onSurfaceVariant }} />
                         </div>
                     )}
                 </div>
@@ -73,7 +78,7 @@ export function ProjectCard({ colors, project, isActive, onClick }: ProjectCardP
                     </div>
 
                     <p className="text-[11px] truncate mb-2" style={{ color: colors.onSurfaceVariant }}>
-                        by <span style={{ color: colors.onSurface }}>{project.author}</span>
+                        {t('by')} <span style={{ color: colors.onSurface }}>{project.author}</span>
                     </p>
 
                     <p className="text-[11px] line-clamp-2 leading-relaxed h-[34px] mb-3 opacity-80"

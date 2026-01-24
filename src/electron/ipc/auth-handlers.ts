@@ -30,7 +30,7 @@ import {
 let authWindow: BrowserWindow | null = null;
 
 // ml-api URL for CatID authentication
-const ML_API_URL = 'https://api.reality.notpumpkins.com';
+const ML_API_URL = process.env.ML_API_URL || 'https://api.reality.notpumpkins.com';
 
 // Microsoft OAuth Client ID - fetched from ml-api
 let MICROSOFT_CLIENT_ID: string | null = null;
@@ -57,7 +57,7 @@ async function fetchOAuthConfig(): Promise<boolean> {
 fetchOAuthConfig();
 
 export function registerAuthHandlers(getMainWindow: () => BrowserWindow | null): void {
-    const AUTH_URL = process.env.AUTH_URL || "http://localhost:3001";
+    const AUTH_URL = process.env.AUTH_URL || "https://reality.catlabdesign.space/login"; // Default to web login
 
     // ----------------------------------------
     // Basic Auth Handlers
@@ -343,14 +343,20 @@ export function registerAuthHandlers(getMainWindow: () => BrowserWindow | null):
                             username: profileData.name,
                         }),
                     });
-                    const linkData = await linkResponse.json() as any;
+                    let linkData: any;
+                    try {
+                        linkData = await linkResponse.json();
+                    } catch {
+                        console.warn("[Auth] Link response is not valid JSON");
+                        linkData = {};
+                    }
 
                     if (linkResponse.ok && linkData.token) {
                         apiTokenString = linkData.token;
                         updateApiToken(linkData.token);
                         console.log("[Auth] Microsoft linked successfully");
                     } else {
-                        console.warn("[Auth] Link failed:", linkData.error);
+                        console.warn("[Auth] Link failed:", linkData.error || `HTTP ${linkResponse.status}`);
                     }
                 } catch (linkError) {
                     console.warn("[Auth] Link API error (non-fatal):", linkError);
@@ -475,7 +481,12 @@ export function registerAuthHandlers(getMainWindow: () => BrowserWindow | null):
                 body: JSON.stringify({ username, password }),
             });
 
-            const data = await response.json() as any;
+            let data: any;
+            try {
+                data = await response.json();
+            } catch {
+                return { ok: false, error: response.ok ? "เซิร์ฟเวอร์ตอบกลับไม่ถูกต้อง" : `เกิดข้อผิดพลาด: ${response.status}` };
+            }
 
             if (!response.ok || !data.token) {
                 return { ok: false, error: data.message || "เข้าสู่ระบบไม่สำเร็จ" };
@@ -510,6 +521,11 @@ export function registerAuthHandlers(getMainWindow: () => BrowserWindow | null):
             });
 
             const responseText = await response.text();
+
+            // DEBUG LOGS
+            console.log('[Auth] ML_API_URL:', ML_API_URL);
+            console.log('[Auth] Register raw response:', responseText);
+
             let data: any;
             try {
                 data = JSON.parse(responseText);
@@ -521,9 +537,87 @@ export function registerAuthHandlers(getMainWindow: () => BrowserWindow | null):
                 return { ok: false, error: data.message || "สมัครไม่สำเร็จ" };
             }
 
-            return { ok: true };
+            return {
+                ok: true,
+                message: data.message,
+                requiresVerification: data.requiresVerification,
+                verifyToken: data.verifyToken,
+                expiresAt: data.expiresAt,
+                expiresInSeconds: data.expiresInSeconds,
+            };
         } catch (error: any) {
             return { ok: false, error: error.message || "เกิดข้อผิดพลาด" };
+        }
+    });
+
+    // Check registration verification status (for polling)
+    ipcMain.handle("auth-check-registration-status", async (_event, token: string) => {
+        try {
+            const response = await fetch(`${ML_API_URL}/auth/catid/register/status/${token}`, {
+                method: "GET",
+                headers: { "Content-Type": "application/json" },
+            });
+
+            let data: any;
+            try {
+                data = await response.json();
+            } catch {
+                return { status: "error", message: "เซิร์ฟเวอร์ตอบกลับไม่ถูกต้อง" };
+            }
+
+            return data;
+        } catch (error: any) {
+            return { status: "error", message: error.message || "เกิดข้อผิดพลาด" };
+        }
+    });
+
+    ipcMain.handle("auth-forgot-password", async (_event, email: string) => {
+        try {
+            const response = await fetch(`${ML_API_URL}/auth/catid/forgot-password`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email }),
+            });
+
+            let data: any;
+            try {
+                data = await response.json();
+            } catch {
+                return { ok: false, error: "Invalid response from server" };
+            }
+
+            if (!response.ok) {
+                return { ok: false, error: data.message || "Failed to send OTP" };
+            }
+
+            return { ok: true, message: data.message };
+        } catch (error: any) {
+            return { ok: false, error: error.message || "Network error" };
+        }
+    });
+
+    ipcMain.handle("auth-reset-password", async (_event, email: string, otp: string, newPassword: string) => {
+        try {
+            const response = await fetch(`${ML_API_URL}/auth/catid/reset-password`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, otp, newPassword }),
+            });
+
+            let data: any;
+            try {
+                data = await response.json();
+            } catch {
+                return { ok: false, error: "Invalid response from server" };
+            }
+
+            if (!response.ok) {
+                return { ok: false, error: data.message || "Failed to reset password" };
+            }
+
+            return { ok: true, message: data.message };
+        } catch (error: any) {
+            return { ok: false, error: error.message || "Network error" };
         }
     });
 
@@ -542,7 +636,12 @@ export function registerAuthHandlers(getMainWindow: () => BrowserWindow | null):
                 body: JSON.stringify({ username, password }),
             });
 
-            const data = await response.json() as any;
+            let data: any;
+            try {
+                data = await response.json();
+            } catch {
+                return { ok: false, error: response.ok ? "เซิร์ฟเวอร์ตอบกลับไม่ถูกต้อง" : `เกิดข้อผิดพลาด: ${response.status}` };
+            }
 
             if (!response.ok || !data.token) {
                 return { ok: false, error: data.message || "เชื่อมต่อไม่สำเร็จ: ชื่อผู้ใช้หรือรหัสผ่านผิด" };
@@ -595,6 +694,46 @@ export function registerAuthHandlers(getMainWindow: () => BrowserWindow | null):
             return { ok: true, token: data.token };
         } catch (error: any) {
             console.error("[Auth] Link CatID error:", error);
+            return { ok: false, error: error.message || "เกิดข้อผิดพลาดในการเชื่อมต่อ" };
+        }
+    });
+
+    ipcMain.handle("auth-catid-login-token", async (_event, token: string) => {
+        try {
+            console.log("[Auth] Logging in with token...");
+            const response = await fetch(`${ML_API_URL}/auth/catid/me`, {
+                method: "GET",
+                headers: {
+                    "Authorization": `Bearer ${token}`,
+                    "Content-Type": "application/json"
+                }
+            });
+
+            let data: any;
+            try {
+                data = await response.json();
+            } catch {
+                return { ok: false, error: response.ok ? "เซิร์ฟเวอร์ตอบกลับไม่ถูกต้อง" : `เกิดข้อผิดพลาด: ${response.status}` };
+            }
+
+            if (!response.ok) {
+                return { ok: false, error: data.message || "Session หมดอายุหรือใช้ไม่ได้" };
+            }
+
+            const session = {
+                type: "catid" as const,
+                username: data.user.username,
+                uuid: data.user.id,
+                token: token,
+                minecraftUuid: data.user.minecraftUuid,
+                skinUrl: `https://minotar.net/helm/${data.user.minecraftUsername || 'steve'}/100.png`,
+                createdAt: Date.now()
+            };
+
+            await setActiveSession(session);
+            return { ok: true, session };
+        } catch (error: any) {
+            console.error("[Auth] Login with token error:", error);
             return { ok: false, error: error.message || "เกิดข้อผิดพลาดในการเชื่อมต่อ" };
         }
     });

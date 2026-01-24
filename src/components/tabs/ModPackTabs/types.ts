@@ -24,6 +24,8 @@ export interface ContentItem {
     modifiedAt: string;
     enabled: boolean;
     icon: string | null;
+    modrinthProjectId?: string; // สำหรับ fallback icon Modrinth
+    curseforgeProjectId?: string; // สำหรับ fallback icon CurseForge
 }
 
 export interface DatapackItem extends ContentItem {

@@ -12,6 +12,7 @@ import neoforgeIcon from "../../../assets/neoforge.svg";
 import quiltIcon from "../../../assets/quilt.svg";
 
 import { playClick } from "../../../lib/sounds";
+import { useTranslation } from "../../../hooks/useTranslation";
 import type { LauncherConfig } from "../../../types/launcher";
 
 export interface CreateInstanceModalProps {
@@ -19,38 +20,13 @@ export interface CreateInstanceModalProps {
     config?: LauncherConfig;
     onClose: () => void;
     onCreated: () => void;
+    language: "th" | "en";
 }
 
-// Loader info with descriptions
-const LOADER_INFO: Record<string, { name: string; description: string; color: string }> = {
-    vanilla: {
-        name: "Vanilla",
-        description: "Minecraft แท้ ไม่มี mod — เล่นได้ทันที",
-        color: "#4CAF50"
-    },
-    fabric: {
-        name: "Fabric",
-        description: "เบา รวดเร็ว เหมาะกับ mod สมัยใหม่",
-        color: "#DBD0AB"
-    },
-    forge: {
-        name: "Forge",
-        description: "ได้รับความนิยมมากที่สุด รองรับ mod จำนวนมาก",
-        color: "#1E3A5F"
-    },
-    neoforge: {
-        name: "NeoForge",
-        description: "Forge เวอร์ชันใหม่ สำหรับ 1.20.1+",
-        color: "#F97316"
-    },
-    quilt: {
-        name: "Quilt",
-        description: "ต่อยอดจาก Fabric รองรับ mod Fabric ได้",
-        color: "#9B59B6"
-    }
-};
+// NOTE: LOADER_INFO uses translations, so build inside component using `t()`
 
-export function CreateInstanceModal({ colors, config, onClose, onCreated }: CreateInstanceModalProps) {
+export function CreateInstanceModal({ colors, config, onClose, onCreated, language }: CreateInstanceModalProps) {
+    const { t } = useTranslation(language);
     const [name, setName] = useState("");
     const [minecraftVersion, setMinecraftVersion] = useState("");
     const [loader, setLoader] = useState<"vanilla" | "fabric" | "forge" | "neoforge" | "quilt">("vanilla");
@@ -118,11 +94,11 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated }: Crea
 
     const handleCreate = async () => {
         if (!name.trim()) {
-            toast.error("กรุณาใส่ชื่อ Instance");
+            toast.error(t('please_enter_instance_name'));
             return;
         }
         if (!minecraftVersion) {
-            toast.error("กรุณาเลือก Minecraft version");
+            toast.error(t('please_select_mc_version'));
             return;
         }
 
@@ -135,10 +111,10 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated }: Crea
                 loaderVersion: loader === "vanilla" ? undefined : loaderVersion,
             });
 
-            toast.success(`สร้าง ${name.trim()} เรียบร้อย`);
+            toast.success(t('instance_created_success'));
             onCreated();
         } catch (error) {
-            toast.error("สร้าง Instance ไม่สำเร็จ");
+            toast.error(t('error_occurred'));
         } finally {
             setIsLoading(false);
         }
@@ -148,12 +124,21 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated }: Crea
         ? gameVersions
         : gameVersions.filter((v) => v.version_type === "release");
 
+    // Loader info with descriptions (use translations)
+    const LOADER_INFO: Record<string, { name: string; description: string; color: string }> = {
+        vanilla: { name: t('vanilla'), description: t('vanilla_desc'), color: "#4CAF50" },
+        fabric: { name: t('fabric'), description: t('fabric_desc'), color: "#DBD0AB" },
+        forge: { name: t('forge'), description: t('forge_desc'), color: "#1E3A5F" },
+        neoforge: { name: t('neoforge'), description: t('neoforge_desc'), color: "#F97316" },
+        quilt: { name: t('quilt'), description: t('quilt_desc'), color: "#9B59B6" },
+    };
+
     const loaders = [
-        { id: "vanilla", icon: <img src={minecraftIcon.src} alt="Minecraft" className="w-6 h-6" /> },
-        { id: "fabric", icon: <img src={fabricIcon.src} alt="Fabric" className="w-6 h-6" /> },
-        { id: "forge", icon: <img src={forgeIcon.src} alt="Forge" className="w-6 h-6" /> },
-        { id: "neoforge", icon: <img src={neoforgeIcon.src} alt="NeoForge" className="w-6 h-6" /> },
-        { id: "quilt", icon: <img src={quiltIcon.src} alt="Quilt" className="w-6 h-6" /> },
+        { id: "vanilla", icon: <img src={minecraftIcon.src} alt={t('vanilla')} className="w-6 h-6" /> },
+        { id: "fabric", icon: <img src={fabricIcon.src} alt={t('fabric')} className="w-6 h-6" /> },
+        { id: "forge", icon: <img src={forgeIcon.src} alt={t('forge')} className="w-6 h-6" /> },
+        { id: "neoforge", icon: <img src={neoforgeIcon.src} alt={t('neoforge')} className="w-6 h-6" /> },
+        { id: "quilt", icon: <img src={quiltIcon.src} alt={t('quilt')} className="w-6 h-6" /> },
     ];
 
     const currentLoaderInfo = LOADER_INFO[hoveredLoader || loader];
@@ -178,10 +163,10 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated }: Crea
                 {/* Header */}
                 <div className="mb-4">
                     <h2 className="text-lg font-bold" style={{ color: colors.onSurface }}>
-                        ✨ สร้าง Instance ใหม่
+                        {t('create_new_instance_title')}
                     </h2>
                     <p className="text-xs mt-0.5" style={{ color: colors.onSurfaceVariant }}>
-                        Instance คือ Minecraft แยกเวอร์ชัน ใส่ mod แยกกันได้
+                        {t('instance_desc')}
                     </p>
                 </div>
 
@@ -191,13 +176,13 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated }: Crea
                         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
                         </svg>
-                        ชื่อ Instance
+                        {t('instance_name')}
                     </label>
                     <input
                         type="text"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        placeholder="เช่น Survival World, Modded SMP"
+                        placeholder={t('instance_name_placeholder')}
                         className="w-full px-4 py-3 rounded-xl border transition-all focus:ring-2 focus:ring-offset-1"
                         style={{
                             backgroundColor: colors.surfaceContainer,
@@ -215,7 +200,7 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated }: Crea
                             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
                             </svg>
-                            Minecraft Version
+                            {t('minecraft_version_label')}
                         </label>
                         <label className="flex items-center gap-2 text-xs cursor-pointer select-none" style={{ color: colors.onSurfaceVariant }}>
                             <input
@@ -224,7 +209,7 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated }: Crea
                                 onChange={(e) => { handleSound(); setShowAllVersions(e.target.checked); }}
                                 className="w-3.5 h-3.5 rounded"
                             />
-                            รวม Snapshot
+                            {t('include_snapshots')}
                         </label>
                     </div>
                     <select
@@ -247,8 +232,8 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated }: Crea
                         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-6 10H6v-2h8v2zm4-4H6v-2h12v2z" />
                         </svg>
-                        Mod Loader
-                        <span className="text-xs opacity-60">(เลือกเพื่อใส่ mod)</span>
+                        {t('mod_loader')}
+                        <span className="text-xs opacity-60">({t('select_to_add_mods')})</span>
                     </label>
 
                     <div className="grid grid-cols-5 gap-2 mb-3">
@@ -301,9 +286,9 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated }: Crea
                             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
                             </svg>
-                            Loader Version
+                            {t('loader_version')}
                             {loadingLoaderVersions && (
-                                <span className="text-xs opacity-60 animate-pulse">กำลังโหลด...</span>
+                                <span className="text-xs opacity-60 animate-pulse">{t('loading')}</span>
                             )}
                         </label>
                         <select
@@ -317,9 +302,9 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated }: Crea
                                 color: colors.onSurface
                             }}
                         >
-                            {loadingLoaderVersions && <option>กำลังโหลด...</option>}
+                            {loadingLoaderVersions && <option>{t('loading')}</option>}
                             {!loadingLoaderVersions && loaderVersions.length === 0 && (
-                                <option value="">ไม่พบ version สำหรับ MC {minecraftVersion}</option>
+                                <option value="">{t('no_loader_version_found')} {minecraftVersion}</option>
                             )}
                             {loaderVersions.map((v) => (
                                 <option key={v} value={v}>{v}</option>
@@ -327,7 +312,7 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated }: Crea
                         </select>
                         {!loadingLoaderVersions && loaderVersions.length === 0 && (
                             <p className="text-xs mt-1.5 text-amber-500">
-                                💡 ลองเปลี่ยน Minecraft version หรือใช้ loader อื่น
+                                {t('loader_version_hint')}
                             </p>
                         )}
                     </div>
@@ -348,21 +333,21 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated }: Crea
                                 <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
                                 <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" />
                             </svg>
-                            กำลังสร้าง...
+                            {t('creating_dot')}
                         </>
                     ) : (
                         <>
                             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
                             </svg>
-                            สร้าง Instance
+                            {t('create_instance')}
                         </>
                     )}
                 </button>
 
                 {/* Help Text */}
                 <p className="text-xs text-center mt-3" style={{ color: colors.onSurfaceVariant }}>
-                    สร้างแล้วสามารถเพิ่ม mod, resource pack, shader ได้ภายหลัง
+                    {t('create_instance_footer')}
                 </p>
             </div>
         </div>

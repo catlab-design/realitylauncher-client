@@ -6,6 +6,7 @@
 import { useState, useEffect } from "react";
 import { Icons } from "../ui/Icons";
 import { Skeleton } from "../ui/Skeleton";
+import { useTranslation } from "../../hooks/useTranslation";
 
 
 interface User {
@@ -32,9 +33,11 @@ interface Props {
         secondary: string;
     };
     adminToken: string;
+    language: string;
 }
 
-export default function UserManagement({ colors, adminToken }: Props) {
+export default function UserManagement({ colors, adminToken, language }: Props) {
+    const { t } = useTranslation(language as any);
     const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
@@ -200,7 +203,7 @@ export default function UserManagement({ colors, adminToken }: Props) {
         <div className="rounded-xl p-5" style={{ backgroundColor: colors.surfaceContainer }}>
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: colors.onSurface }}>
                 <Icons.Person className="w-5 h-5" style={{ color: colors.secondary }} />
-                จัดการผู้ใช้
+                {t('user_management')}
             </h3>
 
             {/* Search + Add User */}
@@ -210,7 +213,7 @@ export default function UserManagement({ colors, adminToken }: Props) {
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                    placeholder="ค้นหาชื่อผู้ใช้..."
+                    placeholder={t('search_username')}
                     className="flex-1 px-3 py-2 rounded-lg text-sm"
                     style={inputStyle}
                 />
@@ -218,7 +221,7 @@ export default function UserManagement({ colors, adminToken }: Props) {
                     <Icons.Search className="w-4 h-4" />
                 </button>
                 <button onClick={() => setAddModalOpen(true)} className="px-4 py-2 rounded-lg flex items-center gap-1" style={{ backgroundColor: "#22c55e", color: "#fff" }}>
-                    <span>+</span> เพิ่มผู้ใช้
+                    <span>+</span> {t('add_user')}
                 </button>
             </div>
 
@@ -245,7 +248,7 @@ export default function UserManagement({ colors, adminToken }: Props) {
             ) : (
                 <div className="space-y-2">
                     {users.length === 0 ? (
-                        <p className="text-center py-4" style={{ color: colors.onSurfaceVariant }}>ไม่พบผู้ใช้</p>
+                        <p className="text-center py-4" style={{ color: colors.onSurfaceVariant }}>{t('no_users_found')}</p>
                     ) : (
                         users.map((user) => (
                             <div key={user.id} className="flex items-center justify-between p-3 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHigh }}>
@@ -264,7 +267,7 @@ export default function UserManagement({ colors, adminToken }: Props) {
                                 </div>
                                 <div className="flex gap-1">
                                     {/* View Details */}
-                                    <button onClick={() => openViewModal(user.id)} className="p-2 rounded-lg" style={{ backgroundColor: colors.surface }} title="ดูรายละเอียด">
+                                    <button onClick={() => openViewModal(user.id)} className="p-2 rounded-lg" style={{ backgroundColor: colors.surface }} title={t('view_details')}>
                                         <Icons.Info className="w-4 h-4" style={{ color: colors.onSurface }} />
                                     </button>
                                     {/* Toggle Admin */}
@@ -273,7 +276,7 @@ export default function UserManagement({ colors, adminToken }: Props) {
                                         disabled={actionLoading === user.id}
                                         className="p-2 rounded-lg transition-opacity hover:opacity-80"
                                         style={{ backgroundColor: user.isAdmin ? colors.secondary : colors.surface }}
-                                        title={user.isAdmin ? "ถอดสิทธิ์ Admin" : "ให้สิทธิ์ Admin"}
+                                        title={user.isAdmin ? t('remove_admin') : t('grant_admin')}
                                     >
                                         {actionLoading === user.id ? (
                                             <Icons.Spinner className="w-4 h-4 animate-spin" />
@@ -283,11 +286,11 @@ export default function UserManagement({ colors, adminToken }: Props) {
                                     </button>
                                     {/* Ban/Unban */}
                                     {user.isBanned ? (
-                                        <button onClick={() => handleUnban(user.id)} disabled={actionLoading === user.id} className="p-2 rounded-lg bg-green-500/20 hover:bg-green-500/30" title="ปลดแบน">
+                                        <button onClick={() => handleUnban(user.id)} disabled={actionLoading === user.id} className="p-2 rounded-lg bg-green-500/20 hover:bg-green-500/30" title={t('unban')}>
                                             <Icons.Check className="w-4 h-4 text-green-500" />
                                         </button>
                                     ) : (
-                                        <button onClick={() => openBanModal(user.id)} disabled={actionLoading === user.id} className="p-2 rounded-lg bg-red-500/20 hover:bg-red-500/30" title="แบนผู้ใช้">
+                                        <button onClick={() => openBanModal(user.id)} disabled={actionLoading === user.id} className="p-2 rounded-lg bg-red-500/20 hover:bg-red-500/30" title={t('ban_user')}>
                                             <Icons.Close className="w-4 h-4 text-red-500" />
                                         </button>
                                     )}
@@ -311,18 +314,18 @@ export default function UserManagement({ colors, adminToken }: Props) {
             {banModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
                     <div className="rounded-xl p-6 w-full max-w-md mx-4" style={{ backgroundColor: colors.surfaceContainer }}>
-                        <h3 className="text-lg font-bold mb-4" style={{ color: colors.onSurface }}>ระงับบัญชีผู้ใช้</h3>
+                        <h3 className="text-lg font-bold mb-4" style={{ color: colors.onSurface }}>{t('ban_user_account')}</h3>
                         <input
                             type="text"
                             value={banReason}
                             onChange={(e) => setBanReason(e.target.value)}
-                            placeholder="เหตุผลในการระงับ (ไม่บังคับ)"
+                            placeholder={t('ban_reason_optional')}
                             className="w-full px-4 py-3 rounded-lg text-sm mb-4"
                             style={inputStyle}
                         />
                         <div className="flex gap-3">
-                            <button onClick={() => setBanModalOpen(false)} className="flex-1 py-2 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHigh, color: colors.onSurface }}>ยกเลิก</button>
-                            <button onClick={handleBan} disabled={actionLoading !== null} className="flex-1 py-2 rounded-lg bg-red-500 text-white">ระงับบัญชี</button>
+                            <button onClick={() => setBanModalOpen(false)} className="flex-1 py-2 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHigh, color: colors.onSurface }}>{t('cancel')}</button>
+                            <button onClick={handleBan} disabled={actionLoading !== null} className="flex-1 py-2 rounded-lg bg-red-500 text-white">{t('ban_account')}</button>
                         </div>
                     </div>
                 </div>
@@ -332,33 +335,33 @@ export default function UserManagement({ colors, adminToken }: Props) {
             {addModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
                     <div className="rounded-xl p-6 w-full max-w-md mx-4" style={{ backgroundColor: colors.surfaceContainer }}>
-                        <h3 className="text-lg font-bold mb-4" style={{ color: colors.onSurface }}>เพิ่มผู้ใช้ใหม่</h3>
+                        <h3 className="text-lg font-bold mb-4" style={{ color: colors.onSurface }}>{t('add_new_user')}</h3>
 
                         {addUserError && <div className="bg-red-500/10 border border-red-500 text-red-500 rounded-lg p-3 mb-4 text-sm">{addUserError}</div>}
 
                         <div className="space-y-3 mb-4">
                             <div>
-                                <label className="text-xs mb-1 block" style={{ color: colors.onSurfaceVariant }}>อีเมล</label>
+                                <label className="text-xs mb-1 block" style={{ color: colors.onSurfaceVariant }}>{t('email')}</label>
                                 <input type="email" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm" style={inputStyle} placeholder="email@example.com" />
                             </div>
                             <div>
-                                <label className="text-xs mb-1 block" style={{ color: colors.onSurfaceVariant }}>ชื่อผู้ใช้ (CatID)</label>
+                                <label className="text-xs mb-1 block" style={{ color: colors.onSurfaceVariant }}>{t('catid_username')}</label>
                                 <input type="text" value={newUserUsername} onChange={(e) => setNewUserUsername(e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm" style={inputStyle} placeholder="username" />
                             </div>
                             <div>
-                                <label className="text-xs mb-1 block" style={{ color: colors.onSurfaceVariant }}>รหัสผ่าน</label>
+                                <label className="text-xs mb-1 block" style={{ color: colors.onSurfaceVariant }}>{t('password')}</label>
                                 <input type="password" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm" style={inputStyle} placeholder="••••••••" />
                             </div>
                             <div className="flex items-center gap-2">
                                 <input type="checkbox" id="newUserAdmin" checked={newUserIsAdmin} onChange={(e) => setNewUserIsAdmin(e.target.checked)} className="w-4 h-4" />
-                                <label htmlFor="newUserAdmin" className="text-sm" style={{ color: colors.onSurface }}>ตั้งเป็น Admin</label>
+                                <label htmlFor="newUserAdmin" className="text-sm" style={{ color: colors.onSurface }}>{t('set_as_admin')}</label>
                             </div>
                         </div>
 
                         <div className="flex gap-3">
-                            <button onClick={() => { setAddModalOpen(false); setAddUserError(""); }} className="flex-1 py-2 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHigh, color: colors.onSurface }}>ยกเลิก</button>
+                            <button onClick={() => { setAddModalOpen(false); setAddUserError(""); }} className="flex-1 py-2 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHigh, color: colors.onSurface }}>{t('cancel')}</button>
                             <button onClick={handleAddUser} disabled={addUserLoading} className="flex-1 py-2 rounded-lg" style={{ backgroundColor: "#22c55e", color: "#fff", opacity: addUserLoading ? 0.7 : 1 }}>
-                                {addUserLoading ? "กำลังสร้าง..." : "สร้างผู้ใช้"}
+                                {addUserLoading ? t('creating') : t('create_user')}
                             </button>
                         </div>
                     </div>
@@ -370,7 +373,7 @@ export default function UserManagement({ colors, adminToken }: Props) {
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
                     <div className="rounded-xl p-6 w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto" style={{ backgroundColor: colors.surfaceContainer }}>
                         <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-lg font-bold" style={{ color: colors.onSurface }}>รายละเอียดผู้ใช้</h3>
+                            <h3 className="text-lg font-bold" style={{ color: colors.onSurface }}>{t('user_details')}</h3>
                             <button onClick={() => setViewModalOpen(false)} className="p-1 rounded hover:opacity-70">
                                 <Icons.Close className="w-5 h-5" style={{ color: colors.onSurface }} />
                             </button>
@@ -383,17 +386,17 @@ export default function UserManagement({ colors, adminToken }: Props) {
                         ) : viewError ? (
                             <div className="text-center py-8">
                                 <p className="text-red-400 mb-2">{viewError}</p>
-                                <button onClick={() => setViewModalOpen(false)} className="text-sm underline" style={{ color: colors.onSurfaceVariant }}>ปิด</button>
+                                <button onClick={() => setViewModalOpen(false)} className="text-sm underline" style={{ color: colors.onSurfaceVariant }}>{t('close')}</button>
                             </div>
                         ) : viewUser ? (
                             <div className="space-y-4">
                                 <div className="grid grid-cols-2 gap-3 text-sm">
                                     <div className="p-3 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHigh }}>
-                                        <p style={{ color: colors.onSurfaceVariant }}>CatID Username</p>
+                                        <p style={{ color: colors.onSurfaceVariant }}>{t('catid_username')}</p>
                                         <p style={{ color: colors.onSurface }}>{viewUser.catidUsername || "-"}</p>
                                     </div>
                                     <div className="p-3 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHigh }}>
-                                        <p style={{ color: colors.onSurfaceVariant }}>Email</p>
+                                        <p style={{ color: colors.onSurfaceVariant }}>{t('email')}</p>
                                         <p style={{ color: colors.onSurface }}>{viewUser.email}</p>
                                     </div>
                                     <div className="p-3 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHigh }}>
@@ -401,25 +404,25 @@ export default function UserManagement({ colors, adminToken }: Props) {
                                         <p style={{ color: colors.onSurface }}>{viewUser.minecraftUsername || "-"}</p>
                                     </div>
                                     <div className="p-3 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHigh }}>
-                                        <p style={{ color: colors.onSurfaceVariant }}>สถานะ</p>
+                                        <p style={{ color: colors.onSurfaceVariant }}>{t('status')}</p>
                                         <div className="flex gap-1">
                                             {viewUser.isAdmin && <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400">Admin</span>}
                                             {viewUser.bannedAt ? <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/20 text-red-400">Banned</span> : <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-400">Active</span>}
                                         </div>
                                     </div>
                                     <div className="p-3 rounded-lg col-span-2" style={{ backgroundColor: colors.surfaceContainerHigh }}>
-                                        <p style={{ color: colors.onSurfaceVariant }}>สมัครเมื่อ</p>
-                                        <p style={{ color: colors.onSurface }}>{new Date(viewUser.createdAt).toLocaleString("th-TH")}</p>
+                                        <p style={{ color: colors.onSurfaceVariant }}>{t('registered_at')}</p>
+                                        <p style={{ color: colors.onSurface }}>{new Date(viewUser.createdAt).toLocaleString(language === "th" ? "th-TH" : "en-US")}</p>
                                     </div>
                                 </div>
 
                                 {viewSessions.length > 0 && (
                                     <div>
-                                        <h4 className="font-medium mb-2" style={{ color: colors.onSurface }}>Sessions ({viewSessions.length})</h4>
+                                        <h4 className="font-medium mb-2" style={{ color: colors.onSurface }}>{t('sessions')} ({viewSessions.length})</h4>
                                         <div className="space-y-2 max-h-40 overflow-y-auto">
                                             {viewSessions.map((session: any) => (
                                                 <div key={session.id} className="text-xs p-2 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHigh }}>
-                                                    <p style={{ color: colors.onSurface }}>{session.ipAddress || "Unknown IP"}</p>
+                                                    <p style={{ color: colors.onSurface }}>{session.ipAddress || t('unknown_ip')}</p>
                                                     <p style={{ color: colors.onSurfaceVariant }}>{session.userAgent?.substring(0, 50)}...</p>
                                                 </div>
                                             ))}

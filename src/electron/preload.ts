@@ -9,6 +9,13 @@
 
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 
+// Simple cache/coalescing for instancesList to avoid rapid duplicate IPC calls
+let _instancesCacheKey: string = "";
+let _instancesCacheTs: number = 0;
+let _instancesCacheData: any[] | null = null;
+let _instancesCachePromise: Promise<any> | null = null;
+const INSTANCES_CACHE_MS = 500; // milliseconds
+
 // ========================================
 // API Definition
 // ========================================
@@ -98,7 +105,11 @@ const api = {
     loginCatID: (username: string, password: string) => ipcRenderer.invoke("auth-catid-login", username, password),
     linkCatID: (username: string, password: string) => ipcRenderer.invoke("auth-link-catid", username, password),
     registerCatID: (username: string, email: string, password: string, confirmPassword?: string) => ipcRenderer.invoke("auth-catid-register", username, email, password, confirmPassword),
+    checkRegistrationStatus: (token: string) => ipcRenderer.invoke("auth-check-registration-status", token),
+    loginCatIDToken: (token: string) => ipcRenderer.invoke("auth-catid-login-token", token),
     authUnlink: (provider: "catid" | "microsoft") => ipcRenderer.invoke("auth-unlink", provider),
+    forgotPassword: (email: string) => ipcRenderer.invoke("auth-forgot-password", email),
+    resetPassword: (email: string, otp: string, newPassword: string) => ipcRenderer.invoke("auth-reset-password", email, otp, newPassword),
 
     // Offline Account API
     loginOffline: (username: string) => ipcRenderer.invoke("auth-offline-login", username),
@@ -187,7 +198,37 @@ const api = {
     // Instance Management APIs
     // ----------------------------------------
     // Instance Management APIs
-    instancesList: (offset?: number, limit?: number) => ipcRenderer.invoke("instances-list", offset, limit),
+    instancesList: (offset?: number, limit?: number) => {
+        const key = `${offset || 0}:${limit || 1000}`;
+        const now = Date.now();
+
+        // Return cached data if fresh and same key
+        if (_instancesCacheData && _instancesCacheKey === key && (now - _instancesCacheTs) < INSTANCES_CACHE_MS) {
+            return Promise.resolve(_instancesCacheData);
+        }
+
+        // Return in-flight promise if same key
+        if (_instancesCachePromise && _instancesCacheKey === key) {
+            return _instancesCachePromise;
+        }
+
+        // Otherwise invoke IPC and store promise
+        _instancesCacheKey = key;
+        _instancesCacheTs = now;
+        _instancesCachePromise = ipcRenderer.invoke("instances-list", offset, limit)
+            .then((res) => {
+                _instancesCacheData = res;
+                _instancesCachePromise = null;
+                _instancesCacheTs = Date.now();
+                return res;
+            })
+            .catch((err) => {
+                _instancesCachePromise = null;
+                throw err;
+            });
+
+        return _instancesCachePromise;
+    },
     instancesGetJoinedServers: () => ipcRenderer.invoke("instances-get-joined"),
     instancesCloudInstall: (id: string) => ipcRenderer.invoke("instances-cloud-install", id),
     instancesCloudSync: () => ipcRenderer.invoke("instances-cloud-sync"),
@@ -227,6 +268,11 @@ const api = {
         const handler = (_event: Electron.IpcRendererEvent, key: string) => callback(key);
         ipcRenderer.on("deep-link-join-instance", handler);
         return () => ipcRenderer.removeListener("deep-link-join-instance", handler);
+    },
+    onDeepLinkAuthCallback: (callback: (data: { token: string; username?: string }) => void) => {
+        const handler = (_event: Electron.IpcRendererEvent, data: { token: string; username?: string }) => callback(data);
+        ipcRenderer.on("deep-link-auth-callback", handler);
+        return () => ipcRenderer.removeListener("deep-link-auth-callback", handler);
     },
     onGameStarted: (callback: (data: { instanceId: string }) => void) => {
         const handler = (_event: Electron.IpcRendererEvent, data: { instanceId: string }) => callback(data);

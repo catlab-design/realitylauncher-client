@@ -2,15 +2,17 @@ import toast from "react-hot-toast";
 import type { LauncherConfig } from "../../../types/launcher";
 import type { SettingsTabProps } from "./AccountTab";
 import { Icons } from "../../ui/Icons";
+import { useTranslation } from "../../../hooks/useTranslation";
 
 export function ConnectionsTab({ config, updateConfig, colors }: SettingsTabProps) {
     const windowApi = (window as any).api;
+    const { t } = useTranslation(config.language);
 
     return (
         <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
             <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "40" }}>
                 <i className="fa-solid fa-wifi text-lg" style={{ color: colors.secondary }}></i>
-                <h3 className="font-medium" style={{ color: colors.onSurface }}>การเชื่อมต่อ</h3>
+                <h3 className="font-medium" style={{ color: colors.onSurface }}>{t('tab_connections')}</h3>
             </div>
             <div className="p-4 space-y-4">
                 {/* Discord RPC */}
@@ -27,9 +29,9 @@ export function ConnectionsTab({ config, updateConfig, colors }: SettingsTabProp
                             />
                         </div>
                         <div>
-                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>Discord Rich Presence</p>
+                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('discord_rpc')}</p>
                             <p className="text-xs" style={{ color: config.discordRPCEnabled ? "#22c55e" : colors.onSurfaceVariant }}>
-                                {config.discordRPCEnabled ? "กำลังแสดงสถานะ" : "ปิดอยู่"}
+                                {config.discordRPCEnabled ? t('discord_rpc_status_showing') : t('discord_rpc_status_off')}
                             </p>
                         </div>
                     </div>
@@ -41,9 +43,9 @@ export function ConnectionsTab({ config, updateConfig, colors }: SettingsTabProp
                                 windowApi?.discordRPCSetEnabled?.(newValue);
                                 if (newValue) {
                                     windowApi?.discordRPCUpdate?.("idle");
-                                    toast.success("เปิด Discord Rich Presence");
+                                    toast.success(t('discord_rpc_on'));
                                 } else {
-                                    toast.success("ปิด Discord Rich Presence");
+                                    toast.success(t('discord_rpc_off'));
                                 }
                             }}
                             className="relative w-11 h-6 bg-black/20 rounded-full transition-all duration-300 shadow-inner"
@@ -64,9 +66,9 @@ export function ConnectionsTab({ config, updateConfig, colors }: SettingsTabProp
                     <div className="flex items-center gap-3">
                         <i className="fa-solid fa-chart-line w-6" style={{ color: colors.onSurface }}></i>
                         <div>
-                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>Telemetry</p>
+                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('telemetry')}</p>
                             <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>
-                                เก็บข้อมูลการใช้งานเพื่อปรับปรุง Launcher
+                                {t('telemetry_desc')}
                             </p>
                         </div>
                     </div>
@@ -75,7 +77,7 @@ export function ConnectionsTab({ config, updateConfig, colors }: SettingsTabProp
                             onClick={() => {
                                 const newValue = !config.telemetryEnabled;
                                 updateConfig({ telemetryEnabled: newValue });
-                                toast.success(newValue ? "เปิด Telemetry" : "ปิด Telemetry");
+                                toast.success(newValue ? t('telemetry_on') : t('telemetry_off'));
                             }}
                             className="relative w-11 h-6 bg-black/20 rounded-full transition-all duration-300 shadow-inner"
                             style={{ backgroundColor: config.telemetryEnabled ? colors.secondary : undefined }}
@@ -93,9 +95,9 @@ export function ConnectionsTab({ config, updateConfig, colors }: SettingsTabProp
                 {/* Download Speed */}
                 <div>
                     <div className="flex items-center justify-between mb-2">
-                        <p className="font-medium text-sm" style={{ color: colors.onSurface }}>จำกัดความเร็วดาวน์โหลด</p>
+                        <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('limit_download_speed')}</p>
                         <span className="text-sm font-medium px-3 py-1 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.secondary }}>
-                            {config.downloadSpeedLimit === 0 ? "ไม่จำกัด" : `${config.downloadSpeedLimit} MB/s`}
+                            {config.downloadSpeedLimit === 0 ? t('unlimited') : `${config.downloadSpeedLimit} MB/s`}
                         </span>
                     </div>
                     <input
@@ -109,7 +111,7 @@ export function ConnectionsTab({ config, updateConfig, colors }: SettingsTabProp
                         style={{ accentColor: colors.secondary }}
                     />
                     <div className="flex justify-between text-xs mt-1" style={{ color: colors.onSurfaceVariant }}>
-                        <span>ไม่จำกัด</span>
+                        <span>{t('unlimited')}</span>
                         <span>100 MB/s</span>
                     </div>
                 </div>

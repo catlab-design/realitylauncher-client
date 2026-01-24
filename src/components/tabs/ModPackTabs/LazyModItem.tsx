@@ -1,8 +1,8 @@
 /**
- * LazyModItem - Component แสดง mod item พร้อม lazy load metadata
+ * ModItem - Component แสดง mod item (ไม่มี lazy loading)
  */
 
-import React, { useEffect, useState, useRef } from "react";
+import React from "react";
 import { Icons } from "../../ui/Icons";
 import { playClick } from "../../../lib/sounds";
 
@@ -31,116 +31,17 @@ export interface LazyModItemProps {
     index?: number;
 }
 
-// Queue to limit concurrent metadata requests (balanced for performance)
-class MetadataQueue {
-    private queue: (() => Promise<void>)[] = [];
-    private running = 0;
-    private maxConcurrent = 8; // Increased for faster loading
-
-    add(task: () => Promise<void>) {
-        this.queue.push(task);
-        this.process();
-    }
-
-    async process() {
-        if (this.running >= this.maxConcurrent || this.queue.length === 0) return;
-
-        this.running++;
-        const task = this.queue.shift();
-
-        try {
-            if (task) await task();
-        } finally {
-            this.running--;
-            this.process();
-        }
-    }
-}
-
-const metadataQueue = new MetadataQueue();
-
 export function LazyModItem({ mod, instanceId, colors, formatSize, onToggle, onDelete, isLocked, onToggleLock, isServerManaged, index = 0 }: LazyModItemProps) {
     // Safety check for undefined mod (can happen during loading skeleton states if rendered prematurely)
     if (!mod) return null;
 
-    const [metadata, setMetadata] = useState<{
-        displayName?: string | null;
-        author?: string | null;
-        icon?: string | null;
-        loaded: boolean;
-    }>({ loaded: false });
-
-    const itemRef = useRef<HTMLDivElement>(null);
-    const loadedRef = useRef(false);
-
-    useEffect(() => {
-        // Skip if already has metadata from parent mod object
-        if (mod.icon || (mod.displayName !== mod.name)) {
-            setMetadata({
-                displayName: mod.displayName,
-                author: mod.author,
-                icon: mod.icon,
-                loaded: true
-            });
-            loadedRef.current = true;
-            return;
-        }
-
-        // If for some reason we already loaded it
-        if (loadedRef.current) return;
-
-        const observer = new IntersectionObserver(
-            (entries) => {
-                const [entry] = entries;
-                if (entry.isIntersecting && !loadedRef.current) {
-                    // Queue the request instead of firing immediately
-                    metadataQueue.add(async () => {
-                        // Double check if already loaded (might have been processed while in queue)
-                        if (loadedRef.current) return;
-
-                        // Check visibility again? 
-                        // Actually, if user scrolls away fast, we might still fetch. 
-                        // But queue prevents flooding.
-
-                        loadedRef.current = true;
-                        try {
-                            const result = await (window.api as any)?.instanceGetModMetadata?.(instanceId, mod.filename);
-                            if (result?.ok && result.metadata) {
-                                setMetadata({
-                                    displayName: result.metadata.displayName,
-                                    author: result.metadata.author,
-                                    icon: result.metadata.icon,
-                                    loaded: true,
-                                });
-                            } else {
-                                setMetadata({ loaded: true });
-                            }
-                        } catch (error) {
-                            console.error("[LazyModItem] Failed to load metadata:", error);
-                            setMetadata({ loaded: true });
-                        }
-                    });
-
-                    // Stop observing once queued
-                    observer.disconnect();
-                }
-            },
-            { threshold: 0.1, rootMargin: "200px" } // Increased rootMargin for earlier loading
-        );
-
-        // Start observing immediately (no delay)
-        if (itemRef.current) observer.observe(itemRef.current);
-
-        return () => observer.disconnect();
-    }, [instanceId, mod.filename]);
-
-    const displayName = metadata.loaded ? (metadata.displayName || mod.name) : mod.displayName;
-    const author = metadata.loaded ? (metadata.author || "") : mod.author;
-    const icon = metadata.loaded ? metadata.icon : mod.icon;
+    // Use data directly from props - backend now loads all metadata before sending
+    const displayName = mod.displayName || mod.name;
+    const author = mod.author || "";
+    const icon = mod.icon;
 
     return (
         <div
-            ref={itemRef}
             className="flex items-center gap-4 p-4 rounded-xl transition-all"
             style={{
                 backgroundColor: colors.surfaceContainer,

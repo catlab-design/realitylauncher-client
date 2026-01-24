@@ -3,6 +3,7 @@ import toast from "react-hot-toast";
 import type { LauncherConfig } from "../../../types/launcher";
 import type { SettingsTabProps } from "./AccountTab";
 import rIcon from "../../../assets/r.svg";
+import { useTranslation } from "../../../hooks/useTranslation";
 
 export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
     const [appVersion, setAppVersion] = useState<string>("0.0.0");
@@ -11,6 +12,7 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
     const [updateStatus, setUpdateStatus] = useState<UpdateStatusType>("idle");
     const [updateInfo, setUpdateInfo] = useState<{ version: string; releaseDate: string } | null>(null);
     const [downloadProgress, setDownloadProgress] = useState<number>(0);
+    const { t } = useTranslation(config.language);
 
     const windowApi = (window as any).api;
 
@@ -60,7 +62,7 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
             >
                 <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "30" }}>
                     <i className="fa-solid fa-download" style={{ color: colors.secondary }}></i>
-                    <span className="font-medium text-sm" style={{ color: colors.onSurface }}>อัปเดต Launcher</span>
+                    <span className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('tab_update')}</span>
                 </div>
                 <div className="p-4">
                     <div className="flex items-center gap-4">
@@ -81,14 +83,14 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
                                         color: isDevMode ? "#f97316" : "#22c55e"
                                     }}
                                 >
-                                    {isDevMode ? "Dev" : "Stable"}
+                                    {isDevMode ? t('dev') : t('stable')}
                                 </span>
                             </div>
                         </div>
                         <div
                             className="w-2 h-2 rounded-full"
                             style={{ backgroundColor: updateStatus === "available" ? "#f59e0b" : "#22c55e" }}
-                            title={updateStatus === "available" ? "มีอัปเดตใหม่" : "เวอร์ชันล่าสุด"}
+                            title={updateStatus === "available" ? t('update_available') : t('up_to_date')}
                         />
                     </div>
                 </div>
@@ -102,7 +104,7 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
                 >
                     <i className="fa-solid fa-flask text-sm" style={{ color: "#f97316" }}></i>
                     <span className="text-xs" style={{ color: colors.onSurfaceVariant }}>
-                        ระบบอัปเดตถูกปิดใช้งานในโหมด Development
+                        {t('update_disabled_dev')}
                     </span>
                 </div>
             )}
@@ -116,24 +118,24 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
                     <div className="flex items-center gap-3 mb-3">
                         <i className="fa-solid fa-arrow-up" style={{ color: colors.secondary }}></i>
                         <div className="flex-1">
-                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>มีอัปเดตใหม่</p>
-                            <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>เวอร์ชัน {updateInfo.version}</p>
+                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('update_available')}</p>
+                            <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t('version_label').replace('{version}', updateInfo.version)}</p>
                         </div>
                     </div>
                     <button
                         onClick={async () => {
                             try {
                                 await windowApi?.downloadUpdate?.();
-                                toast.success("กำลังดาวน์โหลดอัปเดต...");
+                                toast.success(t('downloading_update'));
                             } catch (error) {
-                                toast.error("ไม่สามารถดาวน์โหลดอัปเดตได้");
+                                toast.error(t('download_failed'));
                             }
                         }}
                         className="w-full py-2 rounded-md text-sm font-medium"
                         style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
                     >
                         <i className="fa-solid fa-download mr-2 text-xs"></i>
-                        ดาวน์โหลด
+                        {t('download')}
                     </button>
                 </div>
             )}
@@ -146,7 +148,7 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
                 >
                     <div className="flex items-center gap-3 mb-2">
                         <i className="fa-solid fa-spinner fa-spin text-sm" style={{ color: colors.secondary }}></i>
-                        <span className="font-medium text-sm" style={{ color: colors.onSurface }}>กำลังดาวน์โหลด...</span>
+                        <span className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('downloading')}</span>
                         <span className="ml-auto text-sm font-medium" style={{ color: colors.secondary }}>{downloadProgress.toFixed(0)}%</span>
                     </div>
                     <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: colors.surfaceContainerHighest }}>
@@ -167,8 +169,8 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
                     <div className="flex items-center gap-3 mb-3">
                         <i className="fa-solid fa-check" style={{ color: "#22c55e" }}></i>
                         <div className="flex-1">
-                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>พร้อมติดตั้ง</p>
-                            <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>เวอร์ชัน {updateInfo.version}</p>
+                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('ready_to_install')}</p>
+                            <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t('version_label').replace('{version}', updateInfo.version)}</p>
                         </div>
                     </div>
                     <button
@@ -176,14 +178,14 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
                             try {
                                 await windowApi?.installUpdate?.();
                             } catch (error) {
-                                toast.error("ไม่สามารถติดตั้งอัปเดตได้");
+                                toast.error(t('install_failed'));
                             }
                         }}
                         className="w-full py-2 rounded-md text-sm font-medium"
                         style={{ backgroundColor: "#22c55e", color: "#fff" }}
                     >
                         <i className="fa-solid fa-play mr-2 text-xs"></i>
-                        ติดตั้งและรีสตาร์ท
+                        {t('install_and_restart')}
                     </button>
                 </div>
             )}
@@ -194,14 +196,14 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
                     {/* Auto Update Toggle */}
                     <div className="flex items-center justify-between">
                         <div>
-                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>อัปเดตอัตโนมัติ</p>
-                            <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>ตรวจสอบและดาวน์โหลดอัปเดตใหม่อัตโนมัติ</p>
+                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('auto_update')}</p>
+                            <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t('auto_update_desc')}</p>
                         </div>
                         <button
                             onClick={() => {
                                 const newValue = !config.autoUpdateEnabled;
                                 updateConfig({ autoUpdateEnabled: newValue });
-                                toast.success(newValue ? "เปิดอัปเดตอัตโนมัติ" : "ปิดอัปเดตอัตโนมัติ");
+                                toast.success(newValue ? t('auto_update_on') : t('auto_update_off'));
                             }}
                             className="relative w-10 h-5 rounded-full transition-colors"
                             style={{ backgroundColor: config.autoUpdateEnabled ? colors.secondary : colors.surfaceContainerHighest }}
@@ -218,33 +220,33 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
                     {/* Manual Check */}
                     <div className="flex items-center justify-between">
                         <div>
-                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>ตรวจสอบอัปเดต</p>
-                            <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>ค้นหาเวอร์ชันใหม่ด้วยตนเอง</p>
+                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('check_for_updates')}</p>
+                            <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t('check_for_updates_desc')}</p>
                         </div>
                         <button
                             onClick={async () => {
                                 if (updateStatus === "checking") return;
 
                                 if (isDevMode) {
-                                    toast("ไม่สามารถตรวจสอบในโหมด Dev ได้", { icon: "⚠️" });
+                                    toast(t('cannot_check_in_dev'), { icon: "⚠️" });
                                     return;
                                 }
 
                                 setUpdateStatus("checking");
-                                toast.loading("กำลังตรวจสอบ...", { id: "check-update" });
+                                toast.loading(t('checking_for_updates'), { id: "check-update" });
                                 try {
                                     await windowApi?.checkForUpdates?.();
                                     setTimeout(() => {
                                         if ((updateStatus as string) === "checking") {
                                             setUpdateStatus("idle");
-                                            toast.success("เวอร์ชันล่าสุดแล้ว", { id: "check-update" });
+                                            toast.success(t('already_latest_version'), { id: "check-update" });
                                         } else {
                                             toast.dismiss("check-update");
                                         }
                                     }, 3000);
                                 } catch (error) {
                                     setUpdateStatus("idle");
-                                    toast.error("ตรวจสอบไม่สำเร็จ", { id: "check-update" });
+                                    toast.error(t('update_check_failed'), { id: "check-update" });
                                 }
                             }}
                             disabled={updateStatus === "checking" || isDevMode}
@@ -252,7 +254,7 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
                             style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                         >
                             <i className={`fa-solid ${updateStatus === "checking" ? "fa-spinner fa-spin" : "fa-sync"} text-[10px]`}></i>
-                            {updateStatus === "checking" ? "กำลังตรวจสอบ..." : "ตรวจสอบ"}
+                            {updateStatus === "checking" ? t('checking_for_updates') : t('check')}
                         </button>
                     </div>
                 </div>

@@ -3,6 +3,7 @@
  */
 
 import React from "react";
+import { useTranslation } from "../../../hooks/useTranslation";
 
 export interface InstallProgress {
     stage: string;
@@ -16,9 +17,11 @@ export interface InstallProgressModalProps {
     colors: any;
     installProgress: InstallProgress;
     onCancel?: () => void;
+    language: "th" | "en";
 }
 
-export function InstallProgressModal({ colors, installProgress, onCancel }: InstallProgressModalProps) {
+export function InstallProgressModal({ colors, installProgress, onCancel, language }: InstallProgressModalProps) {
+    const { t } = useTranslation(language);
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
             <div className="w-[380px] rounded-2xl p-5 shadow-2xl" style={{ backgroundColor: colors.surface }}>
@@ -32,7 +35,7 @@ export function InstallProgressModal({ colors, installProgress, onCancel }: Inst
                     </div>
                     <div className="flex-1 min-w-0">
                         <h3 className="font-medium truncate" style={{ color: colors.onSurface }}>
-                            กำลังติดตั้ง Modpack
+                            {t('installing_modpack')}
                         </h3>
                         <p className="text-sm truncate" style={{ color: colors.onSurfaceVariant }} title={installProgress.message}>
                             {installProgress.message}
@@ -74,7 +77,7 @@ export function InstallProgressModal({ colors, installProgress, onCancel }: Inst
                         className="text-sm font-medium px-4 py-2 rounded-lg hover:bg-red-500/10 active:scale-95 transition-all"
                         style={{ color: colors.error || "#ef4444" }}
                     >
-                        ยกเลิก
+                        {t('cancel')}
                     </button>
                 </div>
             </div>

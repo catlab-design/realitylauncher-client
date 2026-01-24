@@ -3,8 +3,10 @@ import { cn } from "../../lib/utils";
 import { type AuthSession, type NewsItem, type Server } from "../../types/launcher";
 import { Icons } from "../ui/Icons";
 import { MCHead } from "../ui/MCHead";
+import { useTranslation } from "../../hooks/useTranslation";
 
 interface Newsletter {
+    // ... existing interface
     id: string;
     subject: string;
     content: string;
@@ -22,6 +24,7 @@ interface HomeProps {
     setSelectedServer: (server: Server) => void;
     colors: any;
     setActiveTab?: (tab: string) => void;
+    language: string;
 }
 
 interface GameInstance {
@@ -42,7 +45,9 @@ export function Home({
     setSelectedServer,
     colors,
     setActiveTab,
+    language,
 }: HomeProps) {
+    const { t } = useTranslation(language as any);
     const [newsletters, setNewsletters] = useState<Newsletter[]>([]);
     const [newsletterLoading, setNewsletterLoading] = useState(true);
     const [currentSlide, setCurrentSlide] = useState(0);
@@ -63,10 +68,10 @@ export function Home({
         }
     }, []);
 
-    // Fetch newsletters on mount and every 5 seconds for real-time feel
+    // Fetch newsletters on mount and every 60 seconds (5s was too aggressive)
     useEffect(() => {
         fetchNewsletters();
-        const interval = setInterval(fetchNewsletters, 5000);
+        const interval = setInterval(fetchNewsletters, 60000);
         return () => clearInterval(interval);
     }, [fetchNewsletters]);
 
@@ -106,7 +111,7 @@ export function Home({
 
     // Get current hour for greeting
     const hour = new Date().getHours();
-    const greeting = hour < 12 ? "อรุณสวัสดิ์" : hour < 18 ? "สวัสดีตอนบ่าย" : "สวัสดีตอนเย็น";
+    const greeting = hour < 12 ? t('good_morning') : hour < 18 ? t('good_afternoon') : t('good_evening');
 
     return (
         <div className="space-y-8">
@@ -150,10 +155,10 @@ export function Home({
                     {/* User Info */}
                     <div>
                         <h2 className="text-base font-semibold" style={{ color: colors.onSurface }}>
-                            {session ? session.username : "ยังไม่ได้เข้าสู่ระบบ"}
+                            {session ? session.username : t('not_logged_in')}
                         </h2>
                         <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>
-                            {session ? "พร้อมเล่น" : "กรุณาเข้าสู่ระบบ"}
+                            {session ? t('ready_to_play') : t('please_login')}
                         </p>
                     </div>
                 </div>
@@ -164,7 +169,7 @@ export function Home({
                         {greeting}
                     </p>
                     <p className="text-xs font-medium" style={{ color: colors.primary }}>
-
+                        {new Date().toLocaleDateString(language === "th" ? "th-TH" : "en-US", { weekday: 'long', day: 'numeric', month: 'long' })}
                     </p>
                 </div>
             </div>
@@ -178,7 +183,7 @@ export function Home({
                             <span className="w-1 h-5 rounded-full" style={{
                                 backgroundColor: colors.primary
                             }} />
-                            ข่าวสารและอัปเดต
+                            {t('news_and_updates')}
                         </h3>
                         {newsletters.length > 0 && (
                             <span
@@ -188,7 +193,7 @@ export function Home({
                                     color: colors.onSurfaceVariant,
                                 }}
                             >
-                                {newsletters.length} รายการ
+                                {t('items_count').replace('{count}', newsletters.length.toString())}
                             </span>
                         )}
                     </div>
@@ -244,8 +249,8 @@ export function Home({
                                 }}
                             />
                             <Icons.News className="w-16 h-16 mx-auto mb-4 opacity-20" style={{ color: colors.primary }} />
-                            <p className="text-lg font-medium" style={{ color: colors.onSurfaceVariant }}>ยังไม่มีข่าวสาร</p>
-                            <p className="text-sm mt-1 opacity-60" style={{ color: colors.onSurfaceVariant }}>ข่าวใหม่จะปรากฏที่นี่</p>
+                            <p className="text-lg font-medium" style={{ color: colors.onSurfaceVariant }}>{t('no_news_yet')}</p>
+                            <p className="text-sm mt-1 opacity-60" style={{ color: colors.onSurfaceVariant }}>{t('new_news_will_appear_here')}</p>
                         </div>
                     ) : (
                         <div
@@ -283,7 +288,7 @@ export function Home({
                                                                 className="absolute inset-0 blur-3xl opacity-40"
                                                                 style={{ background: `radial-gradient(circle, ${colors.primary}60, transparent)` }}
                                                             />
-                                                            <i className="fa-solid fa-newspaper text-6xl opacity-20 relative z-10" style={{ color: colors.primary }}></i>
+                                                            <Icons.News className="w-16 h-16 opacity-20 relative z-10" style={{ color: colors.primary }} />
                                                         </div>
                                                     </div>
                                                 )}
@@ -298,8 +303,8 @@ export function Home({
                                                             border: `1px solid ${colors.outline}30`,
                                                         }}
                                                     >
-                                                        <i className="fa-regular fa-newspaper mr-1.5"></i>
-                                                        ข่าวสาร
+                                                        <Icons.News className="w-3 h-3 mr-1.5" />
+                                                        {t('news_and_updates')}
                                                     </span>
                                                 </div>
                                             </div>
@@ -308,8 +313,8 @@ export function Home({
                                             <div className="p-5">
                                                 <div className="flex items-center gap-3 mb-3">
                                                     <span className="text-xs flex items-center gap-1.5" style={{ color: colors.onSurfaceVariant }}>
-                                                        <i className="fa-regular fa-calendar"></i>
-                                                        {new Date(item.sentAt || item.createdAt).toLocaleDateString("th-TH", { day: "numeric", month: "long", year: "numeric" })}
+                                                        <Icons.Timer className="w-3 h-3" />
+                                                        {new Date(item.sentAt || item.createdAt).toLocaleDateString(language === "th" ? "th-TH" : "en-US", { day: "numeric", month: "long", year: "numeric" })}
                                                     </span>
                                                 </div>
                                                 <h4
@@ -340,7 +345,7 @@ export function Home({
                                                 border: `1px solid ${colors.outline}30`,
                                             }}
                                         >
-                                            <i className="fa-solid fa-chevron-left text-sm" style={{ color: colors.onSurface }}></i>
+                                            <Icons.ChevronLeft className="w-4 h-4" style={{ color: colors.onSurface }} />
                                         </button>
                                         <button
                                             onClick={() => setCurrentSlide((prev) => (prev + 1) % newsletters.length)}
@@ -350,7 +355,7 @@ export function Home({
                                                 border: `1px solid ${colors.outline}30`,
                                             }}
                                         >
-                                            <i className="fa-solid fa-chevron-right text-sm" style={{ color: colors.onSurface }}></i>
+                                            <Icons.ChevronRight className="w-4 h-4" style={{ color: colors.onSurface }} />
                                         </button>
                                     </>
                                 )}
@@ -365,8 +370,8 @@ export function Home({
                                         border: `1px solid ${colors.outline}30`,
                                     }}
                                 >
-                                    <i className="fa-regular fa-clock text-sm" style={{ color: colors.primary }}></i>
-                                    <span className="text-xs" style={{ color: colors.onSurfaceVariant }}>กำลังอ่าน</span>
+                                    <Icons.Timer className="w-3 h-3" style={{ color: colors.primary }} />
+                                    <span className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t('reading_status')}</span>
                                 </div>
                             )}
 
@@ -394,21 +399,21 @@ export function Home({
                 </div>
 
                 {/* Recently Played Section */}
-                {recentInstances.length > 0 && (
-                    <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                            <h3 className="text-lg font-semibold flex items-center gap-2" style={{ color: colors.onSurface }}>
-                                <span className="w-1 h-5 rounded-full" style={{ backgroundColor: colors.primary }} />
-                                เล่นล่าสุด
-                            </h3>
-                            <button
-                                onClick={() => setActiveTab?.("modpack")}
-                                className="text-sm px-3 py-1 rounded-lg transition-all hover:opacity-80"
-                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.secondary }}
-                            >
-                                ดูทั้งหมด
-                            </button>
-                        </div>
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-semibold flex items-center gap-2" style={{ color: colors.onSurface }}>
+                            <span className="w-1 h-5 rounded-full" style={{ backgroundColor: colors.primary }} />
+                            {t('recently_played')}
+                        </h3>
+                        <button
+                            onClick={() => setActiveTab?.("modpack")}
+                            className="text-sm px-3 py-1 rounded-lg transition-all hover:opacity-80"
+                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.secondary }}
+                        >
+                            {t('view_all')}
+                        </button>
+                    </div>
+                    {recentInstances.length > 0 ? (
                         <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
                             {recentInstances.map((instance) => (
                                 <button
@@ -425,7 +430,7 @@ export function Home({
                                             {instance.icon ? (
                                                 <img src={instance.icon} alt={instance.name} className="w-full h-full object-cover" />
                                             ) : (
-                                                <Icons.Box className="w-6 h-6" style={{ color: colors.onSurfaceVariant }} />
+                                                <Icons.Modpack className="w-6 h-6" style={{ color: colors.onSurfaceVariant }} />
                                             )}
                                         </div>
                                         <div className="flex-1 min-w-0">
@@ -440,99 +445,18 @@ export function Home({
                                 </button>
                             ))}
                         </div>
-                    </div>
-                )}
-
-                {/* Servers Section - Takes 1 column */}
-                <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                        <h3 className="text-lg font-bold flex items-center gap-2" style={{ color: colors.onSurface }}>
-                            <span className="w-1 h-5 rounded-full" style={{ backgroundColor: colors.primary }} />
-                            เซิร์ฟเวอร์
-                        </h3>
-                    </div>
-
-                    {servers.length === 0 ? (
+                    ) : (
                         <div
                             className="p-8 rounded-2xl text-center"
                             style={{ backgroundColor: colors.surfaceContainer }}
                         >
-                            <Icons.Server className="w-10 h-10 mx-auto mb-3 opacity-30" style={{ color: colors.onSurfaceVariant }} />
-                            <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>ไม่มีเซิร์ฟเวอร์</p>
-                        </div>
-                    ) : (
-                        <div className="space-y-3">
-                            {servers.slice(0, 4).map((server) => (
-                                <button
-                                    key={server.id}
-                                    onClick={() => setSelectedServer(server)}
-                                    className="w-full p-4 rounded-2xl text-left transition-all hover:scale-[1.02] hover:shadow-lg group"
-                                    style={{
-                                        backgroundColor: colors.surfaceContainer,
-                                        border: selectedServer?.id === server.id
-                                            ? `2px solid ${colors.primary}`
-                                            : "2px solid transparent",
-                                    }}
-                                >
-                                    <div className="flex items-center gap-3">
-                                        {/* Server Image */}
-                                        <div
-                                            className="w-12 h-12 rounded-xl bg-cover bg-center flex-shrink-0 shadow-md"
-                                            style={{
-                                                backgroundImage: server.image ? `url(${server.image})` : undefined,
-                                                backgroundColor: !server.image ? colors.surfaceContainerHighest : undefined,
-                                            }}
-                                        >
-                                            {!server.image && (
-                                                <div className="w-full h-full flex items-center justify-center">
-                                                    <Icons.Server className="w-5 h-5" style={{ color: colors.onSurfaceVariant }} />
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-semibold truncate" style={{ color: colors.onSurface }}>
-                                                    {server.name}
-                                                </span>
-                                                <span
-                                                    className={cn(
-                                                        "w-2 h-2 rounded-full flex-shrink-0",
-                                                        server.status === "online" ? "bg-green-500 animate-pulse" : "bg-red-500"
-                                                    )}
-                                                />
-                                            </div>
-                                            <div className="flex items-center gap-2 mt-1">
-                                                <span
-                                                    className="text-xs px-2 py-0.5 rounded-full"
-                                                    style={{
-                                                        backgroundColor: colors.surfaceContainerHighest,
-                                                        color: colors.onSurfaceVariant,
-                                                    }}
-                                                >
-                                                    {server.version}
-                                                </span>
-                                                {server.players && (
-                                                    <span className="text-xs" style={{ color: colors.onSurfaceVariant }}>
-                                                        <span style={{ color: colors.primary }}>{server.players.online}</span>/{server.players.max}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        {/* Play indicator */}
-                                        <div
-                                            className="w-8 h-8 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
-                                            style={{ backgroundColor: colors.primary }}
-                                        >
-                                            <Icons.Play className="w-3 h-3 text-white ml-0.5" />
-                                        </div>
-                                    </div>
-                                </button>
-                            ))}
+                            <Icons.Modpack className="w-10 h-10 mx-auto mb-3 opacity-30" style={{ color: colors.onSurfaceVariant }} />
+                            <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>{t('no_mod_packs') || "No recently played games"}</p>
                         </div>
                     )}
                 </div>
+
+
             </div>
         </div>
     );

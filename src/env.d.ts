@@ -94,6 +94,8 @@ declare global {
       getSession: () => Promise<AuthSession | null>;
       setActiveSession: (session: AuthSession) => Promise<void>;
       isLoggedIn: () => Promise<boolean>;
+      forgotPassword: (email: string) => Promise<{ ok: boolean; message?: string; error?: string }>;
+      resetPassword: (email: string, otp: string, newPassword: string) => Promise<{ ok: boolean; message?: string; error?: string }>;
       // Launcher
       listVersions: () => Promise<string[]>;
       getLauncherInfo: () => Promise<LauncherInfo>;
@@ -170,6 +172,27 @@ declare global {
       }>;
       registerCatID: (username: string, email: string, password: string, confirmPassword?: string) => Promise<{
         ok: boolean;
+        error?: string;
+        message?: string;
+        requiresVerification?: boolean;
+        verifyToken?: string;
+        expiresAt?: string;
+        expiresInSeconds?: number;
+      }>;
+      checkRegistrationStatus: (token: string) => Promise<{
+        status: "pending" | "verified" | "expired" | "not_found" | "error";
+        message?: string;
+        remainingSeconds?: number;
+        token?: string;
+        user?: {
+          id: string;
+          username: string;
+          email: string;
+        };
+      }>;
+      loginCatIDToken: (token: string) => Promise<{
+        ok: boolean;
+        session?: any;
         error?: string;
       }>;
       authUnlink: (provider: "catid" | "microsoft") => Promise<{
@@ -252,6 +275,7 @@ declare global {
       onLaunchProgress: (callback: (data: { type: string; task?: string; current?: number; total?: number; percent?: number }) => void) => () => void;
       onInstancesUpdated: (callback: () => void) => () => void;
       onDeepLinkJoinInstance: (callback: (key: string) => void) => () => void;
+      onDeepLinkAuthCallback: (callback: (data: { token: string; username?: string }) => void) => () => void;
       // Modpack Installer APIs
       modpackInstall: (mrpackPath: string) => Promise<{ ok: boolean; instance?: GameInstance; error?: string }>;
       modpackInstallFromModrinth: (versionId: string) => Promise<{ ok: boolean; instance?: GameInstance; error?: string }>;

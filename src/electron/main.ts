@@ -322,6 +322,20 @@ app.whenReady().then(async () => {
         if (mainWindow.isMinimized()) mainWindow.restore();
         mainWindow.focus();
       }
+    } else if (url.startsWith('reality://auth-callback')) {
+      const urlObj = new URL(url);
+      const token = urlObj.searchParams.get('token');
+
+      if (token && mainWindow) {
+        // Send to renderer which will use it to login
+        mainWindow.webContents.send('deep-link-auth-callback', {
+          token,
+          username: urlObj.searchParams.get('username') || undefined
+        });
+
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus();
+      }
     }
   });
 });

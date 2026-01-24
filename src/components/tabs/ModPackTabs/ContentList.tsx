@@ -1,14 +1,30 @@
+// ฟังก์ชันลบอักขระพิเศษ (เช่น §, $, |) ออกจากชื่อไฟล์ เพื่อให้แสดงผลอ่านง่าย
+function cleanName(name: string = ""): string {
+    // ลบอักขระ Minecraft formatting (§...) และอักขระพิเศษทั่วไป
+    return name.replace(/§[0-9a-fklmnor]/gi, "")
+        .replace(/[\$\|]/g, " ")
+        .replace(/[_]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function currentNameForKey(item: { filename?: string; name?: string }) {
+    const n = (item.filename || item.name || '').toString();
+    return n.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+}
 // ========================================
 // Generic Content List Component
 // (for resourcepacks, shaders, datapacks)
 // ========================================
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Icons } from "../../ui/Icons";
 import { Skeleton } from "../../ui/Skeleton";
 import { formatSize } from "./helpers";
 import type { ContentItem, DatapackItem } from "./types";
 import { playClick } from "../../../lib/sounds";
+import { useTranslation } from "../../../hooks/useTranslation";
+import { LazyContentItem } from "./LazyContentItem";
 
 interface ContentListProps {
     colors: any;
@@ -19,6 +35,7 @@ interface ContentListProps {
     onToggle: (filename: string, worldName?: string) => void;
     onDelete: (filename: string, worldName?: string) => void;
     onAddContent: () => void;
+    onRefresh?: () => void;
 }
 
 export function ContentList({
@@ -30,29 +47,111 @@ export function ContentList({
     onToggle,
     onDelete,
     onAddContent,
+    onRefresh,
 }: ContentListProps) {
+    const { t } = useTranslation();
+    const [searchQuery, setSearchQuery] = useState("");
+    const [page, setPage] = useState(1);
+    const ITEMS_PER_PAGE = 20;
+
+    // Reset page when search changes
+    useEffect(() => {
+        setPage(1);
+    }, [searchQuery]);
+
+    const filteredItems = items.filter(item =>
+        cleanName(item.name).toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    const totalPages = Math.ceil(filteredItems.length / ITEMS_PER_PAGE);
+    const paginatedItems = filteredItems.slice(
+        (page - 1) * ITEMS_PER_PAGE,
+        page * ITEMS_PER_PAGE
+    );
+
     const labels = {
-        resourcepack: { title: "Resource Packs", addLabel: "ติดตั้ง Resource Pack" },
-        shader: { title: "Shaders", addLabel: "ติดตั้ง Shader" },
-        datapack: { title: "Datapacks", addLabel: "ติดตั้ง Datapack" },
+        resourcepack: { title: t('resourcepacks'), addLabel: t('install_resourcepack' as any) },
+        shader: { title: t('shaders'), addLabel: t('install_shader' as any) },
+        datapack: { title: t('datapacks'), addLabel: t('install_datapack' as any) },
     };
 
     const isDatapack = contentType === "datapack";
 
+
+
     return (
         <>
             <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium" style={{ color: colors.onSurface }}>
-                    {labels[contentType].title} {isLoading ? "" : `(${items.length})`}
-                </h3>
-                <button
-                    onClick={() => { playClick(); onAddContent(); }}
-                    className="px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 transition-all hover:opacity-90"
-                    style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
-                >
-                    <i className="fa-solid fa-plus text-xs"></i>
-                    {labels[contentType].addLabel}
-                </button>
+                {/* Left Side: Title OR Pagination */}
+                <div className="flex items-center gap-4">
+                    {totalPages > 1 ? (
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => { playClick(); setPage(p => Math.max(1, p - 1)); }}
+                                disabled={page === 1}
+                                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5"
+                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                            >
+                                <i className="fa-solid fa-chevron-left text-xs"></i>
+                                {t('previous')}
+                            </button>
+
+                            <span className="px-4 py-2 rounded-xl text-sm font-bold" style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}>
+                                {page} / {totalPages}
+                            </span>
+
+                            <button
+                                onClick={() => { playClick(); setPage(p => Math.min(totalPages, p + 1)); }}
+                                disabled={page === totalPages}
+                                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5"
+                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                            >
+                                {t('next')}
+                                <i className="fa-solid fa-chevron-right text-xs"></i>
+                            </button>
+                        </div>
+                    ) : (
+                        <h3 className="text-lg font-medium" style={{ color: colors.onSurface }}>
+                            {labels[contentType].title} {isLoading ? "" : `(${items.length})`}
+                        </h3>
+                    )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                    {/* Search */}
+                    <div
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl transition-colors focus-within:ring-1 focus-within:ring-white/20"
+                        style={{ backgroundColor: colors.surfaceContainerHighest }}
+                    >
+                        <i className="fa-solid fa-search text-sm" style={{ color: colors.onSurfaceVariant }}></i>
+                        <input
+                            type="text"
+                            placeholder={(t('search_content_placeholder' as any) as string).replace('{type}', labels[contentType].title)}
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="bg-transparent outline-none text-sm w-40 placeholder:opacity-70"
+                            style={{ color: colors.onSurface }}
+                        />
+                    </div>
+
+                    <button
+                        onClick={() => { playClick(); onAddContent(); }}
+                        className="px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 transition-all hover:opacity-90"
+                        style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                    >
+                        <i className="fa-solid fa-plus text-xs"></i>
+                        {labels[contentType].addLabel}
+                    </button>
+                    <button
+                        onClick={() => { playClick(); onRefresh && onRefresh(); }}
+                        disabled={isLoading}
+                        className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10 active:scale-95'}`}
+                        style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                        title={t('refresh')}
+                    >
+                        <i className={`fa-solid fa-rotate-right text-sm ${isLoading ? 'fa-spin' : ''}`}></i>
+                    </button>
+                </div>
             </div>
 
             {/* Content Area */}
@@ -65,69 +164,21 @@ export function ContentList({
                 </div>
             ) : (
                 <div className="space-y-2">
-                    {(isLoading ? Array.from({ length: items.length > 0 ? items.length : 5 }) : items).map((item, index) => {
-                        let content = null;
+                    {(isLoading ? Array.from({ length: 5 }) : paginatedItems).map((item, index) => {
                         let key = `skeleton-${index}`;
+                        let content = null;
 
                         if (item) {
                             // Real Item Logic
-                            const currentItem = item as ContentItem & Partial<DatapackItem>;
-                            key = isDatapack ? `${currentItem.worldName || 'unknown'}/${currentItem.filename}` : currentItem.filename;
-
                             content = (
-                                <div
-                                    className="flex items-center gap-4 p-4 rounded-xl transition-all animate-fade-in"
-                                    style={{
-                                        backgroundColor: colors.surfaceContainer,
-                                        opacity: currentItem.enabled ? 1 : 0.6
-                                    }}
-                                >
-                                    {/* Icon */}
-                                    <div
-                                        className="w-10 h-10 rounded-lg flex items-center justify-center"
-                                        style={{ backgroundColor: colors.surfaceContainerHighest }}
-                                    >
-                                        {currentItem.icon ? (
-                                            <img src={currentItem.icon} alt={currentItem.name} className="w-full h-full rounded-lg object-cover" />
-                                        ) : (
-                                            <Icons.Box className="w-5 h-5" style={{ color: colors.onSurfaceVariant }} />
-                                        )}
-                                    </div>
-
-                                    {/* Info */}
-                                    <div className="flex-1 min-w-0">
-                                        <p className="font-medium truncate" style={{ color: colors.onSurface }}>
-                                            {currentItem.name}
-                                        </p>
-                                        <p className="text-xs truncate" style={{ color: colors.onSurfaceVariant }}>
-                                            {isDatapack && currentItem.worldName && `${currentItem.worldName} • `}
-                                            {formatSize(currentItem.size)}
-                                        </p>
-                                    </div>
-
-                                    {/* Toggle switch */}
-                                    <button
-                                        onClick={() => { playClick(); onToggle(currentItem.filename, isDatapack ? currentItem.worldName : undefined); }}
-                                        className="relative w-12 h-6 rounded-full transition-colors"
-                                        style={{ backgroundColor: currentItem.enabled ? colors.secondary : colors.surfaceContainerHighest }}
-                                        title={currentItem.enabled ? "ปิด" : "เปิด"}
-                                    >
-                                        <div
-                                            className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow"
-                                            style={{ left: currentItem.enabled ? "calc(100% - 20px)" : "4px" }}
-                                        />
-                                    </button>
-
-                                    {/* Delete button */}
-                                    <button
-                                        onClick={() => { playClick(); onDelete(currentItem.filename, isDatapack ? currentItem.worldName : undefined); }}
-                                        className="w-10 h-10 rounded-lg flex items-center justify-center transition-all hover:bg-red-500/20"
-                                        style={{ color: "#ef4444" }}
-                                        title="ลบ"
-                                    >
-                                        <Icons.Trash className="w-5 h-5" />
-                                    </button>
-                                </div>
+                                <LazyContentItem
+                                    item={item as ContentItem | DatapackItem}
+                                    category={contentType}
+                                    colors={colors}
+                                    onToggle={onToggle}
+                                    onDelete={onDelete}
+                                    index={index}
+                                />
                             );
                         }
 
@@ -148,7 +199,7 @@ export function ContentList({
     );
 }
 
-// Wrapper component to handle sequential reveal state safely
+// Wrapper component to handle sequential reveal state safely via CSS
 function ContentListItemWrapper({
     index,
     isLoading,
@@ -160,22 +211,7 @@ function ContentListItemWrapper({
     colors: any;
     children: React.ReactNode;
 }) {
-    const [isRevealed, setIsRevealed] = useState(false);
-
-    useEffect(() => {
-        if (!isLoading) {
-            const timer = setTimeout(() => {
-                setIsRevealed(true);
-            }, index * 50);
-            return () => clearTimeout(timer);
-        } else {
-            setIsRevealed(false);
-        }
-    }, [isLoading, index]);
-
-    const showSkeleton = isLoading || !isRevealed;
-
-    if (showSkeleton) {
+    if (isLoading) {
         return (
             <div
                 className="flex items-center gap-4 p-4 rounded-xl"
@@ -198,4 +234,5 @@ function ContentListItemWrapper({
         </div>
     );
 }
+
 

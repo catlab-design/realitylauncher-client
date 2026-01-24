@@ -1,5 +1,6 @@
 
 import React, { useState } from "react";
+import { useTranslation } from "../../../hooks/useTranslation";
 
 interface ImagePreviewModalProps {
     colors: any;
@@ -16,6 +17,7 @@ interface ImagePreviewModalProps {
 
 export function ImagePreviewModal({ colors, imageUrl, onClose, onNext, onPrev, hasNext, hasPrev, preloadUrls, imageIndex, totalImages }: ImagePreviewModalProps) {
     const [isLoading, setIsLoading] = useState(true);
+    const { t } = useTranslation();
 
     // Preload images
     React.useEffect(() => {
@@ -79,7 +81,7 @@ export function ImagePreviewModal({ colors, imageUrl, onClose, onNext, onPrev, h
                     <button
                         onClick={onClose}
                         className="w-8 h-8 rounded-full flex items-center justify-center bg-white/10 text-white hover:bg-red-500/80 hover:scale-110 active:scale-95 transition-all cursor-pointer"
-                        aria-label="Close"
+                        aria-label={t('close')}
                     >
                         <i className="fa-solid fa-xmark text-sm"></i>
                     </button>

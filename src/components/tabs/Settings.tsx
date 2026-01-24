@@ -10,6 +10,7 @@ import {
     ResourcesTab,
     JavaTab,
 } from "./settingsTabs";
+import { useTranslation } from "../../hooks/useTranslation";
 
 interface SettingsProps {
     config: LauncherConfig;
@@ -46,15 +47,16 @@ export function Settings({
     handleUnlink,
     setLinkCatIDOpen,
 }: SettingsProps) {
+    const { t } = useTranslation(config.language);
     const tabItems = [
-        { id: "account", icon: "fa-user", label: "บัญชีผู้ใช้" },
-        { id: "appearance", icon: "fa-palette", label: "การแสดงผล" },
-        { id: "game", icon: "fa-gamepad", label: "เกมและประสิทธิภาพ" },
-        { id: "connections", icon: "fa-wifi", label: "การเชื่อมต่อ" },
-        { id: "launcher", icon: "fa-rocket", label: "Launcher" },
-        { id: "update", icon: "fa-download", label: "อัปเดต" },
-        { id: "resources", icon: "fa-hard-drive", label: "จัดการทรัพยากร" },
-        { id: "java", icon: "fa-brands fa-java", label: "Java" },
+        { id: "account", icon: "fa-user", label: t('tab_account') },
+        { id: "appearance", icon: "fa-palette", label: t('tab_appearance') },
+        { id: "game", icon: "fa-gamepad", label: t('tab_game') },
+        { id: "connections", icon: "fa-wifi", label: t('tab_connections') },
+        { id: "launcher", icon: "fa-rocket", label: t('tab_launcher') },
+        { id: "update", icon: "fa-download", label: t('tab_update') },
+        { id: "resources", icon: "fa-hard-drive", label: t('tab_resources') },
+        { id: "java", icon: "fa-brands fa-java", label: t('tab_java') },
     ];
 
     const commonProps = { config, updateConfig, colors };

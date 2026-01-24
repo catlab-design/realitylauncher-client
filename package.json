@@ -89,7 +89,12 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "multiLanguage": true,
+      "languages": [
+        "th_TH",
+        "en_US"
+      ]
     },
     "publish": {
       "provider": "generic",
@@ -120,7 +125,8 @@
     "react-hot-toast": "^2.6.0",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3",
-    "userland": "^0.4.3"
+    "userland": "^0.4.3",
+    "zustand": "^5.0.10"
   },
   "devDependencies": {
     "@types/iconv-lite": "^0.0.1",

@@ -5,6 +5,7 @@ import { Icons } from "../ui/Icons";
 import { InstanceDetail } from "./InstanceDetail";
 import { LiveLog } from "./LiveLog";
 import { Skeleton } from "../ui/Skeleton";
+import { useTranslation } from "../../hooks/useTranslation";
 import {
     CreateInstanceModal,
     ImportModpackModal,
@@ -34,12 +35,14 @@ interface ModPackProps {
     selectedServer: Server | null;
     session?: AuthSession | null;
     updateConfig?: (newConfig: Partial<LauncherConfig>) => void;
+    language: "th" | "en";
 }
 
 // Inner component for Server Mods List
 function ServerModsList({ serverId, colors }: { serverId: string, colors: any }) {
     const [mods, setMods] = useState<ModInfo[]>([]);
     const [loading, setLoading] = useState(false);
+    const { t } = useTranslation();
 
     useEffect(() => {
         const fetchMods = async () => {
@@ -60,11 +63,11 @@ function ServerModsList({ serverId, colors }: { serverId: string, colors: any })
         fetchMods();
     }, [serverId]);
 
-    if (loading) return <div className="text-center p-4">Loading mods...</div>;
+    if (loading) return <div className="text-center p-4">{t('loading')}</div>;
 
     if (mods.length === 0) return (
         <div className="text-center p-4 text-sm" style={{ color: colors.onSurfaceVariant }}>
-            ไม่พบรายการ Mod (อาจยังไม่ได้ติดตั้งหรือเป็น Vanilla)
+            {t('no_mods_found' as any)}
         </div>
     );
 
@@ -194,7 +197,9 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
     selectedServer,
     session,
     updateConfig,
+    language,
 }: ModPackProps) {
+    const { t } = useTranslation(language);
     const [instances, setInstances] = useState<GameInstance[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [showCreateModal, setShowCreateModal] = useState(false);
@@ -333,6 +338,11 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
             console.log("[UI] Game Started Event:", data);
             setLaunchingId(null);
             setPlayingInstances(prev => new Set(prev).add(data.instanceId));
+            // Clear launch timeout since game started successfully
+            if (launchTimeoutRef.current) {
+                clearTimeout(launchTimeoutRef.current);
+                launchTimeoutRef.current = null;
+            }
         });
 
         const removeStoppedListener = (window.api as any).onGameStopped((data: any) => {
@@ -451,7 +461,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
             // Also try legacy cancellation (for local import)
             await (window.api as any)?.modpackCancelInstall?.();
 
-            toast.error("ยกเลิกการติดตั้งแล้ว");
+            toast.error(t('cancel_install_success'));
             setIsInstalling(false);
             setInstallProgress(null);
             setInstallingInstanceId(null);
@@ -502,13 +512,13 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
         try {
             const success = await window.api?.instancesDelete?.(id);
             if (success) {
-                toast.success("ลบ Instance เรียบร้อย");
+                toast.success(t('instance_delete_success'));
             } else {
-                toast.error("ลบ Instance ไม่สำเร็จ");
+                toast.error(t('instance_delete_failed'));
                 loadInstances(); // Reload on failure
             }
         } catch (error) {
-            toast.error("เกิดข้อผิดพลาด");
+            toast.error(t('error_occurred'));
             loadInstances(); // Reload on error
         }
     };
@@ -517,11 +527,11 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
         try {
             const newInstance = await window.api?.instancesDuplicate?.(id);
             if (newInstance) {
-                toast.success(`สร้าง ${newInstance.name} เรียบร้อย`);
+                toast.success(t('instance_created_success'));
                 loadInstances();
             }
         } catch (error) {
-            toast.error("เกิดข้อผิดพลาด");
+            toast.error(t('error_occurred'));
         }
     };
 
@@ -560,34 +570,35 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                 console.error("[ModPack] Update failed (success was falsy/null), reverting...");
                 const freshInstances = await window.api?.instancesList?.();
                 if (freshInstances) setInstances(freshInstances);
-                toast.error("อัปเดตไม่สำเร็จ (API Returned Null)");
+                toast.error(t('save_failed'));
             }
         } catch (error) {
             console.error("[ModPack] Update error (Exception):", error);
             // Revert on error
             const freshInstances = await window.api?.instancesList?.();
             if (freshInstances) setInstances(freshInstances);
-            toast.error("อัปเดตไม่สำเร็จ (Error)");
+            toast.error(t('save_failed'));
         }
     };
 
     const handleRepair = async (id: string) => {
-        const toastId = toast.loading("กำลังตรวจสอบและซ่อมแซมไฟล์...");
+        const toastId = toast.loading(t('repairing_dot'));
         try {
             const result = await (window.api as any)?.instanceCheckIntegrity?.(id);
             if (result?.ok) {
-                toast.success(result.message || "ซ่อมแซมเสร็จสิ้น", { id: toastId });
-                toast.success(result.message || "ซ่อมแซมเสร็จสิ้น", { id: toastId });
+                toast.success(result.message || t('repair_success'), { id: toastId });
             } else {
-                toast.error(result?.error || "ซ่อมแซมไม่สำเร็จ (Local Instance?)", { id: toastId });
+                toast.error(result?.error || t('repair_failed'), { id: toastId });
             }
         } catch (error: any) {
-            toast.error(error?.message || "เกิดข้อผิดพลาด", { id: toastId });
+            toast.error(error?.message || t('error_occurred'), { id: toastId });
         }
     };
 
     // Track if launch was cancelled (use ref to work in async)
     const launchCancelledRef = useRef(false);
+    // Timeout ref for launch safety (prevent infinite hang)
+    const launchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const handlePlay = async (id: string) => {
         // Prevent double-launch race condition (Global lock for safety during download)
@@ -599,13 +610,20 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
         launchCancelledRef.current = false;
         setLaunchingId(id);
 
+        // Set a 60-second timeout to reset launchingId if launch hangs
+        launchTimeoutRef.current = setTimeout(() => {
+            console.warn(`[ModPack] Launch timeout for instance ${id}`);
+            setLaunchingId(null);
+            toastError(t('launch_timeout'));
+        }, 60000);
+
         // Optimistic: add to playing immediately? No, wait for success or use 'launchingId' for UI.
 
         try {
             const refreshResult = await (window.api as any)?.authRefreshToken?.();
             if (refreshResult && !refreshResult.ok && refreshResult.error) {
                 if (refreshResult.error.includes("re-login")) {
-                    toastError("เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่");
+                    toastError(t('session_expired_login_server'));
                     setLaunchingId(null);
                     return;
                 }
@@ -622,10 +640,10 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
             }
 
             if (result?.ok) {
-                toastSuccess(result.message || "กำลังเปิดเกม...");
+                toastSuccess(result.message || t('launching'));
                 setPlayingInstances(prev => new Set(prev).add(id));
             } else {
-                const errorMessage = result?.message || "เปิดเกมไม่สำเร็จ";
+                const errorMessage = result?.message || t('launch_failed');
                 const isJavaError = errorMessage.toLowerCase().includes("java") ||
                     errorMessage.toLowerCase().includes("jre") ||
                     errorMessage.toLowerCase().includes("java_home");
@@ -636,17 +654,17 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                     const requiredVersion = javaVersionMatch ? parseInt(javaVersionMatch[1]) : 0;
 
                     onShowConfirm({
-                        title: "ไม่พบ Java ในเครื่องของคุณ",
-                        message: `${errorMessage}\nคุณต้องการติดตั้ง Java ทันทีหรือไม่?`,
-                        confirmText: "ติดตั้งตอนนี้",
-                        cancelText: "ไว้คราวหลัง",
-                        tertiaryText: "ไปหน้าติดตั้ง",
+                        title: t('java_not_found_prompt'),
+                        message: `${errorMessage}\n${t('install_java_now_ask')}`,
+                        confirmText: t('install_now'),
+                        cancelText: t('later'),
+                        tertiaryText: t('go_to_install_page'),
                         confirmColor: "#22c55e", // Green for direct install
                         onConfirm: () => {
                             if (requiredVersion > 0 && (window.api as any)?.installJava) {
                                 setActiveTab("settings");
                                 setSettingsTab("java");
-                                toastSuccess(`กำลังเริ่มดาวน์โหลดและติดตั้ง Java ${requiredVersion}...`);
+                                toastSuccess(t('downloading_java_dot'));
                                 setTimeout(() => {
                                     (window.api as any).installJava(requiredVersion)
                                         .then((result: any) => {
@@ -660,12 +678,11 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                                                         }
                                                     });
                                                 }
-                                                // Toast is handled by JavaTab usually, or we can show one here
-                                                toastSuccess(`ติดตั้ง Java ${requiredVersion} สำเร็จ`);
+                                                toastSuccess(t('java_install_success_simple'));
                                             }
                                         })
                                         .catch((err: any) => {
-                                            toastError("ไม่สามารถเริ่มการติดตั้งได้: " + (err.message || "Unknown error"));
+                                            toastError(t('java_install_failed_prompt') + ": " + (err.message || "Unknown error"));
                                         });
                                 }, 1000);
                             } else {
@@ -686,10 +703,15 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                 setPlayingInstances(prev => { const s = new Set(prev); s.delete(id); return s; });
             }
         } catch (error: any) {
-            toastError(error?.message || "เกิดข้อผิดพลาด");
+            toastError(error?.message || t('error_occurred'));
             setPlayingInstances(prev => { const s = new Set(prev); s.delete(id); return s; });
         } finally {
             setLaunchingId(null);
+            // Clear timeout if launch completed
+            if (launchTimeoutRef.current) {
+                clearTimeout(launchTimeoutRef.current);
+                launchTimeoutRef.current = null;
+            }
         }
     };
 
@@ -709,9 +731,9 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
 
             if (launchingId === id) setLaunchingId(null);
 
-            toast.success("ส่งคำสั่งหยุดเกมแล้ว");
+            toast.success(t('stop_command_sent'));
         } catch (error) {
-            toast.error("เกิดข้อผิดพลาดในการหยุดเกม");
+            toast.error(t('stop_failed_server'));
         }
     };
 
@@ -726,24 +748,24 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
 
             // Start installation
             setIsInstalling(true);
-            setInstallProgress({ stage: "extracting", message: "กำลังอ่านข้อมูล modpack..." });
+            setInstallProgress({ stage: "extracting", message: t('extracting_modpack_dot') });
 
             // Install the modpack (will create new instance)
             const result = await window.api?.modpackInstall?.(targetPath);
 
             if (result?.ok && result.instance) {
-                toast.success(`ติดตั้ง ${result.instance.name} เรียบร้อย!`);
+                toast.success(t('install_complete'));
                 loadInstances();
             } else {
                 // Don't show error toast if it was cancelled (already shown by handleCancelInstall)
-                if (result?.error && !result.error.includes("cancelled") && !result.error.includes("ยกเลิก")) {
+                if (result?.error && !result.error.includes("cancelled") && !result.error.includes("cancel")) {
                     toast.error(result.error);
                 }
             }
         } catch (error: any) {
             // Don't show error toast if it was cancelled
-            if (error?.message && !error.message.includes("cancelled") && !error.message.includes("ยกเลิก")) {
-                toast.error(error.message || "เกิดข้อผิดพลาด");
+            if (error?.message && !error.message.includes("cancelled") && !error.message.includes("cancel")) {
+                toast.error(error.message || t('error_occurred'));
             }
         } finally {
             setIsInstalling(false);
@@ -764,36 +786,36 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
         // However, the user issue is likely about specific "Server Modpack" installation (which passes ID).
         if (id) setInstallingInstanceId(id);
 
-        const toastId = toast.loading(id ? "กำลังติดตั้ง..." : "กำลังตรวจสอบข้อมูล...");
+        const toastId = toast.loading(id ? t('installing') : t('loading'));
         try {
             const result = id
                 ? await (window.api as any)?.instancesCloudInstall?.(id)
                 : await (window.api as any)?.instancesCloudSync?.();
 
             if (result?.ok) {
-                toast.success("ดำเนินการเรียบร้อย", { id: toastId });
+                toast.success(t('install_complete'), { id: toastId });
                 loadInstances();
             } else {
                 // Check if it was cancelled (already shown by handleCancelInstall)
-                if (result?.error && (result.error.includes("cancelled") || result.error.includes("ยกเลิก"))) {
+                if (result?.error && (result.error.includes("cancelled") || result.error.includes("cancel"))) {
                     toast.dismiss(toastId);
                     return;
                 }
-                const errMsg = result?.error || "ติดตั้งไม่สำเร็จ";
+                const errMsg = result?.error || t('install_failed');
                 if (errMsg.includes("401") || errMsg.includes("Unauthorized")) {
-                    toast.error("Session หมดอายุ กรุณา Login ใหม่", { id: toastId });
+                    toast.error(t('session_expired'), { id: toastId });
                 } else if (errMsg.includes("Not logged in")) {
-                    toast.error("กรุณา Login ก่อนใช้งาน", { id: toastId });
+                    toast.error(t('login_before_use'), { id: toastId });
                 } else {
                     toast.error(errMsg, { id: toastId });
                 }
             }
         } catch (error: any) {
             // Check if it was cancelled (already shown by handleCancelInstall)
-            if (error?.message && (error.message.includes("cancelled") || error.message.includes("ยกเลิก"))) {
+            if (error?.message && (error.message.includes("cancelled") || error.message.includes("cancel"))) {
                 toast.dismiss(toastId);
             } else {
-                toast.error(error?.message || "เกิดข้อผิดพลาด", { id: toastId });
+                toast.error(error?.message || t('error_occurred'), { id: toastId });
             }
         } finally {
             setIsInstalling(false);
@@ -838,17 +860,17 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
             if (filePath) {
                 await handleImportModpack(filePath);
             } else {
-                toast.error("ไม่สามารถอ่านไฟล์ได้");
+                toast.error(t('cannot_read_file'));
             }
         } else {
-            toast.error("กรุณาลากไฟล์ .mrpack หรือ .zip");
+            toast.error(t('drag_mrpack_zip'));
         }
     };
 
     const formatPlayTime = (minutes: number): string => {
-        if (minutes < 60) return `${minutes} นาที`;
+        if (minutes < 60) return `${minutes} ${t('minutes_unit')}`;
         const hours = Math.floor(minutes / 60);
-        return `${hours} ชั่วโมง`;
+        return `${hours} ${t('hours_unit')}`;
     };
 
     const getLoaderLabel = (loader: string): string => {
@@ -869,6 +891,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
             <InstanceDetail
                 instance={selectedInstance}
                 colors={colors}
+                config={config}
                 onBack={() => {
                     setSelectedInstance(null);
                     loadInstances(); // Reload in case of changes
@@ -902,7 +925,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
             <div className="space-y-6">
                 {/* Header */}
                 <div className="flex items-center justify-between flex-wrap gap-4">
-                    <h2 className="text-xl font-medium" style={{ color: colors.onSurface }}>Mod Pack</h2>
+                    <h2 className="text-xl font-medium" style={{ color: colors.onSurface }}>{t('modpacks')}</h2>
                     <div className="flex gap-2">
                         <button
                             onClick={() => { playClick(); setShowImportModal(true); }}
@@ -913,7 +936,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
                             </svg>
-                            นำเข้า
+                            {t('import')}
                         </button>
                         <button
                             onClick={() => { playClick(); setShowCreateModal(true); }}
@@ -921,7 +944,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                             style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
                         >
                             <Icons.Add className="w-5 h-5" />
-                            สร้าง Mod Pack ใหม่
+                            {t('create_modpack_create')}
                         </button>
                     </div>
                 </div>
@@ -936,8 +959,8 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                             <Icons.Box className="w-7 h-7" style={{ color: colors.secondary }} />
                         </div>
                         <div>
-                            <h3 className="font-medium" style={{ color: colors.onSurface }}>สร้าง ModPack ของคุณเอง</h3>
-                            <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>หรือเลือก ModPack ที่ต้องการแล้วโหลดเล่นเลย</p>
+                            <h3 className="font-medium" style={{ color: colors.onSurface }}>{t('create_your_own')}</h3>
+                            <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>{t('choose_and_play')}</p>
                         </div>
                     </div>
                     <button
@@ -945,7 +968,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                         className="w-full py-3 rounded-xl border-2 border-dashed text-sm font-medium transition-all hover:opacity-80"
                         style={{ borderColor: colors.outline, color: colors.onSurfaceVariant }}
                     >
-                        + เพิ่ม ModPack ใหม่
+                        {t('add_new_mod_pack_btn')}
                     </button>
                 </div>
 
@@ -955,7 +978,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
 
 
 
-                    <h3 className="text-lg font-medium mb-3" style={{ color: colors.onSurface }}>ModPack ของฉัน</h3>
+                    <h3 className="text-lg font-medium mb-3" style={{ color: colors.onSurface }}>{t('my_mod_packs')}</h3>
                     {isLoading ? (
                         <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                             {Array.from({ length: 9 }).map((_, i) => (
@@ -993,8 +1016,8 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                     ) : instances.filter(i => !i.cloudId).length === 0 ? (
                         <div className="rounded-2xl p-8 text-center" style={{ backgroundColor: colors.surfaceContainer }}>
                             <Icons.Box className="w-12 h-12 mx-auto mb-3" style={{ color: colors.onSurfaceVariant, opacity: 0.5 }} />
-                            <p className="font-medium mb-1" style={{ color: colors.onSurfaceVariant }}>ยังไม่มี ModPack</p>
-                            <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>สร้าง ModPack แล้วกลับมานะ</p>
+                            <p className="font-medium mb-1" style={{ color: colors.onSurfaceVariant }}>{t('no_mod_packs')}</p>
+                            <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>{t('create_mod_pack_first')}</p>
                         </div>
                     ) : (
                         <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
@@ -1028,7 +1051,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                                     {/* Stats */}
                                     <div className="flex items-center gap-4 mb-4 text-sm" style={{ color: colors.onSurfaceVariant }}>
                                         {instance.lastPlayedAt && (
-                                            <span>เล่นล่าสุด: {new Date(instance.lastPlayedAt).toLocaleDateString("th-TH")}</span>
+                                            <span>{t('last_played')} {new Date(instance.lastPlayedAt).toLocaleDateString("th-TH")}</span>
                                         )}
                                         {instance.totalPlayTime > 0 && (
                                             <span>{formatPlayTime(instance.totalPlayTime)}</span>
@@ -1059,14 +1082,14 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                                                         {isLaunching ? (
                                                             <>
                                                                 <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                                                                โหลด...
+                                                                {t('loading')}
                                                             </>
                                                         ) : (
                                                             <>
                                                                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                                                                     <rect x="6" y="6" width="12" height="12" />
                                                                 </svg>
-                                                                หยุด
+                                                                {t('stop')}
                                                             </>
                                                         )}
                                                     </button>
@@ -1083,7 +1106,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                                                     <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                                                         <path d="M8 5v14l11-7z" />
                                                     </svg>
-                                                    เล่น
+                                                    {t('play')}
                                                 </button>
                                             );
                                         })()}
@@ -1091,7 +1114,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                                             onClick={() => { playClick(); handleOpenFolder(instance.id); }}
                                             className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10"
                                             style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                                            title="เปิดโฟลเดอร์"
+                                            title={t('open_folder')}
                                         >
                                             <Icons.Folder className="w-5 h-5" />
                                         </button>
@@ -1099,7 +1122,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                                             onClick={() => { playClick(); setLogViewerInstanceId(instance.id); }}
                                             className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10"
                                             style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                                            title="ดู Logs"
+                                            title={t('view_logs')}
                                         >
                                             <Icons.Terminal className="w-5 h-5" />
                                         </button>
@@ -1108,7 +1131,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                                             onClick={() => { playClick(); setDeleteConfirmId(instance.id); }}
                                             className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10"
                                             style={{ backgroundColor: "#ef444420", color: "#ef4444" }}
-                                            title="ลบ"
+                                            title={t('delete')}
                                         >
                                             <Icons.Trash className="w-5 h-5" />
                                         </button>
@@ -1121,7 +1144,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
 
                 {/* Server Mods Section */}
                 <div>
-                    <h3 className="text-lg font-medium mb-3" style={{ color: colors.onSurface }}>ModPack ของเซิร์ฟเวอร์</h3>
+                    <h3 className="text-lg font-medium mb-3" style={{ color: colors.onSurface }}>{t('server_mod_packs')}</h3>
 
 
                     {loadingServers ? (
@@ -1177,10 +1200,10 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                                                         // Toggle logic: undefined (implicit ON) -> false (OFF), true -> false, false -> true
                                                         handleUpdate(serverInstance.id, { autoUpdate: serverInstance.autoUpdate === false });
                                                     }}
-                                                    title={serverInstance.autoUpdate !== false ? "อัปเดตอัตโนมัติ: เปิด" : "อัปเดตอัตโนมัติ: ปิด"}
+                                                    title={serverInstance.autoUpdate !== false ? t('instance_auto_update_on') : t('instance_auto_update_off')}
                                                 >
                                                     <div className={`w-2 h-2 rounded-full ${serverInstance.autoUpdate !== false ? "bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.5)]" : "bg-gray-400"}`} />
-                                                    <span className="text-[10px] text-white/80 pr-1">Auto Update</span>
+                                                    <span className="text-[10px] text-white/80 pr-1">{t('auto_update')}</span>
                                                 </div>
                                             </div>
 
@@ -1229,21 +1252,21 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                                                         {launchingId === serverInstance.id ? (
                                                             <>
                                                                 <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                                                                <span className="font-bold">โหลด...</span>
+                                                                <span className="font-bold">{t('loading')}</span>
                                                             </>
                                                         ) : playingInstances.has(serverInstance.id) ? (
                                                             <>
                                                                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                                                                     <rect x="6" y="6" width="12" height="12" />
                                                                 </svg>
-                                                                <span className="font-bold">หยุด</span>
+                                                                <span className="font-bold">{t('stop')}</span>
                                                             </>
                                                         ) : (
                                                             <>
                                                                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                                                                     <path d="M8 5v14l11-7z" />
                                                                 </svg>
-                                                                <span className="font-bold">เล่น</span>
+                                                                <span className="font-bold">{t('play')}</span>
                                                             </>
                                                         )}
                                                     </button>
@@ -1256,7 +1279,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                                                         }}
                                                         className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10 shrink-0"
                                                         style={{ backgroundColor: "rgba(255,255,255,0.1)", color: "#fff" }}
-                                                        title="เปิดโฟลเดอร์"
+                                                        title={t('open_folder')}
                                                     >
                                                         <Icons.Folder className="w-5 h-5" />
                                                     </button>
@@ -1268,7 +1291,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                                                         }}
                                                         className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10 shrink-0"
                                                         style={{ backgroundColor: "rgba(255,255,255,0.1)", color: "#fff" }}
-                                                        title="ดู Logs"
+                                                        title={t('view_logs')}
                                                     >
                                                         <Icons.Terminal className="w-5 h-5" />
                                                     </button>
@@ -1280,7 +1303,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                                                         }}
                                                         className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-red-500/20 hover:text-red-500 active:scale-95 backdrop-blur-md border border-white/10 shrink-0"
                                                         style={{ backgroundColor: "rgba(255,255,255,0.1)", color: "#fff" }}
-                                                        title="ซ่อมแซมไฟล์ (Force Sync)"
+                                                        title={t('repair_files')}
                                                     >
                                                         <Icons.Wrench className="w-5 h-5" />
                                                     </button>
@@ -1320,7 +1343,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                                                     className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition-all shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 disabled:opacity-50 disabled:pointer-events-none flex items-center gap-2"
                                                 >
                                                     <Icons.Download className="w-5 h-5" />
-                                                    {isInstalling ? "กำลังติดตั้ง..." : "ติดตั้ง ModPack"}
+                                                    {isInstalling ? t('installing_modpack') : t('install')}
                                                 </button>
                                             </div>
 
@@ -1329,7 +1352,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                                                 <h3 className="text-xl font-bold text-white truncate drop-shadow-md text-center">
                                                     {server.name}
                                                 </h3>
-                                                <p className="text-sm text-gray-400 text-center">ยังไม่ได้ติดตั้ง</p>
+                                                <p className="text-sm text-gray-400 text-center">{t('not_installed')}</p>
                                             </div>
                                         </SmartBackground>
                                     );
@@ -1339,8 +1362,8 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                     ) : (
                         <div className="rounded-2xl p-8 text-center" style={{ backgroundColor: colors.surfaceContainer }}>
                             <Icons.Box className="w-12 h-12 mx-auto mb-3" style={{ color: colors.onSurfaceVariant, opacity: 0.5 }} />
-                            <p className="font-medium mb-1" style={{ color: colors.onSurfaceVariant }}>ยังไม่ได้เข้าร่วม Server</p>
-                            <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>เข้าร่วม Server เพื่อเล่น ModPack ของเซิร์ฟเวอร์</p>
+                            <p className="font-medium mb-1" style={{ color: colors.onSurfaceVariant }}>{t('not_joined_server')}</p>
+                            <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>{t('join_server_to_play')}</p>
                         </div>
                     )}
 
@@ -1355,6 +1378,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                         instanceId={deleteConfirmId}
                         onCancel={() => setDeleteConfirmId(null)}
                         onConfirm={handleDelete}
+                        language={language}
                     />
                 )}
 
@@ -1368,6 +1392,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                             setShowCreateModal(false);
                             loadInstances();
                         }}
+                        language={language}
                     />
                 )}
 
@@ -1382,6 +1407,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                         onDragOver={handleDragOver}
                         onDragLeave={handleDragLeave}
                         onDrop={handleDrop}
+                        language={language}
                     />
                 )}
 
@@ -1391,6 +1417,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                         colors={colors}
                         installProgress={installProgress}
                         onCancel={handleCancelInstall}
+                        language={language}
                     />
                 )}
 

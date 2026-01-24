@@ -4,6 +4,7 @@
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import toast from "react-hot-toast";
+import { useTranslation } from "../../hooks/useTranslation";
 
 // Local components
 import {
@@ -20,6 +21,7 @@ import {
     // Helpers
     hasValidFilesForType,
     matchesVersion,
+    normalizeImageUrl,
     // Constants
     SEARCH_DEBOUNCE_MS,
     // Components
@@ -34,7 +36,8 @@ import {
 // Component
 // ========================================
 
-export function Explore({ colors }: ExploreProps) {
+export function Explore({ colors, config }: ExploreProps) {
+    const { t } = useTranslation(config?.language);
     // Content source state
     const [contentSource, setContentSource] = useState<ContentSource>(CONTENT_SOURCES.MODRINTH);
 
@@ -47,6 +50,9 @@ export function Explore({ colors }: ExploreProps) {
     const [page, setPage] = useState(1);
     const [totalHits, setTotalHits] = useState(0);
     const [viewCount, setViewCount] = useState(20);
+
+    // Total pages (derived) - use totalHits when available, otherwise fallback to result length
+    const totalPages = Math.max(1, Math.ceil((totalHits || results.length) / viewCount));
 
     // Instance selection state
     const [instances, setInstances] = useState<GameInstance[]>([]);
@@ -82,13 +88,30 @@ export function Explore({ colors }: ExploreProps) {
     const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
     // ========================================
+    // Data Loading (must be defined before effects that use them)
+    // ========================================
+
+    const loadInstances = useCallback(async () => {
+        setIsLoadingInstances(true);
+        try {
+            const list = await window.api?.instancesList?.();
+            if (list) setInstances(list);
+        } catch (error) {
+            console.error("[Explore] Load instances failed:", error);
+            toast.error(t('load_instances_failed'));
+        } finally {
+            setIsLoadingInstances(false);
+        }
+    }, [t]);
+
+    // ========================================
     // Effects
     // ========================================
 
     // Load instances on mount
     useEffect(() => {
         loadInstances();
-    }, []);
+    }, [loadInstances]);
 
     // Listen for modpack install progress
     useEffect(() => {
@@ -117,23 +140,6 @@ export function Explore({ colors }: ExploreProps) {
         if (!stillExists) handleSelectProject(results[0]);
     }, [results]);
 
-    // ========================================
-    // Data Loading
-    // ========================================
-
-    const loadInstances = async () => {
-        setIsLoadingInstances(true);
-        try {
-            const list = await window.api?.instancesList?.();
-            if (list) setInstances(list);
-        } catch (error) {
-            console.error("[Explore] Load instances failed:", error);
-            toast.error("โหลดรายการ Instance ไม่สำเร็จ");
-        } finally {
-            setIsLoadingInstances(false);
-        }
-    };
-
     const fetchFullProjectDetails = async (project: ModrinthProject) => {
         // Only fetch if Modrinth
         if (contentSource !== CONTENT_SOURCES.MODRINTH) return;
@@ -152,13 +158,12 @@ export function Explore({ colors }: ExploreProps) {
                     description: fullProject.description,
                     categories: fullProject.categories || fullProject.displayCategories || fullProject.display_categories || [],
                     downloads: fullProject.downloads,
-                    icon_url: fullProject.icon_url || fullProject.iconUrl || null,
-                    project_id: fullProject.id || fullProject.projectId || fullProject.project_id,
-                    // Preserve existing author as full details usually don't include it (or include "Unknown" from native)
-                    author: project.author && project.author !== "Unknown" ? project.author : (fullProject.author || "Unknown"),
-                    versions: fullProject.versions || [],
-                    game_versions: fullProject.gameVersions || fullProject.game_versions || [],
-                    loaders: fullProject.loaders || [],
+                    icon_url: normalizeImageUrl(fullProject.icon_url || fullProject.iconUrl || null, 'modrinth'),
+                    project_id: fullProject.project_id || fullProject.projectId || project.project_id,
+                    author: fullProject.author || project.author || t('unknown'),
+                    versions: fullProject.versions || project.versions || [],
+                    game_versions: fullProject.game_versions || fullProject.gameVersions || project.game_versions || [],
+                    loaders: fullProject.loaders || project.loaders || [],
                     follows: fullProject.follows || 0,
                     client_side: fullProject.clientSide || fullProject.client_side,
                     server_side: fullProject.serverSide || fullProject.server_side,
@@ -203,6 +208,15 @@ export function Explore({ colors }: ExploreProps) {
                 });
 
                 if (result?.hits) {
+                    // DEBUG: Log Modrinth response to inspect total_hits / totalHits
+                    console.debug('[Explore] modrinthSearch result sample:', {
+                        total_hits: result.total_hits,
+                        totalHits: result.totalHits,
+                        total_hits_type: typeof result.total_hits,
+                        totalHits_type: typeof result.totalHits,
+                        first_hit: result.hits && result.hits.length > 0 ? result.hits[0] : null,
+                    });
+
                     // Normalize Modrinth data (handle both camelCase from Native and snake_case from JS)
                     const normalized: ModrinthProject[] = result.hits.map((mr: any) => ({
                         slug: mr.slug,
@@ -210,9 +224,9 @@ export function Explore({ colors }: ExploreProps) {
                         description: mr.description,
                         categories: mr.categories || mr.displayCategories || mr.display_categories || [],
                         downloads: mr.downloads,
-                        icon_url: mr.iconUrl || mr.icon_url || null,
+                        icon_url: normalizeImageUrl(mr.iconUrl || mr.icon_url || null, 'modrinth'),
                         project_id: mr.projectId || mr.project_id,
-                        author: mr.author || "Unknown",
+                        author: mr.author || t('unknown'),
                         versions: mr.versions || [],
                         game_versions: mr.gameVersions || mr.game_versions || [],
                         loaders: mr.loaders || [],
@@ -228,7 +242,8 @@ export function Explore({ colors }: ExploreProps) {
                         featured_gallery: mr.featuredGallery || mr.featured_gallery || null,
                     }));
                     setResults(normalized);
-                    setTotalHits(result.totalHits || 0);
+                    // Modrinth sometimes uses 'total_hits' (snake_case) or 'totalHits' depending on the source
+                    setTotalHits(result.total_hits ?? result.totalHits ?? 0);
                 }
             } else {
                 const result = await window.api?.curseforgeSearch?.({
@@ -246,9 +261,9 @@ export function Explore({ colors }: ExploreProps) {
                         description: cf.summary,
                         categories: cf.categories?.map((c: any) => c.name) || [],
                         downloads: cf.downloadCount,
-                        icon_url: cf.logo?.url || null,
+                        icon_url: normalizeImageUrl(cf.logo?.url || null, 'curseforge'),
                         project_id: cf.id.toString(),
-                        author: cf.authors?.[0]?.name || "Unknown",
+                        author: cf.authors?.[0]?.name || t('unknown'),
                         versions: cf.latestFiles?.flatMap((f: any) => f.gameVersions) || [],
                         follows: cf.thumbsUpCount || 0,
                         client_side: "required",
@@ -267,7 +282,7 @@ export function Explore({ colors }: ExploreProps) {
             }
         } catch (error) {
             console.error("[Explore] Load failed:", error);
-            toast.error("โหลดข้อมูลไม่สำเร็จ: " + (error instanceof Error ? error.message : String(error)));
+            toast.error(t('load_data_failed') + ": " + (error instanceof Error ? error.message : String(error)));
         } finally {
             setIsLoading(false);
         }
@@ -304,7 +319,7 @@ export function Explore({ colors }: ExploreProps) {
 
         // Vanilla instances cannot install mods
         if (instanceLoader === "vanilla" && projectType === "mod") {
-            return { instance, compatible: false, reason: "ไม่รองรับ mod" };
+            return { instance, compatible: false, reason: t('not_support_mod') };
         }
 
         for (const version of versions) {
@@ -329,15 +344,15 @@ export function Explore({ colors }: ExploreProps) {
         const anyVersionMatches = allGameVersions.some(v => matchesVersion(v, instanceVersion));
 
         if (!anyVersionMatches) {
-            return { instance, compatible: false, reason: `ไม่รองรับ ${instanceVersion}` };
+            return { instance, compatible: false, reason: t('not_supported_version' as any).replace('{version}', instanceVersion) };
         }
 
         const allLoaders = new Set(versions.flatMap(v => v.loaders.map(l => l.toLowerCase())));
         if (instanceLoader !== "vanilla" && allLoaders.size > 0 && !allLoaders.has(instanceLoader)) {
-            return { instance, compatible: false, reason: `ไม่รองรับ ${instance.loader}` };
+            return { instance, compatible: false, reason: t('not_supported_loader' as any).replace('{loader}', instance.loader || '') };
         }
 
-        return { instance, compatible: false, reason: "ไม่รองรับ" };
+        return { instance, compatible: false, reason: t('not_supported') };
     };
 
     // ========================================
@@ -346,7 +361,7 @@ export function Explore({ colors }: ExploreProps) {
 
     const handleInstallModpack = async (project: ModrinthProject) => {
         setVersionModalProject(project);
-        setVersionModalTitle("เลือกเวอร์ชัน");
+        setVersionModalTitle(t('select_version'));
         setVersionModalTarget("modpack");
         setIsLoadingVersions(true);
         setShowVersionModal(true);
@@ -410,7 +425,7 @@ export function Explore({ colors }: ExploreProps) {
             }
 
             if (!versions || versions.length === 0) {
-                toast.error(`ไม่พบเวอร์ชันที่ดาวน์โหลดได้สำหรับ ${project.title}`);
+                toast.error(t('no_downloadable_version'));
                 setShowVersionModal(false);
                 return;
             }
@@ -418,14 +433,14 @@ export function Explore({ colors }: ExploreProps) {
             // Validate versions have valid IDs
             const validVersions = versions.filter(v => v.id && v.id.trim() !== "");
             if (validVersions.length === 0) {
-                toast.error("ไม่พบเวอร์ชันที่ถูกต้องสำหรับการติดตั้ง");
+                toast.error(t('no_valid_version'));
                 setShowVersionModal(false);
                 return;
             }
 
             setVersionModalVersions(validVersions);
         } catch (error: any) {
-            toast.error(error?.message || "โหลดข้อมูลไม่สำเร็จ");
+            toast.error(error?.message || t('load_data_failed'));
             setShowVersionModal(false);
         } finally {
             setIsLoadingVersions(false);
@@ -435,11 +450,11 @@ export function Explore({ colors }: ExploreProps) {
     const handleInstallModpackVersion = async (versionId: string) => {
         setShowVersionModal(false);
         setIsInstallingModpack(true);
-        setInstallProgress({ stage: "downloading", message: "กำลังดาวน์โหลด modpack..." });
+        setInstallProgress({ stage: "downloading", message: t('downloading_modpack_dot') });
 
         try {
             if (!versionId || versionId.trim() === "") {
-                throw new Error("ไม่พบ ID เวอร์ชันที่ถูกต้อง");
+                throw new Error(t('no_valid_version_id'));
             }
 
             let result;
@@ -453,13 +468,13 @@ export function Explore({ colors }: ExploreProps) {
             }
 
             if (result?.ok && result.instance) {
-                toast.success(`ติดตั้ง ${result.instance.name} เรียบร้อย!`);
+                toast.success(t('install_complete'));
                 loadInstances();
             } else {
-                toast.error(result?.error || "ติดตั้งไม่สำเร็จ");
+                toast.error(result?.error || t('install_failed'));
             }
         } catch (error: any) {
-            toast.error(error?.message || "เกิดข้อผิดพลาด");
+            toast.error(error?.message || t('error_occurred'));
         } finally {
             setIsInstallingModpack(false);
             setInstallProgress(null);
@@ -483,7 +498,7 @@ export function Explore({ colors }: ExploreProps) {
             if (contentSource === CONTENT_SOURCES.CURSEFORGE) {
                 const result = await window.api?.curseforgeGetFiles?.(project.project_id);
                 if (!result?.data || result.data.length === 0) {
-                    toast.error("ไม่พบเวอร์ชันที่ดาวน์โหลดได้");
+                    toast.error(t('no_downloadable_version'));
                     setShowInstanceModal(false);
                     return;
                 }
@@ -535,7 +550,7 @@ export function Explore({ colors }: ExploreProps) {
             } else {
                 const versions = await window.api?.modrinthGetVersions?.(project.project_id);
                 if (!versions || versions.length === 0) {
-                    toast.error("ไม่พบเวอร์ชันที่ดาวน์โหลดได้");
+                    toast.error(t('no_downloadable_version'));
                     setShowInstanceModal(false);
                     return;
                 }
@@ -566,7 +581,7 @@ export function Explore({ colors }: ExploreProps) {
             setInstanceCompatibility(compatibility);
         } catch (error) {
             console.error("[Explore] Error checking compatibility:", error);
-            toast.error("ตรวจสอบความเข้ากันไม่สำเร็จ");
+            toast.error(t('compatibility_check_failed'));
         } finally {
             setIsCheckingCompatibility(false);
         }
@@ -574,19 +589,19 @@ export function Explore({ colors }: ExploreProps) {
 
     const handleSelectInstanceForContent = (instance: GameInstance) => {
         if (modVersions.length === 0) {
-            toast.error("ไม่พบเวอร์ชันที่เข้ากันได้");
+            toast.error(t('no_compatible_version'));
             return;
         }
 
         if (!selectedProject) {
-            toast.error("ไม่พบโปรเจกต์ที่เลือก");
+            toast.error(t('project_not_found'));
             return;
         }
 
         setShowInstanceModal(false);
         setSelectedInstanceForDownload(instance);
         setVersionModalVersions(modVersions);
-        setVersionModalTitle("เลือกเวอร์ชัน");
+        setVersionModalTitle(t('select_version'));
         setVersionModalTarget("content");
         setVersionModalProject(selectedProject);
 
@@ -612,15 +627,15 @@ export function Explore({ colors }: ExploreProps) {
             });
 
             if (result?.ok) {
-                toast.success(`เพิ่ม ${selectedProject.title} เรียบร้อย`);
+                toast.success(t('install_complete'));
                 setSelectedProject(null);
                 setSelectedInstanceForDownload(null);
                 setInstanceCompatibility([]);
             } else {
-                toast.error(result?.error || "ดาวน์โหลดไม่สำเร็จ");
+                toast.error(result?.error || t('download_failed'));
             }
         } catch (error: any) {
-            toast.error(error?.message || "เกิดข้อผิดพลาด");
+            toast.error(error?.message || t('error_occurred'));
         } finally {
             setIsDownloading(false);
         }
@@ -628,9 +643,8 @@ export function Explore({ colors }: ExploreProps) {
 
     // ========================================
     // Computed Values
+    // (Computed earlier near state declarations: const totalPages = Math.max(1, Math.ceil((totalHits || results.length) / viewCount)); )
     // ========================================
-
-    const totalPages = Math.ceil(totalHits / viewCount);
 
     // ========================================
     // Render

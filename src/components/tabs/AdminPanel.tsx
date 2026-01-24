@@ -9,6 +9,7 @@
 
 import { useState, useEffect } from "react";
 import { Icons } from "../ui/Icons";
+import { useTranslation } from "../../hooks/useTranslation";
 import UserManagement from "./UserManagement";
 
 interface AppSettings {
@@ -33,9 +34,11 @@ interface AdminPanelProps {
         secondary: string;
     };
     adminToken: string;
+    language: string;
 }
 
-export default function AdminPanel({ colors, adminToken }: AdminPanelProps) {
+export default function AdminPanel({ colors, adminToken, language }: AdminPanelProps) {
+    const { t } = useTranslation(language as any);
     const [loading, setLoading] = useState(true);
     const [settings, setSettings] = useState<AppSettings | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -142,8 +145,8 @@ export default function AdminPanel({ colors, adminToken }: AdminPanelProps) {
     };
 
     const formatDate = (dateStr: string | null) => {
-        if (!dateStr) return "ยังไม่เคยตั้งค่า";
-        return new Date(dateStr).toLocaleString("th-TH");
+        if (!dateStr) return t('never_set');
+        return new Date(dateStr).toLocaleString(language === "th" ? "th-TH" : "en-US");
     };
 
     const openSecretModal = (type: "microsoft" | "curseforge") => {
@@ -169,7 +172,7 @@ export default function AdminPanel({ colors, adminToken }: AdminPanelProps) {
                     className="px-4 py-2 rounded-lg"
                     style={{ backgroundColor: colors.primary, color: colors.onPrimary }}
                 >
-                    ลองใหม่
+                    {t('try_again')}
                 </button>
             </div>
         );
@@ -182,17 +185,17 @@ export default function AdminPanel({ colors, adminToken }: AdminPanelProps) {
                 <div>
                     <h1 className="text-2xl font-bold flex items-center gap-2" style={{ color: colors.onSurface }}>
                         <Icons.Settings className="w-6 h-6" style={{ color: colors.secondary }} />
-                        Admin Panel
+                        {t('admin_panel')}
                     </h1>
                     <p className="text-sm mt-1" style={{ color: colors.onSurfaceVariant }}>
-                        ตั้งค่าระบบและ API Keys
+                        {t('system_settings_api')}
                     </p>
                 </div>
                 <button
                     onClick={loadSettings}
                     className="p-2 rounded-lg transition-colors hover:opacity-80"
                     style={{ backgroundColor: colors.surfaceContainerHigh }}
-                    title="รีเฟรช"
+                    title={t('refresh')}
                 >
                     <Icons.Refresh className="w-5 h-5" style={{ color: colors.onSurface }} />
                 </button>
@@ -202,7 +205,7 @@ export default function AdminPanel({ colors, adminToken }: AdminPanelProps) {
             <div className="rounded-xl p-5" style={{ backgroundColor: colors.surfaceContainer }}>
                 <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: colors.onSurface }}>
                     <Icons.Microsoft className="w-5 h-5" style={{ color: "#00a4ef" }} />
-                    Microsoft OAuth
+                    {t('microsoft_oauth')}
                 </h3>
 
                 <div className="space-y-4">
@@ -217,7 +220,7 @@ export default function AdminPanel({ colors, adminToken }: AdminPanelProps) {
                                     style={{ color: colors.secondary }}
                                 >
                                     <Icons.Edit className="w-3 h-3" />
-                                    แก้ไข
+                                    {t('edit')}
                                 </button>
                             )}
                         </div>
@@ -233,7 +236,7 @@ export default function AdminPanel({ colors, adminToken }: AdminPanelProps) {
                                         color: colors.onSurface,
                                         border: `1px solid ${colors.outline}`
                                     }}
-                                    placeholder="ใส่ Client ID"
+                                    placeholder={t('enter_client_id')}
                                 />
                                 <button
                                     onClick={saveClientId}
@@ -256,7 +259,7 @@ export default function AdminPanel({ colors, adminToken }: AdminPanelProps) {
                             </div>
                         ) : (
                             <code className="text-sm break-all" style={{ color: colors.secondary }}>
-                                {settings?.microsoftClientId || <span style={{ color: colors.onSurfaceVariant }}>ยังไม่ได้ตั้งค่า</span>}
+                                {settings?.microsoftClientId || <span style={{ color: colors.onSurfaceVariant }}>{t('not_set_yet')}</span>}
                             </code>
                         )}
                     </div>
@@ -265,9 +268,9 @@ export default function AdminPanel({ colors, adminToken }: AdminPanelProps) {
                     <div className="p-3 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHigh }}>
                         <div className="flex items-center justify-between mb-2">
                             <div>
-                                <span style={{ color: colors.onSurfaceVariant }}>Device Client ID</span>
+                                <span style={{ color: colors.onSurfaceVariant }}>{t('device_client_id')}</span>
                                 <p className="text-xs mt-0.5" style={{ color: colors.onSurfaceVariant }}>
-                                    สำหรับ Launcher (Device Code Flow)
+                                    {t('launcher_device_code')}
                                 </p>
                             </div>
                             {!editingDeviceClientId && (
@@ -331,14 +334,14 @@ export default function AdminPanel({ colors, adminToken }: AdminPanelProps) {
                                         <>
                                             <span className="text-sm flex items-center gap-1 text-green-500">
                                                 <Icons.Check className="w-3 h-3" />
-                                                ตั้งค่าแล้ว
+                                                {t('set_already')}
                                             </span>
                                             <span className="text-xs" style={{ color: colors.onSurfaceVariant }}>
                                                 ({formatDate(settings?.microsoftSecretUpdatedAt)})
                                             </span>
                                         </>
                                     ) : (
-                                        <span className="text-sm text-yellow-500">ยังไม่ได้ตั้งค่า</span>
+                                        <span className="text-sm text-yellow-500">{t('not_set_yet')}</span>
                                     )}
                                 </div>
                             </div>
@@ -348,7 +351,7 @@ export default function AdminPanel({ colors, adminToken }: AdminPanelProps) {
                                 style={{ backgroundColor: colors.surface, color: colors.onSurface }}
                             >
                                 <Icons.Key className="w-4 h-4" />
-                                {settings?.hasMicrosoftSecret ? "เปลี่ยน" : "ตั้งค่า"}
+                                {settings?.hasMicrosoftSecret ? t('change') : t('set_up')}
                             </button>
                         </div>
                     </div>
@@ -365,20 +368,20 @@ export default function AdminPanel({ colors, adminToken }: AdminPanelProps) {
                 <div className="p-3 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHigh }}>
                     <div className="flex items-center justify-between">
                         <div>
-                            <span style={{ color: colors.onSurfaceVariant }}>API Key</span>
+                            <span style={{ color: colors.onSurfaceVariant }}>{t('api_key')}</span>
                             <div className="flex items-center gap-2 mt-1">
                                 {settings?.hasCurseforgeApiKey ? (
                                     <>
                                         <span className="text-sm flex items-center gap-1 text-green-500">
                                             <Icons.Check className="w-3 h-3" />
-                                            ตั้งค่าแล้ว
+                                            {t('set_already')}
                                         </span>
                                         <span className="text-xs" style={{ color: colors.onSurfaceVariant }}>
                                             ({formatDate(settings?.curseforgeApiKeyUpdatedAt)})
                                         </span>
                                     </>
                                 ) : (
-                                    <span className="text-sm text-yellow-500">ยังไม่ได้ตั้งค่า</span>
+                                    <span className="text-sm text-yellow-500">{t('not_set_yet')}</span>
                                 )}
                             </div>
                         </div>
@@ -388,7 +391,7 @@ export default function AdminPanel({ colors, adminToken }: AdminPanelProps) {
                             style={{ backgroundColor: colors.surface, color: colors.onSurface }}
                         >
                             <Icons.Key className="w-4 h-4" />
-                            {settings?.hasCurseforgeApiKey ? "เปลี่ยน" : "ตั้งค่า"}
+                            {settings?.hasCurseforgeApiKey ? t('change') : t('set_up')}
                         </button>
                     </div>
                 </div>
@@ -398,25 +401,25 @@ export default function AdminPanel({ colors, adminToken }: AdminPanelProps) {
             <div className="rounded-xl p-5" style={{ backgroundColor: colors.surfaceContainer }}>
                 <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: colors.onSurface }}>
                     <Icons.Info className="w-5 h-5" style={{ color: colors.secondary }} />
-                    System Info
+                    {t('system_info')}
                 </h3>
 
                 <div className="space-y-3">
                     <div className="flex justify-between p-3 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHigh }}>
-                        <span style={{ color: colors.onSurfaceVariant }}>API URL</span>
+                        <span style={{ color: colors.onSurfaceVariant }}>{t('api_url')}</span>
                         <code className="text-sm" style={{ color: colors.secondary }}>
                             {systemInfo?.apiUrl || "N/A"}
                         </code>
                     </div>
                     <div className="flex justify-between p-3 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHigh }}>
-                        <span style={{ color: colors.onSurfaceVariant }}>Version</span>
+                        <span style={{ color: colors.onSurfaceVariant }}>{t('version')}</span>
                         <span style={{ color: colors.onSurface }}>{systemInfo?.version || "N/A"}</span>
                     </div>
                 </div>
             </div>
 
             {/* User Management Section */}
-            <UserManagement colors={colors} adminToken={adminToken} />
+            <UserManagement colors={colors} adminToken={adminToken} language={language} />
 
             {/* Secret Modal */}
             {secretModalOpen && (
@@ -426,7 +429,7 @@ export default function AdminPanel({ colors, adminToken }: AdminPanelProps) {
                         style={{ backgroundColor: colors.surfaceContainer }}
                     >
                         <h3 className="text-lg font-bold mb-4" style={{ color: colors.onSurface }}>
-                            {secretType === "microsoft" ? "ตั้งค่า Client Secret" : "ตั้งค่า CurseForge API Key"}
+                            {secretType === "microsoft" ? t('enter_client_id') : t('api_key')}
                         </h3>
 
                         <input
@@ -448,7 +451,7 @@ export default function AdminPanel({ colors, adminToken }: AdminPanelProps) {
                                 className="px-4 py-2 rounded-lg"
                                 style={{ backgroundColor: colors.surfaceContainerHigh, color: colors.onSurface }}
                             >
-                                ยกเลิก
+                                {t('cancel')}
                             </button>
                             <button
                                 onClick={saveSecret}
@@ -461,7 +464,7 @@ export default function AdminPanel({ colors, adminToken }: AdminPanelProps) {
                                 }}
                             >
                                 {saving ? <Icons.Spinner className="w-4 h-4 animate-spin" /> : null}
-                                บันทึก
+                                {t('save')}
                             </button>
                         </div>
                     </div>

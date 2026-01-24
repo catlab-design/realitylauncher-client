@@ -199,7 +199,8 @@ export async function pingServer(options: ServerPingOptions): Promise<ServerStat
         });
 
         socket.on("data", (data) => {
-            responseBuffer = Buffer.concat([responseBuffer, data]);
+            const dataBuffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
+            responseBuffer = Buffer.concat([responseBuffer, dataBuffer]);
 
             try {
                 const response = parseServerResponse(responseBuffer);

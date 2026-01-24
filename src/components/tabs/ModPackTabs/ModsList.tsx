@@ -9,6 +9,7 @@ import { LazyModItem } from "./LazyModItem";
 import { formatSize } from "./helpers";
 import type { ModInfo } from "./types";
 import { playClick } from "../../../lib/sounds";
+import { useTranslation } from "../../../hooks/useTranslation";
 
 interface ModsListProps {
     colors: any;
@@ -39,6 +40,7 @@ export function ModsList({
     onToggleLock,
     isServerManaged,
 }: ModsListProps) {
+    const { t } = useTranslation();
     const [searchQuery, setSearchQuery] = useState("");
     const [page, setPage] = useState(1);
 
@@ -62,36 +64,40 @@ export function ModsList({
         <>
             {/* Header Controls - Unified Row */}
             <div className="flex items-center justify-between mb-4">
-                {/* Left Side: Pagination */}
-                {totalPages > 1 ? (
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => { playClick(); setPage(p => Math.max(1, p - 1)); }}
-                            disabled={page === 1}
-                            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5"
-                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                        >
-                            <i className="fa-solid fa-chevron-left text-xs"></i>
-                            ก่อนหน้า
-                        </button>
+                {/* Left Side: Title OR Pagination */}
+                <div className="flex items-center gap-4">
+                    {totalPages > 1 ? (
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => { playClick(); setPage(p => Math.max(1, p - 1)); }}
+                                disabled={page === 1}
+                                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5"
+                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                            >
+                                <i className="fa-solid fa-chevron-left text-xs"></i>
+                                {t('previous')}
+                            </button>
 
-                        <span className="px-4 py-2 rounded-xl text-sm font-bold" style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}>
-                            {page} / {totalPages}
-                        </span>
+                            <span className="px-4 py-2 rounded-xl text-sm font-bold" style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}>
+                                {page} / {totalPages}
+                            </span>
 
-                        <button
-                            onClick={() => { playClick(); setPage(p => Math.min(totalPages, p + 1)); }}
-                            disabled={page === totalPages}
-                            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5"
-                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                        >
-                            ถัดไป
-                            <i className="fa-solid fa-chevron-right text-xs"></i>
-                        </button>
-                    </div>
-                ) : (
-                    <div /> // Spacer to keep right side aligned
-                )}
+                            <button
+                                onClick={() => { playClick(); setPage(p => Math.min(totalPages, p + 1)); }}
+                                disabled={page === totalPages}
+                                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5"
+                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                            >
+                                {t('next')}
+                                <i className="fa-solid fa-chevron-right text-xs"></i>
+                            </button>
+                        </div>
+                    ) : (
+                        <h3 className="text-lg font-medium" style={{ color: colors.onSurface }}>
+                            {t('mods')} {isLoading ? "" : `(${mods.length})`}
+                        </h3>
+                    )}
+                </div>
 
                 {/* Right Side: Actions (Search, Install, Refresh) */}
                 <div className="flex items-center gap-2">
@@ -103,7 +109,7 @@ export function ModsList({
                         <i className="fa-solid fa-search text-sm" style={{ color: colors.onSurfaceVariant }}></i>
                         <input
                             type="text"
-                            placeholder={`ค้นหา Mod (${mods.length})...`}
+                            placeholder={t('search_mod_count' as any).replace('{count}', String(mods.length))}
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="bg-transparent outline-none text-sm w-56 placeholder:opacity-70"
@@ -117,7 +123,7 @@ export function ModsList({
                         style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
                     >
                         <i className="fa-solid fa-plus text-xs"></i>
-                        ติดตั้ง Mod
+                        {t('install_mod' as any)}
                     </button>
 
                     <button
@@ -125,7 +131,7 @@ export function ModsList({
                         disabled={isLoading}
                         className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10 active:scale-95'}`}
                         style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                        title="รีเฟรช"
+                        title={t('refresh')}
                     >
                         <i className={`fa-solid fa-rotate-right text-sm ${isLoading ? 'fa-spin' : ''}`}></i>
                     </button>
@@ -137,10 +143,10 @@ export function ModsList({
                 <div className="text-center py-12 rounded-2xl" style={{ backgroundColor: colors.surfaceContainer }}>
                     <Icons.Box className="w-12 h-12 mx-auto mb-3" style={{ color: colors.onSurfaceVariant, opacity: 0.5 }} />
                     <p className="font-medium" style={{ color: colors.onSurfaceVariant }}>
-                        {searchQuery ? "ไม่พบ Mod ที่ค้นหา" : "ไม่มี Mod ใน Instance นี้"}
+                        {searchQuery ? t('no_mods_search' as any) : t('no_mods_instance' as any)}
                     </p>
                     <p className="text-sm mt-1" style={{ color: colors.onSurfaceVariant }}>
-                        ลากไฟล์ .jar มาที่โฟลเดอร์ mods หรือติดตั้งจาก Explore
+                        {t('drag_jar_hint' as any)}
                     </p>
                 </div>
             ) : (
@@ -186,7 +192,7 @@ export function ModsList({
                             style={{ color: colors.onSurface }}
                         >
                             <i className="fa-solid fa-chevron-left text-xs"></i>
-                            ก่อนหน้า
+                            {t('previous')}
                         </button>
 
                         <div className="px-4 min-w-[90px] text-center" style={{ color: colors.onSurfaceVariant }}>
@@ -205,7 +211,7 @@ export function ModsList({
                             className="px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-2"
                             style={{ color: colors.onSurface }}
                         >
-                            ถัดไป
+                            {t('next')}
                             <i className="fa-solid fa-chevron-right text-xs"></i>
                         </button>
                     </div>
@@ -246,13 +252,7 @@ function ModListItemWrapper({
     }
 
     return (
-        <div
-            className="animate-fade-in"
-            style={{
-                animationDelay: `${Math.min(index * 15, 150)}ms`,
-                animationFillMode: 'backwards'
-            }}
-        >
+        <div className="animate-fade-in">
             {children}
         </div>
     );

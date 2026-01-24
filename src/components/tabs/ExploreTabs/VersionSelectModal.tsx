@@ -3,6 +3,7 @@
 // ========================================
 
 import React, { useState } from "react";
+import { useTranslation } from "../../../hooks/useTranslation";
 import { Icons } from "../../ui/Icons";
 import type { ModVersion, GameInstance, ProjectType } from "./types";
 import { matchesVersion } from "./helpers";
@@ -33,6 +34,7 @@ export function VersionSelectModal({
     onClose,
     onSelectVersion,
 }: VersionSelectModalProps) {
+    const { t } = useTranslation();
     const [filter, setFilter] = useState("");
 
     // Filter versions based on search and instance compatibility
@@ -95,7 +97,7 @@ export function VersionSelectModal({
                 <div className="relative mb-3">
                     <input
                         type="text"
-                        placeholder="ค้นหาเวอร์ชัน..."
+                        placeholder={t('search_versions')}
                         value={filter}
                         onChange={(e) => setFilter(e.target.value)}
                         className="w-full px-4 py-2 pl-10 rounded-xl border text-sm"
@@ -114,11 +116,11 @@ export function VersionSelectModal({
                 {isLoading ? (
                     <div className="p-6 text-center rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
                         <div className="animate-spin w-6 h-6 border-2 border-current border-t-transparent rounded-full mx-auto mb-2" style={{ color: colors.secondary }} />
-                        <p style={{ color: colors.onSurfaceVariant }}>กำลังโหลดเวอร์ชัน...</p>
+                        <p style={{ color: colors.onSurfaceVariant }}>{t('loading_versions')}</p>
                     </div>
                 ) : noCompatibleVersions ? (
                     <div className="p-4 text-center rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
-                        <p style={{ color: colors.onSurfaceVariant }}>ไม่พบเวอร์ชันที่รองรับ {targetInstance.minecraftVersion}</p>
+                        <p style={{ color: colors.onSurfaceVariant }}>{t('no_compatible_versions').replace('{version}', targetInstance.minecraftVersion)}</p>
                     </div>
                 ) : (
                     <div className="space-y-2 max-h-80 overflow-y-auto">
@@ -164,7 +166,7 @@ export function VersionSelectModal({
 
                 {isDownloading && (
                     <div className="mt-4 text-center" style={{ color: colors.onSurfaceVariant }}>
-                        กำลังดาวน์โหลด...
+                        {t('downloading')}
                     </div>
                 )}
             </div>

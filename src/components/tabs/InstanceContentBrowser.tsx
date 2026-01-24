@@ -5,8 +5,13 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import toast from "react-hot-toast";
-import type { GameInstance } from "../../types/launcher";
+import type { GameInstance, LauncherConfig } from "../../types/launcher";
 import { playClick } from "../../lib/sounds";
+import { useTranslation } from "../../hooks/useTranslation";
+
+// Icons for content sources
+import modrinthIcon from "../../assets/modrinth.svg";
+import curseforgeIcon from "../../assets/curseforge.svg";
 
 // Import shared components from ExploreTabs
 import {
@@ -17,15 +22,10 @@ import {
     matchesVersion,
     ProjectCard,
     ImagePreviewModal,
+    normalizeImageUrl,
 } from "./ExploreTabs";
-
-// Import icons
-import modrinthIcon from "../../assets/modrinth.svg";
-import curseforgeIcon from "../../assets/curseforge.svg";
-
-// ========================================
-// Types
-// ========================================
+import { Icons } from "../ui/Icons";
+import bannerImage from "../../assets/banner.png";
 
 type ContentType = "mod" | "resourcepack" | "shader" | "datapack";
 
@@ -33,6 +33,7 @@ interface InstanceContentBrowserProps {
     instance: GameInstance;
     contentType: ContentType;
     colors: any;
+    config?: LauncherConfig;
     onClose: () => void;
     onInstalled: () => void;
 }
@@ -42,18 +43,18 @@ interface InstanceContentBrowserProps {
 // ========================================
 
 const SORT_OPTIONS = [
-    { value: "relevance", label: "Relevance" },
-    { value: "downloads", label: "Downloads" },
-    { value: "follows", label: "Follows" },
-    { value: "newest", label: "Newest" },
-    { value: "updated", label: "Updated" },
+    { value: "relevance", labelKey: "sort.relevance" },
+    { value: "downloads", labelKey: "sort.downloads" },
+    { value: "follows", labelKey: "sort.follows" },
+    { value: "newest", labelKey: "sort.newest" },
+    { value: "updated", labelKey: "sort.updated" },
 ];
 
-const CONTENT_TABS: { type: ContentType; label: string }[] = [
-    { type: "mod", label: "Mods" },
-    { type: "resourcepack", label: "Resource" },
-    { type: "datapack", label: "Data" },
-    { type: "shader", label: "Shaders" },
+const CONTENT_TABS: { type: ContentType; labelKey: string }[] = [
+    { type: "mod", labelKey: "mods" },
+    { type: "resourcepack", labelKey: "resourcepacks" },
+    { type: "datapack", labelKey: "datapacks" },
+    { type: "shader", labelKey: "shaders" },
 ];
 
 // Filter tabs based on instance loader
@@ -73,9 +74,11 @@ export function InstanceContentBrowser({
     instance,
     contentType: initialContentType,
     colors,
+    config,
     onClose,
     onInstalled,
 }: InstanceContentBrowserProps) {
+    const { t } = useTranslation(config?.language);
     // Content state
     const [contentType, setContentType] = useState<ContentType>(initialContentType);
     const [contentSource, setContentSource] = useState<ContentSource>(CONTENT_SOURCES.MODRINTH);
@@ -103,14 +106,15 @@ export function InstanceContentBrowser({
     // Lightbox state
     const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
 
-    // Helper to get URL from raw image item
+    // Helper to get URL from raw image item - normalize to absolute URL when possible
     const getImageUrl = (item: any) => {
         if (!item) return null;
-        if (typeof item === 'string') return item;
+        if (typeof item === 'string') return normalizeImageUrl(item, 'modrinth');
 
         // Use raw_url (or rawUrl from native) if available (high res), otherwise fallback to url
-        // Native module returns camelCase 'rawUrl'
-        return item.rawUrl || item.raw_url || item.url || null;
+        // Then normalize the resulting URL
+        const candidate = item.rawUrl || item.raw_url || item.url || null;
+        return normalizeImageUrl(candidate, 'modrinth');
     };
 
     // Debounce
@@ -252,7 +256,7 @@ export function InstanceContentBrowser({
                         description: cf.summary,
                         categories: cf.categories?.map((c: any) => c.name) || [],
                         downloads: cf.downloadCount,
-                        icon_url: cf.logo?.url || null,
+                        icon_url: normalizeImageUrl(cf.logo?.url || null, 'curseforge'),
                         project_id: cf.id.toString(),
                         author: cf.authors?.[0]?.name || "Unknown",
                         versions: cf.latestFiles?.flatMap((f: any) => f.gameVersions) || [],
@@ -283,7 +287,7 @@ export function InstanceContentBrowser({
                         description: mr.description,
                         categories: mr.categories || mr.display_categories || [],
                         downloads: mr.downloads,
-                        icon_url: mr.icon_url || null,
+                        icon_url: normalizeImageUrl(mr.icon_url || null, 'modrinth'),
                         project_id: mr.project_id,
                         author: mr.author || "Unknown",
                         versions: mr.versions || [],
@@ -302,7 +306,7 @@ export function InstanceContentBrowser({
             }
         } catch (error) {
             console.error("[ContentBrowser] Search error:", error);
-            toast.error("ค้นหาไม่สำเร็จ");
+            toast.error(t("search_failed"));
         } finally {
             setIsLoading(false);
         }
@@ -377,7 +381,7 @@ export function InstanceContentBrowser({
     const handleAddToInstance = async (project: ModrinthProject) => {
         // Block mod installation on vanilla instances
         if (contentType === "mod" && instance.loader === "vanilla") {
-            toast.error("ไม่สามารถติดตั้ง Mod บน Vanilla ได้ กรุณาเปลี่ยนเป็น Fabric, Forge หรือ Loader อื่น");
+            toast.error(t("cannot_install_mod_vanilla"));
             return;
         }
 
@@ -438,7 +442,7 @@ export function InstanceContentBrowser({
             const bestVersion = findCompatibleVersion(loadedVersions);
 
             if (!bestVersion) {
-                toast.error(`ไม่พบเวอร์ชันที่รองรับ ${instance.minecraftVersion} (${instance.loader})`);
+                toast.error(t("no_compatible_version_for").replace("{version}", instance.minecraftVersion).replace("{loader}", instance.loader || "vanilla"));
                 setIsInstalling(false);
                 setSelectedProject(null);
                 return;
@@ -454,7 +458,7 @@ export function InstanceContentBrowser({
             });
 
             if (result?.ok) {
-                toast.success(`ติดตั้ง ${project.title} สำเร็จ`);
+                toast.success(t("install_success_name").replace("{name}", project.title));
                 // Track installed project
                 setInstalledIds(prev => new Set(prev).add(project.project_id));
                 // Refresh installed content list
@@ -462,11 +466,11 @@ export function InstanceContentBrowser({
                 // Notify parent but don't close
                 onInstalled();
             } else {
-                toast.error(result?.error || "ติดตั้งไม่สำเร็จ");
+                toast.error(result?.error || t("install_failed"));
             }
         } catch (error: any) {
             console.error("[ContentBrowser] Install error:", error);
-            toast.error(error?.message || "เกิดข้อผิดพลาด");
+            toast.error(error?.message || t("error_occurred"));
         } finally {
             setIsInstalling(false);
             setSelectedProject(null);
@@ -529,7 +533,7 @@ export function InstanceContentBrowser({
                             style={{ color: colors.onSurfaceVariant }}
                         >
                             <i className="fa-solid fa-arrow-left"></i>
-                            กลับ
+                            {t('back')}
                         </button>
 
                         <div className="flex items-center gap-2">
@@ -543,7 +547,7 @@ export function InstanceContentBrowser({
                         <div className="flex-1 relative">
                             <input
                                 type="text"
-                                placeholder={`ค้นหา ${contentType === "mod" ? "Mods" : contentType === "resourcepack" ? "Resource Packs" : contentType}...`}
+                                placeholder={t('search_content_placeholder' as any).replace('{type}', contentType === "mod" ? t('mods') : contentType === "resourcepack" ? t('resourcepacks') : contentType)}
                                 value={searchQuery}
                                 onChange={(e) => handleDebouncedSearch(e.target.value)}
                                 onKeyDown={(e) => e.key === "Enter" && loadProjects()}
@@ -598,7 +602,7 @@ export function InstanceContentBrowser({
                                         color: contentType === tab.type ? "#1a1a1a" : colors.onSurfaceVariant,
                                     }}
                                 >
-                                    {tab.label}
+                                    {t(tab.labelKey as any)}
                                 </button>
                             ))}
                         </div>
@@ -618,7 +622,7 @@ export function InstanceContentBrowser({
                                 }}
                             >
                                 {SORT_OPTIONS.map((opt) => (
-                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                    <option key={opt.value} value={opt.value}>{t(opt.labelKey as any)}</option>
                                 ))}
                             </select>
 
@@ -674,7 +678,7 @@ export function InstanceContentBrowser({
                             {!isLoading && (
                                 <div className="flex items-center justify-between px-1">
                                     <span className="text-xs font-medium" style={{ color: colors.onSurfaceVariant }}>
-                                        ผลลัพธ์ {totalHits.toLocaleString()} รายการ
+                                        {t('results_count' as any).replace('{count}', totalHits.toLocaleString())}
                                     </span>
                                     <span className="text-[10px] px-2 py-0.5 rounded-full"
                                         style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}>
@@ -696,21 +700,21 @@ export function InstanceContentBrowser({
                                                 animationDelay: `${Math.min(i * 30, 150)}ms`
                                             }}
                                         >
-                                            {/* Icon skeleton with shimmer */}
+                                            {/* Icon skeleton */}
                                             <div className="w-12 h-12 rounded-xl flex-shrink-0 overflow-hidden relative"
                                                 style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                                                <div className="absolute inset-0 animate-content-shimmer" />
+                                                {/* Gradient removed */}
                                             </div>
                                             {/* Text skeleton */}
                                             <div className="flex-1 space-y-2">
                                                 <div className="h-4 rounded overflow-hidden relative" style={{ width: `${60 + (i % 3) * 15}%`, backgroundColor: colors.surfaceContainerHighest }}>
-                                                    <div className="absolute inset-0 animate-content-shimmer" />
+                                                    {/* Gradient removed */}
                                                 </div>
                                                 <div className="h-3 rounded overflow-hidden relative" style={{ width: `${40 + (i % 4) * 10}%`, backgroundColor: colors.surfaceContainerHighest }}>
-                                                    <div className="absolute inset-0 animate-content-shimmer" style={{ animationDelay: '100ms' }} />
+                                                    {/* Gradient removed */}
                                                 </div>
                                                 <div className="h-3 rounded overflow-hidden relative mt-2" style={{ width: '100%', backgroundColor: colors.surfaceContainerHighest }}>
-                                                    <div className="absolute inset-0 animate-content-shimmer" style={{ animationDelay: '200ms' }} />
+                                                    {/* Gradient removed */}
                                                 </div>
                                             </div>
                                         </div>
@@ -723,8 +727,8 @@ export function InstanceContentBrowser({
                                         style={{ backgroundColor: colors.surfaceContainerHighest }}>
                                         <i className="fa-solid fa-box-open text-2xl opacity-50"></i>
                                     </div>
-                                    <h3 className="text-sm font-medium mb-1" style={{ color: colors.onSurface }}>ไม่พบรายการ</h3>
-                                    <p className="text-xs opacity-70">ลองเปลี่ยนคำค้นหาหรือตัวกรองดูนะครับ</p>
+                                    <h3 className="text-sm font-medium mb-1" style={{ color: colors.onSurface }}>{t('no_results')}</h3>
+                                    <p className="text-xs opacity-70">{t('try_change_filters')}</p>
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 pb-4">
@@ -764,7 +768,7 @@ export function InstanceContentBrowser({
                                             style={{ color: colors.onSurface }}
                                         >
                                             <i className="fa-solid fa-chevron-left text-[10px]"></i>
-                                            ก่อนหน้า
+                                            {t('previous')}
                                         </button>
 
                                         <div className="px-3 min-w-[80px] text-center" style={{ color: colors.onSurfaceVariant }}>
@@ -785,7 +789,7 @@ export function InstanceContentBrowser({
                                             className="px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-1.5"
                                             style={{ color: colors.onSurface }}
                                         >
-                                            ถัดไป
+                                            {t('next')}
                                             <i className="fa-solid fa-chevron-right text-[10px]"></i>
                                         </button>
                                     </div>
@@ -811,7 +815,7 @@ export function InstanceContentBrowser({
                                             const raw = previewProject.featured_gallery || (previewProject.gallery && previewProject.gallery.length > 0 ? previewProject.gallery[0] : null);
                                             let url = getImageUrl(raw);
                                             if (!url) {
-                                                url = "/banner.png";
+                                                url = bannerImage.src;
                                             }
                                             return `url(${url})`;
                                         })()
@@ -823,7 +827,7 @@ export function InstanceContentBrowser({
                                         <div className="absolute top-3 right-3 px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1"
                                             style={{ backgroundColor: "#22c55e", color: "#fff" }}>
                                             <i className="fa-solid fa-check"></i>
-                                            ติดตั้งแล้ว
+                                            {t('installed' as any)}
                                         </div>
                                     )}
 
@@ -837,7 +841,7 @@ export function InstanceContentBrowser({
                                             }}>
                                             {!previewProject.icon_url && (
                                                 <div className="w-full h-full flex items-center justify-center">
-                                                    <i className="fa-solid fa-cube text-3xl opacity-50"></i>
+                                                    <Icons.Box className="w-10 h-10 opacity-50" style={{ color: colors.onSurfaceVariant }} />
                                                 </div>
                                             )}
                                         </div>
@@ -890,19 +894,19 @@ export function InstanceContentBrowser({
                                             <div className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
                                                 style={{ backgroundColor: "#22c55e20", color: "#22c55e" }}>
                                                 <i className="fa-solid fa-check"></i>
-                                                ติดตั้งแล้ว
+                                                {t('installed' as any)}
                                             </div>
                                         ) : contentType === "mod" && instance.loader === "vanilla" ? (
                                             <div className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
                                                 style={{ backgroundColor: "#f59e0b20", color: "#f59e0b" }}>
                                                 <i className="fa-solid fa-ban"></i>
-                                                Vanilla ไม่รองรับ Mod
+                                                {t('vanilla_no_mod' as any)}
                                             </div>
                                         ) : isInstalling && selectedProject?.project_id === previewProject.project_id ? (
                                             <div className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
                                                 style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}>
                                                 <i className="fa-solid fa-spinner fa-spin"></i>
-                                                กำลังติดตั้ง...
+                                                {t('installing_progress' as any)}
                                             </div>
                                         ) : (
                                             <button
@@ -915,7 +919,7 @@ export function InstanceContentBrowser({
                                                 }}
                                             >
                                                 <i className="fa-solid fa-download"></i>
-                                                ติดตั้ง
+                                                {t('install')}
                                             </button>
                                         )}
                                     </div>
@@ -923,7 +927,7 @@ export function InstanceContentBrowser({
                                     {/* Description */}
                                     <div className="mb-6 flex-1">
                                         <h4 className="text-xs font-bold uppercase tracking-wider mb-2 opacity-70" style={{ color: colors.onSurfaceVariant }}>
-                                            เกี่ยวกับ
+                                            {t('about')}
                                         </h4>
                                         <p className="text-xs leading-relaxed opacity-90 whitespace-pre-line" style={{ color: colors.onSurface }}>
                                             {previewProject.description}
@@ -934,7 +938,7 @@ export function InstanceContentBrowser({
                                     {previewProject.gallery && previewProject.gallery.length > 0 && (
                                         <div className="mb-4">
                                             <h4 className="text-xs font-bold uppercase tracking-wider mb-2 opacity-70" style={{ color: colors.onSurfaceVariant }}>
-                                                แกลเลอรี
+                                                {t('gallery')}
                                             </h4>
                                             <div className="grid grid-cols-2 gap-2">
                                                 {previewProject.gallery.slice(0, 4).map((img, idx) => {
@@ -979,9 +983,9 @@ export function InstanceContentBrowser({
                                     style={{ backgroundColor: `${colors.surfaceContainerHighest}80` }}>
                                     <i className="fa-solid fa-eye text-3xl opacity-30" style={{ color: colors.onSurfaceVariant }}></i>
                                 </div>
-                                <h3 className="text-sm font-medium mb-1" style={{ color: colors.onSurface }}>เลือกรายการเพื่อดูรายละเอียด</h3>
+                                <h3 className="text-sm font-medium mb-1" style={{ color: colors.onSurface }}>{t('select_item_to_view')}</h3>
                                 <p className="text-xs opacity-60 max-w-[200px]" style={{ color: colors.onSurfaceVariant }}>
-                                    คลิกที่การ์ดทางซ้ายเพื่อดูข้อมูลเพิ่มเติม
+                                    {t('click_card_left_to_view')}
                                 </p>
                             </div>
                         )}

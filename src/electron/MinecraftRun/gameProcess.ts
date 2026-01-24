@@ -11,7 +11,8 @@ const abortedStates = new Map<string, boolean>();
 // Map instanceId -> gameDirectory
 const activeGameDirectories = new Map<string, string>();
 
-let killRetryTimer: NodeJS.Timeout | null = null;
+// Map instanceId -> kill retry timer (to prevent race conditions with multiple instances)
+const killRetryTimers = new Map<string, NodeJS.Timeout>();
 let lastGamePid: number | null = null;
 
 // =========================================
@@ -34,6 +35,9 @@ export function setLaunching(instanceId: string, val: boolean) { launchingStates
 
 export function isAborted(instanceId: string) { return abortedStates.get(instanceId) || false; }
 export function setAborted(instanceId: string, val: boolean) { abortedStates.set(instanceId, val); }
+
+export function getLastGamePid(): number | null { return lastGamePid; }
+export function clearLastGamePid(): void { lastGamePid = null; }
 
 export function setActiveGameDirectory(instanceId: string, dir: string | null) {
     if (dir) {
@@ -102,7 +106,7 @@ export function resetLauncherState(instanceId?: string) {
 function findPidByGameDirectory(gameDir: string): Promise<number | null> {
     return new Promise((resolve) => {
         const platform = process.platform;
-        
+
         if (platform === "win32") {
             const pathForward = gameDir.replace(/\\/g, "/");
             const pathBackward = gameDir.replace(/\//g, "\\");
@@ -115,7 +119,11 @@ function findPidByGameDirectory(gameDir: string): Promise<number | null> {
                     resolve(null);
                     return;
                 }
-                const lines = stdout.trim().split(/\r?\n/);
+                const lines = stdout.trim().split(/\r?\n/).filter(l => l.trim() !== "");
+                if (lines.length === 0) {
+                    resolve(null);
+                    return;
+                }
                 const pid = parseInt(lines[lines.length - 1]);
                 if (!isNaN(pid) && pid > 0) {
                     resolve(pid);
@@ -148,15 +156,15 @@ function findPidByGameDirectory(gameDir: string): Promise<number | null> {
 
 export function killProcessAndChildren(pid: number) {
     const platform = process.platform;
-    
+
     if (platform === 'win32') {
         exec(`taskkill /pid ${pid} /T /F`, (err) => {
             // Ignore "not found" errors
         });
     } else if (platform === 'darwin') {
         // macOS: kill process group
-        try { 
-            process.kill(-pid, 'SIGKILL'); 
+        try {
+            process.kill(-pid, 'SIGKILL');
         } catch (e) {
             // Fallback to regular kill
             try { process.kill(pid, 'SIGKILL'); } catch (e2) { }
@@ -227,7 +235,11 @@ export async function killGame(instanceId: string): Promise<void> {
             console.log(`[GameProcess] Found persistent process PID: ${fallbackPid}. Force killing it.`);
             if (process.platform === "win32") {
                 exec(`taskkill /PID ${fallbackPid} /T /F`, (err, stdout) => {
-                    if (!err) console.log("[GameProcess] Fallback Taskkill success");
+                    if (err) {
+                        console.error("[GameProcess] Fallback Taskkill failed:", err.message);
+                    } else {
+                        console.log("[GameProcess] Fallback Taskkill success");
+                    }
                 });
             } else {
                 try { process.kill(fallbackPid, "SIGKILL"); } catch (e) { }
@@ -241,40 +253,50 @@ export async function killGame(instanceId: string): Promise<void> {
 /**
  * Kill all known Java processes (Emergency cleanup)
  */
-export function killAllLauncherJavaProcesses(): void {
+export async function killAllLauncherJavaProcesses(): Promise<void> {
     if (lastGamePid) {
         killProcessAndChildren(lastGamePid);
     }
     // Iterate over all active processes
-    for (const [id, p] of gameProcesses) {
-        killGame(id);
-    }
+    const killPromises = Array.from(gameProcesses.keys()).map(id => killGame(id));
+    await Promise.all(killPromises);
 }
 
-export function clearKillRetry(): void {
-    if (killRetryTimer) {
-        clearTimeout(killRetryTimer);
-        killRetryTimer = null;
+export function clearKillRetry(instanceId?: string): void {
+    if (instanceId) {
+        const timer = killRetryTimers.get(instanceId);
+        if (timer) {
+            clearTimeout(timer);
+            killRetryTimers.delete(instanceId);
+        }
+    } else {
+        // Clear all timers
+        for (const timer of killRetryTimers.values()) {
+            clearTimeout(timer);
+        }
+        killRetryTimers.clear();
     }
 }
 
 export function startKillRetry(instanceId: string): void {
-    clearKillRetry();
+    clearKillRetry(instanceId);
 
-    // Use a simplified single timer for now, though correct would be a map of timers.
-    killRetryTimer = setTimeout(async () => {
+    const timer = setTimeout(async () => {
         const p = gameProcesses.get(instanceId);
         const dir = activeGameDirectories.get(instanceId);
 
         if (p && !p.killed) {
             console.log(`[GameProcess] Retry killing instance ${instanceId}...`);
-            killGame(instanceId);
+            await killGame(instanceId);
         } else if (dir) {
             const pid = await findPidByGameDirectory(dir);
             if (pid) {
                 console.log("[GameProcess] Retry found lingering process, killing...");
-                killGame(instanceId);
+                await killGame(instanceId);
             }
         }
+        killRetryTimers.delete(instanceId);
     }, 2000);
+
+    killRetryTimers.set(instanceId, timer);
 }
