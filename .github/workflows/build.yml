@@ -61,6 +61,15 @@ jobs:
         with:
           workspaces: native
 
+      - name: Update package.json version
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if [ -n "$INPUT_VERSION" ]; then
+            echo "Updating version to $INPUT_VERSION"
+            npm version "$INPUT_VERSION" --no-git-tag-version --allow-same-version
+          fi
+
       - name: Build Rust native module
         run: |
           cd native
@@ -246,15 +255,17 @@ jobs:
           done
           
           # Modify latest.yml to include version folder in URL paths
-          if [ -f "artifacts/reality-launcher-windows/latest.yml" ]; then
-            echo "Patching latest.yml with version prefix..."
-            sed -i "s|url: |url: $VERSION/|g" artifacts/reality-launcher-windows/latest.yml
-            cat artifacts/reality-launcher-windows/latest.yml
+          LATEST_YML=$(find artifacts/reality-launcher-windows -name latest.yml | head -n 1)
+          if [ -n "$LATEST_YML" ]; then
+            echo "Patching $LATEST_YML with version prefix..."
+            sed -i "s|url: |url: $VERSION/|g" "$LATEST_YML"
+            cat "$LATEST_YML"
             echo "Uploading latest.yml..."
-            wrangler r2 object put --remote "$R2_BUCKET/client/latest.yml" --file="artifacts/reality-launcher-windows/latest.yml" --content-type="text/yaml"
+            wrangler r2 object put --remote "$R2_BUCKET/client/latest.yml" --file="$LATEST_YML" --content-type="text/yaml"
             echo "✓ Uploaded latest.yml"
           else
-            echo "ERROR: latest.yml not found!"
+            echo "ERROR: latest.yml not found in artifacts/reality-launcher-windows!"
+            find artifacts/reality-launcher-windows
             exit 1
           fi
 
@@ -285,12 +296,13 @@ jobs:
             fi
           done
           
-          if [ -f "artifacts/reality-launcher-macos/latest-mac.yml" ]; then
-            echo "Patching latest-mac.yml with version prefix..."
-            sed -i "s|url: |url: $VERSION/|g" artifacts/reality-launcher-macos/latest-mac.yml
-            cat artifacts/reality-launcher-macos/latest-mac.yml
+          LATEST_MAC_YML=$(find artifacts/reality-launcher-macos -name latest-mac.yml | head -n 1)
+          if [ -n "$LATEST_MAC_YML" ]; then
+            echo "Patching $LATEST_MAC_YML with version prefix..."
+            sed -i "s|url: |url: $VERSION/|g" "$LATEST_MAC_YML"
+            cat "$LATEST_MAC_YML"
             echo "Uploading latest-mac.yml..."
-            wrangler r2 object put --remote "$R2_BUCKET/client/latest-mac.yml" --file="artifacts/reality-launcher-macos/latest-mac.yml" --content-type="text/yaml"
+            wrangler r2 object put --remote "$R2_BUCKET/client/latest-mac.yml" --file="$LATEST_MAC_YML" --content-type="text/yaml"
             echo "✓ Uploaded latest-mac.yml"
           fi
 
@@ -312,12 +324,13 @@ jobs:
             fi
           done
           
-          if [ -f "artifacts/reality-launcher-linux/latest-linux.yml" ]; then
-            echo "Patching latest-linux.yml with version prefix..."
-            sed -i "s|url: |url: $VERSION/|g" artifacts/reality-launcher-linux/latest-linux.yml
-            cat artifacts/reality-launcher-linux/latest-linux.yml
+          LATEST_LINUX_YML=$(find artifacts/reality-launcher-linux -name latest-linux.yml | head -n 1)
+          if [ -n "$LATEST_LINUX_YML" ]; then
+            echo "Patching $LATEST_LINUX_YML with version prefix..."
+            sed -i "s|url: |url: $VERSION/|g" "$LATEST_LINUX_YML"
+            cat "$LATEST_LINUX_YML"
             echo "Uploading latest-linux.yml..."
-            wrangler r2 object put --remote "$R2_BUCKET/client/latest-linux.yml" --file="artifacts/reality-launcher-linux/latest-linux.yml" --content-type="text/yaml"
+            wrangler r2 object put --remote "$R2_BUCKET/client/latest-linux.yml" --file="$LATEST_LINUX_YML" --content-type="text/yaml"
             echo "✓ Uploaded latest-linux.yml"
           fi
 
