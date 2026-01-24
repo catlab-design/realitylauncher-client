@@ -74,7 +74,8 @@ jobs:
       - name: Build Rust native module
         run: |
           cd native
-          cargo build --release
+          bun install
+          bun run build
         env:
           CARGO_TERM_COLOR: always
 
