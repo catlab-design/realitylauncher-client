@@ -232,6 +232,25 @@ pub fn detect_java_installations() -> JavaDetectionResult {
                 }
             }
         }
+
+        // Check macOS standard locations
+        if cfg!(target_os = "macos") {
+             if let Ok(entries) = std::fs::read_dir("/Library/Java/JavaVirtualMachines") {
+                for entry in entries.flatten() {
+                    // Contents/Home/bin/java
+                    let java_exe = entry.path().join("Contents").join("Home").join("bin").join("java");
+                    if java_exe.exists() {
+                        let path_str = java_exe.to_string_lossy().to_string();
+                        if !checked_paths.contains(&path_str) {
+                            checked_paths.insert(path_str.clone());
+                            if let Some(info) = get_java_info(&path_str) {
+                                installations.push(info);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // Sort by major version (descending)

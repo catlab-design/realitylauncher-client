@@ -62,8 +62,8 @@ pub struct RunningInstance {
 }
 
 fn get_state_file_path() -> PathBuf {
-    let app_data = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(app_data)
+    let config_dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
+    config_dir
         .join("RealityLauncher")
         .join("running-instances.json")
 }
