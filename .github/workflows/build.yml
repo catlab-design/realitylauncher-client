@@ -102,9 +102,9 @@ jobs:
         with:
           name: reality-launcher-windows
           path: |
-            release/*.exe
-            release/*.exe.blockmap
-            release/latest.yml
+            release-build/*.exe
+            release-build/*.exe.blockmap
+            release-build/latest.yml
           retention-days: 30
 
       # macOS artifact upload disabled
@@ -125,10 +125,10 @@ jobs:
         with:
           name: reality-launcher-linux
           path: |
-            release/*.AppImage
-            release/*.deb
-            release/*.rpm
-            release/latest-linux.yml
+            release-build/*.AppImage
+            release-build/*.deb
+            release-build/*.rpm
+            release-build/latest-linux.yml
           retention-days: 30
 
       - name: Upload macOS artifacts
@@ -137,9 +137,9 @@ jobs:
         with:
           name: reality-launcher-macos
           path: |
-            release/*.dmg
-            release/*.dmg.blockmap
-            release/latest-mac.yml
+            release-build/*.dmg
+            release-build/*.dmg.blockmap
+            release-build/latest-mac.yml
           retention-days: 30
 
   release:
