@@ -347,15 +347,19 @@ jobs:
           CHANGELOG="${INPUT_CHANGELOG:-${DISPATCH_CHANGELOG:-}}"
           CHANGELOG_ESCAPED=$(echo "$CHANGELOG" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')
           
-          # Detect actual filenames
-          WIN_FILE=$(basename $(ls artifacts/reality-launcher-windows/*.exe | head -n 1))
-          MAC_FILE=$(basename $(ls artifacts/reality-launcher-macos/*.dmg | head -n 1))
-          LINUX_AppImage=$(basename $(ls artifacts/reality-launcher-linux/*.AppImage | head -n 1))
+          # Detect actual filenames (handle spaces correctly)
+          WIN_PATH=$(find artifacts/reality-launcher-windows -name "*.exe" | head -n 1)
+          MAC_PATH=$(find artifacts/reality-launcher-macos -name "*.dmg" | head -n 1)
+          LINUX_PATH=$(find artifacts/reality-launcher-linux -name "*.AppImage" | head -n 1)
           
+          WIN_FILE=$(basename "$WIN_PATH")
+          MAC_FILE=$(basename "$MAC_PATH")
+          LINUX_FILE=$(basename "$LINUX_PATH")
+
           # URL Encode filenames (replace spaces with %20)
           WIN_URL="$CDN_URL/client/$VERSION/$(echo "$WIN_FILE" | sed 's/ /%20/g')"
           MAC_URL="$CDN_URL/client/$VERSION/$(echo "$MAC_FILE" | sed 's/ /%20/g')"
-          LINUX_URL="$CDN_URL/client/$VERSION/$(echo "$LINUX_AppImage" | sed 's/ /%20/g')"
+          LINUX_URL="$CDN_URL/client/$VERSION/$(echo "$LINUX_FILE" | sed 's/ /%20/g')"
           
           cat > latest.json <<EOF
           {
