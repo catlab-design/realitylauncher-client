@@ -90,8 +90,8 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "multiLanguage": true,
-      "languages": [
+      "multiLanguageInstaller": true,
+      "installerLanguages": [
         "th_TH",
         "en_US"
       ]
