@@ -15,7 +15,6 @@ import fs from "fs";
 import os from "os";
 import { createRequire } from "module";
 import { getMinecraftDir, getConfig } from "../config.js";
-import { execSync } from "child_process";
 
 // Helper to locate a suitable Java executable (prefer Java 17)
 // Helper to locate a suitable Java executable (Smart Version Selection)
@@ -136,6 +135,9 @@ const customRequire = createRequire(__filename);
 
 function getNative() {
     const nativePath = path.join(app.getAppPath(), "native", "index.cjs");
+    if (!fs.existsSync(nativePath)) {
+        throw new Error(`Critical Error: Native module not found at ${nativePath}. Please reinstall the application.`);
+    }
     return customRequire(nativePath);
 }
 
@@ -192,6 +194,74 @@ async function ensureLibrariesDownloaded(versionJsonStr: string, minecraftDir: s
             console.warn("[ForgeFix] Failed to ensure library", e);
         }
     }
+}
+
+/**
+ * Merge libraries from child and parent, prioritizing child versions.
+ * Deduplicates based on group:artifact (and classifier if present).
+ */
+function mergeLibraries(childLibs: any[], parentLibs: any[]): any[] {
+    const libMap = new Map<string, any>();
+    
+    const getLibKey = (lib: any) => {
+        // name format: group:artifact:version[:classifier]
+        const parts = (lib.name || "").split(":");
+        if (parts.length < 2) return lib.name; // Fallback
+        
+        const group = parts[0];
+        const artifact = parts[1];
+        const classifier = parts[3];
+        // Key includes classifier to allow natives + main jar
+        return classifier ? `${group}:${artifact}:${classifier}` : `${group}:${artifact}`;
+    };
+
+    // 1. Add child libs (priority)
+    for (const lib of childLibs) {
+        const key = getLibKey(lib);
+        // If child defines duplicate internally, valid logic would be keep first or last?
+        // Usually assume unique in single profile.
+        libMap.set(key, lib);
+    }
+
+    // 2. Add parent libs if not overridden
+    for (const lib of parentLibs) {
+        const key = getLibKey(lib);
+        if (!libMap.has(key)) {
+            libMap.set(key, lib);
+        } else {
+             // Optional: Log conflict resolution
+             // const childLib = libMap.get(key);
+             // console.log(`[RustLauncher] Resolving library conflict: ${childLib.name} (Child) overrides ${lib.name} (Parent)`);
+        }
+    }
+
+    return Array.from(libMap.values());
+}
+
+/**
+ * Filter certain arguments that might cause issues if their values are invalid or empty.
+ * For example: --quickPlayPath . (directory) causes silent exit.
+ * --clientId (empty) might be harmless but cleaner to remove.
+ */
+function filterGameArgs(args: any[]): any[] {
+    const result: any[] = [];
+    for (let i = 0; i < args.length; i++) {
+        const arg = args[i];
+        if (typeof arg === "string") {
+            if (arg === "--quickPlayPath") {
+                // Skip this and the next argument (value)
+                i++;
+                continue;
+            }
+            if (arg === "--clientId") {
+                // Skip this and the next argument (val)
+                i++;
+                continue;
+            }
+        }
+        result.push(arg);
+    }
+    return result;
 }
 
 interface DownloadItem {
@@ -311,17 +381,17 @@ export async function launchGameRust(options: LaunchOptions): Promise<LaunchResu
             mergedVersionData = {
                 ...parentData,
                 ...mergedVersionData,
-                // Combine libraries (child first, then parent)
-                libraries: [
-                    ...(mergedVersionData.libraries || []),
-                    ...(parentData.libraries || [])
-                ],
+                // Combine libraries (child first, then parent) with deduplication
+                libraries: mergeLibraries(
+                    mergedVersionData.libraries || [],
+                    parentData.libraries || []
+                ),
                 // Merge arguments
                 arguments: {
-                    game: [
+                    game: filterGameArgs([
                         ...(mergedVersionData.arguments?.game || []),
                         ...(parentData.arguments?.game || [])
-                    ],
+                    ]),
                     jvm: [
                         ...(mergedVersionData.arguments?.jvm || []),
                         ...(parentData.arguments?.jvm || [])
@@ -373,8 +443,16 @@ export async function launchGameRust(options: LaunchOptions): Promise<LaunchResu
             userType: accessToken ? "msa" : "legacy",
             ramMinMb: Math.min(ramMB, 2048),
             ramMaxMb: ramMB,
-            extraJvmArgs: getOptimizedJvmArgs(),
-            extraGameArgs: ["--launcherName", "RealityLauncher", "--launcherVersion", app.getVersion()],
+            extraJvmArgs: [
+                ...getOptimizedJvmArgs(),
+                "-DlauncherName=Reality Launcher",
+                `-DlauncherVersion=${app.getVersion()}`,
+                "-Dminecraft.launcher.brand=Reality Launcher",
+                `-Dminecraft.launcher.version=${app.getVersion()}`,
+                "-Dlauncher_name=Reality Launcher",
+                "-Dclient.brand=Reality Launcher"
+            ],
+            extraGameArgs: ["--launcherName", "Reality Launcher", "--launcherVersion", app.getVersion()],
             assetIndex,
         };
 
@@ -382,6 +460,35 @@ export async function launchGameRust(options: LaunchOptions): Promise<LaunchResu
 
         if (!prepareResult.success) {
             throw new Error(prepareResult.error || "Failed to prepare launch");
+        }
+
+        // Post-process args: fix unreplaced template variables
+        const fixUnreplacedVars = (arg: string): string => {
+            let res = arg
+                .replace(/\$\{auth_xuid\}/g, "0")
+                .replace(/\$\{clientid\}/g, "")
+                .replace(/\$\{auth_session\}/g, accessToken || "token:0")
+                .replace(/\$\{resolution_width\}/g, "854")
+                .replace(/\$\{resolution_height\}/g, "480")
+                .replace(/\$\{path_separator\}/g, path.delimiter)
+                .replace(/\$\{primary_jar_name\}/g, `${version}.jar`);
+            
+            // Safety: if arg still contains ${...}, try to replace common ones or just warn
+            // Not throwing error to allow game to attempt launch
+            return res;
+        };
+
+        prepareResult.jvmArgs = prepareResult.jvmArgs.map(fixUnreplacedVars);
+        prepareResult.gameArgs = prepareResult.gameArgs.map(fixUnreplacedVars);
+
+        // Warn about any remaining unreplaced variables but don't spam
+        const unreplacedPattern = /\$\{[^}]+\}/g;
+        for (const arg of [...prepareResult.jvmArgs, ...prepareResult.gameArgs]) {
+            const matches = arg.match(unreplacedPattern);
+            if (matches) {
+                 // Ignore standard log4j config patterns etc if any
+                console.warn(`[RustLauncher] WARNING: Unreplaced template variables in arg: ${matches.join(", ")}`);
+            }
         }
 
         if (prepareResult.downloadsNeeded.length > 0) {
@@ -466,7 +573,47 @@ export async function launchGameRust(options: LaunchOptions): Promise<LaunchResu
         // Step 8: Extract natives
         sendProgress({ type: "extract", task: "กำลังแตกไฟล์ natives..." });
         fs.mkdirSync(nativesDir, { recursive: true });
-        // Native extraction is handled by prepare_launch
+
+        // Extract native libraries from classifier JARs to natives directory
+        // Required for LWJGL and other native libs (especially for MC < 1.19.3)
+        const versionDataForNatives = JSON.parse(versionJson);
+        const osKey = process.platform === "win32" ? "windows" : process.platform === "darwin" ? "osx" : "linux";
+        const archBits = process.arch === "x64" || process.arch === "arm64" ? "64" : "32";
+        let nativesExtracted = 0;
+
+        for (const lib of versionDataForNatives.libraries || []) {
+            if (!lib.natives) continue;
+
+            const classifierTemplate = lib.natives[osKey];
+            if (!classifierTemplate) continue;
+
+            const classifierKey = classifierTemplate.replace("${arch}", archBits);
+            const classifier = lib.downloads?.classifiers?.[classifierKey];
+            if (!classifier?.path) continue;
+
+            const nativeJarPath = path.join(librariesDir, classifier.path);
+            if (!fs.existsSync(nativeJarPath)) continue;
+
+            // Get exclude patterns from library's extract rules
+            const excludePatterns: string[] = lib.extract?.exclude || ["META-INF/"];
+
+            try {
+                native.extractZip(nativeJarPath, nativesDir);
+                nativesExtracted++;
+            } catch (e) {
+                console.warn(`[RustLauncher] Failed to extract natives from ${path.basename(nativeJarPath)}:`, e);
+            }
+        }
+
+        // Clean up META-INF that may have been extracted
+        const metaInfPath = path.join(nativesDir, "META-INF");
+        if (fs.existsSync(metaInfPath)) {
+            fs.rmSync(metaInfPath, { recursive: true, force: true });
+        }
+
+        if (nativesExtracted > 0) {
+            console.log(`[RustLauncher] Extracted natives from ${nativesExtracted} JARs to ${nativesDir}`);
+        }
 
         // Step 9: Launch game
         sendProgress({ type: "launch", task: "กำลังเปิดเกม..." });
@@ -476,46 +623,80 @@ export async function launchGameRust(options: LaunchOptions): Promise<LaunchResu
         }
 
         // Launch using Node.js spawn for live logging
-        const { spawn } = await import("child_process");
+        const { spawn, exec } = await import("child_process");
 
         const allArgs = [...prepareResult.jvmArgs, prepareResult.mainClass, ...prepareResult.gameArgs];
 
-        // Debug: Log Java version
-        const { execSync } = await import("child_process");
+        // Debug: Log Java version (async to prevent UI freeze)
+        let javaMajorVersion = 8;
         try {
-            const javaVer = execSync(`"${javaPath}" -version 2>&1`).toString();
+            const javaVer = await new Promise<string>((resolve, reject) => {
+                exec(`"${javaPath}" -version 2>&1`, { timeout: 5000 }, (err, stdout, stderr) => {
+                    if (err) reject(err);
+                    else resolve(stdout || stderr);
+                });
+            });
             console.log(`[RustLauncher] Java Version Output:\n${javaVer}`);
 
-            // ============================================
-            // CRITICAL FIX: Java 17 Enforcement for Forge 1.20.1
-            // ============================================
-            // Forge 1.20.1 (older builds) crashes on Java 21 (UnionFileSystem error).
-            // However, newer NeoForge/Forge 1.20.1 builds MIGHT require Java 21.
-            // We only force downgrade if we didn't explicitly request Java 21 earlier.
+            // Parse Java version
+            const versionMatch = javaVer.match(/version "(.*?)"/);
+            if (versionMatch) {
+                const parts = versionMatch[1].split(".");
+                if (parts[0] === "1") {
+                    javaMajorVersion = parseInt(parts[1]);
+                } else {
+                    javaMajorVersion = parseInt(parts[0]);
+                }
+            }
+            console.log(`[RustLauncher] Detected Java Major Version: ${javaMajorVersion}`);
 
-            // Check if we already determined we need Java 21 (based on mcVersion logic at start)
-            // But here mcVersion is "1.20.1", so targetJavaVersion was 17.
-            // We need to check if the CURRENT javaPath is Java 21, and if so, 
-            // deciding whether to keep it or downgrade.
-
+            // ============================================
+            // FIX: Removed Forced Downgrade Logic
+            // ============================================
+            // Previous logic forced Java 17 for Forge 1.20.1 to prevent potential crashes on Java 21.
+            // However, this blocked newer Modpacks that require Java 21.
+            // We now respect the user's selected/detected Java version.
             const isForge20 = version.includes("1.20.1") && loader && (loader.type?.toLowerCase() === "forge");
-            // NOTE: NeoForge 1.20.1 usually works with Java 21 or requires it, so we exclude neoforge from forced downgrade
-
-            if (isForge20 && javaVer.includes('"21.')) {
-                console.warn(`[RustLauncher] Java 21 detected for Forge 1.20.1. Checking if downgrade is needed...`);
-                // Only downgrade for standard Forge, not NeoForge (which is excluded by isForge20 check above)
-                // And maybe we should trust the user's config if they explicitly set Java 21?
-                // For now, let's just make sure we don't downgrade NeoForge.
-
-                console.warn(`[RustLauncher] Force-downgrading to Java 17 for stability on Forge 1.20.1`);
-                javaPath = await getJavaPath(undefined, undefined, native, "1.20.1");
+            
+            if (isForge20 && javaMajorVersion >= 21) {
+                 console.log(`[RustLauncher] Note: Using Java ${javaMajorVersion} for Forge 1.20.1. If crash occurs, try manually selecting Java 17.`);
             }
 
         } catch (e) {
             console.warn(`[RustLauncher] Failed to check Java version: ${e}`);
         }
 
-        const child = spawn(javaPath, allArgs, {
+        // Use Argument File for Java 9+ to fix ENAMETOOLONG
+        let spawnArgs = allArgs;
+        if (javaMajorVersion >= 9) {
+            try {
+                const tempDir = path.join(gameDir, "temp");
+                fs.mkdirSync(tempDir, { recursive: true });
+                const argsFile = path.join(tempDir, `args_${instanceId}.txt`);
+                
+                // Write arguments to file, one per line
+                // IMPORTANT: Java @argfile treats backslashes as escape characters!
+                // We MUST escape backslashes on Windows paths (e.g. C:\Path -> C:\\Path)
+                const fileContent = allArgs.map(arg => {
+                    // 1. Escape backslashes first
+                    let escaped = arg.replace(/\\/g, "\\\\");
+                    
+                    // 2. Quote if contains spaces (and not already quoted)
+                    if (escaped.includes(" ") && !escaped.startsWith('"')) {
+                        escaped = `"${escaped}"`;
+                    }
+                    return escaped;
+                }).join("\n");
+
+                fs.writeFileSync(argsFile, fileContent);
+                console.log(`[RustLauncher] Created argument file at ${argsFile}`);
+                spawnArgs = [`@${argsFile}`];
+            } catch (e) {
+                console.error(`[RustLauncher] Failed to create argument file, falling back to direct args`, e);
+            }
+        }
+
+        const child = spawn(javaPath, spawnArgs, {
             cwd: gameDir,
             env: { ...process.env },
             stdio: ["ignore", "pipe", "pipe"],
@@ -535,12 +716,73 @@ export async function launchGameRust(options: LaunchOptions): Promise<LaunchResu
         }
 
         console.log(`[RustLauncher] Game started with PID: ${child.pid}`);
-        console.log(`[RustLauncher] Full Launch Command: "${javaPath}" ${allArgs.join(" ")}`);
         console.log(`[RustLauncher] Launch Args (Head): ${allArgs.slice(0, 10).join(" ")}`);
         console.log(`[RustLauncher] Launch Args (Tail): ${allArgs.slice(-5).join(" ")}`);
 
-        // Setup live logging
+        // Save full launch command to crash log for debugging
+        const crashLogPath = path.join(gameDir, "launch-debug.log");
+        try {
+            const debugInfo = [
+                `=== Reality Launcher Debug Log ===`,
+                `Date: ${new Date().toISOString()}`,
+                `Java: ${javaPath}`,
+                `Java Version: ${javaMajorVersion}`,
+                `MC Version: ${version}`,
+                `Game Dir: ${gameDir}`,
+                `Natives Dir: ${nativesDir}`,
+                `Main Class: ${prepareResult.mainClass}`,
+                `Using Argfile: ${javaMajorVersion >= 9 ? 'yes' : 'no'}`,
+                `Natives Extracted: ${nativesExtracted}`,
+                ``,
+                `=== JVM Args (${prepareResult.jvmArgs.length}) ===`,
+                ...prepareResult.jvmArgs.map((a, i) => `  [${i}] ${a}`),
+                ``,
+                `=== Game Args (${prepareResult.gameArgs.length}) ===`,
+                ...prepareResult.gameArgs.map((a, i) => `  [${i}] ${a}`),
+                ``,
+                `=== Full Command ===`,
+                `"${javaPath}" ${allArgs.join(" ")}`,
+            ].join("\n");
+            fs.writeFileSync(crashLogPath, debugInfo);
+            console.log(`[RustLauncher] Debug log saved to ${crashLogPath}`);
+        } catch (e) {
+            console.warn(`[RustLauncher] Failed to save debug log:`, e);
+        }
+
+        // Setup live logging with throttling to prevent IPC flooding
         const gameLogCallback = getGameLogCallback();
+        let stderrBuffer = ""; // Accumulate stderr for crash diagnostics (capped)
+        const MAX_STDERR_BUFFER = 100_000; // Cap at ~100KB to prevent memory leak
+
+        // Throttle mechanism: batch logs and send every 100ms
+        let logQueue: Array<{ level: string; message: string }> = [];
+        let logFlushTimer: NodeJS.Timeout | null = null;
+        const LOG_FLUSH_INTERVAL = 100; // ms
+        const MAX_QUEUE_SIZE = 50; // Force flush if queue gets too large
+
+        const flushLogs = () => {
+            if (logQueue.length > 0 && gameLogCallback) {
+                // Send batched logs (just the last few to prevent overwhelming UI)
+                const toSend = logQueue.slice(-20);
+                for (const log of toSend) {
+                    gameLogCallback(log.level, log.message);
+                }
+                logQueue = [];
+            }
+            logFlushTimer = null;
+        };
+
+        const queueLog = (level: string, message: string) => {
+            logQueue.push({ level, message });
+            
+            // Force flush if queue is too large
+            if (logQueue.length >= MAX_QUEUE_SIZE) {
+                if (logFlushTimer) clearTimeout(logFlushTimer);
+                flushLogs();
+            } else if (!logFlushTimer) {
+                logFlushTimer = setTimeout(flushLogs, LOG_FLUSH_INTERVAL);
+            }
+        };
 
         if (child.stdout) {
             child.stdout.on("data", (data: Buffer) => {
@@ -548,9 +790,7 @@ export async function launchGameRust(options: LaunchOptions): Promise<LaunchResu
                 for (const line of lines) {
                     const lineStr = line.trim();
                     if (lineStr) {
-                        console.log(`[Game] ${lineStr}`); // Added for debug
-
-                        // Check for corruption errors
+                        // Check for corruption errors (always process immediately)
                         if (lineStr.includes("java.util.zip.ZipException") || lineStr.includes("zip END header not found")) {
                             console.error("[RustLauncher] Detected zip corruption in game logs!");
                             if (gameLogCallback) {
@@ -558,13 +798,12 @@ export async function launchGameRust(options: LaunchOptions): Promise<LaunchResu
                             }
                         }
 
-                        if (gameLogCallback) {
-                            let level = "info";
-                            if (lineStr.includes("/ERROR]") || lineStr.includes("/FATAL]")) level = "error";
-                            else if (lineStr.includes("/WARN]")) level = "warn";
-                            else if (lineStr.includes("/DEBUG]")) level = "debug";
-                            gameLogCallback(level, lineStr);
-                        }
+                        // Queue log with appropriate level
+                        let level = "info";
+                        if (lineStr.includes("/ERROR]") || lineStr.includes("/FATAL]")) level = "error";
+                        else if (lineStr.includes("/WARN]")) level = "warn";
+                        else if (lineStr.includes("/DEBUG]")) level = "debug";
+                        queueLog(level, lineStr);
                     }
                 }
             });
@@ -572,13 +811,15 @@ export async function launchGameRust(options: LaunchOptions): Promise<LaunchResu
 
         if (child.stderr) {
             child.stderr.on("data", (data: Buffer) => {
-                const lines = data.toString().split("\n");
+                const text = data.toString();
+                // Accumulate for crash log, but cap size to prevent memory leak
+                if (stderrBuffer.length < MAX_STDERR_BUFFER) {
+                    stderrBuffer += text.substring(0, MAX_STDERR_BUFFER - stderrBuffer.length);
+                }
+                const lines = text.split("\n");
                 for (const line of lines) {
                     if (line.trim()) {
-                        console.log(`[Game Err] ${line.trim()}`); // Added for debug
-                        if (gameLogCallback) {
-                            gameLogCallback("error", line.trim());
-                        }
+                        queueLog("error", line.trim());
                     }
                 }
             });
@@ -595,20 +836,59 @@ export async function launchGameRust(options: LaunchOptions): Promise<LaunchResu
             win.webContents.send("game-started", { instanceId, pid: child.pid });
         }
 
+        // Track launch time for crash detection
+        const launchTimestamp = Date.now();
+        const argsFilePath = javaMajorVersion >= 9 ? path.join(gameDir, "temp", `args_${instanceId}.txt`) : null;
+
         // Handle process close
         child.on("close", (code: number | null) => {
             console.log(`[RustLauncher] Game process closed with code: ${code}`);
             native.removeRunningInstance(instanceId);
             setGameProcess(instanceId, null as any);
 
+            // Detect immediate crash (exit within 10 seconds)
+            const runDuration = Date.now() - launchTimestamp;
+            if (runDuration < 10000 && code !== 0) {
+                console.error(`[RustLauncher] CRASH DETECTED: Game exited after ${runDuration}ms with code ${code}`);
+                const gameLogCb = getGameLogCallback();
+                if (gameLogCb) {
+                    gameLogCb("error", `เกมปิดตัวทันที (${Math.round(runDuration / 1000)}s) - Exit code: ${code}`);
+                    gameLogCb("error", "สาเหตุที่พบบ่อย: Java version ไม่ตรง, ไฟล์เกมเสียหาย, RAM ไม่พอ, หรือ mod ขัดข้อง");
+                }
+
+                // Append stderr output to crash debug log
+                try {
+                    const crashAppend = [
+                        ``,
+                        `=== CRASH DETECTED ===`,
+                        `Exit Code: ${code}`,
+                        `Run Duration: ${runDuration}ms`,
+                        ``,
+                        `=== STDERR Output ===`,
+                        stderrBuffer || "(no stderr captured)",
+                    ].join("\n");
+                    fs.appendFileSync(crashLogPath, crashAppend);
+                    console.log(`[RustLauncher] Crash stderr saved to ${crashLogPath}`);
+
+                    if (gameLogCb) {
+                        gameLogCb("error", `Crash log บันทึกที่: ${crashLogPath}`);
+                    }
+                } catch { }
+            }
+
             // Send IPC event to renderer
             const windows = BrowserWindow.getAllWindows();
             for (const win of windows) {
-                win.webContents.send("game-stopped", { instanceId });
+                win.webContents.send("game-stopped", { instanceId, exitCode: code, runDuration });
             }
 
             // Emit local event for main process listeners (instance handlers)
             ipcMain.emit("game-stopped", null, { instanceId });
+
+            // Clean up argfile
+            if (argsFilePath) {
+                try { fs.unlinkSync(argsFilePath); } catch { }
+            }
 
             const onClose = getOnGameCloseCallback();
             if (onClose) onClose();
@@ -709,26 +989,57 @@ async function applyModLoader(
         const forgeVersion = forgeVersionMatch ? forgeVersionMatch[1] : "latest";
         console.log(`[${loaderType}] Extracted forge version: ${forgeVersion} from ID: ${forgeVersionId}, build: ${loader.build}`);
 
-        // Extract MCP version from arguments or known patterns
-        // Forge 1.20.1 uses MCP version 20230612.114412
-        let mcpVersion = "20230612.114412"; // Default for 1.20.1
-        const mcpArg = versionData.arguments?.game?.find((a: string) =>
-            typeof a === "string" && a.includes("--fml.mcpVersion")
-        );
-        if (mcpArg) {
-            const idx = versionData.arguments.game.indexOf(mcpArg);
-            if (idx >= 0 && versionData.arguments.game[idx + 1]) {
-                mcpVersion = versionData.arguments.game[idx + 1];
+        // Extract MCP/NeoForm version from arguments
+        // Forge uses --fml.mcpVersion, NeoForge 1.21+ uses --fml.neoFormVersion
+        let mcpVersion = "";
+        const allGameArgs = versionData.arguments?.game || [];
+        for (let i = 0; i < allGameArgs.length; i++) {
+            const a = allGameArgs[i];
+            if (typeof a === "string") {
+                if ((a === "--fml.neoFormVersion" || a === "--fml.mcpVersion") && typeof allGameArgs[i + 1] === "string") {
+                    mcpVersion = allGameArgs[i + 1];
+                    console.log(`[${loaderType}] Found MCP/NeoForm version: ${mcpVersion} from arg: ${a}`);
+                    break;
+                }
             }
+        }
+        if (!mcpVersion) {
+            // Fallback default for Forge 1.20.1
+            mcpVersion = loaderType === "neoforge" ? "" : "20230612.114412";
+            console.log(`[${loaderType}] Using fallback MCP version: ${mcpVersion || "(none)"}`);
         }
 
         // Check for processor-generated files directly by known paths
-        // These files are NOT downloadable - they MUST be generated by Forge installer
-        const processorFiles = [
-            path.join(librariesDir, "net", "minecraft", "client", `${mcVersion}-${mcpVersion}`, `client-${mcVersion}-${mcpVersion}-srg.jar`),
-            path.join(librariesDir, "net", "minecraft", "client", `${mcVersion}-${mcpVersion}`, `client-${mcVersion}-${mcpVersion}-extra.jar`),
-            path.join(librariesDir, "net", "minecraftforge", "forge", `${mcVersion}-${forgeVersion}`, `forge-${mcVersion}-${forgeVersion}-client.jar`),
-        ];
+        // These files are NOT downloadable - they MUST be generated by Forge/NeoForge installer
+        const processorFiles: string[] = [];
+        if (loaderType === "neoforge") {
+            // NeoForge client jar: net/neoforged/neoforge/VERSION/neoforge-VERSION-client.jar
+            processorFiles.push(
+                path.join(librariesDir, "net", "neoforged", "neoforge", forgeVersion, `neoforge-${forgeVersion}-client.jar`)
+            );
+            if (mcpVersion) {
+                // NeoForm processor outputs (NeoForge 1.21+ uses "slim" instead of "srg")
+                processorFiles.push(
+                    path.join(librariesDir, "net", "minecraft", "client", `${mcVersion}-${mcpVersion}`, `client-${mcVersion}-${mcpVersion}-slim.jar`)
+                );
+                processorFiles.push(
+                    path.join(librariesDir, "net", "minecraft", "client", `${mcVersion}-${mcpVersion}`, `client-${mcVersion}-${mcpVersion}-extra.jar`)
+                );
+            }
+        } else {
+            // Traditional Forge: net/minecraftforge/forge/MC-FORGE/forge-MC-FORGE-client.jar
+            processorFiles.push(
+                path.join(librariesDir, "net", "minecraftforge", "forge", `${mcVersion}-${forgeVersion}`, `forge-${mcVersion}-${forgeVersion}-client.jar`)
+            );
+            if (mcpVersion) {
+                processorFiles.push(
+                    path.join(librariesDir, "net", "minecraft", "client", `${mcVersion}-${mcpVersion}`, `client-${mcVersion}-${mcpVersion}-srg.jar`)
+                );
+                processorFiles.push(
+                    path.join(librariesDir, "net", "minecraft", "client", `${mcVersion}-${mcpVersion}`, `client-${mcVersion}-${mcpVersion}-extra.jar`)
+                );
+            }
+        }
 
         const missingProcessorFiles = processorFiles.filter(f => !fs.existsSync(f));
         console.log(`[${loaderType}] Checking processor files:`, processorFiles.map(f => `${path.basename(f)}: ${fs.existsSync(f) ? 'EXISTS' : 'MISSING'}`));
@@ -768,33 +1079,93 @@ async function applyModLoader(
                 await downloadFileAtomic(installerUrl, installerPath);
             }
 
-            // Find Java path for running installer (use any available Java)
+            // Find Java path for running installer
             let javaPath: string;
             try {
-                javaPath = await getJavaPath(undefined, undefined, native, mcVersion);
+                // NeoForge 1.21+ installer may need Java 21
+                // Forge 1.20.x installer works best with Java 17
+                const mcMinor = parseInt(mcVersion.split(".")[1] || "0");
+                const mcPatch = parseInt(mcVersion.split(".")[2] || "0");
+                const needsJava21 = loaderType === "neoforge" && (mcMinor > 20 || (mcMinor === 20 && mcPatch >= 5));
+                const forceVersion = needsJava21 ? "1.21" : "1.18.2";
+                javaPath = await getJavaPath(undefined, undefined, native, forceVersion);
+                console.log(`[${loaderType}] Selected Java ${needsJava21 ? "21+" : "17"} for installer: ${javaPath}`);
             } catch {
                 // Fallback to system Java
                 javaPath = "java";
             }
             console.log(`[${loaderType}] Running installer with Java: ${javaPath}`);
 
-            // Run Forge installer in headless mode
+            // Run Forge installer in headless mode (async to prevent UI freeze)
             try {
-                const installCmd = `"${javaPath}" -jar "${installerPath}" --installClient "${minecraftDir}"`;
-                console.log(`[${loaderType}] Install command: ${installCmd}`);
-                execSync(installCmd, {
-                    cwd: minecraftDir,
-                    stdio: "pipe", // Hide console output
-                    timeout: 600000, // 10 minutes timeout for slow machines
-                    windowsHide: true, // Hide CMD window
+                const { spawn } = await import("child_process");
+                console.log(`[${loaderType}] Install command: "${javaPath}" -jar "${installerPath}" --installClient "${minecraftDir}"`);
+
+                await new Promise<void>((resolve, reject) => {
+                    const installerProcess = spawn(javaPath, ["-jar", installerPath, "--installClient", minecraftDir], {
+                        cwd: minecraftDir,
+                        stdio: ["ignore", "pipe", "pipe"],
+                        windowsHide: true,
+                    });
+
+                    let stdout = "";
+                    let stderr = "";
+
+                    installerProcess.stdout?.on("data", (data: Buffer) => {
+                        const text = data.toString();
+                        stdout += text;
+                        // Log progress without flooding
+                        const lines = text.split("\n").filter((l: string) => l.trim());
+                        for (const line of lines) {
+                            console.log(`[${loaderType}] ${line.trim()}`);
+                        }
+                    });
+
+                    installerProcess.stderr?.on("data", (data: Buffer) => {
+                        stderr += data.toString();
+                    });
+
+                    installerProcess.on("close", (code) => {
+                        if (code === 0) {
+                            console.log(`[${loaderType}] Installer completed successfully`);
+                            resolve();
+                        } else {
+                            console.error(`[${loaderType}] Installer Process Failed with code ${code}!`);
+                            if (stdout) console.log(`[${loaderType}] stdout:\n${stdout}`);
+                            if (stderr) console.error(`[${loaderType}] stderr:\n${stderr}`);
+                            reject(new Error(`Installer exited with code ${code}`));
+                        }
+                    });
+
+                    installerProcess.on("error", (err) => {
+                        console.error(`[${loaderType}] Installer spawn error:`, err);
+                        reject(err);
+                    });
+
+                    // Timeout after 10 minutes
+                    setTimeout(() => {
+                        installerProcess.kill();
+                        reject(new Error("Installer timeout (10 minutes)"));
+                    }, 600000);
                 });
-                console.log(`[${loaderType}] Installer completed successfully`);
+
             } catch (installErr: any) {
-                console.error(`[${loaderType}] Installer failed:`, installErr.message);
-                // Check if files were created despite error
+                console.error(`[${loaderType}] Installer process encountered an error:`, installErr.message);
+                
+                // Check if files were created despite error (sometimes installer exits with non-zero but does the job)
                 const stillMissing = processorFiles.filter(f => !fs.existsSync(f));
                 if (stillMissing.length > 0) {
-                    throw new Error(`Forge installer failed to generate required files: ${stillMissing.map(f => path.basename(f)).join(", ")}`);
+                    const missingNames = stillMissing.map(f => path.basename(f)).join(", ");
+                    throw new Error(`
+                        Forge installer failed to generate required files: ${missingNames}.
+                        
+                        Troubleshooting:
+                        1. Try changing Java version (Java 17 recommended for 1.18-1.20)
+                        2. Check internet connection
+                        3. Try "Verify Files" to reset libraries
+                    `);
+                } else {
+                     console.warn(`[${loaderType}] Installer reported error but required files exist. Proceeding...`);
                 }
             }
 

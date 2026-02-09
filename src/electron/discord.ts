@@ -157,6 +157,7 @@ export async function setRPCEnabled(enabled: boolean): Promise<void> {
     if (!enabled) {
         await destroyRPC();
     } else if (!rpcClient) {
+        startTimestamp = Date.now(); // Reset timestamp on reconnect
         await initDiscordRPC();
     }
 }
@@ -165,5 +166,5 @@ export async function setRPCEnabled(enabled: boolean): Promise<void> {
  * isRPCConnected - ตรวจสอบว่า RPC เชื่อมต่ออยู่หรือไม่
  */
 export function isRPCConnected(): boolean {
-    return rpcClient !== null;
+    return rpcClient !== null && isReady;
 }

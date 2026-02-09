@@ -3,8 +3,17 @@
  * Handles fetching announcements and user notifications from ml-api
  */
 
-// API URL from environment or default
-const API_URL = 'https://api.reality.notpumpkins.com';
+import { API_URL } from './lib/constants.js';
+// API URL imported from shared constants
+
+/** Validate and sanitize an ID before using in URL paths */
+function sanitizeId(id: string): string {
+    // Only allow alphanumeric, hyphens, and underscores
+    if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
+        throw new Error(`Invalid ID format: ${id}`);
+    }
+    return encodeURIComponent(id);
+}
 
 export interface Announcement {
     id: string;
@@ -87,7 +96,7 @@ export async function fetchUserNotifications(authToken: string): Promise<Notific
  */
 export async function markNotificationAsRead(notificationId: string, authToken: string): Promise<boolean> {
     try {
-        const response = await fetch(`${API_URL}/announcements/notifications/${notificationId}/read`, {
+        const response = await fetch(`${API_URL}/announcements/notifications/${sanitizeId(notificationId)}/read`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
@@ -107,7 +116,7 @@ export async function markNotificationAsRead(notificationId: string, authToken: 
  */
 export async function deleteNotification(notificationId: string, authToken: string): Promise<boolean> {
     try {
-        const response = await fetch(`${API_URL}/announcements/notifications/${notificationId}`, {
+        const response = await fetch(`${API_URL}/announcements/notifications/${sanitizeId(notificationId)}`, {
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json',
@@ -222,7 +231,7 @@ export async function fetchInvitations(authToken: string): Promise<Invitation[]>
  */
 export async function acceptInvitation(invitationId: string, authToken: string): Promise<boolean> {
     try {
-        const response = await fetch(`${API_URL}/invitations/${invitationId}/accept`, {
+        const response = await fetch(`${API_URL}/invitations/${sanitizeId(invitationId)}/accept`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
@@ -249,7 +258,7 @@ export async function acceptInvitation(invitationId: string, authToken: string):
  */
 export async function rejectInvitation(invitationId: string, authToken: string): Promise<boolean> {
     try {
-        const response = await fetch(`${API_URL}/invitations/${invitationId}/reject`, {
+        const response = await fetch(`${API_URL}/invitations/${sanitizeId(invitationId)}/reject`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',

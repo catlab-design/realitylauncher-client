@@ -5,7 +5,7 @@
  * ========================================
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import toast from "react-hot-toast";
 import { Icons } from "../ui/Icons";
 import { InstanceContentBrowser } from "./InstanceContentBrowser";
@@ -43,6 +43,7 @@ interface InstanceDetailProps {
     onDelete: (id: string) => void;
     onDuplicate: (id: string) => void;
     onUpdate: (id: string, updates: Partial<GameInstance>) => void;
+    onExport: (id: string, options: any) => Promise<void>;
     launchingId: string | null;
     isGameRunning: boolean;
     playingInstanceId: string | null;
@@ -63,6 +64,7 @@ export function InstanceDetail({
     onDelete,
     onDuplicate,
     onUpdate,
+    onExport,
     launchingId,
     isGameRunning,
     playingInstanceId,
@@ -98,6 +100,9 @@ export function InstanceDetail({
 
     // Track which tabs have been loaded
     const [loadedTabs, setLoadedTabs] = useState<Set<ContentCategory>>(new Set());
+
+    // Ref to cancel recursive metadata refresh on unmount/instance change
+    const modMetadataCancelRef = useRef(false);
 
     // Drag & drop state
     const [isDragging, setIsDragging] = useState(false);
@@ -215,6 +220,7 @@ export function InstanceDetail({
 
     // Load all content on mount - parallel loading for speed
     useEffect(() => {
+        modMetadataCancelRef.current = false;
         const loadAll = async () => {
             // Load all content in parallel (no artificial delays)
             await Promise.all([
@@ -227,6 +233,7 @@ export function InstanceDetail({
             setLoadedTabs(new Set(["mods", "resourcepacks", "shaders", "datapacks"]));
         };
         loadAll();
+        return () => { modMetadataCancelRef.current = true; };
     }, [instance.id]);
 
     // Lazy load effect removed - we load everything upfront now
@@ -250,14 +257,19 @@ export function InstanceDetail({
 
                 // Then progressively load metadata for uncached mods
                 if (result.hasUncached) {
+                    let retryCount = 0;
+                    const MAX_RETRIES = 10; // Cap retries to prevent infinite polling
                     // Wait a bit then refresh to get cached metadata
                     const refreshMetadata = async () => {
+                        if (modMetadataCancelRef.current) return;
                         await new Promise(resolve => setTimeout(resolve, 800));
+                        if (modMetadataCancelRef.current) return;
                         const refreshResult = await (window.api as any)?.instanceListMods?.(instance.id);
+                        if (modMetadataCancelRef.current) return;
                         if (refreshResult?.ok) {
                             setMods(refreshResult.mods);
-                            // If still has uncached, try again
-                            if (refreshResult.hasUncached) {
+                            // If still has uncached and under retry limit, try again
+                            if (refreshResult.hasUncached && ++retryCount < MAX_RETRIES) {
                                 setTimeout(refreshMetadata, 1500);
                             }
                         }
@@ -494,7 +506,7 @@ export function InstanceDetail({
                             className="absolute inset-0 w-full h-full object-cover"
                             alt="banner"
                         />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                        <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent" />
 
                         {/* Back Button (Absolute Top Left) */}
                         <button
@@ -606,7 +618,7 @@ export function InstanceDetail({
                 <div className="flex flex-col md:flex-row items-start md:items-center gap-6 mb-8 pt-2">
                     <button
                         onClick={() => { playClick(); onBack(); }}
-                        className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95 flex-shrink-0"
+                        className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95 shrink-0"
                         style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                     >
                         <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
@@ -614,7 +626,7 @@ export function InstanceDetail({
                         </svg>
                     </button>
 
-                    <div className="w-24 h-24 rounded-2xl flex items-center justify-center text-4xl overflow-hidden shadow-lg flex-shrink-0"
+                    <div className="w-24 h-24 rounded-2xl flex items-center justify-center text-4xl overflow-hidden shadow-lg shrink-0"
                         style={{ backgroundColor: colors.surfaceContainer }}>
                         {instance.icon?.startsWith("data:") || instance.icon?.startsWith("file://") || instance.icon?.startsWith("http") ? (
                             <img src={instance.icon} alt="icon" className="w-full h-full object-cover" />
@@ -825,6 +837,7 @@ export function InstanceDetail({
                         onUpdate={onUpdate}
                         onDelete={onDelete}
                         onDuplicate={onDuplicate}
+                        onExport={onExport}
                         language={config.language}
                     />
                 )

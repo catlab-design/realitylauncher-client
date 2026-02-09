@@ -68,6 +68,7 @@ export function Explore({ colors, config }: ExploreProps) {
 
     // Modpack installation state
     const [isInstallingModpack, setIsInstallingModpack] = useState(false);
+    const [installingProjectId, setInstallingProjectId] = useState<string | null>(null);
     const [installProgress, setInstallProgress] = useState<InstallProgress | null>(null);
 
     // Version selection state
@@ -416,9 +417,9 @@ export function Explore({ colors, config }: ExploreProps) {
                 if (result) {
                     versions = result.map((v: any) => ({
                         id: v.id,
-                        name: v.name,
-                        version_number: v.versionNumber,
-                        game_versions: v.gameVersions || [],
+                        name: v.name || v.versionNumber || v.version_number || "",
+                        version_number: v.versionNumber || v.version_number || v.name || "",
+                        game_versions: v.gameVersions || v.game_versions || [],
                         loaders: v.loaders || [],
                     }));
                 }
@@ -450,6 +451,7 @@ export function Explore({ colors, config }: ExploreProps) {
     const handleInstallModpackVersion = async (versionId: string) => {
         setShowVersionModal(false);
         setIsInstallingModpack(true);
+        setInstallingProjectId(versionModalProject?.project_id || null);
         setInstallProgress({ stage: "downloading", message: t('downloading_modpack_dot') });
 
         try {
@@ -478,6 +480,7 @@ export function Explore({ colors, config }: ExploreProps) {
         } finally {
             setIsInstallingModpack(false);
             setInstallProgress(null);
+            setInstallingProjectId(null);
             setVersionModalProject(null);
         }
     };
@@ -557,9 +560,9 @@ export function Explore({ colors, config }: ExploreProps) {
 
                 modVers = versions.map((v: any) => ({
                     id: v.id,
-                    name: v.name,
-                    version_number: v.versionNumber,
-                    game_versions: v.gameVersions || [],
+                    name: v.name || v.versionNumber || v.version_number || "",
+                    version_number: v.versionNumber || v.version_number || v.name || "",
+                    game_versions: v.gameVersions || v.game_versions || [],
                     loaders: v.loaders || [],
                     files: v.files?.map((f: any) => ({
                         filename: f.filename,
@@ -730,6 +733,8 @@ export function Explore({ colors, config }: ExploreProps) {
                         viewCount={viewCount}
                         onSelectProject={handleSelectProject}
                         onPageChange={setPage}
+                        installingProjectId={installingProjectId}
+                        installProgress={installProgress}
                     />
                 </div>
 

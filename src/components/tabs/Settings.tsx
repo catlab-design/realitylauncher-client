@@ -70,7 +70,7 @@ export function Settings({
                         <button
                             key={item.id}
                             onClick={() => { if (config.clickSoundEnabled) playClick(); setSettingsTab(item.id as typeof settingsTab); }}
-                            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all text-left"
+                            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all text-left whitespace-nowrap"
                             style={{
                                 backgroundColor: settingsTab === item.id ? colors.secondary : "transparent",
                                 color: settingsTab === item.id ? "#1a1a1a" : colors.onSurfaceVariant,

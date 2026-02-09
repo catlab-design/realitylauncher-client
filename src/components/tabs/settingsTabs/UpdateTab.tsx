@@ -173,6 +173,12 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
                             <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t('version_label').replace('{version}', updateInfo.version)}</p>
                         </div>
                     </div>
+                    {config.autoUpdateEnabled && (
+                        <p className="text-xs mb-3" style={{ color: colors.onSurfaceVariant }}>
+                            <i className="fa-solid fa-info-circle mr-1.5"></i>
+                            {t('update_ready_next_restart').replace('{version}', updateInfo.version)}
+                        </p>
+                    )}
                     <button
                         onClick={async () => {
                             try {

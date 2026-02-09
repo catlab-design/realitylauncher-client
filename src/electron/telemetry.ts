@@ -10,8 +10,8 @@
 import { app } from "electron";
 import { getConfig, setConfig } from "./config.js";
 
-// API URL
-const API_URL = process.env.API_URL || "https://api.reality.notpumpkins.com";
+// API URL (hardcoded for bundled Electron - process.env doesn't work in production)
+import { API_URL } from "./lib/constants.js";
 
 // Event types
 export const TELEMETRY_EVENTS = {
@@ -192,6 +192,14 @@ export function trackGameClose(instanceId: string, userId?: string): void {
         gameStartTimes.delete(instanceId);
     }
 
+    // Also clean up any stale entries older than 24 hours
+    const now = Date.now();
+    for (const [id, time] of gameStartTimes) {
+        if (now - time.getTime() > 24 * 60 * 60 * 1000) {
+            gameStartTimes.delete(id);
+        }
+    }
+
     sendEvent(TELEMETRY_EVENTS.GAME_CLOSE, {
         instanceId,
         playtime,
@@ -264,11 +272,13 @@ export function initTelemetry(): void {
  * Cleanup telemetry
  * Call this before app quit
  */
-export function cleanupTelemetry(): void {
+export async function cleanupTelemetry(): Promise<void> {
     console.log("[Telemetry] Cleaning up...");
 
-    // Track app close
+    // Track app close and await to ensure it's sent before quit
     trackAppClose();
+    // Give a short window for the HTTP request to complete
+    await new Promise(resolve => setTimeout(resolve, 500));
 }
 
 export default {

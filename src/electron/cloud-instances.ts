@@ -11,14 +11,17 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 // Use production API URL (process.env doesn't work in bundled Electron)
-const API_URL = 'https://api.reality.notpumpkins.com';
+import { API_URL } from './lib/constants.js';
+import { clearApiToken } from './auth.js';
+// const API_URL = 'http://localhost:8787'; // Dev URL
 
 /**
  * Verify that a JAR/ZIP file is valid (not corrupted)
  */
 function isValidZipFile(filePath: string): boolean {
+    let fd: number | null = null;
     try {
-        const fd = fs.openSync(filePath, 'r');
+        fd = fs.openSync(filePath, 'r');
         const buffer = Buffer.alloc(4);
 
         // Check ZIP magic number at start (PK\x03\x04)
@@ -28,7 +31,6 @@ function isValidZipFile(filePath: string): boolean {
             (buffer[3] === 0x04 || buffer[3] === 0x06);
 
         if (!hasValidHeader) {
-            fs.closeSync(fd);
             return false;
         }
 
@@ -37,7 +39,6 @@ function isValidZipFile(filePath: string): boolean {
         const endBuffer = Buffer.alloc(Math.min(256, stats.size));
         const readPos = Math.max(0, stats.size - 256);
         fs.readSync(fd, endBuffer, 0, endBuffer.length, readPos);
-        fs.closeSync(fd);
 
         // Search for END signature
         for (let i = endBuffer.length - 22; i >= 0; i--) {
@@ -49,6 +50,10 @@ function isValidZipFile(filePath: string): boolean {
         return false;
     } catch {
         return false;
+    } finally {
+        if (fd !== null) {
+            try { fs.closeSync(fd); } catch { }
+        }
     }
 }
 
@@ -60,7 +65,8 @@ async function downloadFileWithSoftHashCheck(
     url: string,
     destPath: string,
     expectedHash?: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    onProgress?: (percent: number) => void
 ): Promise<void> {
     const tmpPath = `${destPath}.tmp`;
     const destDir = path.dirname(destPath);
@@ -71,7 +77,9 @@ async function downloadFileWithSoftHashCheck(
     }
 
     try {
-        await downloadFile(url, tmpPath, undefined, signal);
+        await downloadFile(url, tmpPath, (p) => {
+            if (onProgress) onProgress(p.percent);
+        }, signal);
 
         // Verify hash but only warn on mismatch
         if (expectedHash) {
@@ -153,10 +161,17 @@ export async function joinInstanceByKey(key: string, authToken: string): Promise
                 instance: data.instance,
             };
         } else {
+            let errorMsg = 'ไม่สามารถเข้าร่วม instance ได้';
+            if (typeof data.error === 'string') {
+                errorMsg = data.error;
+            } else if (data.error && typeof data.error === 'object' && data.error.message) {
+                errorMsg = data.error.message;
+            }
+
             console.error('[Cloud Instances] Failed to join:', data.error);
             return {
                 ok: false,
-                error: data.error || 'ไม่สามารถเข้าร่วม instance ได้',
+                error: errorMsg,
             };
         }
     } catch (error: any) {
@@ -193,10 +208,17 @@ export async function joinPublicInstance(instanceId: string, authToken: string):
                 instance: data.instance,
             };
         } else {
+            let errorMsg = 'ไม่สามารถเข้าร่วม instance ได้';
+            if (typeof data.error === 'string') {
+                errorMsg = data.error;
+            } else if (data.error && typeof data.error === 'object' && data.error.message) {
+                errorMsg = data.error.message;
+            }
+
             console.error('[Cloud Instances] Failed to join:', data.error);
             return {
                 ok: false,
-                error: data.error || 'ไม่สามารถเข้าร่วม instance ได้',
+                error: errorMsg,
             };
         }
     } catch (error: any) {
@@ -230,7 +252,15 @@ export async function leaveInstance(instanceId: string, authToken: string): Prom
             return { ok: true };
         } else {
             console.error('[Cloud Instances] Failed to leave:', data.error);
-            return { ok: false, error: data.error };
+            
+            let errorMsg = 'ไม่สามารถออกจาก instance ได้';
+            if (typeof data.error === 'string') {
+                errorMsg = data.error;
+            } else if (data.error && typeof data.error === 'object' && data.error.message) {
+                errorMsg = data.error.message;
+            }
+            
+            return { ok: false, error: errorMsg };
         }
     } catch (error: any) {
         console.error('[Cloud Instances] Network error:', error);
@@ -244,7 +274,7 @@ export async function leaveInstance(instanceId: string, authToken: string): Prom
 export async function fetchJoinedServers(authToken: string): Promise<{ owned: any[], member: any[] }> {
     try {
         console.log('[Cloud Instances] Fetching instances...');
-        console.log('[Cloud Instances] Token (first 20 chars):', authToken?.substring(0, 20) || 'EMPTY');
+        console.log('[Cloud Instances] Auth token present:', !!authToken);
         const response = await fetch(`${API_URL}/instances`, {
             headers: {
                 'Authorization': `Bearer ${authToken}`
@@ -254,6 +284,9 @@ export async function fetchJoinedServers(authToken: string): Promise<{ owned: an
         if (!response.ok) {
             const errBody = await response.text();
             console.error('[Cloud Instances] Failed to fetch:', response.status, response.statusText, errBody);
+            if (response.status === 401) {
+                clearApiToken();
+            }
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
@@ -311,7 +344,7 @@ export async function syncCloudInstances(authToken: string): Promise<void> {
 export async function syncServerMods(
     instanceId: string,
     authToken: string,
-    onProgress?: (data: { type: string; task: string; current?: number; total?: number; percent?: number }) => void,
+    onProgress?: (data: { type: string; task: string; current?: number; total?: number; percent?: number; filename?: string }) => void,
     signal?: AbortSignal
 ): Promise<void> {
     const { getInstance } = await import("./instances.js");
@@ -401,9 +434,18 @@ export async function syncServerMods(
         if (onProgress) onProgress({ type: "sync-check", task: "กำลังตรวจสอบความสมบูรณ์..." });
 
         // 2. Download missing/updated files (ANY file in the instance)
-        const downloadQueue = validServerMods.filter(mod => {
+        // Path traversal protection: ensure all files stay within game directory
+        const gameDirResolved = path.resolve(instance.gameDirectory);
+
+        const candidateMods = validServerMods.filter(mod => {
             // mod.filename is relative path e.g. "mods/foo.jar" or "config/bar.json"
-            const filePath = path.join(instance.gameDirectory, mod.filename);
+            const filePath = path.resolve(instance.gameDirectory, mod.filename);
+
+            // Path traversal protection: reject any path that escapes the game directory
+            if (!filePath.startsWith(gameDirResolved + path.sep) && filePath !== gameDirResolved) {
+                console.warn(`[Cloud Sync] BLOCKED path traversal attempt: ${mod.filename}`);
+                return false;
+            }
 
             // Ensure parent dir exists
             const dir = path.dirname(filePath);
@@ -422,52 +464,122 @@ export async function syncServerMods(
                 const stats = fs.statSync(filePath);
                 if (stats.size !== mod.size) return true;
             }
-            // Always verify hash if available, even if size matches (to catch corruption)
-            return false;
+            // Size matches — still need hash check below
+            return true;
         });
 
-        // Refined filter: if size matches, check hash
+        // Filter: verify hash for files that exist (catches size-matches-but-hash-differs)
         const finalQueue = [];
-        for (const mod of downloadQueue) {
-            const filePath = path.join(instance.gameDirectory, mod.filename);
-            if (fs.existsSync(filePath) && mod.hash) {
-                const isValid = await verifyFileHash(filePath, mod.hash);
-                if (isValid) {
-                    continue; // Skip, it's valid
+        for (const mod of candidateMods) {
+            const filePath = path.resolve(instance.gameDirectory, mod.filename);
+            if (fs.existsSync(filePath)) {
+                if (mod.hash) {
+                    const isValid = await verifyFileHash(filePath, mod.hash);
+                    if (isValid) {
+                        continue; // Skip, file is valid
+                    }
+                    console.warn(`[Cloud Sync] Hash mismatch for ${mod.filename}, re-downloading.`);
+                } else if (mod.size) {
+                    // No hash but size matches — skip
+                    const stats = fs.statSync(filePath);
+                    if (stats.size === mod.size) continue;
+                } else {
+                    continue; // Exists, no hash/size info — skip
                 }
-                console.warn(`[Cloud Sync] Hash mismatch for ${mod.filename}, re-downloading.`);
             }
             finalQueue.push(mod);
         }
 
         console.log(`[Cloud Sync] Downloading ${finalQueue.length} files...`);
 
-        for (let i = 0; i < finalQueue.length; i++) {
+        // Concurrent download helper
+        // REDUCED CONCURRENCY (15 -> 5) to prevent network congestion/stalls
+        const concurrency = 5;
+        let completedCount = 0;
+        const executing: Promise<void>[] = [];
+        const results: Promise<void>[] = [];
+
+        for (const mod of finalQueue) {
             if (signal?.aborted) throw new Error("Cancelled");
-            const mod = finalQueue[i];
-            console.log(`[Cloud Sync] Downloading ${mod.filename}...`);
 
-            if (onProgress) {
-                onProgress({
-                    type: "sync-download",
-                    task: `กำลังดาวน์โหลด ${mod.filename} (${i + 1}/${finalQueue.length})`,
-                    current: i + 1,
-                    total: finalQueue.length,
-                    percent: Math.round((i / finalQueue.length) * 100)
-                });
-            }
+            const task = async () => {
+                const destPath = path.join(instance.gameDirectory, mod.filename);
+                // console.log(`[Cloud Sync] Downloading ${mod.filename}...`);
 
-            const destPath = path.join(instance.gameDirectory, mod.filename);
-            try {
-                // Download without strict hash check for cloud files
-                // Hash might be stale in DB, so we just warn instead of failing
-                await downloadFileWithSoftHashCheck(mod.url, destPath, mod.hash, signal);
+                // Retry Logic (3 Attempts)
+                let attempts = 0;
+                const maxAttempts = 3;
 
-            } catch (err) {
-                console.error(`[Cloud Sync] Download failed for ${mod.filename}:`, err);
-                throw err;
+                while (attempts < maxAttempts) {
+                    try {
+                        attempts++;
+                        // Download without strict hash check for cloud files
+                        // Note: downloadFileWithSoftHashCheck checks hash after download
+                        await downloadFileWithSoftHashCheck(mod.url, destPath, mod.hash, signal, (percent) => {
+                            if (onProgress) {
+                                onProgress({
+                                    type: "sync-download",
+                                    task: `Downloading: ${mod.filename} (${percent}%)`, // Show byte progress
+                                    filename: mod.filename,
+                                    current: completedCount,
+                                    total: finalQueue.length,
+                                    percent: Math.round((completedCount / finalQueue.length) * 100)
+                                });
+                            }
+                        });
+
+                        // Success
+                        completedCount++;
+                        break;
+                    } catch (err: any) {
+                        if (signal?.aborted) throw err;
+
+                        // Fail immediately on fatal errors
+                        if (err.message.includes("Cancelled")) throw err;
+
+                        console.warn(`[Cloud Sync] Download failed for ${mod.filename} (Attempt ${attempts}/${maxAttempts}): ${err.message}`);
+
+                        if (attempts >= maxAttempts) {
+                            console.error(`[Cloud Sync] Gave up on ${mod.filename} after ${maxAttempts} attempts.`);
+                            completedCount++;
+                            throw err; // Final failure
+                        }
+
+                        // Random delay before retry (backoff)
+                        const delay = Math.random() * 1000 + (attempts * 1000);
+                        await new Promise(r => setTimeout(r, delay));
+                    }
+                }
+
+                if (onProgress) {
+                    onProgress({
+                        type: "sync-download",
+                        task: `Downloading: ${mod.filename}`, // Show filename in UI
+                        filename: mod.filename,
+                        current: completedCount,
+                        total: finalQueue.length,
+                        percent: Math.round((completedCount / finalQueue.length) * 100)
+                    });
+                }
+            };
+
+            const p = task();
+            results.push(p);
+
+            // Add to executing array
+            const e = p.then(() => {
+                executing.splice(executing.indexOf(e), 1);
+            });
+            executing.push(e);
+
+            // If we hit concurrency limit, wait for one to finish
+            if (executing.length >= concurrency) {
+                await Promise.race(executing);
             }
         }
+
+        // Wait for all remaining tasks
+        await Promise.all(results);
 
         // 3. Delete extra mods (Respect Locked Mods, ONLY in mods folder)
         if (onProgress) onProgress({ type: "sync-clean", task: "กำลังลบไฟล์ส่วนเกิน..." });

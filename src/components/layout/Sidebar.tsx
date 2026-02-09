@@ -10,9 +10,10 @@ import { type ColorTheme } from "../../types/launcher";
 
 interface SidebarProps {
     colors: any; // We can improve this type later, likely inferred from getColors return type
+    onTabSelect?: (tabId: string) => void;
 }
 
-export function Sidebar({ colors }: SidebarProps) {
+export function Sidebar({ colors, onTabSelect }: SidebarProps) {
     const config = useConfigStore();
     const { t } = useTranslation(config.language);
     const { activeTab, setActiveTab } = useUiStore();
@@ -56,7 +57,11 @@ export function Sidebar({ colors }: SidebarProps) {
                 {mainNavItems.map(({ id, icon: Icon, label }: { id: string, icon: any, label: string }) => (
                     <div key={id} className="relative group">
                         <button
-                            onClick={() => { playClick(); setActiveTab(id); }}
+                            onClick={() => { 
+                                playClick(); 
+                                setActiveTab(id);
+                                onTabSelect?.(id);
+                            }}
                             className="w-14 h-14 rounded-2xl flex items-center justify-center transition-all hover:scale-105 no-drag"
                             style={{
                                 backgroundColor: activeTab === id ? "rgba(255,255,255,0.9)" : "transparent",
@@ -85,7 +90,11 @@ export function Sidebar({ colors }: SidebarProps) {
                 {bottomNavItems.map(({ id, icon: Icon, label }: { id: string, icon: any, label: string }) => (
                     <div key={id} className="relative group">
                         <button
-                            onClick={() => { playClick(); setActiveTab(id); }}
+                            onClick={() => { 
+                                playClick(); 
+                                setActiveTab(id);
+                                onTabSelect?.(id);
+                            }}
                             className="w-14 h-14 rounded-2xl flex items-center justify-center transition-all hover:scale-105 no-drag"
                             style={{
                                 backgroundColor: activeTab === id ? "rgba(255,255,255,0.9)" : "transparent",

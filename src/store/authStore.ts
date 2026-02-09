@@ -10,7 +10,7 @@ interface AuthState {
     setSession: (session: AuthSession | null) => void;
     setAccounts: (accounts: AuthSession[]) => void;
     addAccount: (account: AuthSession) => void;
-    removeAccount: (username: string) => void;
+    removeAccount: (uuid: string, type: string) => void;
     updateAccount: (account: AuthSession) => void;
     logout: () => void;
 }
@@ -27,20 +27,27 @@ export const useAuthStore = create<AuthState>()(
 
             addAccount: (account) => {
                 const { accounts } = get();
-                // Avoid duplicates
                 const exists = accounts.some(a => a.uuid === account.uuid && a.type === account.type);
-                if (!exists) {
+
+                if (exists) {
+                    // Update instead of just doing nothing
+                    set((state) => ({
+                        accounts: state.accounts.map(a =>
+                            (a.uuid === account.uuid && a.type === account.type) ? account : a
+                        )
+                    }));
+                } else {
                     set({ accounts: [...accounts, account] });
                 }
             },
 
-            removeAccount: (username) => {
+            removeAccount: (uuid, type) => {
                 const { session, accounts } = get();
-                const newAccounts = accounts.filter(a => a.username !== username);
+                const newAccounts = accounts.filter(a => !(a.uuid === uuid && a.type === type));
                 set({ accounts: newAccounts });
 
                 // If removing current session, logout
-                if (session?.username === username) {
+                if (session?.uuid === uuid && session?.type === type) {
                     set({ session: null });
                 }
             },

@@ -33,7 +33,7 @@ export function ImportModpackModal({
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-            <div className="w-full max-w-md rounded-2xl p-6 relative" style={{ backgroundColor: colors.surface }}>
+            <div className="w-[80%] max-w-4xl rounded-2xl p-8 relative" style={{ backgroundColor: colors.surface }}>
                 <button
                     onClick={onClose}
                     className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-500/20"

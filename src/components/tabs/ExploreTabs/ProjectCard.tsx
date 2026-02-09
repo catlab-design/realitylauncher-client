@@ -4,7 +4,7 @@
 
 import React, { useState } from "react";
 import { useTranslation } from "../../../hooks/useTranslation";
-import type { ModrinthProject } from "./types";
+import type { ModrinthProject, InstallProgress } from "./types";
 import { formatNumber } from "./helpers";
 import { playClick } from "../../../lib/sounds";
 import { Icons } from "../../ui/Icons";
@@ -14,9 +14,11 @@ interface ProjectCardProps {
     project: ModrinthProject;
     isActive: boolean;
     onClick: () => void;
+    isInstalling?: boolean;
+    installProgress?: InstallProgress | null;
 }
 
-export function ProjectCard({ colors, project, isActive, onClick }: ProjectCardProps) {
+export function ProjectCard({ colors, project, isActive, onClick, isInstalling, installProgress }: ProjectCardProps) {
     const [isHovered, setIsHovered] = useState(false);
     const { t } = useTranslation();
 
@@ -49,7 +51,31 @@ export function ProjectCard({ colors, project, isActive, onClick }: ProjectCardP
                 }}
             />
 
-            <div className="p-4 flex items-start gap-4 reltive z-10">
+            {/* Active Installation Overlay/Indicator */}
+            {isInstalling && (
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/40 backdrop-blur-[2px]">
+                    <div className="flex flex-col items-center gap-2 p-3 rounded-lg"
+                         style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}30` }}>
+                        <i className="fa-solid fa-spinner fa-spin text-lg" style={{ color: colors.secondary }}></i>
+                        <span className="text-[10px] font-medium" style={{ color: colors.onSurface }}>
+                            {installProgress?.message || "Installing..."}
+                        </span>
+                        {installProgress?.percent !== undefined && (
+                            <div className="w-24 h-1 rounded-full overflow-hidden" style={{ backgroundColor: `${colors.onSurface}10` }}>
+                                <div
+                                    className="h-full transition-all duration-300"
+                                    style={{
+                                        width: `${installProgress.percent}%`,
+                                        backgroundColor: colors.secondary
+                                    }}
+                                />
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            <div className="p-4 flex items-start gap-4 relative z-10">
                 {/* Icon */}
                 <div
                     className="w-12 h-12 rounded-xl bg-cover bg-center flex-shrink-0 shadow-sm group-hover:shadow-md transition-shadow overflow-hidden"

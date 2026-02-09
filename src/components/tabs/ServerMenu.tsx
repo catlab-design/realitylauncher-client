@@ -36,7 +36,7 @@ interface ServerMenuProps {
     language?: "th" | "en";
 }
 
-import { JoinInstanceDialog } from "../dialogs/JoinInstanceDialog";
+
 
 export function ServerMenu({
     servers,
@@ -52,7 +52,7 @@ export function ServerMenu({
     const { t } = useTranslation(language);
     const [instances, setInstances] = useState<{ owned: Instance[]; member: Instance[] } | null>(null);
     const [loading, setLoading] = useState(true);
-    const [showJoinDialog, setShowJoinDialog] = useState(false);
+
     const [logViewerInstanceId, setLogViewerInstanceId] = useState<string | null>(null);
     const [playingInstances, setPlayingInstances] = useState<Set<string>>(new Set());
     const [launchingId, setLaunchingId] = useState<string | null>(null);
@@ -82,12 +82,46 @@ export function ServerMenu({
 
     // Joined servers state (Owned + Member)
     const [joinedServers, setJoinedServers] = useState<any[]>([]);
+    
+    // Inline Join State
+    const [isJoinMode, setIsJoinMode] = useState(false);
+    const [joinKey, setJoinKey] = useState("");
+
+    const handleJoinSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!joinKey.trim()) {
+            toast.error(t('please_enter_invite_key'));
+            return;
+        }
+
+        const toastId = toast.loading(t('submitting'));
+        try {
+             const result = await (window.api as any)?.instanceJoin?.(joinKey.trim());
+             if (result?.ok) {
+                 toast.success(t('join_success'), { id: toastId });
+                 fetchInstances();
+                 setJoinKey("");
+                 setIsJoinMode(false);
+             } else {
+                 let errMsg = typeof result?.error === 'string' ? result.error : t('join_failed');
+                 if (errMsg.includes("API token") || errMsg.includes("Unauthorized") || errMsg.includes("No token")) {
+                     errMsg = t('session_expired_game') || "ไม่มี CatID หรือเซสชั่นหมดอายุ";
+                 }
+                 toast.error(errMsg, { id: toastId });
+             }
+        } catch (err: any) {
+            toast.error(err.message || t('error_occurred'), { id: toastId });
+        }
+    };
 
     // Helper for cache busting
     const getWithTimestamp = (url: string | null | undefined) => {
         if (!url) return "";
         if (url.startsWith("blob:") || url.startsWith("data:")) return url;
-        return `${url}${url.includes("?") ? "&" : "?"}t=${timestamp}`;
+        const [base, hash] = url.split("#", 2);
+        const separator = base.includes("?") ? "&" : "?";
+        const stamped = `${base}${separator}t=${timestamp}`;
+        return hash ? `${stamped}#${hash}` : stamped;
     };
 
     // Event Listeners for Game Status
@@ -151,7 +185,8 @@ export function ServerMenu({
             // Check Token first like ModPack
             const refreshResult = await (window.api as any)?.authRefreshToken?.();
             if (refreshResult && !refreshResult.ok && refreshResult.error) {
-                if (refreshResult.error.includes("re-login")) {
+                const refreshErr = typeof refreshResult.error === 'string' ? refreshResult.error : '';
+                if (refreshErr.includes("re-login")) {
                     toast.error(t('session_expired_login_server'));
                     setLaunchingId(null);
                     return;
@@ -224,24 +259,20 @@ export function ServerMenu({
         }
 
         try {
-            const token = session?.apiToken || session?.accessToken;
-
             // Run both fetches in parallel for faster loading
             const [cloudData, localList] = await Promise.all([
                 // 1. Fetch Cloud Instances
                 (async () => {
-                    if (!token) return { owned: [], member: [] };
                     try {
-                        const apiUrl = (window as any).API_URL;
-                        const res = await fetch(`${apiUrl}/instances`, {
-                            headers: { Authorization: `Bearer ${token}` }
-                        });
-                        if (res.ok) return await res.json();
+                        const result = await (window.api as any)?.instancesGetJoinedServers?.();
+                        if (result?.ok && result.data) return result.data;
                     } catch { }
                     return { owned: [], member: [] };
                 })(),
                 // 2. Fetch Local Instances
-                (window.api as any)?.instancesList?.().catch(() => [])
+                (window.api as any)?.instancesList
+                    ? (window.api as any).instancesList().catch(() => [])
+                    : Promise.resolve([])
             ]);
 
             const owned = cloudData.owned || [];
@@ -271,31 +302,28 @@ export function ServerMenu({
     const fetchPublicInstances = async (query: string = "") => {
         setIsSearching(true);
         try {
-            const token = session?.apiToken || session?.accessToken;
-            if (token) {
-                const apiUrl = (window as any).API_URL;
-                // Assuming /instances/public endpoint
-                const url = new URL(`${apiUrl}/instances/public`);
-                if (query) url.searchParams.append("q", query);
+            const apiUrl = (window as any).API_URL;
+            const url = new URL(`${apiUrl}/instances/public`);
+            if (query) url.searchParams.append("q", query);
 
-                const res = await fetch(url.toString(), {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
+            const token = session?.type === "catid"
+                ? (session.apiToken || session.accessToken)
+                : session?.apiToken;
 
-                if (res.ok) {
-                    const data = await res.json();
-                    setPublicInstances(data.length ? data : []);
-                    // Note: API might return { data: [] } or just [], adjust if needed.
-                    // Assuming array for now based on typical pattern or use data.data if it's paginated.
-                    if (data && !Array.isArray(data) && Array.isArray(data.data)) {
-                        setPublicInstances(data.data);
-                    } else if (Array.isArray(data)) {
-                        setPublicInstances(data);
-                    }
-                } else {
-                    // Fallback or empty
-                    setPublicInstances([]);
+            const res = await fetch(url.toString(), {
+                headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                setPublicInstances(data.length ? data : []);
+                if (data && !Array.isArray(data) && Array.isArray(data.data)) {
+                    setPublicInstances(data.data);
+                } else if (Array.isArray(data)) {
+                    setPublicInstances(data);
                 }
+            } else {
+                setPublicInstances([]);
             }
         } catch (e) {
             console.error("Error searching public instances", e);
@@ -361,7 +389,7 @@ export function ServerMenu({
             if (res?.ok) {
                 // Success handled by toast/progress events
             } else {
-                const errMsg = res?.error || t('install_failed_server');
+                const errMsg = typeof res?.error === 'string' ? res.error : t('install_failed_server');
                 console.error("[ServerMenu] Install failed:", errMsg);
                 if (errMsg.includes("401") || errMsg.includes("Unauthorized")) {
                     toast.error(t('session_expired_login_server'));
@@ -390,73 +418,127 @@ export function ServerMenu({
             <div className="flex justify-between items-center mb-6 gap-4">
                 <div className="flex-1">
                     <h2 className="text-2xl font-bold mb-1" style={{ color: colors.onSurface }}>
-                        {showPublic ? t('explore_servers') : t('server_list')}
+                        {isJoinMode ? t('enter_key') : (showPublic ? t('explore_servers') : t('server_list'))}
                     </h2>
                     <p className="text-sm opacity-70" style={{ color: colors.onSurfaceVariant }}>
-                        {showPublic ? t('explore_community_desc') : t('select_server_desc')}
+                        {isJoinMode 
+                            ? t('enter_invite_key_desc')
+                            : (showPublic ? t('explore_community_desc') : t('select_server_desc'))
+                        }
                     </p>
                 </div>
 
-                {/* Search Bar */}
-                <form onSubmit={handleSearchSubmit} className="flex-1 max-w-sm relative group">
+                {/* Search Bar / Join Input */}
+                <form 
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        if (isJoinMode) {
+                            handleJoinSubmit(e);
+                        } else {
+                            handleSearchSubmit(e);
+                        }
+                    }} 
+                    className="flex-1 max-w-sm relative group"
+                >
                     <input
                         type="text"
-                        placeholder={t('search_public_servers')}
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder={isJoinMode ? t('enter_invite_key_placeholder') : t('search_public_servers')}
+                        value={isJoinMode ? joinKey : searchQuery}
+                        onChange={(e) => {
+                            if (isJoinMode) {
+                                // Format key: uppercase, alphanumeric + dash only
+                                const val = e.target.value.replace(/[^A-Z0-9-]/gi, '').toUpperCase();
+                                setJoinKey(val);
+                            } else {
+                                setSearchQuery(e.target.value);
+                            }
+                        }}
                         className="w-full px-4 py-2 pl-10 rounded-xl outline-none transition-all placeholder:text-gray-500/50 border border-transparent focus:border-white/10"
-                        style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                        style={{ 
+                            backgroundColor: colors.surfaceContainerHighest, 
+                            color: colors.onSurface,
+                            letterSpacing: isJoinMode ? "0.1em" : "normal",
+                            fontFamily: isJoinMode ? "monospace" : "inherit"
+                        }}
+                        autoFocus={isJoinMode}
+                        maxLength={isJoinMode ? 32 : undefined}
                     />
-                    <Icons.Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 opacity-50" style={{ color: colors.onSurface }} />
+                    {isJoinMode ? (
+                        <Icons.Key className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 opacity-50" style={{ color: colors.onSurface }} />
+                    ) : (
+                        <Icons.Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 opacity-50" style={{ color: colors.onSurface }} />
+                    )}
+
+                    {/* Submit Button for Join Mode */}
+                    {isJoinMode && joinKey.trim() && (
+                         <button
+                            type="submit"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg hover:bg-white/10 transition-all"
+                            title={t('join')}
+                            style={{ color: colors.primary }}
+                         >
+                            <Icons.Login className="w-4 h-4" />
+                         </button>
+                    )}
                 </form>
 
                 {/* Actions */}
                 <div className="flex gap-2">
+                    {!isJoinMode && (
+                        <button
+                            onClick={() => {
+                                playClick();
+                                setShowPublic(!showPublic);
+                            }}
+                            className={cn(
+                                "px-3 py-2 rounded-xl flex items-center gap-2 transition-all hover:brightness-110 border cursor-pointer",
+                                showPublic ? "brightness-110" : "opacity-80 hover:opacity-100"
+                            )}
+                            style={{
+                                backgroundColor: showPublic ? colors.primary : colors.surfaceContainerHighest,
+                                color: showPublic ? colors.onPrimary : colors.onSurface,
+                                borderColor: showPublic ? "transparent" : colors.outline
+                            }}
+                            title={t('explore_servers')}
+                        >
+                            <Icons.Compass className="w-5 h-5" />
+                            <span className="hidden sm:inline">{t('explore')}</span>
+                        </button>
+                    )}
+
                     <button
-                        onClick={() => {
-                            playClick();
-                            setShowPublic(!showPublic);
-                            if (!showPublic) {
-                                // Reset search when entering public mode? OR keep? 
-                                // Let's keep it but maybe fetch all initially.
+                        onClick={() => { 
+                            playClick(); 
+                            setIsJoinMode(!isJoinMode);
+                            if (!isJoinMode) {
+                                // Reset states when entering join mode
+                                setJoinKey("");
+                                setShowPublic(false);
                             }
                         }}
                         className={cn(
-                            "px-3 py-2 rounded-xl flex items-center gap-2 transition-all hover:brightness-110 border cursor-pointer",
-                            showPublic ? "brightness-110" : "opacity-80 hover:opacity-100"
+                            "px-4 py-2 rounded-xl flex items-center gap-2 transition-all hover:brightness-110",
+                            isJoinMode ? "brightness-90 hover:brightness-100" : ""
                         )}
-                        style={{
-                            backgroundColor: showPublic ? colors.primary : colors.surfaceContainerHighest,
-                            color: showPublic ? colors.onPrimary : colors.onSurface,
-                            borderColor: showPublic ? "transparent" : colors.outline
+                        style={{ 
+                            backgroundColor: isJoinMode ? colors.error || "#ef4444" : colors.secondary, 
+                            color: isJoinMode ? "#fff" : "#1a1a1a" 
                         }}
-                        title={t('explore_servers')}
                     >
-                        <Icons.Compass className="w-5 h-5" />
-                        <span className="hidden sm:inline">{t('explore')}</span>
-                    </button>
-
-                    <button
-                        onClick={() => { playClick(); setShowJoinDialog(true); }}
-                        className="px-4 py-2 rounded-xl flex items-center gap-2 transition-all hover:brightness-110"
-                        style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
-                    >
-                        <span>+</span>
-                        <span className="hidden sm:inline">{t('enter_key')}</span>
+                        {isJoinMode ? (
+                            <>
+                                <Icons.Close className="w-5 h-5" />
+                                <span className="hidden sm:inline">{t('cancel')}</span>
+                            </>
+                        ) : (
+                            <>
+                                <span>+</span>
+                                <span className="hidden sm:inline">{t('enter_key')}</span>
+                            </>
+                        )}
                     </button>
                 </div>
             </div>
-
-            {/* Join Instance Dialog */}
-            <JoinInstanceDialog
-                isOpen={showJoinDialog}
-                onClose={() => setShowJoinDialog(false)}
-                onSuccess={() => {
-                    fetchInstances();
-                    setShowJoinDialog(false);
-                }}
-                colors={colors}
-            />
 
             {/* Loading / List */}
             {/* Not logged in - Show login prompt */}
@@ -560,7 +642,7 @@ export function ServerMenu({
                             >
                                 <div
                                     onClick={() => { playClick(); handleInstanceClick(instance); }}
-                                    className="group relative rounded-2xl overflow-hidden cursor-pointer h-48 transition-all hover:shadow-xl hover:scale-[1.01]"
+                                    className="group relative rounded-2xl overflow-hidden cursor-pointer h-48 transition-all hover:shadow-xl"
                                     style={{
                                         border: selectedServer?.id === instance.id
                                             ? `2px solid ${colors.primary}`
@@ -580,6 +662,7 @@ export function ServerMenu({
                                             filter: (!isInstalled && !showPublic) ? "grayscale(100%) brightness(0.7)" : undefined
                                         }}
                                     >
+
                                         {(!instance.bannerUrl && !instance.iconUrl) && (
                                             <div className="w-full h-full flex items-center justify-center">
                                                 <span className="text-6xl font-bold opacity-10" style={{ color: colors.onSurface }}>
@@ -613,13 +696,13 @@ export function ServerMenu({
                                         />
                                         {instance.isOwned && (
                                             <span className="text-[10px] bg-yellow-500/80 text-black px-2 py-0.5 rounded-full font-bold backdrop-blur-sm">
-                                                OWNER
+                                                {t('owner_badge')}
                                             </span>
                                         )}
                                         {/* If ShowPublic is on, and instance is NOT owned/member (implicit), maybe show badges? */}
                                         {showPublic && !instance.isOwned && (
                                             <span className="text-[10px] bg-blue-500/80 text-white px-2 py-0.5 rounded-full font-bold backdrop-blur-sm border border-white/20">
-                                                PUBLIC
+                                                {t('public_badge')}
                                             </span>
                                         )}
 
@@ -854,7 +937,7 @@ export function ServerMenu({
                         >
                             <div
                                 onClick={() => setSelectedServer(server)}
-                                className="group relative rounded-2xl overflow-hidden cursor-pointer h-48 transition-all hover:shadow-xl hover:scale-[1.01]"
+                                className="group relative rounded-2xl overflow-hidden cursor-pointer h-48 transition-all hover:shadow-xl"
                                 style={{
                                     border: selectedServer?.id === server.id
                                         ? `2px solid ${colors.primary}`
@@ -864,8 +947,21 @@ export function ServerMenu({
                                 {/* Full Background Image */}
                                 <div
                                     className="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105"
-                                    style={{ backgroundImage: `url(${getWithTimestamp(server.image || server.bannerUrl)})` }}
-                                />
+                                    style={{ 
+                                        backgroundImage: (server.image || server.bannerUrl) 
+                                            ? `url(${getWithTimestamp(server.image || server.bannerUrl)})` 
+                                            : undefined,
+                                        backgroundColor: (server.image || server.bannerUrl) ? undefined : colors.surfaceContainer
+                                    }}
+                                >
+                                    {(!server.image && !server.bannerUrl) && (
+                                        <div className="w-full h-full flex items-center justify-center">
+                                            <span className="text-6xl font-bold opacity-10" style={{ color: colors.onSurface }}>
+                                                {server.name[0]?.toUpperCase()}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
 
                                 {/* Gradient Overlay */}
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent" />

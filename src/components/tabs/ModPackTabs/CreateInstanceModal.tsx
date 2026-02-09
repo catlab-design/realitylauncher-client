@@ -146,7 +146,7 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
             <div
-                className="w-full max-w-md rounded-2xl p-5 relative shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto"
+                className="w-[80%] max-w-4xl rounded-2xl p-8 relative shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto"
                 style={{ backgroundColor: colors.surface }}
             >
                 {/* Close Button */}

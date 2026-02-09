@@ -24,6 +24,7 @@ export interface AuthSession {
     refreshToken?: string;      // Microsoft refresh token
     tokenExpiresAt?: number;    // Unix timestamp when accessToken expires
     apiToken?: string;          // Reality API token for cloud features (instances, etc.)
+    apiTokenExpiresAt?: number; // Unix timestamp when apiToken expires (from API session)
     type: "catid" | "microsoft" | "offline";
     createdAt: number;
 }
@@ -161,7 +162,13 @@ export function initAuth(): void {
 /**
  * Login with CatID (username/password via ml-api)
  */
-export function loginCatID(username: string, uuid: string, token: string, minecraftUuid?: string): AuthSession {
+export function loginCatID(
+    username: string,
+    uuid: string,
+    token: string,
+    minecraftUuid?: string,
+    expiresAt?: string
+): AuthSession {
     currentSession = {
         username,
         uuid,
@@ -169,10 +176,11 @@ export function loginCatID(username: string, uuid: string, token: string, minecr
         accessToken: token,
         type: "catid",
         createdAt: Date.now(),
+        tokenExpiresAt: expiresAt ? new Date(expiresAt).getTime() : undefined,
     };
 
     saveSession();
-    console.log("[Auth] CatID login successful:", username, "UUID:", uuid, "MinecraftUUID:", minecraftUuid);
+    console.log("[Auth] CatID login successful:", username, "UUID:", uuid, "MC:", minecraftUuid, "Expires:", expiresAt);
 
     return currentSession;
 }
@@ -227,14 +235,32 @@ export function updateTokens(accessToken: string, refreshToken?: string, expires
 /**
  * Update API token for current session (Reality API access)
  */
-export function updateApiToken(apiToken: string): boolean {
+export function updateApiToken(apiToken: string, expiresAt?: string): boolean {
     if (!currentSession) {
         return false;
     }
 
     currentSession.apiToken = apiToken;
+    if (expiresAt) {
+        currentSession.apiTokenExpiresAt = new Date(expiresAt).getTime();
+    }
     saveSession();
-    console.log("[Auth] API token updated for:", currentSession.username);
+    console.log("[Auth] API token updated for:", currentSession.username, "Expires:", expiresAt);
+    return true;
+}
+
+/**
+ * Clear API token for current session (used when token is invalid/expired)
+ */
+export function clearApiToken(): boolean {
+    if (!currentSession) {
+        return false;
+    }
+
+    currentSession.apiToken = undefined;
+    currentSession.apiTokenExpiresAt = undefined;
+    saveSession();
+    console.log("[Auth] API token cleared for:", currentSession.username);
     return true;
 }
 
@@ -242,18 +268,23 @@ export function updateApiToken(apiToken: string): boolean {
  * Get API token for cloud features (falls back to accessToken for CatID)
  */
 export function getApiToken(): string | undefined {
-    // Sync from global in case another module updated it
-    currentSession = globalAny.__AUTH_SESSION__ || currentSession;
-
-    if (!currentSession) return undefined;
+    const session = getSession();
+    if (!session) return undefined;
 
     // For CatID users, accessToken IS the API token
-    if (currentSession.type === "catid") {
-        return currentSession.accessToken;
+    if (session.type === "catid") {
+        if (session.tokenExpiresAt && Date.now() > session.tokenExpiresAt) {
+            return undefined;
+        }
+        return session.accessToken;
     }
 
-    // For Microsoft users, use dedicated apiToken
-    return currentSession.apiToken;
+    // For Microsoft users, use dedicated apiToken (if not expired)
+    if (session.apiTokenExpiresAt && Date.now() > session.apiTokenExpiresAt) {
+        return undefined;
+    }
+
+    return session.apiToken;
 }
 
 /**
@@ -282,11 +313,18 @@ export function isTokenExpired(): boolean {
  * Login with offline account (username only, generates deterministic UUID)
  */
 export function loginOffline(username: string): AuthSession {
-    // Generate deterministic UUID based on username (offline UUIDs start with 0-)
-    const hash = username.split("").reduce((acc, char) => {
-        return ((acc << 5) - acc) + char.charCodeAt(0);
-    }, 0);
-    const uuid = `0-0-0-0-${Math.abs(hash).toString(16).padStart(12, "0")}`;
+    // Generate deterministic UUID using crypto for better distribution
+    // Offline UUIDs use v3-style namespace hashing
+    const crypto = require('node:crypto');
+    const hash = crypto.createHash('md5').update(`OfflinePlayer:${username}`).digest('hex');
+    // Format as UUID v3 (set version bits)
+    const uuid = [
+        hash.substring(0, 8),
+        hash.substring(8, 12),
+        '3' + hash.substring(13, 16), // version 3
+        ((parseInt(hash.charAt(16), 16) & 0x3) | 0x8).toString(16) + hash.substring(17, 20), // variant bits
+        hash.substring(20, 32)
+    ].join('-');
 
     currentSession = {
         username,
@@ -329,11 +367,23 @@ export function getSession(): AuthSession | null {
     currentSession = globalAny.__AUTH_SESSION__ || currentSession;
 
     if (currentSession) {
-        // Polyfill apiToken for CatID users (who use accessToken as apiToken)
         const sessionWithToken = { ...currentSession };
-        if (sessionWithToken.type === "catid" && !sessionWithToken.apiToken) {
-            sessionWithToken.apiToken = sessionWithToken.accessToken;
+        const now = Date.now();
+
+        // Clear expired Microsoft API token for safer callers
+        if (sessionWithToken.apiTokenExpiresAt && now > sessionWithToken.apiTokenExpiresAt) {
+            sessionWithToken.apiToken = undefined;
         }
+
+        // Polyfill apiToken for CatID users (who use accessToken as apiToken)
+        if (sessionWithToken.type === "catid") {
+            if (sessionWithToken.tokenExpiresAt && now > sessionWithToken.tokenExpiresAt) {
+                sessionWithToken.apiToken = undefined;
+            } else if (!sessionWithToken.apiToken) {
+                sessionWithToken.apiToken = sessionWithToken.accessToken;
+            }
+        }
+
         return sessionWithToken;
     }
     return null;

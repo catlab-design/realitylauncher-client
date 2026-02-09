@@ -2,10 +2,14 @@ import toast from "react-hot-toast";
 import type { LauncherConfig } from "../../../types/launcher";
 import type { SettingsTabProps } from "./AccountTab";
 import { useTranslation } from "../../../hooks/useTranslation";
+import { useState } from "react";
+import { LanguageEditorModal } from "../../modals/LanguageEditorModal";
+import { Icons } from "../../ui/Icons";
 
 export function LauncherTab({ config, updateConfig, colors }: SettingsTabProps) {
     const windowApi = (window as any).api;
     const { t } = useTranslation(config.language);
+    const [editorOpen, setEditorOpen] = useState(false);
 
     return (
         <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
@@ -20,35 +24,50 @@ export function LauncherTab({ config, updateConfig, colors }: SettingsTabProps) 
                         <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('language')}</p>
                         <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t('select_language')}</p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex items-center gap-3">
                         <button
-                            onClick={() => updateConfig({ language: "th" })}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${config.language === "th"
-                                ? "bg-primary/20 border-primary text-primary"
-                                : "bg-transparent border-transparent hover:bg-white/5"
-                                }`}
+                            onClick={() => setEditorOpen(true)}
+                            className="p-2 rounded-lg transition-all hover:bg-white/10 text-xs font-semibold flex items-center gap-2 border border-dashed"
                             style={{
-                                backgroundColor: config.language === "th" ? colors.secondary + "20" : "transparent",
-                                borderColor: config.language === "th" ? colors.secondary : "transparent",
-                                color: config.language === "th" ? colors.secondary : colors.onSurfaceVariant
+                                color: colors.onSurfaceVariant,
+                                borderColor: colors.outline
                             }}
+                            title="Edit Translations"
                         >
-                            ไทย
+                            <Icons.Edit className="w-3.5 h-3.5" />
+                            <span>Edit</span>
                         </button>
-                        <button
-                            onClick={() => updateConfig({ language: "en" })}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${config.language === "en"
-                                ? "bg-primary/20 border-primary text-primary"
-                                : "bg-transparent border-transparent hover:bg-white/5"
-                                }`}
-                            style={{
-                                backgroundColor: config.language === "en" ? colors.secondary + "20" : "transparent",
-                                borderColor: config.language === "en" ? colors.secondary : "transparent",
-                                color: config.language === "en" ? colors.secondary : colors.onSurfaceVariant
-                            }}
-                        >
-                            English
-                        </button>
+
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => updateConfig({ language: "th" })}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${config.language === "th"
+                                    ? "bg-primary/20 border-primary text-primary"
+                                    : "bg-transparent border-transparent hover:bg-white/5"
+                                    }`}
+                                style={{
+                                    backgroundColor: config.language === "th" ? colors.secondary + "20" : "transparent",
+                                    borderColor: config.language === "th" ? colors.secondary : "transparent",
+                                    color: config.language === "th" ? colors.secondary : colors.onSurfaceVariant
+                                }}
+                            >
+                                ไทย
+                            </button>
+                            <button
+                                onClick={() => updateConfig({ language: "en" })}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${config.language === "en"
+                                    ? "bg-primary/20 border-primary text-primary"
+                                    : "bg-transparent border-transparent hover:bg-white/5"
+                                    }`}
+                                style={{
+                                    backgroundColor: config.language === "en" ? colors.secondary + "20" : "transparent",
+                                    borderColor: config.language === "en" ? colors.secondary : "transparent",
+                                    color: config.language === "en" ? colors.secondary : colors.onSurfaceVariant
+                                }}
+                            >
+                                English
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -141,20 +160,72 @@ export function LauncherTab({ config, updateConfig, colors }: SettingsTabProps) 
                         <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('close_on_launch')}</p>
                         <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t('close_on_launch_desc')}</p>
                     </div>
-                    <div className="relative inline-flex items-center cursor-pointer">
-                        <button
-                            onClick={() => updateConfig({ closeOnLaunch: !config.closeOnLaunch })}
-                            className="relative w-11 h-6 rounded-full transition-all duration-300 shadow-inner"
-                            style={{ backgroundColor: config.closeOnLaunch ? colors.secondary : colors.outline + "40" }}
-                        >
-                            <div
-                                className="absolute left-[2px] top-[2px] w-5 h-5 bg-white rounded-full shadow-md transition-transform duration-300"
-                                style={{ transform: config.closeOnLaunch ? "translateX(20px)" : "translateX(0)" }}
-                            />
-                        </button>
+                    <div className="flex gap-1">
+                        {[
+                            { value: "keep-open", label: t('keep_open') || "เปิดไว้" },
+                            { value: "hide-reopen", label: t('hide_reopen') || "ซ่อน/กลับมา" },
+                            { value: "close", label: t('close_launcher') || "ปิด" },
+                        ].map((option) => (
+                            <button
+                                key={option.value}
+                                onClick={() => updateConfig({ closeOnLaunch: option.value as any })}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border`}
+                                style={{
+                                    backgroundColor: config.closeOnLaunch === option.value ? colors.secondary + "20" : "transparent",
+                                    borderColor: config.closeOnLaunch === option.value ? colors.secondary : "transparent",
+                                    color: config.closeOnLaunch === option.value ? colors.secondary : colors.onSurfaceVariant
+                                }}
+                            >
+                                {option.label}
+                            </button>
+                        ))}
                     </div>
                 </div>
+
+                <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
+
+                {/* Reset Settings */}
+                <div className="flex items-center justify-between">
+                    <div>
+                        <p className="font-medium text-sm text-red-500">{t('reset_settings')}</p>
+                        <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t('reset_settings_desc')}</p>
+                    </div>
+                    <button
+                        onClick={async () => {
+                            if (confirm("Are you sure you want to reset all settings?")) {
+                                try {
+                                    // Reset in store
+                                    const { useConfigStore } = await import("../../../store/configStore");
+                                    useConfigStore.getState().resetConfig();
+                                    
+                                    // Also reset in electron config
+                                    if (windowApi?.resetConfig) {
+                                        await windowApi.resetConfig();
+                                    }
+                                    
+                                    toast.success("Settings reset to default - reloading...");
+                                    // Reload page to apply all changes
+                                    setTimeout(() => window.location.reload(), 500);
+                                } catch (err) {
+                                    console.error("Reset failed:", err);
+                                    toast.error("Failed to reset settings");
+                                }
+                            }
+                        }}
+                        className="p-2 rounded-xl transition-all hover:bg-red-500/10 text-red-500 hover:text-red-400 group"
+                        title="Reset All Settings"
+                    >
+                        <Icons.Trash className="w-5 h-5" />
+                    </button>
+                </div>
             </div>
+
+            <LanguageEditorModal
+                isOpen={editorOpen}
+                onClose={() => setEditorOpen(false)}
+                colors={colors}
+                currentLanguage={config.language}
+            />
         </div>
     );
 }

@@ -691,10 +691,7 @@ fn build_jvm_args(version: &VersionDetail, options: &LaunchOptions, classpath: &
     
     // Natives path
     args.push(format!("-Djava.library.path={}", options.natives_dir));
-    
-    // Minecraft launcher info
-    args.push("-Dminecraft.launcher.brand=RealityLauncher".to_string());
-    args.push("-Dminecraft.launcher.version=0.2.0".to_string());
+
     
     // Process JVM arguments from version JSON
     if let Some(ref arguments) = version.arguments {
@@ -723,15 +720,15 @@ fn build_jvm_args(version: &VersionDetail, options: &LaunchOptions, classpath: &
         }
     }
     
-    // Extra JVM args
-    if let Some(ref extra) = options.extra_jvm_args {
-        args.extend(extra.clone());
-    }
-    
-    // Classpath
+    // Classpath - MUST come after standard JVM options but BEFORE main class
     let cp_separator = if cfg!(windows) { ";" } else { ":" };
     args.push("-cp".to_string());
     args.push(classpath.join(cp_separator));
+
+    // Extra JVM args - Append LAST to override any previous properties
+    if let Some(ref extra) = options.extra_jvm_args {
+        args.extend(extra.clone());
+    }
     
     args
 }
@@ -817,8 +814,8 @@ fn process_arg(arg: &str, options: &LaunchOptions, classpath: &[String]) -> Stri
         .replace("${user_type}", &options.user_type)
         .replace("${version_type}", "release")
         .replace("${natives_directory}", &options.natives_dir)
-        .replace("${launcher_name}", "RealityLauncher")
-        .replace("${launcher_version}", "0.2.0")
+        .replace("${launcher_name}", "Reality Launcher")
+        .replace("${launcher_version}", "1.2.0")
         .replace("${classpath}", &classpath.join(cp_separator))
         .replace("${classpath_separator}", cp_separator)
         .replace("${library_directory}", &options.libraries_dir)

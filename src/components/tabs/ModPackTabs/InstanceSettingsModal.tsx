@@ -8,8 +8,12 @@ import { Icons } from "../../ui/Icons";
 import type { GameInstance } from "../../../types/launcher";
 import { playClick } from "../../../lib/sounds";
 import { useTranslation } from "../../../hooks/useTranslation";
+import { InstallProgressModal, type InstallProgress } from "./InstallProgressModal";
+import { FileSelectionTree, type FileNode } from "./FileSelectionTree";
+import modrinthIcon from "../../../assets/modrinth.svg";
+import curseforgeIcon from "../../../assets/curseforge.svg";
 
-type SettingsTab = "general" | "installation";
+type SettingsTab = "general" | "installation" | "export";
 type LoaderType = "vanilla" | "fabric" | "forge" | "neoforge" | "quilt";
 
 export interface InstanceSettingsModalProps {
@@ -19,6 +23,7 @@ export interface InstanceSettingsModalProps {
     onUpdate: (id: string, updates: Partial<GameInstance>) => void;
     onDelete: (id: string) => void;
     onDuplicate: (id: string) => void;
+    onExport: (id: string, options: any) => Promise<void>;
     language: "th" | "en";
 }
 
@@ -29,12 +34,173 @@ export function InstanceSettingsModal({
     onUpdate,
     onDelete,
     onDuplicate,
+    onExport,
     language,
 }: InstanceSettingsModalProps) {
     const { t } = useTranslation(language);
     const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
     const [editedName, setEditedName] = useState(instance.name);
     const [deleteConfirm, setDeleteConfirm] = useState(false);
+
+    // Export state
+    const [exportStep, setExportStep] = useState<"format" | "config">("format");
+    const [selectedFormat, setSelectedFormat] = useState<"zip" | "mrpack">("zip");
+    const [exportOptions, setExportOptions] = useState({
+        name: instance.name,
+        version: "1.0.0",
+        description: "",
+        includedPaths: ["mods", "config", "resourcepacks", "shaderpacks"]
+    });
+    
+    // File Tree State
+    const [fileTree, setFileTree] = useState<FileNode[]>([]);
+    const [loadingFiles, setLoadingFiles] = useState(false);
+    
+    // Reset export state when tab changes
+    useEffect(() => {
+        if (!isExporting && settingsTab !== "export") { // Don't reset if actively exporting or just switching sub-steps
+            setExportStep("format");
+            setExportOptions({
+                name: instance.name,
+                version: "1.0.0",
+                description: "",
+                includedPaths: ["mods", "config", "resourcepacks", "shaderpacks"]
+            });
+            setFileTree([]);
+        }
+    }, [settingsTab]);
+
+    // Fetch files when entering config step
+    useEffect(() => {
+        if (settingsTab === "export" && exportStep === "config") {
+            const fetchFiles = async () => {
+                if (!window.api) return;
+                setLoadingFiles(true);
+                try {
+                    const result = await window.api.instancesListFiles(instance.id);
+                    if (result.ok && result.files) {
+                        setFileTree(result.files);
+                        
+                        // Expand default folders to files
+                        setExportOptions(prev => {
+                            const newPaths = new Set<string>();
+                            const currentPaths = prev.includedPaths;
+                            
+                            // Helper to collect files from tree based on folder match
+                            const collectFiles = (nodes: FileNode[]) => {
+                                for (const node of nodes) {
+                                    if (node.type === "file") {
+                                        // If explicit file match OR parent folder match
+                                        const isExplicit = currentPaths.includes(node.path);
+                                        // Check if any default folder covers this file
+                                        const isCovered = currentPaths.some(p => node.path.startsWith(p + "/"));
+                                        
+                                        if (isExplicit || isCovered) {
+                                            newPaths.add(node.path);
+                                        }
+                                    } else if (node.children) {
+                                        collectFiles(node.children);
+                                    }
+                                }
+                            };
+                            
+                            const filesToProcess = (result.files as FileNode[]) || [];
+                            collectFiles(filesToProcess);
+                            
+                            return { ...prev, includedPaths: Array.from(newPaths) };
+                        });
+                    }
+                } catch (error) {
+                    console.error("Failed to list files:", error);
+                    toast.error(t('error_loading_files'));
+                } finally {
+                    setLoadingFiles(false);
+                }
+            };
+            fetchFiles();
+        }
+    }, [settingsTab, exportStep, instance.id]);
+
+    const [isExporting, setIsExporting] = useState(false);
+    const [exportProgress, setExportProgress] = useState<InstallProgress>({ stage: "extracting", message: "", percent: 0 });
+    const [minimized, setMinimized] = useState(false);
+
+    useEffect(() => {
+        if (!isExporting) {
+            setMinimized(false);
+            return;
+        }
+
+        // Subscribe to progress events
+        const cleanup = window.api?.onExportProgress?.((_id, progress) => {
+            setExportProgress({
+                stage: "copying",
+                message: `${t('export')}...`,
+                percent: progress.percent,
+                current: progress.transferred,
+                total: progress.total
+            });
+        });
+
+        return () => {
+            cleanup?.();
+        };
+    }, [isExporting]);
+
+    const handleFormatSelect = (format: "zip" | "mrpack") => {
+        playClick();
+        setSelectedFormat(format);
+        setExportStep("config");
+    };
+
+    const handleExport = async () => {
+        playClick();
+        
+        // Prepare options
+        const options = {
+            format: selectedFormat,
+            ...exportOptions
+        };
+        
+        // Close modal immediately and trigger export in background
+        onClose();
+        onExport(instance.id, options);
+    };
+
+    const handleCancelExport = async () => {
+        playClick();
+        try {
+            await window.api?.instancesExportCancel?.(instance.id);
+        } catch (error) {
+            console.error("Failed to cancel export:", error);
+        }
+    };
+    
+
+
+    // Helpers
+    const formatBytes = (bytes: number) => {
+        if (bytes === 0) return "0 B";
+        const k = 1024;
+        const sizes = ["B", "KB", "MB", "GB", "TB"];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+    };
+
+    // ... rest of code ...
+
+    // START OF UI REPLACEMENT
+    /* This replacement targets the "Files Section" in the render method */
+    /* Check previous content to match lines */
+    
+    // Actually, I can't replace scattered parts easily.
+    // I will use multiple replace calls or handle them conceptually.
+    // Let's first remove the helpers.
+
+
+
+
+
 
     // Installation settings state
     const [editedLoader, setEditedLoader] = useState<LoaderType>(instance.loader as LoaderType);
@@ -60,19 +226,18 @@ export function InstanceSettingsModal({
         }
 
         const fetchVersions = async () => {
+            if (!window.api) return;
             setLoadingLoaderVersions(true);
             try {
                 // Check if API exists (it should now)
-                if (window.api?.modrinthGetLoaderVersions) {
-                    const versions = await window.api.modrinthGetLoaderVersions(editedLoader, editedVersion);
-                    setLoaderVersions(versions);
+                const versions = await window.api.modrinthGetLoaderVersions(editedLoader, editedVersion);
+                setLoaderVersions(versions);
 
-                    // If current selection is invalid or empty, default to latest
-                    // But if we are editing an existing instance, try to keep current if possible
-                    // If switching loader type or MC version, default to latest
-                    if ((!editedLoaderVersion || !versions.includes(editedLoaderVersion)) && versions.length > 0) {
-                        setEditedLoaderVersion(versions[0]);
-                    }
+                // If current selection is invalid or empty, default to latest
+                // But if we are editing an existing instance, try to keep current if possible
+                // If switching loader type or MC version, default to latest
+                if ((!editedLoaderVersion || !versions.includes(editedLoaderVersion)) && versions.length > 0) {
+                    setEditedLoaderVersion(versions[0]);
                 }
             } catch (error) {
                 console.error("Failed to fetch loader versions:", error);
@@ -149,9 +314,9 @@ export function InstanceSettingsModal({
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+        <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm ${isExporting && minimized ? 'pointer-events-none opacity-0' : ''}`}>
             <div
-                className="w-full max-w-2xl rounded-2xl overflow-hidden shadow-2xl"
+                className="w-[90%] max-w-[1400px] h-[65vh] min-h-[480px] rounded-2xl overflow-hidden shadow-2xl flex flex-col"
                 style={{ backgroundColor: colors.surface }}
             >
                 {/* Modal Header */}
@@ -177,9 +342,9 @@ export function InstanceSettingsModal({
                     </button>
                 </div>
 
-                <div className="flex">
+                <div className="flex flex-1 overflow-hidden">
                     {/* Sidebar */}
-                    <div className="w-48 p-4 border-r" style={{ borderColor: colors.outline + "30" }}>
+                    <div className="w-[22%] min-w-[240px] p-4 border-r flex flex-col" style={{ borderColor: colors.outline + "30" }}>
                         <button
                             onClick={() => { playClick(); setSettingsTab("general"); }}
                             className="w-full flex items-center gap-3 px-4 py-2 rounded-lg text-sm mb-1 transition-all"
@@ -200,44 +365,370 @@ export function InstanceSettingsModal({
                         >
                             <i className="fa-solid fa-download w-4" /> {t('installation')}
                         </button>
+                        <button
+                            onClick={() => { playClick(); setSettingsTab("export"); }}
+                            className="w-full flex items-center gap-3 px-4 py-2 rounded-lg text-sm mb-1 transition-all"
+                            style={{
+                                backgroundColor: settingsTab === "export" ? colors.secondary : "transparent",
+                                color: settingsTab === "export" ? "#1a1a1a" : colors.onSurfaceVariant
+                            }}
+                        >
+                            <i className="fa-solid fa-file-export w-4" /> {t('export')}
+                        </button>
                     </div>
 
                     {/* Content */}
-                    <div className="flex-1 p-6 max-h-[80vh] overflow-y-auto">
-                        {settingsTab === "general" && (
-                            <div className="space-y-6">
-                                {/* Name */}
-                                <div className="flex gap-6">
-                                    <div className="flex-1">
-                                        <label className="block text-sm font-medium mb-2" style={{ color: colors.onSurface }}>{t('instance_name')}</label>
-                                        <div className="flex gap-2">
-                                            <input
-                                                type="text"
-                                                value={editedName}
-                                                onChange={(e) => setEditedName(e.target.value)}
-                                                disabled={!!instance.cloudId}
-                                                className="flex-1 px-4 py-2 rounded-xl outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-                                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                                            />
-                                            {editedName !== instance.name && !instance.cloudId && (
+                    <div className="flex-1 p-6 overflow-y-auto">
+                        {/* Define a helper for dark mode within the component scope if needed, 
+                            but since we follow the user request, we'll force icons to be white in certain conditions */}
+                        
+                        {settingsTab === "export" && (
+                            <div className="h-full flex flex-col">
+                                {exportStep === "format" ? (
+                                    <>
+                                        <div className="mb-8">
+                                            <h3 className="text-xl font-bold mb-2" style={{ color: colors.onSurface }}>{t('export_modpack')}</h3>
+                                            <p className="text-sm opacity-70 max-w-2xl" style={{ color: colors.onSurfaceVariant }}>
+                                                {t('export_desc')}
+                                            </p>
+                                        </div>
+
+                                        {isExporting && !minimized && (
+                                            <div className="flex-1 flex items-center justify-center">
+                                                <InstallProgressModal
+                                                    colors={colors}
+                                                    installProgress={exportProgress}
+                                                    title={t('export_modpack')}
+                                                    isBytes={true}
+                                                    onCancel={handleCancelExport}
+                                                    onMinimize={() => setMinimized(true)}
+                                                    language={language}
+                                                />
+                                            </div>
+                                        )}
+
+                                        {!isExporting && (
+                                            <div className="grid grid-cols-2 gap-6 pb-4">
+                                                {/* MRPack Option */}
                                                 <button
-                                                    onClick={() => { playClick(); handleSaveName(); }}
-                                                    className="px-4 py-2 rounded-xl text-sm"
-                                                    style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                                                    onClick={() => handleFormatSelect('mrpack')}
+                                                    className="group relative flex flex-col items-start p-6 rounded-2xl transition-all hover:scale-[1.02] border-2 text-left shrink-0"
+                                                    style={{ 
+                                                        backgroundColor: colors.surfaceContainer + "30",
+                                                        borderColor: colors.outline + "15"
+                                                    }}
                                                 >
-                                                    {t('save')}
+                                                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-[#1bd96a]/15 mb-6 group-hover:bg-[#1bd96a] transition-all shadow-lg shadow-[#1bd96a]/10 overflow-hidden p-3.5">
+                                                        <img 
+                                                            src={modrinthIcon.src} 
+                                                            alt="Modrinth" 
+                                                            className={`w-full h-full object-contain transition-all group-hover:brightness-0 group-hover:invert opacity-95 group-hover:opacity-100 ${colors.surface !== '#ffffff' ? 'brightness-0 invert' : ''}`} 
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <h4 className="text-lg font-bold" style={{ color: colors.onSurface }}>{t('export_mrpack')}</h4>
+                                                        <p className="text-sm opacity-60 leading-relaxed" style={{ color: colors.onSurfaceVariant }}>
+                                                            {t('export_mrpack_desc')}
+                                                        </p>
+                                                    </div>
+                                                    <div className="mt-8 flex items-center gap-2 text-xs font-bold uppercase tracking-widest opacity-40 group-hover:opacity-100 group-hover:text-[#1bd96a] transition-all" style={{ color: colors.onSurfaceVariant }}>
+                                                        Choose format <i className="fa-solid fa-arrow-right ml-1" />
+                                                    </div>
                                                 </button>
+
+                                                {/* ZIP Option */}
+                                                <button
+                                                    onClick={() => handleFormatSelect('zip')}
+                                                    className="group relative flex flex-col items-start p-6 rounded-2xl transition-all hover:scale-[1.02] border-2 text-left shrink-0"
+                                                    style={{ 
+                                                        backgroundColor: colors.surfaceContainer + "30",
+                                                        borderColor: colors.outline + "15"
+                                                    }}
+                                                >
+                                                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-[#f16436]/15 mb-6 group-hover:bg-[#f16436] transition-all shadow-lg shadow-[#f16436]/10 overflow-hidden p-3.5">
+                                                        <img 
+                                                            src={curseforgeIcon.src} 
+                                                            alt="CurseForge" 
+                                                            className={`w-full h-full object-contain transition-all group-hover:brightness-0 group-hover:invert opacity-95 group-hover:opacity-100 ${colors.surface !== '#ffffff' ? 'brightness-0 invert' : ''}`} 
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <h4 className="text-lg font-bold" style={{ color: colors.onSurface }}>{t('export_zip')}</h4>
+                                                        <p className="text-sm opacity-60 leading-relaxed" style={{ color: colors.onSurfaceVariant }}>
+                                                            {t('export_zip_desc')}
+                                                        </p>
+                                                    </div>
+                                                    <div className="mt-8 flex items-center gap-2 text-xs font-bold uppercase tracking-widest opacity-40 group-hover:opacity-100 group-hover:text-[#f16436] transition-all" style={{ color: colors.onSurfaceVariant }}>
+                                                        Choose format <i className="fa-solid fa-arrow-right ml-1" />
+                                                    </div>
+                                                </button>
+                                            </div>
+                                        )}
+                                    </>
+                                ) : (
+                                    /* Configuration Step */
+                                    <div className="flex flex-col h-full">
+                                        {isExporting && !minimized ? (
+                                            /* Show progress during export */
+                                            <div className="flex-1 flex items-center justify-center">
+                                                <InstallProgressModal
+                                                    colors={colors}
+                                                    installProgress={exportProgress}
+                                                    title={t('export_modpack')}
+                                                    isBytes={true}
+                                                    onCancel={handleCancelExport}
+                                                    onMinimize={() => setMinimized(true)}
+                                                    language={language}
+                                                />
+                                            </div>
+                                        ) : (
+                                        <>
+                                        <div className="mb-6 flex items-center gap-4">
+                                            <button 
+                                                onClick={() => { playClick(); setExportStep("format"); }}
+                                                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors"
+                                                style={{ color: colors.onSurface }}
+                                            >
+                                                <i className="fa-solid fa-arrow-left" />
+                                            </button>
+                                            <div>
+                                                <h3 className="text-xl font-bold flex items-center gap-3" style={{ color: colors.onSurface }}>
+                                                    {t('export_config_title')}
+                                                    <span className="text-xs px-2 py-0.5 rounded-full border opacity-70" style={{ borderColor: colors.outline }}>
+                                                        {selectedFormat === 'mrpack' ? '.mrpack' : '.zip'}
+                                                    </span>
+                                                </h3>
+                                                <p className="text-sm opacity-70" style={{ color: colors.onSurfaceVariant }}>
+                                                    {t('export_config_desc')}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex-1 overflow-y-auto pr-2 space-y-6">
+                                            {/* Metadata Section */}
+                                            <div className="space-y-4">
+                                                <h4 className="text-sm font-bold uppercase opacity-70 tracking-wider" style={{ color: colors.onSurfaceVariant }}>
+                                                    Metadata
+                                                </h4>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-xs font-medium mb-1.5 ml-1" style={{ color: colors.onSurface }}>{t('export_name')}</label>
+                                                        <input
+                                                            type="text"
+                                                            value={exportOptions.name}
+                                                            onChange={(e) => setExportOptions({ ...exportOptions, name: e.target.value })}
+                                                            className="w-full px-4 py-2.5 rounded-xl outline-none text-sm transition-all focus:ring-2 focus:ring-opacity-50"
+                                                            style={{ 
+                                                                backgroundColor: colors.surfaceContainerHighest, 
+                                                                color: colors.onSurface,
+                                                                outlineColor: colors.primary 
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium mb-1.5 ml-1" style={{ color: colors.onSurface }}>{t('export_version')}</label>
+                                                        <input
+                                                            type="text"
+                                                            value={exportOptions.version}
+                                                            onChange={(e) => setExportOptions({ ...exportOptions, version: e.target.value })}
+                                                            className="w-full px-4 py-2.5 rounded-xl outline-none text-sm transition-all focus:ring-2 focus:ring-opacity-50"
+                                                            style={{ 
+                                                                backgroundColor: colors.surfaceContainerHighest, 
+                                                                color: colors.onSurface,
+                                                                outlineColor: colors.primary 
+                                                            }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-medium mb-1.5 ml-1" style={{ color: colors.onSurface }}>{t('export_description')}</label>
+                                                    <textarea
+                                                        value={exportOptions.description}
+                                                        onChange={(e) => setExportOptions({ ...exportOptions, description: e.target.value })}
+                                                        rows={3}
+                                                        className="w-full px-4 py-2.5 rounded-xl outline-none text-sm resize-none transition-all focus:ring-2 focus:ring-opacity-50"
+                                                        style={{ 
+                                                            backgroundColor: colors.surfaceContainerHighest, 
+                                                            color: colors.onSurface,
+                                                            outlineColor: colors.primary 
+                                                        }}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Files Section */}
+                                            <div className="space-y-4">
+                                                <div className="flex items-center justify-between">
+                                                    <h4 className="text-sm font-bold uppercase opacity-70 tracking-wider" style={{ color: colors.onSurfaceVariant }}>
+                                                        {t('export_included_files')}
+                                                    </h4>
+                                                    <div className="flex gap-2">
+                                                        <button 
+                                                            onClick={() => { 
+                                                                playClick(); 
+                                                                // Select all files in tree
+                                                                const allFiles: string[] = [];
+                                                                const traverse = (nodes: FileNode[]) => {
+                                                                    nodes.forEach(n => {
+                                                                        if (n.type === "file") allFiles.push(n.path);
+                                                                        if (n.children) traverse(n.children);
+                                                                    });
+                                                                };
+                                                                traverse(fileTree);
+                                                                setExportOptions(prev => ({ ...prev, includedPaths: allFiles })); 
+                                                            }}
+                                                            className="text-xs px-2 py-1 rounded hover:bg-white/5 transition-colors"
+                                                            style={{ color: colors.secondary }}
+                                                        >
+                                                            {t('export_select_all')}
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => { playClick(); setExportOptions(prev => ({ ...prev, includedPaths: [] })); }}
+                                                            className="text-xs px-2 py-1 rounded hover:bg-white/5 transition-colors"
+                                                            style={{ color: colors.onSurfaceVariant }}
+                                                        >
+                                                            {t('export_deselect_all')}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                
+                                                {loadingFiles ? (
+                                                    <div className="flex justify-center p-8">
+                                                        <Icons.Spinner className="w-6 h-6 animate-spin opacity-50" />
+                                                    </div>
+                                                ) : (
+                                                    <FileSelectionTree 
+                                                        data={fileTree} 
+                                                        includedPaths={exportOptions.includedPaths} 
+                                                        onChange={(paths) => setExportOptions(prev => ({ ...prev, includedPaths: paths }))}
+                                                        colors={colors}
+                                                    />
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Action Bar */}
+                                        <div className="pt-6 mt-2 border-t flex justify-end gap-3" style={{ borderColor: colors.outline + "15" }}>
+                                            <button
+                                                onClick={() => { playClick(); setExportStep("format"); }}
+                                                className="px-6 py-2.5 rounded-xl font-medium text-sm transition-colors hover:bg-white/5"
+                                                style={{ color: colors.onSurface }}
+                                            >
+                                                {t('cancel')}
+                                            </button>
+                                            <button
+                                                onClick={handleExport}
+                                                disabled={isExporting}
+                                                className="px-8 py-2.5 rounded-xl font-bold text-sm shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                                style={{ backgroundColor: colors.primary, color: colors.onPrimary }}
+                                            >
+                                                {t('export_btn')}
+                                            </button>
+                                        </div>
+                                        </>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {settingsTab === "general" && (
+                            <div className="space-y-4">
+                                {/* Name & Icon Row */}
+                                <div className="flex items-start gap-8">
+                                    <div className="flex-1 space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1.5" style={{ color: colors.onSurface }}>{t('instance_name')}</label>
+                                            <div className="flex gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={editedName}
+                                                    onChange={(e) => setEditedName(e.target.value)}
+                                                    disabled={!!instance.cloudId}
+                                                    className="flex-1 px-4 py-2.5 rounded-xl outline-none disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                                                    style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                                />
+                                                {editedName !== instance.name && !instance.cloudId && (
+                                                    <button
+                                                        onClick={() => { playClick(); handleSaveName(); }}
+                                                        className="px-4 py-2 rounded-xl text-sm font-medium"
+                                                        style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                                                    >
+                                                        {t('save')}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Duplicate & Delete - Internal space reduction */}
+                                        <div className="space-y-4 pt-2">
+                                            {!instance.cloudId && (
+                                                <div>
+                                                    <h4 className="text-sm font-medium mb-1" style={{ color: colors.onSurface }}>{t('duplicate_instance_title')}</h4>
+                                                    <p className="text-xs mb-2 opacity-70" style={{ color: colors.onSurfaceVariant }}>
+                                                        {t('duplicate_instance_desc')}
+                                                    </p>
+                                                    <button
+                                                        onClick={() => {
+                                                            playClick();
+                                                            onDuplicate(instance.id);
+                                                            onClose();
+                                                        }}
+                                                        className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm transition-all hover:opacity-80 border"
+                                                        style={{ backgroundColor: colors.surfaceContainerHighest, borderColor: colors.outline + "20", color: colors.onSurface }}
+                                                    >
+                                                        <i className="fa-regular fa-copy" /> {t('duplicate')}
+                                                    </button>
+                                                </div>
                                             )}
+
+                                            <div>
+                                                <h4 className="text-sm font-medium mb-1" style={{ color: colors.onSurface }}>{t('delete_instance_title')}</h4>
+                                                <p className="text-xs mb-2 opacity-70" style={{ color: colors.onSurfaceVariant }}>
+                                                    {instance.cloudId ? t('server_instance_delete_desc') : t('local_instance_delete_desc')}
+                                                </p>
+                                                {deleteConfirm ? (
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            onClick={() => {
+                                                                playClick();
+                                                                onDelete(instance.id);
+                                                                onClose();
+                                                            }}
+                                                            className="flex items-center gap-2 px-6 py-2 rounded-xl text-sm bg-red-500 text-white font-medium"
+                                                        >
+                                                            <i className="fa-solid fa-trash" /> {t('confirm_delete_btn')}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => { playClick(); setDeleteConfirm(false); }}
+                                                            className="px-4 py-2 rounded-xl text-sm"
+                                                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                                        >
+                                                            {t('cancel')}
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => { playClick(); setDeleteConfirm(true); }}
+                                                        className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm border border-red-500/50 text-red-500 hover:bg-red-500/10 transition-colors"
+                                                    >
+                                                        <i className="fa-solid fa-trash" /> {t('delete_instance_title')}
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
 
-                                    {/* Icon picker */}
-                                    <div>
-                                        <label className="block text-sm font-medium mb-2" style={{ color: colors.onSurface }}>{t('icon')}</label>
+                                    {/* Icon Column */}
+                                    <div className="shrink-0">
+                                        <label className="block text-sm font-medium mb-1.5" style={{ color: colors.onSurface }}>{t('icon')}</label>
                                         <div className="relative group">
                                             <div
-                                                className={`w-20 h-20 rounded-2xl flex items-center justify-center text-3xl transition-all overflow-hidden ${instance.cloudId ? "" : "cursor-pointer hover:opacity-80"}`}
-                                                style={{ backgroundColor: colors.surfaceContainerHighest }}
+                                                className={`w-28 h-28 rounded-3xl flex items-center justify-center text-3xl transition-all overflow-hidden border-2 ${instance.cloudId ? "" : "cursor-pointer hover:border-secondary/50 group-hover:shadow-lg"}`}
+                                                style={{ 
+                                                    backgroundColor: colors.surfaceContainerHighest,
+                                                    borderColor: colors.outline + "20"
+                                                }}
                                                 onClick={async () => {
                                                     playClick();
                                                     if (instance.cloudId) return;
@@ -263,241 +754,233 @@ export function InstanceSettingsModal({
                                             </div>
                                             {!instance.cloudId && (
                                                 <div
-                                                    className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full flex items-center justify-center text-xs cursor-pointer"
-                                                    style={{ backgroundColor: colors.surface, border: `2px solid ${colors.surfaceContainerHighest}` }}
-                                                    onClick={async () => {
+                                                    className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full flex items-center justify-center text-xs shadow-md transform group-hover:scale-110 transition-transform cursor-pointer"
+                                                    style={{ backgroundColor: "#ffffff", color: "#1a1a1a", border: `2px solid ${colors.surfaceContainerHighest}` }}
+                                                    onClick={async (e) => {
+                                                        e.stopPropagation();
                                                         playClick();
                                                         const result = await window.api?.browseIcon?.();
                                                         if (result) {
                                                             const saveResult = await (window.api as any)?.instancesSetIcon?.(instance.id, result);
-                                                            if (saveResult?.ok) {
-                                                                toast.success(t('icon_saved_success'));
-                                                                onUpdate(instance.id, {});
-                                                            } else {
-                                                                toast.error(saveResult?.error || t('icon_save_failed'));
-                                                            }
+                                                                if (saveResult?.ok) {
+                                                                    toast.success(t('icon_saved_success'));
+                                                                    onUpdate(instance.id, {});
+                                                                } else {
+                                                                    toast.error(saveResult?.error || t('icon_save_failed'));
+                                                                }
                                                         }
                                                     }}
                                                 >
-                                                    <Icons.Edit className="w-3 h-3" style={{ color: colors.onSurface }} />
+                                                    <Icons.Edit className="w-3.5 h-3.5" style={{ color: "#1a1a1a" }} />
                                                 </div>
                                             )}
                                         </div>
                                     </div>
                                 </div>
-
-
-
-                                {/* Duplicate & Delete - Only for Local Instances */}
-                                {/* Duplicate - Only for Local Instances */}
-                                {!instance.cloudId && (
-                                    <div>
-                                        <h4 className="font-medium mb-1" style={{ color: colors.onSurface }}>{t('duplicate_instance_title')}</h4>
-                                        <p className="text-sm mb-2" style={{ color: colors.onSurfaceVariant }}>
-                                            {t('duplicate_instance_desc')}
-                                        </p>
-                                        <button
-                                            onClick={() => {
-                                                playClick();
-                                                onDuplicate(instance.id);
-                                                onClose();
-                                            }}
-                                            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm transition-all hover:opacity-80"
-                                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                                        >
-                                            <i className="fa-regular fa-copy" /> {t('duplicate')}
-                                        </button>
-                                    </div>
-                                )}
-
-                                {/* Delete - For All Instances */}
-                                <div>
-                                    <h4 className="font-medium mb-1" style={{ color: colors.onSurface }}>{t('delete_instance_title')}</h4>
-                                    <p className="text-sm mb-2" style={{ color: colors.onSurfaceVariant }}>
-                                        {instance.cloudId
-                                            ? t('server_instance_delete_desc')
-                                            : t('local_instance_delete_desc')
-                                        }
-                                    </p>
-                                    {deleteConfirm ? (
-                                        <div className="flex items-center gap-2">
-                                            <button
-                                                onClick={() => {
-                                                    playClick();
-                                                    onDelete(instance.id);
-                                                    onClose();
-                                                }}
-                                                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm bg-red-500 text-white"
-                                            >
-                                                <i className="fa-solid fa-trash" /> {t('confirm_delete_btn')}
-                                            </button>
-                                            <button
-                                                onClick={() => { playClick(); setDeleteConfirm(false); }}
-                                                className="px-4 py-2 rounded-xl text-sm"
-                                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                                            >
-                                                {t('cancel')}
-                                            </button>
-                                        </div>
-                                ) : (
-                                <button
-                                    onClick={() => { playClick(); setDeleteConfirm(true); }}
-                                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm border border-red-500 text-red-500 hover:bg-red-500/10"
-                                >
-                                    <i className="fa-solid fa-trash" /> {t('delete_instance_title')}
-                                </button>
-                                    )}
-                            </div>
                             </div>
                         )}
 
-                    {settingsTab === "installation" && (
-                        <div className="space-y-6">
-                            {/* Currently installed */}
-                            <div>
-                                <h4 className="font-medium mb-3" style={{ color: colors.onSurface }}>{t('currently_installed')}</h4>
-                                <div
-                                    className="flex items-center gap-4 p-4 rounded-xl"
-                                    style={{ backgroundColor: colors.surfaceContainerHighest }}
-                                >
-                                    <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: colors.surfaceContainer }}>
-                                        <Icons.Box className="w-6 h-6" style={{ color: colors.onSurfaceVariant }} />
-                                    </div>
-                                    <div className="flex-1">
-                                        <p className="font-medium" style={{ color: colors.onSurface }}>
-                                            Minecraft {instance.minecraftVersion}
-                                        </p>
-                                        <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>
-                                            {getLoaderLabel(instance.loader)} {instance.loaderVersion || ""}
-                                        </p>
+                        {settingsTab === "installation" && (
+                            <div className="space-y-6">
+                                {/* Currently installed */}
+                                <div>
+                                    <h4 className="font-medium mb-3" style={{ color: colors.onSurface }}>{t('currently_installed')}</h4>
+                                    <div
+                                        className="flex items-center gap-4 p-4 rounded-xl"
+                                        style={{ backgroundColor: colors.surfaceContainerHighest }}
+                                    >
+                                        <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: colors.surfaceContainer }}>
+                                            <Icons.Box className="w-6 h-6" style={{ color: colors.onSurfaceVariant }} />
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className="font-medium" style={{ color: colors.onSurface }}>
+                                                Minecraft {instance.minecraftVersion}
+                                            </p>
+                                            <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>
+                                                {getLoaderLabel(instance.loader)} {instance.loaderVersion || ""}
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            {/* Edit Controls - Only for Local Instances */}
-                            {!instance.cloudId ? (
-                                <>
-                                    {/* Platform */}
-                                    <div>
-                                        <h4 className="font-medium mb-3" style={{ color: colors.onSurface }}>Platform</h4>
-                                        <div className="flex flex-wrap gap-2">
-                                            {(["vanilla", "fabric", "forge", "neoforge", "quilt"] as LoaderType[]).map((loader) => (
-                                                <button
-                                                    key={loader}
-                                                    onClick={() => {
-                                                        playClick();
-                                                        setEditedLoader(loader);
-                                                        setLoaderVersions([]); // Clear list
-                                                        setEditedLoaderVersion(undefined); // Clear selection
-                                                    }}
-                                                    className="px-4 py-2 rounded-lg text-sm transition-all hover:opacity-80"
-                                                    style={{
-                                                        backgroundColor: editedLoader === loader ? colors.secondary : colors.surfaceContainerHighest,
-                                                        color: editedLoader === loader ? "#000000ff" : colors.onSurface,
-                                                        border: editedLoader === loader ? "none" : `1px solid ${colors.outline}30`
-                                                    }}
-                                                >
-                                                    {editedLoader === loader && <span className="mr-1">✓</span>}
-                                                    {getLoaderLabel(loader)}
-                                                </button>
-                                            ))}
+                                {/* Edit Controls - Only for Local Instances */}
+                                {!instance.cloudId ? (
+                                    <>
+                                        {/* Platform */}
+                                        <div>
+                                            <h4 className="font-medium mb-3" style={{ color: colors.onSurface }}>Platform</h4>
+                                            <div className="flex flex-wrap gap-2">
+                                                {(["vanilla", "fabric", "forge", "neoforge", "quilt"] as LoaderType[]).map((loader) => (
+                                                    <button
+                                                        key={loader}
+                                                        onClick={() => {
+                                                            playClick();
+                                                            setEditedLoader(loader);
+                                                            setLoaderVersions([]); // Clear list
+                                                            setEditedLoaderVersion(undefined); // Clear selection
+                                                        }}
+                                                        className="px-4 py-2 rounded-lg text-sm transition-all hover:opacity-80"
+                                                        style={{
+                                                            backgroundColor: editedLoader === loader ? colors.secondary : colors.surfaceContainerHighest,
+                                                            color: editedLoader === loader ? "#000000ff" : colors.onSurface,
+                                                            border: editedLoader === loader ? "none" : `1px solid ${colors.outline}30`
+                                                        }}
+                                                    >
+                                                        {editedLoader === loader && <span className="mr-1">✓</span>}
+                                                        {getLoaderLabel(loader)}
+                                                    </button>
+                                                ))}
+                                            </div>
                                         </div>
-                                    </div>
 
-                                    {/* Game version */}
-                                    <div>
-                                        <div className="flex items-center justify-between mb-2">
-                                            <h4 className="font-medium" style={{ color: colors.onSurface }}>{t('minecraft_version_label')}</h4>
-                                            <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: colors.onSurfaceVariant }}>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={showAllVersions}
-                                                    onChange={(e) => { playClick(); setShowAllVersions(e.target.checked); }}
-                                                    className="w-4 h-4"
-                                                />
-                                                {t('include_snapshots')}
-                                            </label>
-                                        </div>
-                                        <select
-                                            value={editedVersion}
-                                            onChange={(e) => { playClick(); setEditedVersion(e.target.value); }}
-                                            className="w-full px-4 py-3 rounded-xl border cursor-pointer"
-                                            style={{ backgroundColor: colors.surfaceContainerHighest, borderColor: colors.outline + "30", color: colors.onSurface }}
-                                        >
-                                            {/* Always include current version */}
-                                            {!filteredVersions.find(v => v.version === editedVersion) && (
-                                                <option value={editedVersion}>{editedVersion}</option>
-                                            )}
-                                            {filteredVersions.map((v) => (
-                                                <option key={v.version} value={v.version}>
-                                                    {v.version} {v.version_type !== "release" ? `(${v.version_type})` : ""}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    {/* Loader Version Selection */}
-                                    {editedLoader !== "vanilla" && (
-                                        <div className="mt-4">
-                                            <label className="block text-sm font-medium mb-2" style={{ color: colors.onSurface }}>Loader Version</label>
+                                        {/* Game version */}
+                                        <div>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <h4 className="font-medium" style={{ color: colors.onSurface }}>{t('minecraft_version_label')}</h4>
+                                                <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: colors.onSurfaceVariant }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={showAllVersions}
+                                                        onChange={(e) => { playClick(); setShowAllVersions(e.target.checked); }}
+                                                        className="w-4 h-4"
+                                                    />
+                                                    {t('include_snapshots')}
+                                                </label>
+                                            </div>
                                             <select
-                                                value={editedLoaderVersion || ""}
-                                                onChange={(e) => { playClick(); setEditedLoaderVersion(e.target.value); }}
-                                                disabled={loadingLoaderVersions}
+                                                value={editedVersion}
+                                                onChange={(e) => { playClick(); setEditedVersion(e.target.value); }}
                                                 className="w-full px-4 py-3 rounded-xl border cursor-pointer"
                                                 style={{ backgroundColor: colors.surfaceContainerHighest, borderColor: colors.outline + "30", color: colors.onSurface }}
                                             >
-                                                {loadingLoaderVersions && <option>{t('loading')}</option>}
-                                                {!loadingLoaderVersions && loaderVersions.length === 0 && <option value="">{t('no_loader_version_found')}</option>}
-                                                {loaderVersions.map((v) => (
-                                                    <option key={v} value={v}>
-                                                        {v}
+                                                {/* Always include current version */}
+                                                {!filteredVersions.find(v => v.version === editedVersion) && (
+                                                    <option value={editedVersion}>{editedVersion}</option>
+                                                )}
+                                                {filteredVersions.map((v) => (
+                                                    <option key={v.version} value={v.version}>
+                                                        {v.version} {v.version_type !== "release" ? `(${v.version_type})` : ""}
                                                     </option>
                                                 ))}
                                             </select>
                                         </div>
-                                    )}
 
-                                    {/* Warning about changing settings */}
-                                    {hasInstallationChanges && (
-                                        <div className="p-3 rounded-xl text-sm" style={{ backgroundColor: "#f59e0b20", color: "#f59e0b" }}>
-                                            <i className="fa-solid fa-triangle-exclamation mr-2" />
-                                            {t('installation_change_warning')}
+                                        {/* Loader Version Selection */}
+                                        {editedLoader !== "vanilla" && (
+                                            <div className="mt-4">
+                                                <label className="block text-sm font-medium mb-2" style={{ color: colors.onSurface }}>Loader Version</label>
+                                                <select
+                                                    value={editedLoaderVersion || ""}
+                                                    onChange={(e) => { playClick(); setEditedLoaderVersion(e.target.value); }}
+                                                    disabled={loadingLoaderVersions}
+                                                    className="w-full px-4 py-3 rounded-xl border cursor-pointer"
+                                                    style={{ backgroundColor: colors.surfaceContainerHighest, borderColor: colors.outline + "30", color: colors.onSurface }}
+                                                >
+                                                    {loadingLoaderVersions && <option>{t('loading')}</option>}
+                                                    {!loadingLoaderVersions && loaderVersions.length === 0 && <option value="">{t('no_loader_version_found')}</option>}
+                                                    {loaderVersions.map((v) => (
+                                                        <option key={v} value={v}>
+                                                            {v}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        )}
+
+                                        {/* Warning about changing settings */}
+                                        {hasInstallationChanges && (
+                                            <div className="p-3 rounded-xl text-sm" style={{ backgroundColor: "#f59e0b20", color: "#f59e0b" }}>
+                                                <i className="fa-solid fa-triangle-exclamation mr-2" />
+                                                {t('installation_change_warning')}
+                                            </div>
+                                        )}
+
+                                        {/* Save button */}
+                                        {hasInstallationChanges && (
+                                            <button
+                                                onClick={handleSaveInstallation}
+                                                className="w-full py-3 rounded-xl font-medium transition-all hover:scale-[1.02] disabled:opacity-50"
+                                                style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                                            >
+                                                {isSavingInstallation ? t('saving') : loadingLoaderVersions ? t('loading_versions') : t('save_changes')}
+                                            </button>
+                                        )}
+                                    </>
+                                ) : (
+                                    /* Server Managed Message */
+                                    <div className="flex flex-col items-center justify-center py-12 text-center space-y-4 rounded-2xl border-2 border-dashed"
+                                        style={{ borderColor: colors.outline + "40" }}>
+                                        <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ backgroundColor: colors.surfaceContainerHighest }}>
+                                            <Icons.Info className="w-8 h-8" style={{ color: colors.primary }} />
                                         </div>
-                                    )}
+                                        <div>
+                                            <h3 className="text-lg font-bold mb-1" style={{ color: colors.onSurface }}>{t('managed_by_server')}</h3>
+                                            <p className="text-sm max-w-xs mx-auto" style={{ color: colors.onSurfaceVariant }}>
+                                                {t('server_managed_settings_desc')}
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
 
-                                    {/* Save button */}
-                                    {hasInstallationChanges && (
-                                        <button
-                                            onClick={handleSaveInstallation}
-                                            className="w-full py-3 rounded-xl font-medium transition-all hover:scale-[1.02] disabled:opacity-50"
-                                            style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
-                                        >
-                                            {isSavingInstallation ? t('saving') : loadingLoaderVersions ? t('loading_versions') : t('save_changes')}
-                                        </button>
-                                    )}
-                        </>
-                    ) : (
-                    /* Server Managed Message */
-                    <div className="flex flex-col items-center justify-center py-12 text-center space-y-4 rounded-2xl border-2 border-dashed"
-                        style={{ borderColor: colors.outline + "40" }}>
-                        <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                            <Icons.Info className="w-8 h-8" style={{ color: colors.primary }} />
+            {/* Minimized floating progress widget */}
+            {isExporting && minimized && (
+                <div
+                    className="fixed bottom-6 right-6 z-[60] w-80 rounded-2xl shadow-2xl overflow-hidden border border-white/10 animate-fade-in-up cursor-pointer transition-transform hover:scale-105"
+                    style={{ backgroundColor: colors.surfaceContainer }}
+                    onClick={() => setMinimized(false)}
+                >
+                    <div className="p-4 flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full flex items-center justify-center relative shrink-0"
+                            style={{ backgroundColor: colors.surfaceContainerHighest }}>
+                            {exportProgress.percent !== undefined ? (
+                                <svg className="w-10 h-10 -rotate-90 transform" viewBox="0 0 36 36">
+                                    <path
+                                        className="text-gray-200 opacity-20"
+                                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="3"
+                                    />
+                                    <path
+                                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                        fill="none"
+                                        stroke={colors.secondary}
+                                        strokeWidth="3"
+                                        strokeDasharray={`${exportProgress.percent}, 100`}
+                                    />
+                                </svg>
+                            ) : (
+                                <div className="animate-spin rounded-full h-5 w-5 border-b-2" style={{ borderColor: colors.secondary }}></div>
+                            )}
+                            <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold" style={{ color: colors.onSurface }}>
+                                {exportProgress.percent}%
+                            </div>
                         </div>
-                        <div>
-                            <h3 className="text-lg font-bold mb-1" style={{ color: colors.onSurface }}>{t('managed_by_server')}</h3>
-                            <p className="text-sm max-w-xs mx-auto" style={{ color: colors.onSurfaceVariant }}>
-                                {t('server_managed_settings_desc')}
+                        <div className="flex-1 min-w-0">
+                            <h4 className="font-medium text-sm truncate" style={{ color: colors.onSurface }}>{t('export')}</h4>
+                            <p className="text-xs truncate" style={{ color: colors.onSurfaceVariant }}>
+                                {exportProgress.current && exportProgress.total
+                                    ? `${formatBytes(exportProgress.current)} / ${formatBytes(exportProgress.total)}`
+                                    : exportProgress.message}
                             </p>
                         </div>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setMinimized(false); }}
+                            className="p-2 rounded-lg hover:bg-white/10"
+                            title="Expand"
+                        >
+                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" style={{ color: colors.onSurfaceVariant }}>
+                                <path d="M12 8l-6 6 1.41 1.41L12 10.83l4.59 4.58L18 14z" />
+                            </svg>
+                        </button>
                     </div>
-                                )}
                 </div>
-                        )}
-            </div>
+            )}
         </div>
-
-            </div >
-        </div >
     );
 }

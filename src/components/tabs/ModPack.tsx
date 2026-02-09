@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, type Dispatch, type SetStateAction } from "react";
 import toast from "react-hot-toast";
 import { playClick, toastSuccess, toastError } from "../../lib/sounds";
 import { Icons } from "../ui/Icons";
@@ -14,6 +14,7 @@ import {
     type InstallProgress,
     type ModInfo,
 } from "./ModPackTabs";
+import { useProgressStore } from "../../store/progressStore";
 
 // ========================================
 // Types
@@ -33,6 +34,8 @@ interface ModPackProps {
     onShowConfirm?: (options: any) => void;
     isActive?: boolean;
     selectedServer: Server | null;
+    selectedInstance?: GameInstance | null;
+    setSelectedInstance?: Dispatch<SetStateAction<GameInstance | null>>;
     session?: AuthSession | null;
     updateConfig?: (newConfig: Partial<LauncherConfig>) => void;
     language: "th" | "en";
@@ -75,7 +78,7 @@ function ServerModsList({ serverId, colors }: { serverId: string, colors: any })
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-64 overflow-y-auto">
             {mods.map((mod, idx) => (
                 <div key={`${mod.filename}-${idx}`} className="flex items-center gap-2 p-2 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                    <div className="w-8 h-8 rounded bg-gray-500/20 flex items-center justify-center flex-shrink-0">
+                    <div className="w-8 h-8 rounded bg-gray-500/20 flex items-center justify-center shrink-0">
                         <Icons.Box className="w-4 h-4" />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -195,6 +198,8 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
     onShowConfirm,
     isActive,
     selectedServer,
+    selectedInstance = null,
+    setSelectedInstance = () => {},
     session,
     updateConfig,
     language,
@@ -206,6 +211,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
     const [launchingId, setLaunchingId] = useState<string | null>(null);
     const [playingInstances, setPlayingInstances] = useState<Set<string>>(new Set());
+    const hasLoadedRef = useRef(false);
 
     const [showImportModal, setShowImportModal] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
@@ -213,10 +219,61 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
 
     // Installation progress state
     const [isInstalling, setIsInstalling] = useState(false);
-    const [installProgress, setInstallProgress] = useState<InstallProgress | null>(null);
+    const [installProgress, setInstallProgress] = useState<(InstallProgress & { type?: string; filename?: string }) | null>(null);
+    const [isInstallMinimized, setIsInstallMinimized] = useState(false);
 
-    // Instance detail view state
-    const [selectedInstance, setSelectedInstance] = useState<GameInstance | null>(null);
+
+    // Export State (Global)
+    const { startExport, setExportProgress, setExporting, setExportingInstanceId, resetExport } = useProgressStore();
+
+    // Export Handler
+    const handleExportInstance = async (instanceId: string, options: any) => {
+        playClick();
+        
+        // Initial state
+        startExport(instanceId, { stage: "extracting", message: t('preparing_export_dot'), percent: 0 });
+
+        // Subscribe to progress events
+        const cleanup = window.api?.onExportProgress?.((_id, progress) => {
+             setExportProgress({
+                stage: "copying",
+                message: `${t('export')}...`,
+                percent: progress.percent,
+                current: progress.transferred,
+                total: progress.total
+            });
+        });
+
+        try {
+            const result = await window.api?.instancesExport?.(instanceId, options);
+            if (result?.ok) {
+                toastSuccess(t('export_success'));
+            } else if (result?.error === "Cancelled") {
+                toast('Export cancelled', { icon: '🚫' });
+            } else {
+                toastError(t('export_failed') + (result?.error || ""));
+            }
+        } catch (error) {
+            console.error("Export failed:", error);
+            toastError(t('export_failed'));
+        } finally {
+            cleanup?.();
+            resetExport();
+        }
+    };
+
+    const handleCancelExport = async (instanceId: string) => {
+        playClick();
+        try {
+            await window.api?.instancesExportCancel?.(instanceId);
+            // State reset handled in finally block of handleExportInstance
+        } catch (error) {
+            console.error("Failed to cancel export:", error);
+        }
+    };
+
+    // Instance detail view state (now via props)
+    // const [selectedInstance, setSelectedInstance] = useState<GameInstance | null>(null);
 
     // Local state for joined servers
     const [joinedServers, setJoinedServers] = useState<Server[]>([]);
@@ -239,7 +296,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                 const unique = all.filter((v: Server, i: number, a: Server[]) => a.findIndex(t => t.id === v.id) === i);
                 setJoinedServers(unique);
             } else if (result?.error) {
-                const errMsg = result.error;
+                const errMsg = typeof result.error === 'string' ? result.error : '';
                 if (errMsg.includes("401") || errMsg.includes("Unauthorized")) {
                     console.warn("[ModPack] Session expired, user needs to re-login");
                 } else if (!errMsg.includes("Not logged in")) {
@@ -258,16 +315,26 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
         loadJoinedServers();
     }, [session]);
 
-    // Reset selectedInstance when tab becomes active (coming back from another tab)
+    // Track previous isActive to detect tab re-entry
+    const wasActiveRef = useRef(isActive);
+
+    // Reload data when tab becomes active (coming back from another tab)
     useEffect(() => {
-        if (isActive) {
-            console.log("[ModPack] Tab active, reloading data...");
-            setSelectedInstance(null);
-            setRefreshTrigger(prev => prev + 1); // Trigger background image refresh
-            loadInstances();
-            loadJoinedServers();
+        // Only reload data if we don't have a selected instance (i.e. we are in list view)
+        // This preserves the specific instance view if one is selected (e.g. via Home tab)
+        if (isActive && !wasActiveRef.current) {
+             // Note: We DO NOT reset selectedInstance here, because it might have been set by the Home tab (Recent Play)
+             // or we might want to preserve the previous state.
+             
+             if (!selectedInstance) {
+                setRefreshTrigger(prev => prev + 1);
+                loadInstances();
+                loadJoinedServers();
+             }
         }
-    }, [isActive]);
+        
+        wasActiveRef.current = isActive;
+    }, [isActive, selectedInstance]);
 
     // Load instances on mount and when session changes
     useEffect(() => {
@@ -386,7 +453,9 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
 
             setInstallProgress({
                 stage: data.type,
-                message: data.task,
+                message: data.task, // Fallback message
+                type: data.type,    // Key for translation
+                filename: data.filename, // Parameter for translation
                 current: data.current,
                 total: data.total,
                 percent: data.percent
@@ -398,12 +467,14 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                     if (!isCancellingRef.current) {
                         setIsInstalling(false);
                         setInstallProgress(null);
+                        setIsInstallMinimized(false);
                         loadInstances(); // Reload list
                     }
                 }, 1000);
             } else if (data.type === "error" || data.type === "cancelled" || data.type === "sync-error") {
                 setIsInstalling(false);
                 setInstallProgress(null);
+                setIsInstallMinimized(false);
             } else {
                 setIsInstalling(true);
             }
@@ -429,12 +500,14 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                     if (!isCancellingRef.current) {
                         setIsInstalling(false);
                         setInstallProgress(null);
+                        setIsInstallMinimized(false);
                         loadInstances();
                     }
                 }, 1000);
             } else if (data.stage === "error" || data.stage === "cancelled") {
                 setIsInstalling(false);
                 setInstallProgress(null);
+                setIsInstallMinimized(false);
             } else {
                 setIsInstalling(true);
             }
@@ -476,8 +549,8 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
     };
 
     const loadInstances = async () => {
-        // Only show loading state if we have no instances (initial load)
-        if (instances.length === 0) {
+        // Only show loading state on first load to avoid flashing skeleton on refresh
+        if (!hasLoadedRef.current) {
             setIsLoading(true);
         }
 
@@ -488,6 +561,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
 
             if (allInstances) {
                 setInstances(allInstances);
+                hasLoadedRef.current = true;
             }
         } catch (error) {
             console.error("[ModPack] Failed to load instances:", error);
@@ -622,7 +696,8 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
         try {
             const refreshResult = await (window.api as any)?.authRefreshToken?.();
             if (refreshResult && !refreshResult.ok && refreshResult.error) {
-                if (refreshResult.error.includes("re-login")) {
+                const refreshErr = typeof refreshResult.error === 'string' ? refreshResult.error : '';
+                if (refreshErr.includes("re-login")) {
                     toastError(t('session_expired_login_server'));
                     setLaunchingId(null);
                     return;
@@ -758,13 +833,15 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                 loadInstances();
             } else {
                 // Don't show error toast if it was cancelled (already shown by handleCancelInstall)
-                if (result?.error && !result.error.includes("cancelled") && !result.error.includes("cancel")) {
-                    toast.error(result.error);
+                const cancelErr = typeof result?.error === 'string' ? result.error : '';
+                if (cancelErr && !cancelErr.includes("cancelled") && !cancelErr.includes("cancel")) {
+                    toast.error(cancelErr);
                 }
             }
         } catch (error: any) {
             // Don't show error toast if it was cancelled
-            if (error?.message && !error.message.includes("cancelled") && !error.message.includes("cancel")) {
+            const catchMsg = typeof error?.message === 'string' ? error.message : '';
+            if (catchMsg && !catchMsg.includes("cancelled") && !catchMsg.includes("cancel")) {
                 toast.error(error.message || t('error_occurred'));
             }
         } finally {
@@ -797,11 +874,12 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                 loadInstances();
             } else {
                 // Check if it was cancelled (already shown by handleCancelInstall)
-                if (result?.error && (result.error.includes("cancelled") || result.error.includes("cancel"))) {
+                const installErr = typeof result?.error === 'string' ? result.error : '';
+                if (installErr && (installErr.includes("cancelled") || installErr.includes("cancel"))) {
                     toast.dismiss(toastId);
                     return;
                 }
-                const errMsg = result?.error || t('install_failed');
+                const errMsg = installErr || t('install_failed');
                 if (errMsg.includes("401") || errMsg.includes("Unauthorized")) {
                     toast.error(t('session_expired'), { id: toastId });
                 } else if (errMsg.includes("Not logged in")) {
@@ -812,7 +890,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
             }
         } catch (error: any) {
             // Check if it was cancelled (already shown by handleCancelInstall)
-            if (error?.message && (error.message.includes("cancelled") || error.message.includes("cancel"))) {
+            if (typeof error?.message === 'string' && (error.message.includes("cancelled") || error.message.includes("cancel"))) {
                 toast.dismiss(toastId);
             } else {
                 toast.error(error?.message || t('error_occurred'), { id: toastId });
@@ -820,6 +898,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
         } finally {
             setIsInstalling(false);
             setInstallingInstanceId(null);
+            setIsInstallMinimized(false);
         }
     };
 
@@ -905,6 +984,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                 }}
                 onDuplicate={handleDuplicate}
                 onUpdate={handleUpdate}
+                onExport={handleExportInstance}
                 launchingId={launchingId}
                 isGameRunning={playingInstances.size > 0}
                 playingInstanceId={playingInstances.has(selectedInstance.id) ? selectedInstance.id : (playingInstances.size > 0 ? "OTHER" : null)}
@@ -993,7 +1073,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                                 >
                                     {/* Header: Icon + Info */}
                                     <div className="flex items-start gap-3 mb-3">
-                                        <div className="w-12 h-12 rounded-xl flex-shrink-0"
+                                        <div className="w-12 h-12 rounded-xl shrink-0"
                                             style={{ backgroundColor: colors.surfaceContainerHighest }} />
                                         <div className="flex-1 space-y-2">
                                             <div className="h-5 w-3/4 rounded" style={{ backgroundColor: colors.surfaceContainerHighest }} />
@@ -1031,7 +1111,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                                     {/* Header */}
                                     <div className="flex items-start gap-3 mb-3">
                                         <div
-                                            className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+                                            className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
                                             style={{ backgroundColor: colors.surfaceContainerHigh }}
                                         >
                                             {instance.icon ? (
@@ -1177,7 +1257,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                                             />
 
                                             {/* Gradient Overlay */}
-                                            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
+                                            <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/50 to-transparent" />
 
                                             {/* Icon - Top Left */}
                                             <div className="absolute top-2 left-2 w-12 h-12 rounded-xl bg-black/20 backdrop-blur-md border border-white/10 overflow-hidden shadow-lg z-10">
@@ -1333,7 +1413,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                                             )}
 
                                             {/* Gradient Overlay */}
-                                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                                            <div className="absolute inset-0 bg-linear-to-t from-black/80 via-transparent to-transparent" />
 
                                             {/* Center Content: Install Button */}
                                             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-10 transition-opacity group-hover:opacity-100">
@@ -1412,16 +1492,72 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                 )}
 
                 {/* Installation Progress Modal */}
-                {isInstalling && installProgress && (
+                {isInstalling && installProgress && !isInstallMinimized && (
                     <InstallProgressModal
                         colors={colors}
                         installProgress={installProgress}
                         onCancel={handleCancelInstall}
+                        onMinimize={() => setIsInstallMinimized(true)}
                         language={language}
                     />
                 )}
 
+                {/* Minimized Progress Widget */}
+                {isInstalling && installProgress && isInstallMinimized && (
+                    <div
+                        className="fixed bottom-6 right-6 z-50 w-80 rounded-2xl shadow-2xl overflow-hidden border border-white/10 animate-fade-in-up cursor-pointer transition-transform hover:scale-105"
+                        style={{ backgroundColor: colors.surfaceContainer }}
+                        onClick={() => setIsInstallMinimized(false)}
+                    >
+                        <div className="p-4 flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full flex items-center justify-center relative shrink-0"
+                                style={{ backgroundColor: colors.surfaceContainerHighest }}>
+                                {installProgress.percent !== undefined ? (
+                                    <svg className="w-10 h-10 -rotate-90 transform" viewBox="0 0 36 36">
+                                        <path
+                                            className="text-gray-200 opacity-20"
+                                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="3"
+                                        />
+                                        <path
+                                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                            fill="none"
+                                            stroke={colors.secondary}
+                                            strokeWidth="3"
+                                            strokeDasharray={`${installProgress.percent}, 100`}
+                                        />
+                                    </svg>
+                                ) : (
+                                    <div className="animate-spin rounded-full h-5 w-5 border-b-2" style={{ borderColor: colors.secondary }}></div>
+                                )}
+                                <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold" style={{ color: colors.onSurface }}>
+                                    {installProgress.percent}%
+                                </div>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <h4 className="font-medium text-sm truncate" style={{ color: colors.onSurface }}>{t('installing')}</h4>
+                                <p className="text-xs truncate" style={{ color: colors.onSurfaceVariant }}>
+                                    {installProgress.type ? t(installProgress.type as any, { filename: installProgress.filename, current: installProgress.current, total: installProgress.total } as any) : installProgress.message}
+                                </p>
+                            </div>
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setIsInstallMinimized(false); }}
+                                className="p-2 rounded-lg hover:bg-white/10"
+                                title="Expand"
+                            >
+                                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" style={{ color: colors.onSurfaceVariant }}>
+                                    <path d="M12 8l-6 6 1.41 1.41L12 10.83l4.59 4.58L18 14z" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                )}
+
             </div >
+            
+
         </>
     );
 }

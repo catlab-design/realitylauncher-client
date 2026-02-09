@@ -2,7 +2,7 @@
  * ========================================
  * IPC Handlers Registry
  * ========================================
- * 
+ *
  * Central registry for all IPC handlers
  * Import and register handlers from individual modules
  */
@@ -10,45 +10,68 @@
 import { BrowserWindow } from "electron";
 
 // Import handler registration functions
-import { registerConfigHandlers } from "./config-handlers.js";
-import { registerAuthHandlers } from "./auth-handlers.js";
-import { registerLauncherHandlers } from "./launcher-handlers.js";
-import { registerUtilityHandlers } from "./utility-handlers.js";
-import { registerDiscordHandlers } from "./discord-handlers.js";
-import { registerUpdateHandlers } from "./update-handlers.js";
-import { registerWindowHandlers } from "./window-handlers.js";
-import { registerModrinthHandlers } from "./modrinth-handlers.js";
-import { registerCurseForgeHandlers } from "./curseforge-handlers.js";
-import { registerInstanceHandlers } from "./instance-handlers.js";
-import { registerModpackHandlers } from "./modpack-handlers.js";
-import { registerNotificationHandlers } from "./notification-handlers.js";
-import { registerServerHandlers } from "./server-handlers.js";
-import { registerAdminHandlers } from "./admin-handlers.js";
-import { registerContentHandlers } from "./content-handlers.js";
+// Imports removed in favor of dynamic imports in registerAllHandlers
 
 /**
  * Register all IPC handlers
- * 
+ *
  * @param getMainWindow - Function to get the main window reference
  */
-export function registerAllHandlers(getMainWindow: () => BrowserWindow | null): void {
-    console.log("[IPC] Registering all handlers...");
+export async function registerAllHandlers(
+  getMainWindow: () => BrowserWindow | null,
+): Promise<void> {
+  console.log("[IPC] Registering all handlers...");
 
-    registerConfigHandlers();
-    registerAuthHandlers(getMainWindow);
-    registerLauncherHandlers(getMainWindow);
-    registerUtilityHandlers(getMainWindow);
-    registerDiscordHandlers();
-    registerUpdateHandlers();
-    registerWindowHandlers(getMainWindow);
-    registerModrinthHandlers(getMainWindow);
-    registerCurseForgeHandlers();
-    registerInstanceHandlers(getMainWindow);
-    registerModpackHandlers(getMainWindow);
-    registerContentHandlers(getMainWindow);
-    registerNotificationHandlers();
-    registerServerHandlers();
-    registerAdminHandlers();
+  // Lazy load handlers to improve startup time
+  const [
+    { registerConfigHandlers },
+    { registerAuthHandlers },
+    { registerLauncherHandlers },
+    { registerUtilityHandlers },
+    { registerDiscordHandlers },
+    { registerUpdateHandlers },
+    { registerWindowHandlers },
+    { registerModrinthHandlers },
+    { registerCurseForgeHandlers },
+    { registerInstanceHandlers },
+    { registerModpackHandlers },
+    { registerNotificationHandlers },
+    { registerServerHandlers },
+    { registerAdminHandlers },
+    { registerContentHandlers },
+  ] = await Promise.all([
+    import("./config-handlers.js"),
+    import("./auth-handlers.js"),
+    import("./launcher-handlers.js"),
+    import("./utility-handlers.js"),
+    import("./discord-handlers.js"),
+    import("./update-handlers.js"),
+    import("./window-handlers.js"),
+    import("./modrinth-handlers.js"),
+    import("./curseforge-handlers.js"),
+    import("./instance-handlers.js"),
+    import("./modpack-handlers.js"),
+    import("./notification-handlers.js"),
+    import("./server-handlers.js"),
+    import("./admin-handlers.js"),
+    import("./content-handlers.js"),
+  ]);
 
-    console.log("[IPC] All handlers registered");
+  registerConfigHandlers();
+  registerAuthHandlers(getMainWindow);
+  registerLauncherHandlers(getMainWindow);
+  registerUtilityHandlers(getMainWindow);
+  registerDiscordHandlers();
+  registerUpdateHandlers();
+  registerWindowHandlers(getMainWindow);
+  registerModrinthHandlers(getMainWindow);
+  registerCurseForgeHandlers();
+  registerInstanceHandlers(getMainWindow);
+  registerModpackHandlers(getMainWindow);
+  registerContentHandlers(getMainWindow);
+  registerNotificationHandlers();
+  registerServerHandlers();
+  registerAdminHandlers();
+
+  console.log("[IPC] All handlers registered");
 }

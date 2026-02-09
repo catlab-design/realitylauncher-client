@@ -14,7 +14,10 @@ export { ImportModpackModal } from "./ImportModpackModal";
 export type { ImportModpackModalProps } from "./ImportModpackModal";
 
 export { InstallProgressModal } from "./InstallProgressModal";
-export type { InstallProgress, InstallProgressModalProps } from "./InstallProgressModal";
+export type {
+  InstallProgress,
+  InstallProgressModalProps,
+} from "./InstallProgressModal";
 
 export { DeleteConfirmModal } from "./DeleteConfirmModal";
 export type { DeleteConfirmModalProps } from "./DeleteConfirmModal";
@@ -31,4 +34,5 @@ export type { InstanceHeaderProps } from "./InstanceHeader";
 export { ContentTabs } from "./ContentTabs";
 export { ModsList } from "./ModsList";
 export { ContentList } from "./ContentList";
-
+export { FileSelectionTree } from "./FileSelectionTree";
+export type { FileNode } from "./FileSelectionTree";

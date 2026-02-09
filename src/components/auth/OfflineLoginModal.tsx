@@ -26,7 +26,6 @@ export function OfflineLoginModal({ isOpen, onClose, onLogin, colors }: OfflineL
             setIsLoading(true);
             try {
                 await onLogin(username);
-                onClose();
             } catch (error) {
                 console.error(error);
             } finally {

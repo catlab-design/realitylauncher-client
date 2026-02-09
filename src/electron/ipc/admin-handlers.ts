@@ -6,7 +6,7 @@
 
 import { ipcMain, app } from "electron";
 
-const ML_API_URL = "https://api.reality.notpumpkins.com";
+import { API_URL as ML_API_URL } from "../lib/constants.js";
 
 export function registerAdminHandlers(): void {
     /**

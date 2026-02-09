@@ -33,13 +33,17 @@ import { Sidebar } from "./layout/Sidebar";
 import { ErrorBoundary as UIErrorBoundary } from "./ui/ErrorBoundary";
 
 import { Home, Settings, ServerMenu, ModPack, Explore, About } from "./tabs";
+import { StateDebug } from "./StateDebug";
 import AdminPanel from "./tabs/AdminPanel";
-import { type AuthSession, type Server, type NewsItem, type LauncherConfig, type ColorTheme } from "../types/launcher";
+import { type AuthSession, type Server, type NewsItem, type LauncherConfig, type ColorTheme, type GameInstance } from "../types/launcher";
 import { playClick, playSucceed, playNotification, setSoundConfig } from "../lib/sounds";
 import { useTranslation } from "../hooks/useTranslation";
 import { useConfigStore } from "../store/configStore";
 import { useAuthStore } from "../store/authStore";
 import { useUiStore } from "../store/uiStore";
+import { useProgressStore } from "../store/progressStore";
+import { InstallProgressModal } from "./tabs/ModPackTabs/InstallProgressModal";
+import { CalendarWidget } from "./ui/CalendarWidget";
 
 // ========================================
 // Error Boundary
@@ -181,7 +185,23 @@ function LauncherAppContent() {
 
   // Stores
   const config = useConfigStore();
-  const { session, accounts, setSession, setAccounts, addAccount } = useAuthStore();
+  const {
+      isExporting,
+      exportProgress,
+      isExportMinimized,
+      setExportMinimized,
+      exportingInstanceId
+  } = useProgressStore();
+
+  const handleCancelExport = async (instanceId: string) => {
+      playClick();
+      try {
+          await window.api?.instancesExportCancel?.(instanceId);
+      } catch (error) {
+          console.error("Failed to cancel export:", error);
+      }
+  };
+  const { session, accounts, setSession, setAccounts, addAccount, updateAccount, removeAccount: removeAccountAction } = useAuthStore();
   const { activeTab, setActiveTab, settingsTab, setSettingsTab, modals, openModal, closeModal } = useUiStore();
 
   const [isLoading, setIsLoading] = useState(true);
@@ -192,6 +212,11 @@ function LauncherAppContent() {
   // session & accounts moved to Auth Store
 
   const [selectedServer, setSelectedServer] = useState<Server | null>(null);
+  const [selectedInstance, setSelectedInstance] = useState<GameInstance | null>(null);
+
+  useEffect(() => {
+      // console.log("[LauncherApp] selectedInstance changed:", selectedInstance?.name || "null");
+  }, [selectedInstance]);
 
   // Modals state mapping (local variables for backward compatibility during refactor, or we switch to using store values directly)
   // For now, let's keep the usage of 'loginDialogOpen' etc. by deriving them from store if strictly necessary, 
@@ -238,6 +263,7 @@ function LauncherAppContent() {
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
   const [forgotPasswordOtp, setForgotPasswordOtp] = useState("");
   const [forgotPasswordNewPassword, setForgotPasswordNewPassword] = useState("");
+  const [showLinkPassword, setShowLinkPassword] = useState(false);
   const [forgotPasswordConfirmNewPassword, setForgotPasswordConfirmNewPassword] = useState("");
   const [isForgotPasswordLoading, setIsForgotPasswordLoading] = useState(false);
   const [linkCatIDOpen, setLinkCatIDOpen] = useState(false);
@@ -294,6 +320,7 @@ function LauncherAppContent() {
 
   // Inbox/Notifications modal state
   const [inboxOpen, setInboxOpen] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const [inboxTab, setInboxTab] = useState<'news' | 'system'>('news');
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [userNotifications, setUserNotifications] = useState<any[]>([]);
@@ -319,6 +346,20 @@ function LauncherAppContent() {
     [config.colorTheme, config.theme, config.customColor, config.rainbowMode]
   );
 
+  // Derive effective theme mode for CSS (used by scrollbar styling etc.)
+  const effectiveThemeMode = useMemo(() => {
+    if (config.theme === "auto") {
+      const hour = new Date().getHours();
+      return hour >= 6 && hour < 18 ? "light" : "dark";
+    }
+    return config.theme;
+  }, [config.theme]);
+
+  // Set data-theme attribute on <html> so global CSS can respond to theme changes
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", effectiveThemeMode);
+  }, [effectiveThemeMode]);
+
   // Sync sound config
   useEffect(() => {
     setSoundConfig({
@@ -326,6 +367,39 @@ function LauncherAppContent() {
       notificationSoundEnabled: config.notificationSoundEnabled
     });
   }, [config.clickSoundEnabled, config.notificationSoundEnabled]);
+
+  // Global auto-update toast notifications
+  useEffect(() => {
+    const windowApi = (window as any).api;
+    const cleanups: (() => void)[] = [];
+
+    if (windowApi?.onUpdateAvailable) {
+      cleanups.push(windowApi.onUpdateAvailable((data: { version: string }) => {
+        if (!config.autoUpdateEnabled) {
+          // Auto-update OFF: just show toast with version info
+          toast(t('update_available_toast').replace('{version}', data.version), {
+            icon: "\u2b06\ufe0f",
+            duration: 8000,
+            id: "global-update-available",
+          });
+        }
+      }));
+    }
+
+    if (windowApi?.onUpdateDownloaded) {
+      cleanups.push(windowApi.onUpdateDownloaded((data: { version: string }) => {
+        if (config.autoUpdateEnabled) {
+          // Auto-update ON: notify that update will install on next launch
+          toast.success(t('update_ready_next_restart').replace('{version}', data.version), {
+            duration: 8000,
+            id: "global-update-downloaded",
+          });
+        }
+      }));
+    }
+
+    return () => cleanups.forEach(fn => fn());
+  }, [config.autoUpdateEnabled, config.language]);
 
   // Server data (will be fetched from API)
   const [servers] = useState<Server[]>([]);
@@ -455,6 +529,7 @@ function LauncherAppContent() {
   // Poll pending invitations when logged in (detect new ones)
   useEffect(() => {
     let timer: NodeJS.Timeout | null = null;
+    let expirationTimer: NodeJS.Timeout | null = null;
 
     const fetchAndNotifyInvitations = async () => {
       if (!session) {
@@ -487,14 +562,33 @@ function LauncherAppContent() {
       }
     };
 
+    // Auto-logout check for CatID sessions with checking every 1s
+    const checkExpiration = () => {
+      if (session?.type === "catid" && session.tokenExpiresAt) {
+        if (Date.now() >= session.tokenExpiresAt) {
+          console.log("[Auth] Session expired, logging out...");
+           // Call logout action
+           removeAccountAction(session.uuid, session.type); 
+           setSession(null);
+           window.api?.logout?.(); // Clear backend/electron session too
+           toast.error(t('session_expired'));
+        }
+      }
+    };
+
     // Initial load + polling
     fetchAndNotifyInvitations();
+    checkExpiration();
+    
     timer = setInterval(fetchAndNotifyInvitations, 10000);
+    expirationTimer = setInterval(checkExpiration, 1000);
 
     return () => {
       if (timer) clearInterval(timer);
+      if (expirationTimer) clearInterval(expirationTimer);
     };
   }, [session]);
+
 
   // Handle Deep Link Login
   useEffect(() => {
@@ -685,27 +779,12 @@ function LauncherAppContent() {
               refreshToken: result.session.refreshToken,
               tokenExpiresAt: result.session.expiresIn ? Date.now() + (result.session.expiresIn * 1000) : undefined,
               apiToken: result.session.apiToken,  // Reality API token from CatID link
+              apiTokenExpiresAt: result.session.apiTokenExpiresAt ? new Date(result.session.apiTokenExpiresAt).getTime() : undefined,
               type: "microsoft",
               createdAt: Date.now(),  // Add createdAt for session tracking
             };
 
-            // Add to accounts if not exists, or update existing
-            // Add to accounts if not exists, or update existing
-            const existingIndex = accounts.findIndex(acc => acc.uuid === newSession.uuid && acc.type === newSession.type);
-            if (existingIndex >= 0) {
-              const updatedAccounts = [...accounts];
-              updatedAccounts[existingIndex] = {
-                ...updatedAccounts[existingIndex],
-                accessToken: newSession.accessToken,
-                refreshToken: newSession.refreshToken,
-                tokenExpiresAt: newSession.tokenExpiresAt,
-                apiToken: newSession.apiToken,
-                createdAt: newSession.createdAt
-              };
-              setAccounts(updatedAccounts);
-            } else {
-              addAccount(newSession);
-            }
+            addAccount(newSession);
 
             // Set as current session
             setSession(newSession);
@@ -762,13 +841,13 @@ function LauncherAppContent() {
       // Validate username format
       if (!MINECRAFT_USERNAME_REGEX.test(username)) {
         toast.error(t('username_invalid_format'));
-        return;
+        return false;
       }
 
       // Login via Electron CatID API
       if (!window.api?.loginCatID) {
         toast.error(t('catid_required_electron'));
-        return;
+        return false;
       }
 
       const toastId = toast.loading(t('loading'));
@@ -777,7 +856,7 @@ function LauncherAppContent() {
 
       if (!result.ok || !result.session) {
         toast.error(result.error || t('login_failed'));
-        return;
+        return false;
       }
 
       // Create session object
@@ -789,13 +868,11 @@ function LauncherAppContent() {
         accessToken: result.session.token,
       };
 
-      // Add to accounts if not exists
-      // Add to accounts if not exists
+      // Add to accounts using robust store action
       addAccount(newSession);
 
       // Set as active session
       setSession(newSession);
-      setLoginDialogOpen(false);
       toast.success(t('welcome_user').replace('{username}', newSession.username));
 
       // Check if user is admin (CatID only)
@@ -806,41 +883,16 @@ function LauncherAppContent() {
           if (adminCheck?.isAdmin) {
             setIsAdmin(true);
             console.log("[Admin] User is admin:", result.session.username);
-            // Update session and accounts with admin status
-            // Update accounts list to include isAdmin (using updateAccount action which handles session update too)
-            const adminSession = { ...newSession, isAdmin: true };
-            // Since updateAccount updates both accounts list and session if ID matches, we just call it once
-            // However, checking the store logic: updateAccount updates array AND session. 
-            // But we need to be sure we are updating the right one.
-            // Here we just want to update the current session's isAdmin status.
-            // We can use the 'setSession' for the current session, but 'updateAccount' is safer for keeping consistency.
-            setSession(adminSession);
-            // We manually update accounts list via action? 
-            // authStore has `updateAccount`. Let's use it.
-            // But valid 'updateAccount' expects AuthSession.
-            // We need to fetch the full object? We have it.
-            // But the 'adminSession' is based on 'newSession' which might be partial? 
-            // No, newSession is full AuthSession created above.
-            // So:
-            // updateAccount(adminSession); // This requires adding updateAccount to the destructuring
-            // For now, let's just use manual setAccounts since we didn't destructure updateAccount
-            // Wait, I should destructure updateAccount from the hook!
-            // I will assume I can add it to the destructured list in step 110 (which I did not).
-            // Since I can't change the destructuring line in this tool call (it's far above), I will access the store directly for this rare admin logic?
-            // Or better: use `addAccount(adminSession)`? No, add checks existence.
-            // I'll use setAccounts with the new array.
-            setAccounts(accounts.map(acc =>
-              acc.username === newSession.username && acc.type === newSession.type
-                ? { ...acc, isAdmin: true }
-                : acc
-            ));
+            updateAccount({ ...newSession, isAdmin: true });
           }
         } catch (e) {
           console.log("[Admin] Could not check admin status");
         }
       }
+      return true;
     } catch (error: any) {
       toast.error(error?.message || t('login_failed'));
+      return false;
     }
   };
 
@@ -849,20 +901,20 @@ function LauncherAppContent() {
       // Validate username format
       if (!MINECRAFT_USERNAME_REGEX.test(username)) {
         toast.error(t('username_invalid_format'));
-        return;
+        return false;
       }
 
       // Login via Electron Offline API
       if (!window.api?.loginOffline) {
         toast.error(t('offline_required_electron'));
-        return;
+        return false;
       }
 
       const result = await window.api.loginOffline(username);
 
       if (!result.ok || !result.session) {
         toast.error(result.error || t('login_failed'));
-        return;
+        return false;
       }
 
       // Create session object
@@ -873,16 +925,16 @@ function LauncherAppContent() {
         accessToken: "",
       };
 
-      // Add to accounts if not exists
-      // Add to accounts if not exists
+      // Add to accounts
       addAccount(newSession);
 
       // Set as active session
       setSession(newSession);
-      setLoginDialogOpen(false);
       toast.success(t('welcome_user').replace('{username}', newSession.username));
+      return true;
     } catch (error: any) {
       toast.error(error?.message || t('login_failed'));
+      return false;
     }
   };
 
@@ -999,7 +1051,7 @@ function LauncherAppContent() {
           // Let's rely on simple add for now, or use:
           // setAccounts([...accounts.filter(a => a.uuid !== session.uuid), session]); // This is safe given 'accounts' is in scope
           // Wait, 'accounts' variable from hook effectively replaces 'prev'.
-          setAccounts([...accounts.filter(a => a.uuid !== session.uuid), session]);
+          addAccount(session);
           setSession(session);
           await window.api?.setActiveSession?.(session);
         }
@@ -1053,7 +1105,7 @@ function LauncherAppContent() {
   const removeAccountFromList = async (account: AuthSession) => { // Renamed to avoid specific conflict if I imported removeAccount (I didn't)
     // Use store setAccounts or removeAccount action
     // I didn't import removeAccount action, so manual:
-    setAccounts(accounts.filter(acc => !(acc.username === account.username && acc.type === account.type)));
+    removeAccountAction(account.uuid, account.type);
     if (session?.username === account.username && session?.type === account.type) {
       // If deleting active account, call logout to remove session.json
       await window.api?.logout();
@@ -1093,11 +1145,7 @@ function LauncherAppContent() {
         if (updatedSession) {
           setSession(updatedSession);
           // Update in accounts list too
-          setAccounts(accounts.map(acc =>
-            acc.username === updatedSession.username && acc.type === "microsoft"
-              ? updatedSession
-              : acc
-          ));
+          updateAccount(updatedSession);
         }
       } else {
         toast.error(res?.error || t('link_failed'), { id: loader });
@@ -1282,14 +1330,20 @@ function LauncherAppContent() {
       <OfflineLoginModal
         isOpen={offlineUsernameOpen}
         onClose={() => setOfflineUsernameOpen(false)}
-        onLogin={handleOfflineLogin}
+        onLogin={async (username) => {
+          const ok = await handleOfflineLogin(username);
+          if (ok) setOfflineUsernameOpen(false);
+        }}
         colors={colors}
       />
 
       <CatIDLoginModal
         isOpen={catIDLoginOpen}
         onClose={() => setCatIDLoginOpen(false)}
-        onLogin={handleCatIDLogin}
+        onLogin={async (username, password) => {
+          const ok = await handleCatIDLogin(username, password);
+          if (ok) setCatIDLoginOpen(false);
+        }}
         onRegister={() => {
           setCatIDLoginOpen(false);
           setCatIDRegisterOpen(true);
@@ -1320,7 +1374,7 @@ function LauncherAppContent() {
           <div className="flex w-full max-w-2xl h-[520px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden" style={{ backgroundColor: colors.surface }}>
             {/* Left Branding Side */}
             <div className="w-[35%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5" style={{ backgroundColor: `${"#8b5cf6"}10` }}>
-              <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-purple-500/10 to-transparent pointer-events-none" />
+              <div className="absolute top-0 left-0 w-full h-full bg-linear-to-b from-purple-500/10 to-transparent pointer-events-none" />
               <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-purple-500/30 z-10" style={{ backgroundColor: "#8b5cf6" }}>
                 <svg className="w-10 h-10" viewBox="0 0 24 24" fill="#ffffff">
                   <path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
@@ -1429,9 +1483,9 @@ function LauncherAppContent() {
       {/* Verification Waiting Modal */}
       {verificationWaiting && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="w-full max-w-md rounded-[2rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden p-8" style={{ backgroundColor: colors.surface }}>
+          <div className="w-full max-w-md rounded-4xl shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden p-8" style={{ backgroundColor: colors.surface }}>
             <div className="flex-1 p-10 flex flex-col items-center justify-center text-center">
-              <div className="w-20 h-20 rounded-[2rem] flex items-center justify-center mb-8 relative" style={{ backgroundColor: `${colors.secondary}20` }}>
+              <div className="w-20 h-20 rounded-4xl flex items-center justify-center mb-8 relative" style={{ backgroundColor: `${colors.secondary}20` }}>
                 <Icons.Email className="w-10 h-10 animate-bounce" style={{ color: colors.secondary }} />
                 <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center animate-pulse" style={{ backgroundColor: colors.secondary }}>
                   <Icons.Timer className="w-3.5 h-3.5" style={{ color: "#1a1a1a" }} />
@@ -1484,7 +1538,7 @@ function LauncherAppContent() {
           <div className="flex w-full max-w-2xl h-[480px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden" style={{ backgroundColor: colors.surface }}>
             {/* Left Branding Side */}
             <div className="w-[38%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5" style={{ backgroundColor: `${colors.secondary}10` }}>
-              <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-yellow-500/10 to-transparent pointer-events-none" />
+              <div className="absolute top-0 left-0 w-full h-full bg-linear-to-b from-yellow-500/10 to-transparent pointer-events-none" />
               <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-yellow-500/30 z-10" style={{ backgroundColor: colors.secondary }}>
                 {forgotPasswordStep === 'email' ? (
                   <Icons.Info className="w-10 h-10 text-black" />
@@ -1680,7 +1734,7 @@ function LauncherAppContent() {
           <div className="flex w-full max-w-2xl h-[450px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden" style={{ backgroundColor: colors.surface }}>
             {/* Left Branding Side */}
             <div className="w-[38%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5" style={{ backgroundColor: `${colors.secondary}10` }}>
-              <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-yellow-500/10 to-transparent pointer-events-none" />
+              <div className="absolute top-0 left-0 w-full h-full bg-linear-to-b from-yellow-500/10 to-transparent pointer-events-none" />
               <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-yellow-500/30 z-10" style={{ backgroundColor: colors.secondary }}>
                 <Icons.Refresh className="w-10 h-10" style={{ color: colors.onPrimary }} />
               </div>
@@ -1718,13 +1772,27 @@ function LauncherAppContent() {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>{t('password')}</label>
-                  <input
-                    id="link-catid-password"
-                    type="password"
-                    placeholder={t('password')}
-                    className="w-full px-5 py-3.5 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-yellow-500/10"
-                    style={{ borderColor: 'transparent', backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
-                  />
+                  <div className="relative">
+                    <input
+                      id="link-catid-password"
+                      type={showLinkPassword ? "text" : "password"}
+                      placeholder={t('password')}
+                      className="w-full px-5 py-3.5 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-yellow-500/10 pr-12"
+                      style={{ borderColor: 'transparent', backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowLinkPassword(!showLinkPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-all hover:bg-white/5 opacity-50 hover:opacity-100"
+                      style={{ color: colors.onSurface }}
+                    >
+                      {showLinkPassword ? (
+                        <Icons.EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Icons.Eye className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1753,7 +1821,7 @@ function LauncherAppContent() {
           <div className="flex w-full max-w-3xl h-[600px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden" style={{ backgroundColor: colors.surface }}>
             {/* Left Branding Side */}
             <div className="w-[30%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5" style={{ backgroundColor: `${colors.secondary}10` }}>
-              <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-yellow-500/10 to-transparent pointer-events-none" />
+              <div className="absolute top-0 left-0 w-full h-full bg-linear-to-b from-yellow-500/10 to-transparent pointer-events-none" />
               <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-yellow-500/30 z-10" style={{ backgroundColor: colors.secondary }}>
                 <Icons.Person className="w-10 h-10" style={{ color: "#1a1a1a" }} />
               </div>
@@ -1868,7 +1936,7 @@ function LauncherAppContent() {
             <div className="flex w-full max-w-3xl h-[520px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden" style={{ backgroundColor: colors.surface }}>
               {/* Left Branding Side */}
               <div className="w-[32%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5" style={{ backgroundColor: `${colors.secondary}10` }}>
-                <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-yellow-500/10 to-transparent pointer-events-none" />
+                <div className="absolute top-0 left-0 w-full h-full bg-linear-to-b from-yellow-500/10 to-transparent pointer-events-none" />
                 <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-yellow-500/30 z-10" style={{ backgroundColor: colors.secondary }}>
                   <Icons.Download className="w-10 h-10 -rotate-180" style={{ color: "#1a1a1a" }} />
                 </div>
@@ -1978,7 +2046,15 @@ function LauncherAppContent() {
       <div className={`flex-1 flex overflow-hidden ${config.rainbowMode ? 'rainbow-mode' : ''}`}>
         {/* Sidebar */}
         {/* Sidebar */}
-        <Sidebar colors={colors} />
+        <Sidebar 
+          colors={colors} 
+          onTabSelect={(tabId) => {
+            // When user manually clicks Modpack tab, reset to list view
+            if (tabId === 'modpack') {
+              setSelectedInstance(null);
+            }
+          }}
+        />
 
         {/* Main Content */}
         <div className="flex-1 flex flex-col overflow-hidden">
@@ -1993,7 +2069,29 @@ function LauncherAppContent() {
             </div>
 
             {/* Right Side - Notifications and Account - Fixed at top */}
-            <div className="fixed top-0 right-36 h-10 flex items-center gap-2 no-drag z-[99]">
+            <div className="fixed top-0 right-36 h-10 flex items-center gap-2 no-drag z-99">
+              {/* Calendar Button */}
+              {session && (
+                <div className="relative">
+                  <button
+                    onClick={() => setCalendarOpen(!calendarOpen)}
+                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 hover:bg-black/10 ${calendarOpen ? 'bg-black/10 scale-110' : ''}`}
+                    style={{ color: colors.onSurfaceVariant }}
+                    title={config.language === 'th' ? "ปฏิทิน" : "Calendar"}
+                  >
+                    <Icons.Calendar className="w-5 h-5" />
+                  </button>
+                  {calendarOpen && (
+                    <CalendarWidget
+                      isOpen={calendarOpen}
+                      onClose={() => setCalendarOpen(false)}
+                      colors={colors}
+                      language={config.language}
+                    />
+                  )}
+                </div>
+              )}
+
               {/* Notifications/Inbox Button - Only show when logged in */}
               {session && (
                 <div className="relative">
@@ -2099,11 +2197,11 @@ function LauncherAppContent() {
                               <div className="text-sm font-medium truncate flex items-center gap-1" style={{ color: colors.onSurface }}>
                                 {account.username}
                                 {account.isAdmin ? (
-                                  <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full flex-shrink-0" style={{ backgroundColor: "#fbbf24" }}>
+                                  <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: "#fbbf24" }}>
                                     <Icons.Check className="w-2.5 h-2.5 text-gray-900" />
                                   </span>
                                 ) : account.type === "catid" ? (
-                                  <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full flex-shrink-0" style={{ backgroundColor: "#3b82f6" }}>
+                                  <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: "#3b82f6" }}>
                                     <Icons.Check className="w-2.5 h-2.5 text-white" />
                                   </span>
                                 ) : account.type === "microsoft" ? (
@@ -2253,7 +2351,7 @@ function LauncherAppContent() {
               </div>
 
               {/* Window Control Buttons - Fixed at top-right corner */}
-              <div className="fixed top-0 right-0 flex items-center gap-0 z-[100] no-drag" style={{ pointerEvents: "auto" }}>
+              <div className="fixed top-0 right-0 flex items-center gap-0 z-100 no-drag" style={{ pointerEvents: "auto" }}>
                 {/* Minimize */}
                 <button
                   onClick={() => window.api?.windowMinimize()}
@@ -2290,7 +2388,7 @@ function LauncherAppContent() {
                 {/* Close */}
                 <button
                   onClick={() => window.api?.windowClose()}
-                  className="w-12 h-10 flex items-center justify-center transition-all hover:bg-red-500 hover:!text-white"
+                  className="w-12 h-10 flex items-center justify-center transition-all hover:bg-red-500 hover:text-white!"
                   style={{ color: colors.onSurfaceVariant }}
                   title={t('close')}
                 >
@@ -2311,6 +2409,7 @@ function LauncherAppContent() {
                 servers={servers}
                 selectedServer={selectedServer}
                 setSelectedServer={setSelectedServer}
+                setSelectedInstance={setSelectedInstance}
                 colors={colors}
                 setActiveTab={setActiveTab}
                 language={config.language}
@@ -2333,7 +2432,7 @@ function LauncherAppContent() {
 
 
             {/* Modpack Tab - Always render to preserve game state */}
-            <div style={{ display: activeTab === "modpack" ? "contents" : "none" }}>
+            <div key="modpack-tab" className="h-full" style={{ display: activeTab === "modpack" ? "block" : "none" }}>
               <ModPack
                 colors={colors}
                 config={config}
@@ -2342,6 +2441,8 @@ function LauncherAppContent() {
                 setSettingsTab={setSettingsTab}
                 onShowConfirm={handleShowConfirm}
                 isActive={activeTab === "modpack"}
+                selectedInstance={selectedInstance}
+                setSelectedInstance={setSelectedInstance}
                 selectedServer={selectedServer}
                 session={session}
                 updateConfig={updateConfig}
@@ -2391,6 +2492,72 @@ function LauncherAppContent() {
           </main>
         </div>
       </div>
+
+      {/* Global Export Progress Modal */}
+      {isExporting && exportProgress && !isExportMinimized && (
+        <InstallProgressModal
+          colors={colors}
+          installProgress={exportProgress}
+          title={t('export_modpack')}
+          isBytes={true}
+          onCancel={() => handleCancelExport(exportingInstanceId || "")}
+          onMinimize={() => setExportMinimized(true)}
+          language={config.language}
+        />
+      )}
+
+      {/* Global Minimized Export Widget */}
+      {isExporting && exportProgress && isExportMinimized && (
+        <div
+          className="fixed bottom-6 right-6 z-50 w-80 rounded-2xl shadow-2xl overflow-hidden border border-white/10 animate-fade-in-up cursor-pointer transition-transform hover:scale-105"
+          style={{ backgroundColor: colors.surfaceContainer }}
+          onClick={() => setExportMinimized(false)}
+        >
+          <div className="p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center relative shrink-0"
+              style={{ backgroundColor: colors.surfaceContainerHighest }}>
+              {exportProgress.percent !== undefined ? (
+                <svg className="w-10 h-10 -rotate-90 transform" viewBox="0 0 36 36">
+                  <path
+                    className="text-gray-200 opacity-20"
+                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                  />
+                  <path
+                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                    fill="none"
+                    stroke={colors.secondary}
+                    strokeWidth="3"
+                    strokeDasharray={`${exportProgress.percent}, 100`}
+                  />
+                </svg>
+              ) : (
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2" style={{ borderColor: colors.secondary }}></div>
+              )}
+              <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold" style={{ color: colors.onSurface }}>
+                {exportProgress.percent}%
+              </div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <h4 className="font-medium text-sm truncate" style={{ color: colors.onSurface }}>{t('exporting' as any)}</h4>
+              <p className="text-xs truncate" style={{ color: colors.onSurfaceVariant }}>
+                {exportProgress.message}
+              </p>
+            </div>
+            <button
+              onClick={(e) => { e.stopPropagation(); setExportMinimized(false); }}
+              className="p-2 rounded-lg hover:bg-white/10"
+              title="Expand"
+            >
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" style={{ color: colors.onSurfaceVariant }}>
+                <path d="M12 8l-6 6 1.41 1.41L12 10.83l4.59 4.58L18 14z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

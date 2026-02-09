@@ -58,7 +58,7 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
                     setSuccess(false);
                 }, 1500);
             } else {
-                let errMsg = result?.error || 'ไม่สามารถเข้าร่วม instance ได้';
+                let errMsg = typeof result?.error === 'string' ? result.error : 'ไม่สามารถเข้าร่วม instance ได้';
                 if (errMsg.includes("API token") || errMsg.includes("Unauthorized") || errMsg.includes("No token")) {
                     errMsg = "ไม่มี CatID กรุณาสมัครหรือเข้าสู่ระบบ";
                 }

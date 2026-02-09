@@ -23,6 +23,7 @@ export function CatIDLoginModal({
 }: CatIDLoginModalProps) {
     const { t } = useTranslation();
     const [isLoading, setIsLoading] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
 
     if (!isOpen) return null;
 
@@ -35,7 +36,6 @@ export function CatIDLoginModal({
             setIsLoading(true);
             try {
                 await onLogin(usernameInput.value, passwordInput.value);
-                onClose();
             } catch (error) {
                 console.error(error);
             } finally {
@@ -119,20 +119,34 @@ export function CatIDLoginModal({
                                 style={{ color: colors.onSurface }}>
                                 {t('password')}
                             </label>
-                            <input
-                                id="catid-password"
-                                type="password"
-                                placeholder={t('password')}
-                                className="w-full px-5 py-3.5 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-purple-500/10"
-                                style={{
-                                    borderColor: 'transparent',
-                                    backgroundColor: colors.surfaceContainer,
-                                    color: colors.onSurface,
-                                }}
-                                onKeyDown={(e) => {
-                                    if (e.key === "Enter") handleLogin();
-                                }}
-                            />
+                            <div className="relative">
+                                <input
+                                    id="catid-password"
+                                    type={showPassword ? "text" : "password"}
+                                    placeholder={t('password')}
+                                    className="w-full px-5 py-3.5 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-purple-500/10 pr-12"
+                                    style={{
+                                        borderColor: 'transparent',
+                                        backgroundColor: colors.surfaceContainer,
+                                        color: colors.onSurface,
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter") handleLogin();
+                                    }}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-4 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-all hover:bg-white/5 opacity-50 hover:opacity-100"
+                                    style={{ color: colors.onSurface }}
+                                >
+                                    {showPassword ? (
+                                        <Icons.EyeOff className="w-4 h-4" />
+                                    ) : (
+                                        <Icons.Eye className="w-4 h-4" />
+                                    )}
+                                </button>
+                            </div>
                         </div>
 
                         <button

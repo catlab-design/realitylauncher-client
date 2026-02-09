@@ -7,7 +7,7 @@
  * ใช้ proxy ผ่าน ml-api เพื่อซ่อน API Key
  */
 
-const ML_API_URL = "https://api.reality.notpumpkins.com";
+import { API_URL as ML_API_URL } from "./lib/constants.js";
 
 // ========================================
 // Types

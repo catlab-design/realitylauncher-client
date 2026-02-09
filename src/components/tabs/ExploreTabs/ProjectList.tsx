@@ -4,7 +4,7 @@
 
 import React from "react";
 import { useTranslation } from "../../../hooks/useTranslation";
-import type { ModrinthProject } from "./types";
+import type { ModrinthProject, InstallProgress } from "./types";
 import { ProjectCard } from "./ProjectCard";
 import { Icons } from "../../ui/Icons";
 
@@ -19,6 +19,8 @@ interface ProjectListProps {
     viewCount: number;
     onSelectProject: (project: ModrinthProject) => void;
     onPageChange: (page: number) => void;
+    installingProjectId?: string | null;
+    installProgress?: InstallProgress | null;
 }
 
 export function ProjectList({
@@ -32,6 +34,8 @@ export function ProjectList({
     viewCount,
     onSelectProject,
     onPageChange,
+    installingProjectId,
+    installProgress,
 }: ProjectListProps) {
     const { t } = useTranslation();
     return (
@@ -105,6 +109,8 @@ export function ProjectList({
                                 project={project}
                                 isActive={previewProjectId === project.project_id}
                                 onClick={() => onSelectProject(project)}
+                                isInstalling={installingProjectId === project.project_id}
+                                installProgress={installProgress}
                             />
                         </div>
                     ))}

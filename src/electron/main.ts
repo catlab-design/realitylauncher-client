@@ -2,21 +2,53 @@
  * ========================================
  * Electron Main Process - Main Entry Point
  * ========================================
- * 
+ *
  * ไฟล์หลักของ Electron ที่รันใน Main Process
- * 
+ *
  * หน้าที่:
  * - สร้างและจัดการ BrowserWindow
  * - App lifecycle management
  * - Auto-updater setup
  * - Deep link protocol handling
- * 
+ *
  * IPC Handlers ทั้งหมดถูกแยกไปไว้ใน ./ipc/ directory
  * และถูก register ผ่าน registerAllHandlers()
  */
 
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
+import { createLogger, sendErrorToRenderer } from "./lib/logger.js";
+import {
+  startTrace,
+  endTrace,
+  getPerformanceMetrics,
+  getCompletedSpans,
+} from "./lib/tracing.js";
+
+// Create main process logger
+const logger = createLogger("Main");
+
+// Start app trace
+const appTrace = startTrace("app:startup", { pid: process.pid });
+
+// ========================================
+// Global Error Handlers
+// ========================================
+
+process.on("uncaughtException", (error) => {
+  logger.error("Uncaught exception in main process", error);
+  // Try to notify renderer
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    sendErrorToRenderer(mainWindow.webContents, "critical", error.message, {
+      name: error.name,
+      stack: error.stack,
+    });
+  }
+});
+
+process.on("unhandledRejection", (reason) => {
+  logger.error("Unhandled promise rejection", reason as Error);
+});
 
 // ปิด Hardware Acceleration เพื่อแก้ปัญหาเส้นประบน screen
 app.disableHardwareAcceleration();
@@ -106,16 +138,19 @@ function createWindow(): BrowserWindow {
     win.show();
   });
 
+  return win;
+}
+
+async function loadMainWindow(win: BrowserWindow): Promise<void> {
   if (isDev) {
-    win.loadURL("http://localhost:4321");
+    await win.loadURL("http://localhost:4321");
     win.webContents.openDevTools({ mode: "detach" });
-  } else {
-    const indexPath = path.join(__dirname, "..", "dist", "index.html");
-    console.log("[Main] Loading production index.html from:", indexPath);
-    win.loadFile(indexPath);
+    return;
   }
 
-  return win;
+  const indexPath = path.join(__dirname, "..", "dist", "index.html");
+  console.log("[Main] Loading production index.html from:", indexPath);
+  await win.loadFile(indexPath);
 }
 
 // ========================================
@@ -150,22 +185,24 @@ app.whenReady().then(async () => {
   try {
     const session = getSession();
     if (session) {
-      console.log("[Main] Session found, syncing cloud instances...");
+      logger.info("Session found, syncing cloud instances...");
       const apiToken = getApiToken();
       if (apiToken) {
         const { syncCloudInstances } = await import("./cloud-instances.js");
         syncCloudInstances(apiToken)
           .then(() => {
-            console.log("[Main] Startup cloud sync complete, notifying UI...");
+            logger.info("Startup cloud sync complete, notifying UI...");
             mainWindow?.webContents.send("instances-updated");
           })
-          .catch(err => console.error("[Main] Failed to sync cloud instances on startup:", err));
+          .catch((err) =>
+            logger.error("Failed to sync cloud instances on startup", err),
+          );
       } else {
-        console.warn("[Main] Session exists but no API token found, skipping sync");
+        logger.warn("Session exists but no API token found, skipping sync");
       }
     }
   } catch (error) {
-    console.error("[Main] Error checking session for sync:", error);
+    logger.error("Error checking session for sync", error);
   }
 
   // Initialize Discord RPC
@@ -177,8 +214,31 @@ app.whenReady().then(async () => {
   // Initialize Telemetry
   initTelemetry();
 
-  // Register all IPC handlers from modules
-  registerAllHandlers(() => mainWindow);
+  // Create window shell first, but delay loading UI until IPC handlers are ready.
+  mainWindow = createWindow();
+
+  // Register all IPC handlers from modules before renderer starts invoking them.
+  await registerAllHandlers(() => mainWindow); // Now async
+
+  // Load renderer after handlers are ready to avoid missing IPC handlers.
+  await loadMainWindow(mainWindow);
+
+  // Register debug/tracing IPC handlers
+  ipcMain.handle("debug:get-traces", () => {
+    return getCompletedSpans(50);
+  });
+
+  ipcMain.handle("debug:get-metrics", () => {
+    return getPerformanceMetrics();
+  });
+
+  // End app startup trace
+  endTrace(appTrace, "ok", {
+    startupDuration: Date.now() - appTrace.startTime,
+  });
+  logger.info("App startup complete", {
+    duration: `${Date.now() - appTrace.startTime}ms`,
+  });
 
   // ========================================
   // Deep Link Protocol Registration
@@ -186,16 +246,18 @@ app.whenReady().then(async () => {
 
   if (process.defaultApp) {
     if (process.argv.length >= 2) {
-      app.setAsDefaultProtocolClient('reality', process.execPath, [path.resolve(process.argv[1])]);
+      app.setAsDefaultProtocolClient("reality", process.execPath, [
+        path.resolve(process.argv[1]),
+      ]);
     }
   } else {
-    app.setAsDefaultProtocolClient('reality');
+    app.setAsDefaultProtocolClient("reality");
   }
 
-  console.log('[Deep Link] Reality protocol registered');
+  console.log("[Deep Link] Reality protocol registered");
 
-  // สร้างหน้าต่างหลัก
-  mainWindow = createWindow();
+  // สร้างหน้าต่างหลัก - Moved up
+  // mainWindow = createWindow();
 
   // ========================================
   // Prefetch Content (Background)
@@ -206,7 +268,11 @@ app.whenReady().then(async () => {
     try {
       const pathModule = await import("path");
       const { createRequire } = await import("module");
-      const nativePath = pathModule.join(app.getAppPath(), "native", "index.cjs");
+      const nativePath = pathModule.join(
+        app.getAppPath(),
+        "native",
+        "index.cjs",
+      );
 
       // Use createRequire with __filename for CJS compatibility (esbuild outputs CJS)
       const customRequire = createRequire(__filename);
@@ -216,7 +282,7 @@ app.whenReady().then(async () => {
       await native.modrinthSearch({
         projectType: "modpack",
         limit: 20,
-        sortBy: "downloads"
+        sortBy: "downloads",
       });
       console.log("[Main] Modrinth modpacks prefetched");
 
@@ -224,7 +290,7 @@ app.whenReady().then(async () => {
       await native.modrinthSearch({
         projectType: "mod",
         limit: 20,
-        sortBy: "downloads"
+        sortBy: "downloads",
       });
       console.log("[Main] Modrinth mods prefetched");
     } catch (error) {
@@ -235,7 +301,9 @@ app.whenReady().then(async () => {
   // Quit app when game closes (if launcher is hidden)
   setOnGameCloseCallback(() => {
     if (mainWindow && !mainWindow.isVisible()) {
-      console.log("[Window] Game closed while launcher was hidden, quitting app");
+      console.log(
+        "[Window] Game closed while launcher was hidden, quitting app",
+      );
       app.quit();
     }
   });
@@ -246,18 +314,17 @@ app.whenReady().then(async () => {
 
   if (!isDev) {
     autoUpdater.logger = console;
+    autoUpdater.autoDownload = false;
+    autoUpdater.autoInstallOnAppQuit = false;
 
     autoUpdater.setFeedURL({
       provider: "generic",
       url: "https://cdn.reality.catlabdesign.space/client",
     });
 
-    if (config.autoUpdateEnabled) {
-      console.log("[AutoUpdater] Auto-update enabled, checking for updates...");
-      autoUpdater.checkForUpdatesAndNotify();
-    } else {
-      console.log("[AutoUpdater] Auto-update disabled by user");
-    }
+    // Always check for updates on startup (regardless of autoUpdateEnabled)
+    console.log("[AutoUpdater] Checking for updates...");
+    autoUpdater.checkForUpdates();
 
     autoUpdater.on("update-available", (info) => {
       console.log("[AutoUpdater] Update available:", info.version);
@@ -265,6 +332,12 @@ app.whenReady().then(async () => {
         version: info.version,
         releaseDate: info.releaseDate,
       });
+
+      // If auto-update enabled, silently download in background
+      if (config.autoUpdateEnabled) {
+        console.log("[AutoUpdater] Auto-downloading update...");
+        autoUpdater.downloadUpdate();
+      }
     });
 
     autoUpdater.on("update-not-available", () => {
@@ -273,7 +346,9 @@ app.whenReady().then(async () => {
     });
 
     autoUpdater.on("download-progress", (progress) => {
-      console.log(`[AutoUpdater] Download progress: ${progress.percent.toFixed(1)}%`);
+      console.log(
+        `[AutoUpdater] Download progress: ${progress.percent.toFixed(1)}%`,
+      );
       mainWindow?.webContents.send("update-progress", {
         percent: progress.percent,
         bytesPerSecond: progress.bytesPerSecond,
@@ -284,6 +359,8 @@ app.whenReady().then(async () => {
 
     autoUpdater.on("update-downloaded", (info) => {
       console.log("[AutoUpdater] Update downloaded:", info.version);
+      // Install automatically when user quits the app
+      autoUpdater.autoInstallOnAppQuit = true;
       mainWindow?.webContents.send("update-downloaded", {
         version: info.version,
         releaseDate: info.releaseDate,
@@ -307,30 +384,30 @@ app.whenReady().then(async () => {
   // Deep Link Handler
   // ========================================
 
-  app.on('open-url', (event, url) => {
+  app.on("open-url", (event, url) => {
     event.preventDefault();
 
-    console.log('[Deep Link] Received URL:', url);
+    console.log("[Deep Link] Received URL:", url);
 
-    if (url.startsWith('reality://join/')) {
-      const key = url.replace('reality://join/', '');
-      console.log('[Deep Link] Join instance request with key:', key);
+    if (url.startsWith("reality://join/")) {
+      const key = url.replace("reality://join/", "");
+      console.log("[Deep Link] Join instance request with key:", key);
 
       if (mainWindow) {
-        mainWindow.webContents.send('deep-link-join-instance', key);
+        mainWindow.webContents.send("deep-link-join-instance", key);
 
         if (mainWindow.isMinimized()) mainWindow.restore();
         mainWindow.focus();
       }
-    } else if (url.startsWith('reality://auth-callback')) {
+    } else if (url.startsWith("reality://auth-callback")) {
       const urlObj = new URL(url);
-      const token = urlObj.searchParams.get('token');
+      const token = urlObj.searchParams.get("token");
 
       if (token && mainWindow) {
         // Send to renderer which will use it to login
-        mainWindow.webContents.send('deep-link-auth-callback', {
+        mainWindow.webContents.send("deep-link-auth-callback", {
           token,
-          username: urlObj.searchParams.get('username') || undefined
+          username: urlObj.searchParams.get("username") || undefined,
         });
 
         if (mainWindow.isMinimized()) mainWindow.restore();

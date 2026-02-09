@@ -127,7 +127,7 @@ export function LoadingScreen({ onComplete, themeColor }: LoadingScreenProps) {
                     </div>
 
                     {/* Right - Percentage */}
-                    <div className="text-2xl font-bold text-gray-900 tabular-nums" style={{ fontFamily: "'Jaturat', 'Itim', sans-serif" }}>
+                    <div className="text-2xl font-bold text-gray-900 tabular-nums" style={{ fontFamily: "'Prompt', sans-serif" }}>
                         {progress}%
                     </div>
                 </div>

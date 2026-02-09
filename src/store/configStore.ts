@@ -16,11 +16,11 @@ const defaultConfig: LauncherConfig = {
     ramMB: 2048,
     theme: "light",
     colorTheme: "yellow",
-    language: "th",
+    language: "en",
     windowWidth: 1024,
     windowHeight: 700,
     windowAuto: true,
-    closeOnLaunch: false,
+    closeOnLaunch: "keep-open",
     downloadSpeedLimit: 0,
     discordRPCEnabled: true,
     clickSoundEnabled: true,
@@ -38,13 +38,40 @@ export const useConfigStore = create<ConfigState>()(
         (set) => ({
             ...defaultConfig,
             setConfig: (newConfig) => set((state) => ({ ...state, ...newConfig })),
-            resetConfig: () => set(defaultConfig),
+            resetConfig: () => {
+                // Clear persisted storage first, but preserve Java paths
+                const stored = localStorage.getItem('reality_config');
+                let preservedJavaPath: string | undefined;
+                let preservedJavaPaths: any | undefined;
+                if (stored) {
+                    try {
+                        const parsed = JSON.parse(stored);
+                        preservedJavaPath = parsed?.state?.javaPath;
+                        preservedJavaPaths = parsed?.state?.javaPaths;
+                    } catch {}
+                }
+                localStorage.removeItem('reality_config');
+                set({ 
+                    ...defaultConfig, 
+                    javaPath: preservedJavaPath,
+                    javaPaths: preservedJavaPaths 
+                });
+            },
             setTheme: (theme) => set({ theme }),
             setLanguage: (language) => set({ language }),
         }),
         {
             name: 'reality_config', // name of item in the storage (must match old key for migration)
             // storage is localStorage by default, which matches our needs
+            // Migrate old boolean closeOnLaunch to new mode string
+            migrate: (persistedState: any) => {
+                if (persistedState && typeof persistedState.closeOnLaunch === 'boolean') {
+                    // Convert old boolean to new mode string
+                    persistedState.closeOnLaunch = persistedState.closeOnLaunch ? 'hide-reopen' : 'keep-open';
+                }
+                return persistedState;
+            },
+            version: 1,
         }
     )
 );

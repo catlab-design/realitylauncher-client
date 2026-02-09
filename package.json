@@ -1,7 +1,7 @@
 {
   "name": "reality-launcher",
   "type": "module",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "main": "dist-electron/main.cjs",
   "author": {
     "name": "Cat Lab_ Design",
@@ -94,7 +94,8 @@
       "installerLanguages": [
         "th_TH",
         "en_US"
-      ]
+      ],
+      "include": "build/installer.nsh"
     },
     "publish": {
       "provider": "generic",
@@ -112,10 +113,12 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "adm-zip": "^0.5.16",
+    "archiver": "^7.0.1",
     "astro": "^5.16.5",
     "astro-electron": "^0.5.0",
     "discord-rpc": "^4.0.1",
     "electron-updater": "^6.6.2",
+    "fs-extra": "^11.3.3",
     "gsap": "^3.14.2",
     "iconv-lite": "^0.7.1",
     "minecraft-java-core": "^3.4.3",
