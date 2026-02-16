@@ -4,23 +4,12 @@ import { playClick } from "../../lib/sounds";
 import { cn } from "../../lib/utils";
 import type { Server } from "../../types/launcher";
 import { LiveLog } from "./LiveLog";
+import ServerItem, { type Instance } from "./ServerItem";
 import { Icons } from "../ui/Icons";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import toast from "react-hot-toast";
 
-interface Instance {
-    id: string;
-    name: string;
-    description: string | null;
-    iconUrl: string | null;
-    bannerUrl: string | null;
-    minecraftVersion: string | null;
-    loaderType: string | null;
-    status: string;
-    memberType?: string;
-    isOwned?: boolean;
-    storagePath?: string;
-}
+
 
 import { type AuthSession } from "../../types/launcher";
 
@@ -248,6 +237,31 @@ export function ServerMenu({
         (window.api as any)?.instancesOpenFolder?.(instanceId);
     };
 
+    const handleJoinServer = (instance: any) => {
+        setConfirmDialog({
+            isOpen: true,
+            title: t('confirm_join'),
+            message: t('join_server_ask').replace("{name}", instance.name),
+            confirmText: t('join'),
+            confirmColor: colors.primary,
+            onConfirm: async () => {
+                const toastId = toast.loading(t('loading'));
+                try {
+                    const res = await (window.api as any).instanceJoinPublic(instance.id);
+                    if (res?.ok) {
+                        toast.success(t('join_success'), { id: toastId });
+                        fetchInstances();     // Refresh local instances
+                        setShowPublic(false); // Go back to list
+                    } else {
+                        toast.error(res?.error || t('join_failed'), { id: toastId });
+                    }
+                } catch (err: any) {
+                    toast.error(t('error_occurred') + ": " + err.message, { id: toastId });
+                }
+            }
+        });
+    };
+
     useEffect(() => {
         fetchInstances();
     }, [session, refreshTrigger]); // Refetch when session or trigger changes
@@ -403,6 +417,31 @@ export function ServerMenu({
             console.error("[ServerMenu] Install exception:", error);
             toast.error(t('error_occurred') + ": " + error.message);
         }
+    };
+
+    const handleLeaveServer = (e: React.MouseEvent, instance: any) => {
+        e.stopPropagation();
+        setConfirmDialog({
+            isOpen: true,
+            title: t('confirm_leave') || "Leave Server?",
+            message: t('leave_server_ask')?.replace("{name}", instance.name) || `Are you sure you want to leave ${instance.name}?`,
+            confirmText: t('leave') || "Leave",
+            confirmColor: colors.error || "#ef4444",
+            onConfirm: async () => {
+                const toastId = toast.loading(t('leaving_server') || "Leaving server...");
+                try {
+                    const res = await (window.api as any)?.instanceLeave?.(instance.id);
+                    if (res?.ok) {
+                        toast.success(t('leave_success') || "Left server successfully", { id: toastId });
+                        fetchInstances(); // Refresh list to remove it
+                    } else {
+                        toast.error(res?.error || t('leave_failed') || "Failed to leave server", { id: toastId });
+                    }
+                } catch (err: any) {
+                    toast.error(t('error_occurred') + ": " + err.message, { id: toastId });
+                }
+            }
+        });
     };
 
     return (
@@ -633,298 +672,32 @@ export function ServerMenu({
                         // Check if installed
                         const targetId = instance.storagePath || instance.id;
                         const isInstalled = localInstances.has(targetId);
+                        
+                        // Check if member (for Join/Play button logic)
+                        const isMember = joinedServers.some(s => s.id === instance.id);
 
                         return (
-                            <div
+                            <ServerItem
                                 key={instance.id}
-                                className="animate-card-appear"
-                                style={{ animationDelay: `${Math.min(index * 25, 150)}ms` }}
-                            >
-                                <div
-                                    onClick={() => { playClick(); handleInstanceClick(instance); }}
-                                    className="group relative rounded-2xl overflow-hidden cursor-pointer h-48 transition-all hover:shadow-xl"
-                                    style={{
-                                        border: selectedServer?.id === instance.id
-                                            ? `2px solid ${colors.primary}`
-                                            : "2px solid transparent",
-                                    }}
-                                >
-                                    {/* Full Background Image - Prefer Banner, fallback to Icon */}
-                                    <div
-                                        className="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105"
-                                        style={{
-                                            backgroundImage: instance.bannerUrl
-                                                ? `url(${getWithTimestamp(instance.bannerUrl)})`
-                                                : instance.iconUrl
-                                                    ? `url(${getWithTimestamp(instance.iconUrl)})`
-                                                    : undefined,
-                                            backgroundColor: (instance.bannerUrl || instance.iconUrl) ? undefined : colors.surfaceContainer,
-                                            filter: (!isInstalled && !showPublic) ? "grayscale(100%) brightness(0.7)" : undefined
-                                        }}
-                                    >
+                                index={index}
+                                instance={instance}
+                                colors={colors}
+                                isSelected={selectedServer?.id === instance.id}
+                                isInstalled={isInstalled}
+                                isMember={isMember}
+                                showPublic={showPublic}
+                                isPlaying={playingInstances.has(instance.id)}
+                                isLaunching={launchingId === instance.id}
+                                getWithTimestamp={getWithTimestamp}
+                                onSelect={handleInstanceClick}
+                                onPlay={handlePlayServer}
+                                onStop={handleStopServer}
+                                onJoin={handleJoinServer}
+                                onInstall={handleInstall}
+                                onLeave={handleLeaveServer}
+                                t={t}
+                            />
 
-                                        {(!instance.bannerUrl && !instance.iconUrl) && (
-                                            <div className="w-full h-full flex items-center justify-center">
-                                                <span className="text-6xl font-bold opacity-10" style={{ color: colors.onSurface }}>
-                                                    {instance.name[0]?.toUpperCase()}
-                                                </span>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Gradient Overlay */}
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
-
-                                    {/* Logo Icon - Top Left */}
-                                    <div className="absolute top-4 left-4 w-12 h-12 rounded-xl bg-black/20 backdrop-blur-md border border-white/10 overflow-hidden shadow-lg z-10">
-                                        {instance.iconUrl ? (
-                                            <img src={getWithTimestamp(instance.iconUrl)} alt="Icon" className="w-full h-full object-cover" />
-                                        ) : (
-                                            <div className="w-full h-full flex items-center justify-center bg-white/10 text-white font-bold text-lg">
-                                                {instance.name[0]?.toUpperCase()}
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Status & Badges - Top Right */}
-                                    <div className="absolute top-3 right-3 flex gap-2">
-                                        <span
-                                            className={cn(
-                                                "w-3 h-3 rounded-full border border-white/20 shadow-sm",
-                                                instance.status === "active" ? "bg-green-500" : "bg-red-500"
-                                            )}
-                                        />
-                                        {instance.isOwned && (
-                                            <span className="text-[10px] bg-yellow-500/80 text-black px-2 py-0.5 rounded-full font-bold backdrop-blur-sm">
-                                                {t('owner_badge')}
-                                            </span>
-                                        )}
-                                        {/* If ShowPublic is on, and instance is NOT owned/member (implicit), maybe show badges? */}
-                                        {showPublic && !instance.isOwned && (
-                                            <span className="text-[10px] bg-blue-500/80 text-white px-2 py-0.5 rounded-full font-bold backdrop-blur-sm border border-white/20">
-                                                {t('public_badge')}
-                                            </span>
-                                        )}
-
-                                        {!isInstalled && (
-                                            <span className="text-[10px] bg-gray-500/80 text-white px-2 py-0.5 rounded-full font-bold backdrop-blur-sm border border-white/20">
-                                                {t('not_installed')}
-                                            </span>
-                                        )}
-                                    </div>
-
-                                    {/* Loader Badge - Top Left (Moved below Icon) */}
-                                    {instance.loaderType && (
-                                        <div className="absolute top-20 left-4">
-                                            <span className="text-[10px] bg-black/50 text-white px-2 py-0.5 rounded-full backdrop-blur-md border border-white/10 uppercase tracking-wider">
-                                                {instance.loaderType}
-                                            </span>
-                                        </div>
-                                    )}
-
-                                    {/* Content & Actions - Bottom */}
-                                    <div className="absolute bottom-0 left-0 right-0 p-4 flex items-end gap-3">
-                                        <div className="flex-1 min-w-0">
-                                            <h3 className="text-xl font-bold text-white truncate drop-shadow-md">
-                                                {instance.name}
-                                            </h3>
-                                            <p className="text-sm text-gray-300 truncate drop-shadow-sm">
-                                                {instance.description || `Minecraft ${instance.minecraftVersion || ""}`}
-                                            </p>
-                                        </div>
-
-                                        <div className="flex gap-2 shrink-0">
-                                            {(() => {
-                                                // Determine membership
-                                                const isOwned = joinedServers.some(s => s.id === instance.id && (s as any).isOwned);
-                                                const isMember = joinedServers.some(s => s.id === instance.id);
-
-                                                // 1. Not a member -> Show Join
-                                                if (!isMember) {
-                                                    return (
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                playClick();
-                                                                setConfirmDialog({
-                                                                    isOpen: true,
-                                                                    title: t('confirm_join'),
-                                                                    message: t('join_server_ask').replace("{name}", instance.name),
-                                                                    confirmText: t('join'),
-                                                                    confirmColor: colors.primary,
-                                                                    onConfirm: async () => {
-                                                                        const toastId = toast.loading(t('loading'));
-                                                                        try {
-                                                                            const res = await (window.api as any).instanceJoinPublic(instance.id);
-                                                                            if (res?.ok) {
-                                                                                toast.success(t('join_success'), { id: toastId });
-                                                                                fetchInstances();     // Refresh local instances
-                                                                                setShowPublic(false); // Go back to list
-                                                                            } else {
-                                                                                toast.error(res?.error || t('join_failed'), { id: toastId });
-                                                                            }
-                                                                        } catch (err: any) {
-                                                                            toast.error(t('error_occurred') + ": " + err.message, { id: toastId });
-                                                                        }
-                                                                    }
-                                                                });
-                                                            }}
-                                                            className="h-10 px-4 rounded-xl flex items-center justify-center gap-2 transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10"
-                                                            style={{ backgroundColor: colors.primary, color: colors.onPrimary }}
-                                                        >
-                                                            <Icons.UserPlus className="w-5 h-5" />
-                                                            <span className="font-bold">{t('join')}</span>
-                                                        </button>
-                                                    );
-                                                }
-
-                                                // 2. Member (or Owner)
-                                                if (isInstalled) {
-                                                    // Installed -> Play/Stop/Open Folder
-                                                    return (
-                                                        <>
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    playClick();
-                                                                    if (playingInstances.has(instance.id) || launchingId === instance.id) {
-                                                                        handleStopServer(e, instance.id);
-                                                                    } else {
-                                                                        handlePlayServer(e, instance);
-                                                                    }
-                                                                }}
-                                                                className="h-10 px-4 rounded-xl flex items-center justify-center gap-2 transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10"
-                                                                style={{
-                                                                    backgroundColor: (playingInstances.has(instance.id) || launchingId === instance.id) ? "#ef4444" : "rgba(255,255,255,0.1)",
-                                                                    color: "#fff"
-                                                                }}
-                                                            >
-                                                                {launchingId === instance.id ? (
-                                                                    <>
-                                                                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                                                        <span className="font-bold">{t('loading')}</span>
-                                                                    </>
-                                                                ) : playingInstances.has(instance.id) ? (
-                                                                    <>
-                                                                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                                                                            <path d="M6 6h12v12H6z" />
-                                                                        </svg>
-                                                                        <span className="font-bold">{t('stop')}</span>
-                                                                    </>
-                                                                ) : (
-                                                                    <>
-                                                                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                                                                            <path d="M8 5v14l11-7z" />
-                                                                        </svg>
-                                                                        <span className="font-bold">{t('play')}</span>
-                                                                    </>
-                                                                )}
-                                                            </button>
-
-                                                            <button
-                                                                onClick={(e) => { playClick(); handleOpenFolder(e, instance.id); }}
-                                                                className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10"
-                                                                style={{ backgroundColor: "rgba(255,255,255,0.1)", color: "#fff" }}
-                                                                title={t('open_folder')}
-                                                            >
-                                                                <Icons.Folder className="w-5 h-5" />
-                                                            </button>
-
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    playClick();
-                                                                    setLogViewerInstanceId(instance.id);
-                                                                }}
-                                                                className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10"
-                                                                style={{ backgroundColor: "rgba(255,255,255,0.1)", color: "#fff" }}
-                                                                title={t('logs_console')}
-                                                            >
-                                                                <Icons.Terminal className="w-5 h-5" />
-                                                            </button>
-
-                                                            {/* Trash Button Removed as per request */}
-
-                                                            {/* Leave Button - HIDDEN FOR OWNER */}
-                                                            {
-                                                                !isOwned && (
-                                                                    <button
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            playClick();
-                                                                            setConfirmDialog({
-                                                                                isOpen: true,
-                                                                                title: t('confirm_leave'),
-                                                                                message: t('leave_server_ask').replace("{name}", instance.name),
-                                                                                confirmText: t('leave'),
-                                                                                confirmColor: "#f97316",
-                                                                                onConfirm: async () => {
-                                                                                    try {
-                                                                                        await (window.api as any).instanceLeave(instance.id);
-                                                                                        fetchInstances();
-                                                                                    } catch (err) {
-                                                                                        console.error("Leave failed", err);
-                                                                                        toast.error(t('leave_failed') + ": " + err);
-                                                                                    }
-                                                                                }
-                                                                            });
-                                                                        }}
-                                                                        className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-orange-500/20 active:scale-95 backdrop-blur-md border border-orange-500/30 text-orange-500 hover:text-orange-400"
-                                                                        title={t('leave_server_title')}
-                                                                    >
-                                                                        <Icons.Logout className="w-5 h-5" />
-                                                                    </button>
-                                                                )
-                                                            }
-                                                        </>
-                                                    );
-                                                } else {
-                                                    // Member but Not Installed -> Show Install
-                                                    return (
-                                                        <>
-                                                            <button
-                                                                className="h-10 px-4 rounded-xl flex items-center justify-center gap-2 transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10"
-                                                                style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
-                                                                onClick={(e) => { playClick(); handleInstall(e, instance); }}
-                                                            >
-                                                                <Icons.Download className="w-5 h-5" />
-                                                                <span className="font-bold">{t('install')}</span>
-                                                            </button>
-
-                                                            {!isOwned && (
-                                                                <button
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setConfirmDialog({
-                                                                            isOpen: true,
-                                                                            title: t('confirm_leave'),
-                                                                            message: t('leave_server_ask').replace("{name}", instance.name),
-                                                                            confirmText: t('leave'),
-                                                                            confirmColor: "#f97316",
-                                                                            onConfirm: async () => {
-                                                                                try {
-                                                                                    await (window.api as any).instanceLeave(instance.id);
-                                                                                    fetchInstances();
-                                                                                } catch (err) {
-                                                                                    console.error("Leave failed", err);
-                                                                                    toast.error(t('leave_failed') + ": " + err);
-                                                                                }
-                                                                            }
-                                                                        });
-                                                                    }}
-                                                                    className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-orange-500/20 active:scale-95 backdrop-blur-md border border-orange-500/30 text-orange-500 hover:text-orange-400"
-                                                                    title={t('leave_server_title')}
-                                                                >
-                                                                    <Icons.Logout className="w-5 h-5" />
-                                                                </button>
-                                                            )}
-                                                        </>
-                                                    );
-                                                }
-                                            })()}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
                         );
                     })}
 
@@ -964,7 +737,7 @@ export function ServerMenu({
                                 </div>
 
                                 {/* Gradient Overlay */}
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
+                                <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/50 to-transparent" />
 
                                 {/* Status - Top Right */}
                                 <div className="absolute top-3 right-3">

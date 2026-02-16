@@ -2,9 +2,9 @@
  * ========================================
  * Discord RPC - ระบบแสดงสถานะบน Discord
  * ========================================
- * 
+ *
  * แสดงสถานะ "กำลังเล่น Reality Launcher" บน Discord
- * 
+ *
  * หมายเหตุ: ต้อง install discord-rpc package:
  * bun add discord-rpc
  */
@@ -29,7 +29,47 @@ interface RPCActivity {
     smallImageKey?: string;
     smallImageText?: string;
     startTimestamp?: number;
-    buttons?: { label: string; url: string }[];
+}
+
+const DEFAULT_LARGE_IMAGE_KEY = "logo";
+const DEFAULT_LARGE_IMAGE_TEXT = "Reality Launcher";
+const INSTANCE_SMALL_IMAGE_KEY = "r_nobg";
+const INSTANCE_SMALL_IMAGE_TEXT = "Reality Launcher";
+
+const ASSET_KEY_PATTERN = /^[a-z0-9_.-]+$/i;
+
+function resolveLargeImageKey(icon?: string): string | undefined {
+    if (!icon) return undefined;
+    const trimmed = icon.trim();
+    if (!trimmed) return undefined;
+
+    const lower = trimmed.toLowerCase();
+    if (lower.startsWith("http://") || lower.startsWith("https://")) {
+        return trimmed;
+    }
+
+    if (lower.startsWith("data:") || lower.startsWith("file://")) {
+        return undefined;
+    }
+
+    if (trimmed.includes("/") || trimmed.includes("\\")) {
+        return undefined;
+    }
+
+    if (!ASSET_KEY_PATTERN.test(trimmed)) {
+        return undefined;
+    }
+
+    return trimmed;
+}
+
+/**
+ * Get Minecraft head URL from UUID (via mc-heads.net)
+ */
+function getPlayerHeadUrl(uuid?: string): string | undefined {
+    if (!uuid) return undefined;
+    // mc-heads.net provides head renders, works as Discord RPC image URL
+    return `https://mc-heads.net/avatar/${uuid}/128`;
 }
 
 // ========================================
@@ -43,17 +83,39 @@ let rpcEnabled = true;
 let rpcClient: DiscordRPCClient | null = null;
 let startTimestamp = Date.now();
 let isReady = false;
+let isInitializing = false;
+let pendingActivity: {
+    status: "idle" | "playing" | "launching";
+    serverName?: string;
+    serverIcon?: string;
+} | null = null;
+
+// Player info for small image
+let playerUuid: string | undefined;
+let playerUsername: string | undefined;
 
 // ========================================
 // Functions
 // ========================================
 
 /**
+ * setPlayerInfo - ตั้งค่าข้อมูลผู้เล่น (สำหรับแสดง MC head)
+ */
+export function setPlayerInfo(uuid?: string, username?: string): void {
+    playerUuid = uuid;
+    playerUsername = username;
+    console.log("[Discord RPC] Player info set:", { uuid, username });
+}
+
+/**
  * initDiscordRPC - เริ่มต้น Discord RPC
  */
 export async function initDiscordRPC(): Promise<boolean> {
     if (!rpcEnabled) return false;
+    if (isInitializing) return false;
+    if (rpcClient && isReady) return true;
 
+    isInitializing = true;
     try {
         // ใช้ customRequire สำหรับ CJS compatibility
         let RPC: any;
@@ -69,15 +131,29 @@ export async function initDiscordRPC(): Promise<boolean> {
         rpcClient!.on("ready", () => {
             console.log("[Discord RPC] Connected!");
             isReady = true;
+            isInitializing = false;
             // Add small delay to ensure socket is fully initialized
-            setTimeout(() => updateRPC("idle"), 500);
+            setTimeout(() => {
+                if (pendingActivity) {
+                    void updateRPC(
+                        pendingActivity.status,
+                        pendingActivity.serverName,
+                        pendingActivity.serverIcon,
+                    );
+                    pendingActivity = null;
+                } else {
+                    void updateRPC("idle");
+                }
+            }, 500);
         });
 
         await rpcClient!.login({ clientId: CLIENT_ID });
+        isInitializing = false;
         return true;
     } catch (error) {
         console.error("[Discord RPC] Failed to initialize:", error);
         isReady = false;
+        isInitializing = false;
         return false;
     }
 }
@@ -87,40 +163,76 @@ export async function initDiscordRPC(): Promise<boolean> {
  */
 export async function updateRPC(
     status: "idle" | "playing" | "launching",
-    serverName?: string
+    serverName?: string,
+    serverIcon?: string
 ): Promise<void> {
-    if (!rpcClient || !rpcEnabled || !isReady) return;
+    if (!rpcEnabled) return;
+
+    pendingActivity = { status, serverName, serverIcon };
+
+    if (!rpcClient || !isReady) {
+        void initDiscordRPC();
+        return;
+    }
 
     try {
-        let activity: RPCActivity = {
-            largeImageKey: "logo",
-            largeImageText: "Reality Launcher",
+        const activity: RPCActivity = {
             startTimestamp,
-            buttons: [
-                { label: "เข้าชมเว็บไซต์", url: "https://reality.catlabdesign.space/" }
-            ],
         };
+
+        const resolvedIcon = resolveLargeImageKey(serverIcon);
+        const headUrl = getPlayerHeadUrl(playerUuid);
 
         switch (status) {
             case "idle":
-                activity.details = "อยู่หน้าหลัก";
-                activity.state = "เลือกเซิร์ฟเวอร์...";
+                // Idle: Large = Reality Launcher logo, Small = Player MC head
+                activity.largeImageKey = DEFAULT_LARGE_IMAGE_KEY;
+                activity.largeImageText = DEFAULT_LARGE_IMAGE_TEXT;
+                if (headUrl) {
+                    activity.smallImageKey = headUrl;
+                    activity.smallImageText = playerUsername || "Player";
+                }
+                activity.details = "On Main Menu";
+                activity.state = "Choosing a server...";
                 break;
+
             case "launching":
-                activity.details = "กำลังเปิดเกม...";
+                // Launching: Large = instance icon or logo, Small = r_nobg
+                if (resolvedIcon) {
+                    activity.largeImageKey = resolvedIcon;
+                    activity.largeImageText = serverName || DEFAULT_LARGE_IMAGE_TEXT;
+                } else {
+                    activity.largeImageKey = DEFAULT_LARGE_IMAGE_KEY;
+                    activity.largeImageText = DEFAULT_LARGE_IMAGE_TEXT;
+                }
+                activity.smallImageKey = INSTANCE_SMALL_IMAGE_KEY;
+                activity.smallImageText = INSTANCE_SMALL_IMAGE_TEXT;
+                activity.details = "Launching...";
                 activity.state = serverName || "Minecraft";
                 break;
+
             case "playing":
-                activity.details = "กำลังเล่น";
+                // Playing: Large = instance icon or logo, Small = r_nobg
+                if (resolvedIcon) {
+                    activity.largeImageKey = resolvedIcon;
+                    activity.largeImageText = serverName || DEFAULT_LARGE_IMAGE_TEXT;
+                } else {
+                    activity.largeImageKey = DEFAULT_LARGE_IMAGE_KEY;
+                    activity.largeImageText = DEFAULT_LARGE_IMAGE_TEXT;
+                }
+                activity.smallImageKey = INSTANCE_SMALL_IMAGE_KEY;
+                activity.smallImageText = INSTANCE_SMALL_IMAGE_TEXT;
+                activity.details = "Playing";
                 activity.state = serverName || "Minecraft";
-                activity.smallImageKey = "playing";
-                activity.smallImageText = "กำลังเล่น";
                 break;
         }
 
         await rpcClient.setActivity(activity);
     } catch (error) {
         console.error("[Discord RPC] Failed to update:", error);
+        isReady = false;
+        await destroyRPC();
+        void initDiscordRPC();
     }
 }
 
@@ -128,23 +240,26 @@ export async function updateRPC(
  * destroyRPC - ปิด Discord RPC
  */
 export async function destroyRPC(): Promise<void> {
-    if (rpcClient) {
-        try {
-            // Clear activity first to remove status from Discord
-            await rpcClient.clearActivity();
-            console.log("[Discord RPC] Activity cleared");
-        } catch (e) {
-            console.log("[Discord RPC] Could not clear activity:", e);
-        }
+    const client = rpcClient;
+    rpcClient = null;
+    isReady = false;
+    isInitializing = false;
+    pendingActivity = null;
 
-        try {
-            rpcClient.destroy();
-            rpcClient = null;
-            isReady = false;
-            console.log("[Discord RPC] Disconnected");
-        } catch {
-            // ignore
-        }
+    if (!client) return;
+
+    try {
+        await client.clearActivity();
+        console.log("[Discord RPC] Activity cleared");
+    } catch {
+        // Socket may already be closed
+    }
+
+    try {
+        await client.destroy();
+        console.log("[Discord RPC] Disconnected");
+    } catch {
+        // ignore
     }
 }
 

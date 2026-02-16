@@ -54,13 +54,15 @@ import {
   type UpdateInstanceOptions,
 } from "../instances.js";
 import { getConfig, getAppDataDir } from "../config.js";
-import { getSession } from "../auth.js";
+import { getSession, getApiToken } from "../auth.js";
+import { API_URL } from "../lib/constants.js";
 import {
   launchGame,
   isGameRunning,
   setProgressCallback,
   setGameLogCallback,
 } from "../launcher.js";
+import { updateRPC } from "../discord.js";
 
 // Map to track active exports for cancellation: instanceId -> { abort: () => void }
 const activeExports = new Map<string, { abort: () => void }>();
@@ -151,14 +153,17 @@ const contentIconCache = new Map<
 const ICON_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
 
 // Periodically purge expired content icon cache entries
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, val] of contentIconCache) {
-    if (now - val.timestamp > ICON_CACHE_TTL) {
-      contentIconCache.delete(key);
+setInterval(
+  () => {
+    const now = Date.now();
+    for (const [key, val] of contentIconCache) {
+      if (now - val.timestamp > ICON_CACHE_TTL) {
+        contentIconCache.delete(key);
+      }
     }
-  }
-}, 5 * 60 * 1000); // Every 5 minutes
+  },
+  5 * 60 * 1000,
+); // Every 5 minutes
 
 function getIconFromCache(key: string): string | null | undefined {
   const cached = contentIconCache.get(key);
@@ -626,6 +631,7 @@ const ModrinthAPI = {
 export function registerInstanceHandlers(
   getMainWindow: () => BrowserWindow | null,
 ): void {
+  logger.info("Registering instance IPC handlers...");
   // Use module-scope activeOperations (not shadowed) for cancellation
 
   async function ensureModMetadata(
@@ -796,6 +802,86 @@ export function registerInstanceHandlers(
   );
 
   ipcMain.handle(
+    "fetch-instance-agendas",
+    async (_event, instanceId: string) => {
+      console.log("[IPC] fetch-instance-agendas called for:", instanceId);
+      const token = getApiToken();
+      if (!token) return { ok: false, error: "Unauthorized" };
+
+      // Resolve cloudId if possible
+      const instance = getInstance(instanceId);
+      const targetId = instance?.cloudId || instanceId;
+
+      logger.info(
+        `Fetching agendas for instance: ${instanceId} (Target: ${targetId})`,
+      );
+
+      try {
+        const response = await fetch(
+          `${API_URL}/instances/${targetId}/agendas`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        );
+
+        const data = await response.json();
+        if (response.ok) {
+          return { ok: true, agendas: data.agendas || [] };
+        } else {
+          if (response.status === 401) {
+            const { clearApiToken } = await import("../auth.js");
+            clearApiToken();
+          }
+          return {
+            ok: false,
+            error: (data as any).error || "Failed to fetch agendas",
+          };
+        }
+      } catch (error) {
+        logger.error(
+          `[Agendas] Failed to fetch agendas for ${instanceId}:`,
+          error as Error,
+        );
+        return { ok: false, error: String(error) };
+      }
+    },
+  );
+
+  ipcMain.handle("fetch-all-agendas", async () => {
+    const token = getApiToken();
+    if (!token) return { ok: false, error: "Unauthorized" };
+
+    logger.info("Fetching all agendas for current user");
+
+    try {
+      const response = await fetch(`${API_URL}/instances/all`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data: any = await response.json();
+      if (response.ok) {
+        logger.info(
+          `Successfully fetched ${data.agendas?.length || 0} agendas globally`,
+        );
+        return { ok: true, agendas: data.agendas || [] };
+      } else {
+        logger.warn(`Global agenda fetch failed (${response.status}):`, data);
+        return {
+          ok: false,
+          error: data.error || "Failed to fetch all agendas",
+        };
+      }
+    } catch (error: any) {
+      logger.error("Exception fetching all agendas:", error);
+      return { ok: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle(
     "instances-set-icon",
     async (_event, id: string, iconData: string) => {
       return await setInstanceIcon(id, iconData);
@@ -846,6 +932,8 @@ export function registerInstanceHandlers(
 
     if (isGameRunning(id))
       return { ok: false, message: "Instance นี้กำลังทำงานอยู่" };
+
+    void updateRPC("launching", instance.name, instance.icon);
 
     const config = getConfig();
     const ramMB = instance.ramMB || config.ramMB || 4096;
@@ -996,6 +1084,7 @@ export function registerInstanceHandlers(
     setProgressCallback(null);
 
     if (result.ok) {
+      void updateRPC("playing", instance.name, instance.icon);
       // Notify renderer that game has started (also sent from rustLauncher)
       mainWindow?.webContents.send("game-started", { instanceId: id });
 
@@ -1025,6 +1114,9 @@ export function registerInstanceHandlers(
       const handler = (_e: any, data: { instanceId: string }) => {
         if (data && data.instanceId === id) {
           updatePlayTime();
+          if (!isGameRunning()) {
+            void updateRPC("idle");
+          }
           ipcMain.removeListener("game-stopped", handler);
           clearTimeout(cleanupTimeout);
         }
@@ -1033,9 +1125,14 @@ export function registerInstanceHandlers(
       ipcMain.on("game-stopped", handler);
 
       // Safety cleanup: remove listener after 24 hours to prevent leak
-      const cleanupTimeout = setTimeout(() => {
-        ipcMain.removeListener("game-stopped", handler);
-      }, 24 * 60 * 60 * 1000);
+      const cleanupTimeout = setTimeout(
+        () => {
+          ipcMain.removeListener("game-stopped", handler);
+        },
+        24 * 60 * 60 * 1000,
+      );
+    } else if (!isGameRunning()) {
+      void updateRPC("idle");
     }
 
     return result;
@@ -1079,7 +1176,12 @@ export function registerInstanceHandlers(
     }
 
     const modsDir = path.join(instance.gameDirectory, "mods");
-    if (!fs.existsSync(modsDir)) return { ok: true, mods: [] };
+    // Check mods dir existence async (avoid blocking main thread)
+    try {
+      await fs.promises.access(modsDir);
+    } catch {
+      return { ok: true, mods: [] };
+    }
 
     try {
       const files = await fs.promises.readdir(modsDir);
@@ -1087,9 +1189,17 @@ export function registerInstanceHandlers(
         (f) => f.endsWith(".jar") || f.endsWith(".jar.disabled"),
       );
 
-      // Load all metadata in parallel (backend-first approach)
-      const mods = await Promise.all(
-        jarFiles.map(async (file) => {
+      // Load metadata with concurrency limit (max 5 at a time)
+      // to avoid overwhelming Modrinth API and blocking main process
+      const CONCURRENCY = 5;
+      const mods: (any | null)[] = new Array(jarFiles.length).fill(null);
+      let cursor = 0;
+
+      const worker = async () => {
+        while (true) {
+          const idx = cursor++;
+          if (idx >= jarFiles.length) break;
+          const file = jarFiles[idx];
           const filePath = path.join(modsDir, file);
           try {
             const stats = await fs.promises.stat(filePath);
@@ -1104,10 +1214,10 @@ export function registerInstanceHandlers(
               name = file.replace(".jar", "");
             }
 
-            // Ensure metadata is loaded (no lazy loading)
+            // Ensure metadata is loaded (with concurrency control)
             const metadata = await ensureModMetadata(filePath, instanceId);
 
-            return {
+            mods[idx] = {
               filename: file,
               name,
               displayName: metadata?.displayName || name,
@@ -1119,9 +1229,16 @@ export function registerInstanceHandlers(
               modifiedAt: mtime,
             };
           } catch (e) {
-            return null;
+            // skip failed files
           }
-        }),
+        }
+      };
+
+      // Run workers in parallel (limited concurrency)
+      await Promise.all(
+        Array.from({ length: Math.min(CONCURRENCY, jarFiles.length) }, () =>
+          worker(),
+        ),
       );
 
       // Filter out failed stats
@@ -1206,15 +1323,28 @@ export function registerInstanceHandlers(
         const normalizedPath = relativePath.replace(/\\/g, "/");
 
         // Always exclude these
-        const excludedPrefixes = ["session.lock", "logs", "cache", "webcache", "natives", "assets"];
+        const excludedPrefixes = [
+          "session.lock",
+          "logs",
+          "cache",
+          "webcache",
+          "natives",
+          "assets",
+        ];
         for (const prefix of excludedPrefixes) {
-          if (normalizedPath === prefix || normalizedPath.startsWith(prefix + "/")) {
+          if (
+            normalizedPath === prefix ||
+            normalizedPath.startsWith(prefix + "/")
+          ) {
             return false;
           }
         }
 
         // If includedPaths is defined, filter by it
-        if (exportOptions.includedPaths && exportOptions.includedPaths.length > 0) {
+        if (
+          exportOptions.includedPaths &&
+          exportOptions.includedPaths.length > 0
+        ) {
           // includedPaths can contain EITHER:
           //   - Folder names like "mods", "config" (when file tree hasn't loaded yet)
           //   - Individual file paths like "mods/fabric-api.jar" (after file tree expansion)
@@ -1223,7 +1353,7 @@ export function registerInstanceHandlers(
           //   1. normalizedPath matches an entry exactly (file or folder selected)
           //   2. normalizedPath starts with an entry + "/" (file is inside a selected folder)
           //   3. An entry starts with normalizedPath + "/" (selected files are inside this dir)
-          
+
           const isIncluded = exportOptions.includedPaths.some((p: string) => {
             // Exact match (works for both files and folders)
             if (normalizedPath === p) return true;
@@ -1239,9 +1369,7 @@ export function registerInstanceHandlers(
         return true; // Default include if no filter
       };
 
-      const calculateDirSize = (
-        dir: string,
-      ): number => {
+      const calculateDirSize = (dir: string): number => {
         let size = 0;
         if (!fs.existsSync(dir)) return 0;
         try {
@@ -1394,7 +1522,9 @@ export function registerInstanceHandlers(
                 addDirectory(fullPath, base, targetPrefix);
               } else {
                 // Use forward slashes for ZIP entry names (cross-platform compat)
-                const entryName = path.join(targetPrefix, relPath).replace(/\\/g, "/");
+                const entryName = path
+                  .join(targetPrefix, relPath)
+                  .replace(/\\/g, "/");
                 archive.file(fullPath, {
                   name: entryName,
                 });
@@ -1559,7 +1689,27 @@ export function registerInstanceHandlers(
       try {
         const { syncServerMods } = await import("../cloud-instances.js");
         const session = getSession();
-        await syncServerMods(instanceId, session?.apiToken || "");
+
+        // Create AbortController for cancellation support
+        const abortController = new AbortController();
+
+        // Send progress updates to frontend
+        await syncServerMods(
+          instanceId,
+          session?.apiToken || "",
+          (progress) => {
+            // Send progress event to renderer process
+            getMainWindow()?.webContents.send("install-progress", {
+              type: progress.type,
+              task: progress.task,
+              current: progress.current,
+              total: progress.total,
+              percent: progress.percent,
+              filename: progress.filename,
+            });
+          },
+          abortController.signal
+        );
 
         // Notify frontend that instance data might have changed (loader, version)
         const wins = BrowserWindow.getAllWindows();
@@ -2443,7 +2593,17 @@ export function registerInstanceHandlers(
           // Skip hidden files/folders and system folders that shouldn't be exported
           if (item.startsWith(".")) continue;
           // Skip folders that are always excluded from export
-          if (["logs", "crash-reports", "cache", "webcache", "natives", "assets"].includes(item)) continue;
+          if (
+            [
+              "logs",
+              "crash-reports",
+              "cache",
+              "webcache",
+              "natives",
+              "assets",
+            ].includes(item)
+          )
+            continue;
 
           const fullPath = path.join(dir, item);
           const itemRelativePath = path

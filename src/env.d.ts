@@ -207,6 +207,7 @@ declare global {
       discordRPCUpdate: (
         status: "idle" | "playing" | "launching",
         serverName?: string,
+        serverIcon?: string,
       ) => Promise<void>;
       discordRPCIsConnected: () => Promise<boolean>;
       // Auth Window
@@ -232,6 +233,8 @@ declare global {
       ) => Promise<{
         status: "pending" | "success" | "error" | "expired";
         error?: string;
+        linkSwitched?: boolean;
+        oldCatID?: string | null;
         session?: {
           username: string;
           uuid: string;
@@ -254,6 +257,16 @@ declare global {
           token: string;
           minecraftUuid?: string;
         };
+        error?: string;
+      }>;
+      linkCatID: (
+        username: string,
+        password: string,
+      ) => Promise<{
+        ok: boolean;
+        token?: string;
+        linkSwitched?: boolean;
+        oldCatID?: string | null;
         error?: string;
       }>;
       registerCatID: (
@@ -289,6 +302,9 @@ declare global {
       authUnlink: (provider: "catid" | "microsoft") => Promise<{
         ok: boolean;
         session?: AuthSession;
+        updatedAccount?: AuthSession;
+        message?: string;
+        forceRelogin?: boolean;
         error?: string;
       }>;
       // Offline Account

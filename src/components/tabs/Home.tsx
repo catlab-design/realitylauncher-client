@@ -6,6 +6,7 @@ import { Icons } from "../ui/Icons";
 import { MCHead } from "../ui/MCHead";
 import { BannerImage } from "../ui/BannerImage";
 import { useTranslation } from "../../hooks/useTranslation";
+import SimpleMarkdown, { stripMarkdown } from "../ui/SimpleMarkdown";
 
 interface Newsletter {
     id: string;
@@ -95,7 +96,7 @@ const HomeHeader = React.memo(({ session, colors, language }: { session: any, co
                 <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10 w-full">
                     {/* Left Side: Avatar & Greeting */}
                     <div className="flex items-center gap-6 w-full md:w-auto">
-                        <div className="relative group flex-shrink-0">
+                        <div className="relative group shrink-0">
                             {/* Avatar */}
                             {session ? (
                                     <div className="relative transform transition-transform duration-500 rounded-2xl"
@@ -338,15 +339,11 @@ export function Home({
                                         />
                                         
                                         {/* Gradient Overlay */}
-                                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
-                                        <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/20 to-transparent" />
+                                        <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/40 to-transparent" />
+                                        <div className="absolute inset-0 bg-linear-to-r from-black/80 via-black/20 to-transparent" />
 
                                         <div className="absolute bottom-0 left-0 max-w-[65%] p-8 text-white z-10 flex flex-col items-start">
                                             <div className="flex items-center gap-3 mb-4 text-white/90 text-xs font-bold uppercase tracking-wider">
-                                                <span className="px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/10 shadow-sm">
-                                                    {t('beta')}
-                                                </span>
-                                                <span className="opacity-60">•</span>
                                                 <span className="font-semibold shadow-black/50 drop-shadow-sm">
                                                     {new Date(item.sentAt || item.createdAt).toLocaleDateString(language === "th" ? "th-TH" : "en-US", { dateStyle: 'medium' })}
                                                 </span>
@@ -355,7 +352,7 @@ export function Home({
                                                 {item.subject}
                                             </h2>
                                             <p className="text-sm text-white/80 line-clamp-2 leading-relaxed mb-6 font-medium max-w-[90%] drop-shadow-md">
-                                                {item.content}
+                                                {stripMarkdown(item.content)}
                                             </p>
                                             <button 
                                                 onClick={() => setSelectedNews(item)}
@@ -447,7 +444,7 @@ export function Home({
                                         borderColor: colors.outline + '10'
                                     }}
                                 >
-                                    <div className="relative w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 shadow-sm group-hover:shadow-md transition-shadow"
+                                    <div className="relative w-14 h-14 rounded-xl overflow-hidden shrink-0 shadow-sm group-hover:shadow-md transition-shadow"
                                          style={{ backgroundColor: colors.surfaceContainerHighest }}>
                                         {instance.icon ? (
                                             <img src={instance.icon} alt={instance.name} className="w-full h-full object-cover" />
@@ -539,14 +536,6 @@ export function Home({
                                 </div>
                             )}
                             <div className="flex items-center gap-3 mb-4">
-                                <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider"
-                                      style={{ 
-                                          backgroundColor: colors.primaryContainer,
-                                          color: colors.onPrimaryContainer
-                                      }}>
-                                    {t('beta')}
-                                </span>
-                                <span className="text-sm" style={{ color: colors.surfaceVariant }}>•</span>
                                 <span className="text-sm font-medium" style={{ color: colors.onSurfaceVariant }}>
                                     {new Date(selectedNews.sentAt || selectedNews.createdAt).toLocaleDateString(language === "th" ? "th-TH" : "en-US", { dateStyle: 'long' })}
                                 </span>
@@ -556,9 +545,11 @@ export function Home({
                             </h2>
                         </div>
                         
-                        <div className="prose prose-lg max-w-none leading-relaxed whitespace-pre-wrap"
-                             style={{ color: colors.onSurfaceVariant }}>
-                            {selectedNews.content}
+                        <div style={{ color: colors.onSurfaceVariant }}>
+                            <SimpleMarkdown
+                                content={selectedNews.content}
+                                className="text-[15px] leading-relaxed"
+                            />
                         </div>
                     </div>
                 </div>

@@ -221,6 +221,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
     const [isInstalling, setIsInstalling] = useState(false);
     const [installProgress, setInstallProgress] = useState<(InstallProgress & { type?: string; filename?: string }) | null>(null);
     const [isInstallMinimized, setIsInstallMinimized] = useState(false);
+    const [operationType, setOperationType] = useState<"install" | "repair" | null>(null);
 
 
     // Export State (Global)
@@ -383,15 +384,16 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
     useEffect(() => {
         if (instances.length > 0) {
             const syncStatuses = async () => {
-                const runningIds = new Set<string>();
-                for (const inst of instances) {
-                    try {
-                        const isRunning = await window.api?.isGameRunning?.(inst.id);
-                        if (isRunning) {
-                            runningIds.add(inst.id);
-                        }
-                    } catch { }
-                }
+                // Check all instances in parallel instead of sequentially
+                const results = await Promise.all(
+                    instances.map(async (inst) => {
+                        try {
+                            const isRunning = await window.api?.isGameRunning?.(inst.id);
+                            return isRunning ? inst.id : null;
+                        } catch { return null; }
+                    })
+                );
+                const runningIds = new Set<string>(results.filter((id): id is string => id !== null));
                 // Replace entire set instead of only adding
                 setPlayingInstances(runningIds);
             };
@@ -475,7 +477,11 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                 setIsInstalling(false);
                 setInstallProgress(null);
                 setIsInstallMinimized(false);
+                setOperationType(null);
             } else {
+                if (!isInstalling) {
+                    setOperationType("install");
+                }
                 setIsInstalling(true);
             }
         });
@@ -508,7 +514,11 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                 setIsInstalling(false);
                 setInstallProgress(null);
                 setIsInstallMinimized(false);
+                setOperationType(null);
             } else {
+                if (!isInstalling) {
+                    setOperationType("install");
+                }
                 setIsInstalling(true);
             }
         });
@@ -538,6 +548,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
             setIsInstalling(false);
             setInstallProgress(null);
             setInstallingInstanceId(null);
+            setOperationType(null);
         } catch (e) {
             console.error("Failed to cancel install", e);
         } finally {
@@ -656,16 +667,34 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
     };
 
     const handleRepair = async (id: string) => {
-        const toastId = toast.loading(t('repairing_dot'));
+        // Show progress modal instead of toast
+        setOperationType("repair");
+        setIsInstalling(true);
+        setInstallProgress({ stage: "sync-start", message: t('sync-start' as any) });
+
         try {
             const result = await (window.api as any)?.instanceCheckIntegrity?.(id);
             if (result?.ok) {
-                toast.success(result.message || t('repair_success'), { id: toastId });
+                // Progress modal will auto-close when percent reaches 100
+                // Show success toast after a delay
+                setTimeout(() => {
+                    setIsInstalling(false);
+                    setInstallProgress(null);
+                    setOperationType(null);
+                    toast.success(result.message || t('repair_success'));
+                    loadInstances(); // Reload instances
+                }, 1000);
             } else {
-                toast.error(result?.error || t('repair_failed'), { id: toastId });
+                setIsInstalling(false);
+                setInstallProgress(null);
+                setOperationType(null);
+                toast.error(result?.error || t('repair_failed'));
             }
         } catch (error: any) {
-            toast.error(error?.message || t('error_occurred'), { id: toastId });
+            setIsInstalling(false);
+            setInstallProgress(null);
+            setOperationType(null);
+            toast.error(error?.message || t('error_occurred'));
         }
     };
 
@@ -822,6 +851,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
             setShowImportModal(false);
 
             // Start installation
+            setOperationType("install");
             setIsInstalling(true);
             setInstallProgress({ stage: "extracting", message: t('extracting_modpack_dot') });
 
@@ -847,12 +877,14 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
         } finally {
             setIsInstalling(false);
             setInstallProgress(null);
+            setOperationType(null);
         }
     };
 
 
 
     const handleInstallServerInstance = async (id?: string) => {
+        setOperationType("install");
         setIsInstalling(true);
         isCancellingRef.current = false; // Ensure flag is reset
         // For Sync (no ID passed), we might fallback to checking selectedInstance or just handle specific Cloud Install (ID passed)
@@ -899,6 +931,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
             setIsInstalling(false);
             setInstallingInstanceId(null);
             setIsInstallMinimized(false);
+            setOperationType(null);
         }
     };
 
@@ -1259,19 +1292,26 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                                             {/* Gradient Overlay */}
                                             <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/50 to-transparent" />
 
-                                            {/* Icon - Top Left */}
-                                            <div className="absolute top-2 left-2 w-12 h-12 rounded-xl bg-black/20 backdrop-blur-md border border-white/10 overflow-hidden shadow-lg z-10">
-                                                {serverInstance.icon ? (
-                                                    <SmartImage trigger={refreshTrigger} src={serverInstance.icon} alt={serverInstance.name} className="w-full h-full object-cover" />
-                                                ) : (
-                                                    <div className="w-full h-full flex items-center justify-center bg-white/10 text-white">
-                                                        <Icons.Box className="w-6 h-6" />
-                                                    </div>
-                                                )}
+                                            {/* Icon & Name - Animated from Bottom-Left to Just Above Buttons */}
+                                            <div className="absolute left-2 bottom-2 right-12 flex items-center gap-3 z-20 transition-all duration-500 ease-in-out group-hover:-translate-y-21 pointer-events-none">
+                                                {/* Logo Box */}
+                                                <div className="w-12 h-12 rounded-xl bg-black/20 backdrop-blur-md border border-white/10 overflow-hidden shadow-lg shrink-0 pointer-events-auto">
+                                                    {serverInstance.icon ? (
+                                                        <SmartImage trigger={refreshTrigger} src={serverInstance.icon} alt={serverInstance.name} className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center bg-white/10 text-white">
+                                                            <Icons.Box className="w-6 h-6" />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                {/* Name */}
+                                                <h3 className="text-lg font-bold text-white truncate drop-shadow-md opacity-90 group-hover:opacity-100 transition-opacity">
+                                                    {serverInstance.name}
+                                                </h3>
                                             </div>
 
                                             {/* Auto Update Badge - Top Right */}
-                                            <div className="absolute top-2 right-2 z-10 select-none">
+                                            <div className="absolute top-2 right-2 z-10 select-none opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                                                 <div
                                                     className="flex items-center gap-2 px-2 py-1 rounded-full bg-black/40 backdrop-blur-sm border border-white/10 hover:bg-black/50 transition-colors cursor-pointer"
                                                     onClick={(e) => {
@@ -1287,17 +1327,11 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                                                 </div>
                                             </div>
 
-                                            {/* Content & Actions - Bottom */}
-                                            <div className="absolute bottom-0 left-0 right-0 p-4 z-10 w-full">
-                                                {/* Name - Hidden by default */}
-                                                <div className="mb-1 transition-all duration-300 opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 text-shadow-md">
-                                                    <h3 className="text-xl font-bold text-white truncate drop-shadow-md">
-                                                        {serverInstance.name}
-                                                    </h3>
-                                                </div>
-
-                                                {/* Version - Always Visible, Above Buttons */}
-                                                <div className="mb-2">
+                                            {/* Content & Actions - Bottom (Reveals on Hover) */}
+                                            <div className="absolute bottom-0 left-0 right-0 p-4 z-10 w-full transition-all duration-500 ease-in-out transform translate-y-full opacity-0 group-hover:translate-y-0 group-hover:opacity-100">
+                                                
+                                                {/* Version - Always Visible in this container, Above Buttons */}
+                                                <div className="mb-2 pl-1">
                                                     <p className="text-sm text-gray-300 truncate drop-shadow-sm">
                                                         {serverInstance.minecraftVersion} • {getLoaderLabel(serverInstance.loader)}
                                                     </p>
@@ -1496,6 +1530,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                     <InstallProgressModal
                         colors={colors}
                         installProgress={installProgress}
+                        title={operationType === "repair" ? t('repairing_instance') : undefined}
                         onCancel={handleCancelInstall}
                         onMinimize={() => setIsInstallMinimized(true)}
                         language={language}
@@ -1537,7 +1572,9 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                                 </div>
                             </div>
                             <div className="flex-1 min-w-0">
-                                <h4 className="font-medium text-sm truncate" style={{ color: colors.onSurface }}>{t('installing')}</h4>
+                                <h4 className="font-medium text-sm truncate" style={{ color: colors.onSurface }}>
+                                    {operationType === "repair" ? t('repairing_instance') : t('installing')}
+                                </h4>
                                 <p className="text-xs truncate" style={{ color: colors.onSurfaceVariant }}>
                                     {installProgress.type ? t(installProgress.type as any, { filename: installProgress.filename, current: installProgress.current, total: installProgress.total } as any) : installProgress.message}
                                 </p>

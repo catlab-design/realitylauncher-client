@@ -29,8 +29,13 @@ export function registerDiscordHandlers(): void {
      */
     ipcMain.handle(
         "discord-rpc-update",
-        async (_event, status: "idle" | "playing" | "launching", serverName?: string): Promise<void> => {
-            await updateRPC(status, serverName);
+        async (
+            _event,
+            status: "idle" | "playing" | "launching",
+            serverName?: string,
+            serverIcon?: string
+        ): Promise<void> => {
+            await updateRPC(status, serverName, serverIcon);
         }
     );
 

@@ -64,7 +64,7 @@ export function Settings({
     return (
         <div className="flex gap-6 h-full">
             {/* Sidebar Navigation */}
-            <div className={`${config.fullscreen ? "w-64" : "w-56"} flex-shrink-0 pr-4 transition-all`}>
+            <div className={`${config.fullscreen ? "w-64" : "w-56"} shrink-0 pr-4 transition-all`}>
                 <div className="sticky top-0 space-y-1">
                     {tabItems.map((item) => (
                         <button

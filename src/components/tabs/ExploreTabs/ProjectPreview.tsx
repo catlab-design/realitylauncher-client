@@ -199,7 +199,7 @@ export function ProjectPreview({
                         backgroundColor: colors.surfaceContainerHighest,
                         backgroundImage: heroImage ? `url(${heroImage})` : undefined
                     }}>
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                    <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent" />
 
                     {/* Floating Icon */}
                     <div className="absolute -bottom-8 left-6 w-20 h-20 rounded-2xl shadow-2xl p-0.5 z-10"

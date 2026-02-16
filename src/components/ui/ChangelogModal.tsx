@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import ReactMarkdown from 'react-markdown';
 
 interface ChangelogModalProps {
     isOpen: boolean;
@@ -44,76 +45,55 @@ export function ChangelogModal({
 
     if (!shouldRender) return null;
 
-    // Simple markdown-like parsing for changelog
-    const formatChangelog = (text: string) => {
-        if (!text) return <p style={{ color: colors.onSurfaceVariant }}>ไม่มีรายละเอียดการอัปเดต</p>;
-
-        return text.split('\n').map((line, i) => {
-            // Headers
-            if (line.startsWith('## ')) {
-                return (
-                    <h3
-                        key={i}
-                        className="text-sm font-semibold mt-3 mb-2 flex items-center gap-2"
-                        style={{ color: colors.onSurface }}
-                    >
-                        <i className="fa-solid fa-tag text-xs" style={{ color: colors.secondary }}></i>
-                        {line.slice(3)}
-                    </h3>
-                );
-            }
-            if (line.startsWith('### ')) {
-                return (
-                    <h4
-                        key={i}
-                        className="text-xs font-medium mt-2 mb-1"
-                        style={{ color: colors.onSurface }}
-                    >
-                        {line.slice(4)}
-                    </h4>
-                );
-            }
-            // List items with icons
-            if (line.startsWith('- ') || line.startsWith('* ')) {
-                const content = line.slice(2);
-                let iconClass = 'fa-circle';
-                let iconColor = colors.onSurfaceVariant;
-
-                // Check for common changelog keywords
-                if (content.toLowerCase().includes('fix') || content.toLowerCase().includes('แก้ไข')) {
-                    iconClass = 'fa-wrench';
-                    iconColor = '#f59e0b';
-                } else if (content.toLowerCase().includes('new') || content.toLowerCase().includes('เพิ่ม') || content.toLowerCase().includes('ใหม่')) {
-                    iconClass = 'fa-plus';
-                    iconColor = '#22c55e';
-                } else if (content.toLowerCase().includes('improve') || content.toLowerCase().includes('ปรับปรุง')) {
-                    iconClass = 'fa-arrow-up';
-                    iconColor = '#3b82f6';
-                } else if (content.toLowerCase().includes('remove') || content.toLowerCase().includes('ลบ')) {
-                    iconClass = 'fa-minus';
-                    iconColor = '#ef4444';
-                }
-
-                return (
-                    <div
-                        key={i}
-                        className="flex items-start gap-2 py-1 pl-1"
-                    >
-                        <i
-                            className={`fa-solid ${iconClass} text-[10px] mt-1 flex-shrink-0`}
-                            style={{ color: iconColor }}
-                        ></i>
-                        <span className="text-xs" style={{ color: colors.onSurfaceVariant }}>{content}</span>
-                    </div>
-                );
-            }
-            // Empty lines
-            if (!line.trim()) {
-                return <div key={i} className="h-1.5" />;
-            }
-            // Regular text
-            return <p key={i} className="text-xs py-0.5" style={{ color: colors.onSurfaceVariant }}>{line}</p>;
-        });
+    const components = {
+        h1: ({ node, ...props }: any) => <h2 className="text-lg font-bold mt-4 mb-2" style={{ color: colors.onSurface }} {...props} />,
+        h2: ({ node, ...props }: any) => (
+            <h3 className="text-base font-semibold mt-3 mb-2 flex items-center gap-2" style={{ color: colors.onSurface }} {...props}>
+                <i className="fa-solid fa-tag text-xs" style={{ color: colors.secondary }}></i>
+                {props.children}
+            </h3>
+        ),
+        h3: ({ node, ...props }: any) => <h4 className="text-sm font-medium mt-2 mb-1" style={{ color: colors.onSurface }} {...props} />,
+        ul: ({ node, ...props }: any) => <ul className="list-none space-y-1 my-2" {...props} />,
+        ol: ({ node, ...props }: any) => <ol className="list-decimal list-inside space-y-1 my-2" style={{ color: colors.onSurfaceVariant }} {...props} />,
+        li: ({ node, children, ...props }: any) => {
+            // Check if children content contains specific keywords for icons
+            // This is a bit complex with React children, so we might simplify or just use standard bullets
+            // But let's try to keep the icon logic if possible, or just use a nice bullet
+            return (
+                <li className="text-xs flex items-start gap-2" style={{ color: colors.onSurfaceVariant }} {...props}>
+                    <span className="mt-1.5 w-1 h-1 rounded-full shrink-0" style={{ backgroundColor: colors.onSurfaceVariant }}></span>
+                    <span className="flex-1">{children}</span>
+                </li>
+            );
+        },
+        p: ({ node, ...props }: any) => <p className="text-xs py-0.5" style={{ color: colors.onSurfaceVariant }} {...props} />,
+        a: ({ node, ...props }: any) => <a className="underline decoration-1 underline-offset-2" target="_blank" rel="noopener noreferrer" style={{ color: colors.primary }} {...props} />,
+        img: ({ node, ...props }: any) => (
+            <img
+                className="max-w-full rounded-lg my-2 border shadow-sm"
+                style={{ borderColor: colors.outline }}
+                alt={props.alt || ''}
+                {...props}
+            />
+        ),
+        blockquote: ({ node, ...props }: any) => (
+            <blockquote className="border-l-2 pl-3 py-1 my-2 text-xs italic" style={{ borderColor: colors.secondary, color: colors.onSurfaceVariant }} {...props} />
+        ),
+        code: ({ node, inline, className, children, ...props }: any) => {
+            return (
+                <code
+                    className={`${inline ? 'px-1 py-0.5 rounded' : 'block p-2 rounded-md overflow-x-auto'} text-xs font-mono`}
+                    style={{
+                        backgroundColor: colors.surfaceContainerHighest,
+                        color: colors.onSurface
+                    }}
+                    {...props}
+                >
+                    {children}
+                </code>
+            );
+        }
     };
 
     return (
@@ -165,7 +145,13 @@ export function ChangelogModal({
                     <p className="text-[10px] font-medium uppercase tracking-wider mb-2" style={{ color: colors.onSurfaceVariant }}>
                         มีอะไรใหม่
                     </p>
-                    {formatChangelog(changelog)}
+                    {changelog ? (
+                        <ReactMarkdown components={components}>
+                            {changelog}
+                        </ReactMarkdown>
+                    ) : (
+                        <p style={{ color: colors.onSurfaceVariant }}>ไม่มีรายละเอียดการอัปเดต</p>
+                    )}
                 </div>
 
                 {/* Footer */}

@@ -329,7 +329,7 @@ function LauncherAppContent() {
   const [processingInvitationId, setProcessingInvitationId] = useState<string | null>(null);
   // Refs to detect new items when polling
   const prevInvRef = useRef<string[]>([]);
-  const prevNotifRef = useRef<string[]>([]);
+  const prevNotificationIdsRef = useRef<string[]>([]);
 
   // State for CatID Register form
   const [catIDRegisterData, setCatIDRegisterData] = useState({
@@ -406,6 +406,29 @@ function LauncherAppContent() {
 
   // News data (will be fetched from API)
   const [news] = useState<NewsItem[]>([]);
+
+  // Agenda/Calendar data pre-fetching
+  const [agendas, setAgendas] = useState<any[]>([]);
+  const [isLoadingAgendas, setIsLoadingAgendas] = useState(false);
+
+  const fetchAgendas = useCallback(async () => {
+    setIsLoadingAgendas(true);
+    try {
+        const res = await (window as any).api?.fetchAllAgendas?.();
+        if (res && res.ok) {
+            setAgendas(res.agendas || []);
+            console.log("[LauncherApp] Refreshed global agendas:", res.agendas?.length);
+        }
+    } catch (err) {
+        console.error("[LauncherApp] Failed to fetch agendas:", err);
+    } finally {
+        setIsLoadingAgendas(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAgendas();
+  }, [fetchAgendas]);
 
 
   // Sync Config/Session from Electron API on mount (if available)
@@ -487,7 +510,7 @@ function LauncherAppContent() {
     const fetchAndNotify = async () => {
       if (!session) {
         setUserNotifications([]);
-        prevNotifRef.current = [];
+        prevNotificationIdsRef.current = [];
         return;
       }
 
@@ -495,7 +518,7 @@ function LauncherAppContent() {
       try {
         const data = await window.api?.notificationsFetchUser?.();
         if (data) {
-          const prevIds = prevNotifRef.current || [];
+          const prevIds = prevNotificationIdsRef.current || [];
           const added = data.filter((n: any) => !prevIds.includes(n.id));
 
           // Only show toast for newly added unread notifications
@@ -507,7 +530,7 @@ function LauncherAppContent() {
             });
           }
 
-          prevNotifRef.current = data.map((d: any) => d.id);
+          prevNotificationIdsRef.current = data.map((d: any) => d.id);
           setUserNotifications(data);
           console.log("[Notifications] Loaded user notifications:", data.length);
         }
@@ -720,7 +743,7 @@ function LauncherAppContent() {
     if (!window.api) return;
 
     // Listen for update available
-    const unsubAvailable = window.api.onUpdateAvailable?.((data: { version: string }) => {
+    const unsubscribeAvailable = window.api.onUpdateAvailable?.((data: { version: string }) => {
       toast.success(
         t('update_available_msg').replace('{version}', data.version),
         { duration: 6000, id: "update-available" }
@@ -728,7 +751,7 @@ function LauncherAppContent() {
     });
 
     // Listen for update downloaded
-    const unsubDownloaded = window.api.onUpdateDownloaded?.((data: { version: string }) => {
+    const unsubscribeDownloaded = window.api.onUpdateDownloaded?.((data: { version: string }) => {
       toast.success(
         t('update_downloaded_msg').replace('{version}', data.version),
         { duration: 8000, id: "update-downloaded" }
@@ -736,20 +759,20 @@ function LauncherAppContent() {
     });
 
     // Listen for update not available
-    const unsubNotAvailable = window.api.onUpdateNotAvailable?.(() => {
+    const unsubscribeNotAvailable = window.api.onUpdateNotAvailable?.(() => {
       toast.success(t('already_latest_version'), { id: "check-update" });
     });
 
     // Listen for update error
-    const unsubError = window.api.onUpdateError?.((data: { message: string }) => {
+    const unsubscribeError = window.api.onUpdateError?.((data: { message: string }) => {
       toast.error(t('update_check_failed_msg').replace('{message}', data.message), { id: "check-update" });
     });
 
     return () => {
-      unsubAvailable?.();
-      unsubDownloaded?.();
-      unsubNotAvailable?.();
-      unsubError?.();
+      unsubscribeAvailable?.();
+      unsubscribeDownloaded?.();
+      unsubscribeNotAvailable?.();
+      unsubscribeError?.();
     };
   }, []);
 
@@ -795,7 +818,11 @@ function LauncherAppContent() {
             setDeviceCodeData(null);
             setDeviceCodeError(null);
 
-            toast.success(t('welcome_user').replace('{username}', newSession.username));
+            if (result.linkSwitched) {
+              toast.success(t('link_success') + ` (ย้ายการเชื่อมต่อจากบัญชี ${result.oldCatID})`);
+            } else {
+              toast.success(t('welcome_user').replace('{username}', newSession.username));
+            }
           } else if (result.status === "expired") {
             setDeviceCodePolling(false);
             setDeviceCodeError(result.error || t('error_expired_code'));
@@ -1137,7 +1164,11 @@ function LauncherAppContent() {
 
       const res = await (window as any).api.linkCatID(username, password);
       if (res?.ok) {
-        toast.success(t('link_success'), { id: loader });
+        if (res.linkSwitched) {
+          toast.success(t('link_success') + ` (ย้ายการเชื่อมต่อจากบัญชี ${res.oldCatID})`, { id: loader, icon: '🔄' });
+        } else {
+          toast.success(t('link_success'), { id: loader });
+        }
         setLinkCatIDOpen(false);
 
         // Refresh session
@@ -1184,13 +1215,16 @@ function LauncherAppContent() {
           const res = await window.api?.authUnlink(provider);
           if (res?.ok) {
             toast.success(t('unlink_success'));
-            // Refresh session and accounts without hard reload
+            
+            // Refresh session and accounts
             const updatedSession = (await window.api?.getSession()) ?? null;
             setSession(updatedSession);
-            if (updatedSession) {
-              setAccounts(accounts.map(acc =>
-                acc.uuid === updatedSession.uuid ? updatedSession : acc
-              ));
+
+            // Important: updateAccount handles robust deduplication AND matches the account in the list
+            if (res.updatedAccount) {
+              updateAccount(res.updatedAccount);
+            } else if (updatedSession) {
+              updateAccount(updatedSession);
             }
           } else {
             toast.error(`${res?.error || t('unlink_failed')} (Token: ${session?.apiToken})`);
@@ -2074,7 +2108,13 @@ function LauncherAppContent() {
               {session && (
                 <div className="relative">
                   <button
-                    onClick={() => setCalendarOpen(!calendarOpen)}
+                    onClick={() => {
+                        const newState = !calendarOpen;
+                        setCalendarOpen(newState);
+                        if (newState) {
+                            fetchAgendas();
+                        }
+                    }}
                     className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 hover:bg-black/10 ${calendarOpen ? 'bg-black/10 scale-110' : ''}`}
                     style={{ color: colors.onSurfaceVariant }}
                     title={config.language === 'th' ? "ปฏิทิน" : "Calendar"}
@@ -2087,6 +2127,10 @@ function LauncherAppContent() {
                       onClose={() => setCalendarOpen(false)}
                       colors={colors}
                       language={config.language}
+                      instanceId={selectedInstance?.id}
+                      instanceName={selectedInstance?.name}
+                      preFetchedAgendas={agendas}
+                      isPreLoading={isLoadingAgendas}
                     />
                   )}
                 </div>

@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import rIcon from "../../assets/r.svg";
 import { Icons } from "../ui/Icons";
 import { playClick } from "../../lib/sounds";
@@ -18,15 +19,9 @@ export function Sidebar({ colors, onTabSelect }: SidebarProps) {
     const { t } = useTranslation(config.language);
     const { activeTab, setActiveTab } = useUiStore();
     const { session, accounts } = useAuthStore();
+    const [hoveredTab, setHoveredTab] = useState<string | null>(null);
 
     // Calculate isAdmin based on session logic as done in LauncherApp
-    // Or better, we trust the session.isAdmin flag if we set it correctly during login/switch
-    // In LauncherApp, isAdmin state was used.
-    // Let's check session?.isAdmin (we added this to the type or logic previously?)
-    // In LauncherApp logic: setIsAdmin(adminCheck?.isAdmin)
-    // We should rely on session property if possible, but the store logic I wrote didn't explicitly add 'isAdmin' to AuthSession type definition (it wasn't in list but used in code).
-    // Type definition: 'isAdmin' is optional in AuthSession?
-    // Let's assume yes or rely on the fact that we can derive it.
     const isAdmin = session?.isAdmin || false;
 
     const mainNavItems = [
@@ -42,6 +37,35 @@ export function Sidebar({ colors, onTabSelect }: SidebarProps) {
         { id: "about", icon: Icons.Info, label: t('about') },
     ];
 
+    const renderTooltip = (id: string, label: string) => (
+        <AnimatePresence>
+            {hoveredTab === id && (
+                <motion.div
+                    initial={{ opacity: 0, x: 10, y: "-50%", scale: 0.95 }}
+                    animate={{ opacity: 1, x: 0, y: "-50%", scale: 1 }}
+                    exit={{ opacity: 0, x: 5, y: "-50%", scale: 0.95 }}
+                    transition={{ duration: 0.15, ease: "easeOut" }}
+                    className="absolute ml-3 px-3 py-1.5 rounded-lg whitespace-nowrap z-50 pointer-events-none select-none shadow-xl border border-white/10"
+                    style={{
+                        backgroundColor: "rgba(0, 0, 0, 0.9)",
+                        color: "#fff",
+                        fontSize: "0.75rem",
+                        backdropFilter: "blur(4px)",
+                        left: "100%",
+                        top: "50%",
+                        // transform: "translateY(-50%)", // Removed to avoid conflict with framer-motion
+                        // Force layout properties
+                        position: "absolute",
+                        display: "block",
+                        visibility: "visible"
+                    }}
+                >
+                    {label}
+                </motion.div>
+            )}
+        </AnimatePresence>
+    );
+
     return (
         <nav className="w-20 flex flex-col items-center" style={{ backgroundColor: colors.secondary }}>
             {/* Top Section - Logo and Main Nav */}
@@ -49,38 +73,46 @@ export function Sidebar({ colors, onTabSelect }: SidebarProps) {
                 {/* Drag region for sidebar top */}
                 <div className="w-full pt-2 pb-2 flex justify-center drag-region">
                     <div className="w-12 h-12 rounded-2xl overflow-hidden">
-                        <img src={rIcon.src} alt="Logo" className="w-full h-full object-cover" />
+                        <img src={rIcon.src} alt="Logo" className="w-full h-full object-cover select-none" draggable={false} style={{ WebkitUserDrag: "none" } as React.CSSProperties} />
                     </div>
                 </div>
 
                 {/* Main Navigation Items */}
                 {mainNavItems.map(({ id, icon: Icon, label }: { id: string, icon: any, label: string }) => (
-                    <div key={id} className="relative group">
+                    <div 
+                        key={id} 
+                        className="relative group select-none"
+                        onDragStart={(e) => e.preventDefault()}
+                        draggable={false}
+                        style={{ WebkitUserDrag: "none" } as React.CSSProperties}
+                        onMouseEnter={() => setHoveredTab(id)}
+                        onMouseLeave={() => setHoveredTab(null)}
+                    >
                         <button
+                            title=""
                             onClick={() => { 
                                 playClick(); 
                                 setActiveTab(id);
                                 onTabSelect?.(id);
                             }}
-                            className="w-14 h-14 rounded-2xl flex items-center justify-center transition-all hover:scale-105 no-drag"
+                            onDragStart={(e) => e.preventDefault()}
+                            draggable={false}
+                            className="w-14 h-14 rounded-2xl flex items-center justify-center no-drag relative select-none"
                             style={{
-                                backgroundColor: activeTab === id ? "rgba(255,255,255,0.9)" : "transparent",
-                                color: "#1a1a1a"
-                            }}
+                                color: "#1a1a1a",
+                                WebkitUserDrag: "none"
+                            } as React.CSSProperties}
                         >
-                            <Icon className="w-6 h-6" />
+                            {activeTab === id && (
+                                <motion.div
+                                    layoutId="active-tab-indicator"
+                                    className="absolute inset-0 bg-white/90 rounded-2xl"
+                                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                />
+                            )}
+                            <Icon className="w-6 h-6 z-10 relative pointer-events-none select-none" />
                         </button>
-                        {/* Hover Tooltip */}
-                        <div
-                            className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-3 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 translate-x-2 group-hover:translate-x-0 transition-all duration-200 pointer-events-none z-50"
-                            style={{
-                                backgroundColor: "rgba(0,0,0,0.8)",
-                                color: "#fff",
-                                fontSize: "0.75rem"
-                            }}
-                        >
-                            {label}
-                        </div>
+                        {renderTooltip(id, label)}
                     </div>
                 ))}
             </div>
@@ -88,32 +120,40 @@ export function Sidebar({ colors, onTabSelect }: SidebarProps) {
             {/* Bottom Section - Settings and About */}
             <div className="flex-col items-center gap-2 pb-4 flex">
                 {bottomNavItems.map(({ id, icon: Icon, label }: { id: string, icon: any, label: string }) => (
-                    <div key={id} className="relative group">
+                    <div 
+                        key={id} 
+                        className="relative group select-none"
+                        onDragStart={(e) => e.preventDefault()}
+                        draggable={false}
+                        style={{ WebkitUserDrag: "none" } as React.CSSProperties}
+                        onMouseEnter={() => setHoveredTab(id)}
+                        onMouseLeave={() => setHoveredTab(null)}
+                    >
                         <button
+                            title=""
                             onClick={() => { 
                                 playClick(); 
                                 setActiveTab(id);
                                 onTabSelect?.(id);
                             }}
-                            className="w-14 h-14 rounded-2xl flex items-center justify-center transition-all hover:scale-105 no-drag"
+                            onDragStart={(e) => e.preventDefault()}
+                            draggable={false}
+                            className="w-14 h-14 rounded-2xl flex items-center justify-center no-drag relative select-none"
                             style={{
-                                backgroundColor: activeTab === id ? "rgba(255,255,255,0.9)" : "transparent",
-                                color: "#1a1a1a"
-                            }}
+                                color: "#1a1a1a",
+                                WebkitUserDrag: "none"
+                            } as React.CSSProperties}
                         >
-                            <Icon className="w-6 h-6" />
+                            {activeTab === id && (
+                                <motion.div
+                                    layoutId="active-tab-indicator"
+                                    className="absolute inset-0 bg-white/90 rounded-2xl"
+                                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                />
+                            )}
+                            <Icon className="w-6 h-6 z-10 relative pointer-events-none select-none" />
                         </button>
-                        {/* Hover Tooltip */}
-                        <div
-                            className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-3 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 translate-x-2 group-hover:translate-x-0 transition-all duration-200 pointer-events-none z-50"
-                            style={{
-                                backgroundColor: "rgba(0,0,0,0.8)",
-                                color: "#fff",
-                                fontSize: "0.75rem"
-                            }}
-                        >
-                            {label}
-                        </div>
+                        {renderTooltip(id, label)}
                     </div>
                 ))}
             </div>

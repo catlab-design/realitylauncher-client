@@ -11,6 +11,8 @@ export interface InstallProgress {
     current?: number;
     total?: number;
     percent?: number;
+    type?: string; // Translation key
+    filename?: string;
 }
 
 export interface InstallProgressModalProps {
@@ -66,7 +68,7 @@ export function InstallProgressModal({ colors, installProgress, title, isBytes, 
                             {title || t('installing_modpack')}
                         </h3>
                         <p className="text-sm truncate" style={{ color: colors.onSurfaceVariant }} title={installProgress.message}>
-                            {installProgress.message}
+                            {installProgress.type ? t(installProgress.type as any, { filename: installProgress.filename, current: installProgress.current, total: installProgress.total } as any) : installProgress.message}
                         </p>
                     </div>
                 </div>

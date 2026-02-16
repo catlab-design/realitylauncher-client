@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { playClick } from "../../lib/sounds";
+import SimpleMarkdown from "./SimpleMarkdown";
 
 interface Invitation {
     id: string;
@@ -275,9 +276,12 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <h4 className="font-bold text-sm mb-1 leading-snug" style={{ color: colors.onSurface }}>{announcement.title}</h4>
-                                                    <p className="text-xs leading-relaxed opacity-80 whitespace-pre-wrap" style={{ color: colors.onSurfaceVariant }}>
-                                                        {announcement.message}
-                                                    </p>
+                                                    <div style={{ color: colors.onSurfaceVariant }}>
+                                                        <SimpleMarkdown
+                                                            content={announcement.message || ""}
+                                                            className="text-xs opacity-80"
+                                                        />
+                                                    </div>
                                                     <p className="text-[10px] mt-2 font-medium opacity-50" style={{ color: colors.onSurfaceVariant }}>
                                                         {formatRelativeTime(announcement.createdAt)}
                                                     </p>

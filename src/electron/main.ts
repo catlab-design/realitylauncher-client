@@ -28,6 +28,179 @@ import {
 // Create main process logger
 const logger = createLogger("Main");
 
+if (!app || typeof app.on !== "function") {
+  throw new Error(
+    "Electron app API is unavailable. This usually means ELECTRON_RUN_AS_NODE is set. Unset it before launching Reality Launcher.",
+  );
+}
+
+// ========================================
+// Linux Display Backend Bootstrap
+// ========================================
+
+const WAYLAND_X11_FALLBACK_ARG = "--reality-wayland-x11-fallback";
+const WAYLAND_WINDOW_SHOW_TIMEOUT_MS = 30000;
+
+const linuxDisplayBackendState = {
+  isLinux: process.platform === "linux",
+  isWaylandSession: false,
+  usingWayland: false,
+  requestedOzonePlatform: "",
+};
+
+function hasWaylandFallbackArg(): boolean {
+  return process.argv.includes(WAYLAND_X11_FALLBACK_ARG);
+}
+
+function readCliSwitchValue(switchName: string): string {
+  const normalized = switchName.startsWith("--")
+    ? switchName
+    : `--${switchName}`;
+
+  for (let i = 1; i < process.argv.length; i += 1) {
+    const arg = process.argv[i];
+    if (!arg) continue;
+
+    if (arg.startsWith(`${normalized}=`)) {
+      return arg.slice(normalized.length + 1).trim().toLowerCase();
+    }
+
+    if (arg === normalized && i + 1 < process.argv.length) {
+      return (process.argv[i + 1] || "").trim().toLowerCase();
+    }
+  }
+
+  return "";
+}
+
+function buildX11FallbackArgs(): string[] {
+  const baseArgs: string[] = [];
+
+  for (let i = 1; i < process.argv.length; i += 1) {
+    const arg = process.argv[i];
+    if (!arg) continue;
+
+    if (
+      arg.startsWith("--ozone-platform=") ||
+      arg.startsWith("--ozone-platform-hint=") ||
+      arg === WAYLAND_X11_FALLBACK_ARG
+    ) {
+      continue;
+    }
+
+    if (arg === "--ozone-platform" || arg === "--ozone-platform-hint") {
+      i += 1;
+      continue;
+    }
+
+    baseArgs.push(arg);
+  }
+
+  baseArgs.push("--ozone-platform=x11", WAYLAND_X11_FALLBACK_ARG);
+  return baseArgs;
+}
+
+function relaunchWithX11Fallback(reason: string): boolean {
+  if (!linuxDisplayBackendState.isLinux) return false;
+
+  if (hasWaylandFallbackArg()) {
+    logger.warn("X11 fallback already attempted, skip relaunch", { reason });
+    return false;
+  }
+
+  if (!process.env.DISPLAY) {
+    logger.error("Cannot fallback to X11 because DISPLAY is missing", undefined, {
+      reason,
+    });
+    return false;
+  }
+
+  const relaunchArgs = buildX11FallbackArgs();
+  logger.warn("Relaunching with X11 fallback due to Wayland startup issue", {
+    reason,
+    args: relaunchArgs,
+  });
+  app.relaunch({ args: relaunchArgs });
+  app.exit(0);
+  return true;
+}
+
+function configureLinuxDisplayBackend(): void {
+  if (!linuxDisplayBackendState.isLinux) return;
+
+  const xdgSessionType = (process.env.XDG_SESSION_TYPE || "").toLowerCase();
+  const isWaylandSession =
+    Boolean(process.env.WAYLAND_DISPLAY) || xdgSessionType === "wayland";
+  const cliRequestedOzonePlatform = readCliSwitchValue("ozone-platform");
+  const envRequestedOzonePlatform = (
+    process.env.ELECTRON_OZONE_PLATFORM ||
+    process.env.OZONE_PLATFORM ||
+    ""
+  ).toLowerCase();
+  const requestedOzonePlatform =
+    cliRequestedOzonePlatform || envRequestedOzonePlatform;
+
+  linuxDisplayBackendState.isWaylandSession = isWaylandSession;
+  linuxDisplayBackendState.requestedOzonePlatform = requestedOzonePlatform;
+
+  if (requestedOzonePlatform === "x11") {
+    linuxDisplayBackendState.usingWayland = false;
+    logger.info("Linux display backend explicitly set to X11", {
+      sessionType: xdgSessionType || "unknown",
+      waylandDetected: isWaylandSession,
+      requestedOzonePlatform,
+    });
+    return;
+  }
+
+  if (!(isWaylandSession || requestedOzonePlatform === "wayland")) {
+    linuxDisplayBackendState.usingWayland = false;
+    logger.info("Linux display backend", {
+      sessionType: xdgSessionType || "unknown",
+      waylandDetected: false,
+    });
+    return;
+  }
+
+  linuxDisplayBackendState.usingWayland = true;
+
+  app.commandLine.appendSwitch(
+    "enable-features",
+    "UseOzonePlatform,WaylandWindowDecorations",
+  );
+  app.commandLine.appendSwitch("ozone-platform-hint", "auto");
+  app.commandLine.appendSwitch("ozone-platform", "wayland");
+
+  // Improve stability on older iGPU/Nouveau stacks when running under Wayland.
+  app.commandLine.appendSwitch("disable-gpu-compositing");
+
+  logger.info("Wayland session detected, configured Ozone flags", {
+    sessionType: xdgSessionType || "unknown",
+    waylandDisplay: process.env.WAYLAND_DISPLAY || null,
+    requestedOzonePlatform: requestedOzonePlatform || null,
+    fallbackAttempted: hasWaylandFallbackArg(),
+  });
+}
+
+configureLinuxDisplayBackend();
+
+function monitorWaylandStartupWindow(win: BrowserWindow): void {
+  if (!linuxDisplayBackendState.usingWayland) return;
+  if (hasWaylandFallbackArg()) return;
+
+  const timer = setTimeout(() => {
+    if (win.isDestroyed() || win.isVisible()) return;
+    logger.warn("Main window did not become visible on Wayland in time", {
+      timeoutMs: WAYLAND_WINDOW_SHOW_TIMEOUT_MS,
+    });
+    relaunchWithX11Fallback("window-not-visible-timeout");
+  }, WAYLAND_WINDOW_SHOW_TIMEOUT_MS);
+
+  const clearTimer = () => clearTimeout(timer);
+  win.once("show", clearTimer);
+  win.once("closed", clearTimer);
+}
+
 // Start app trace
 const appTrace = startTrace("app:startup", { pid: process.pid });
 
@@ -50,6 +223,20 @@ process.on("unhandledRejection", (reason) => {
   logger.error("Unhandled promise rejection", reason as Error);
 });
 
+app.on("child-process-gone", (_event, details) => {
+  if (!linuxDisplayBackendState.usingWayland) return;
+  if (hasWaylandFallbackArg()) return;
+
+  if (details.type !== "GPU") return;
+  if (mainWindow && mainWindow.isVisible()) return;
+
+  logger.warn("GPU process exited during Wayland startup", {
+    reason: details.reason,
+    exitCode: details.exitCode,
+  });
+  relaunchWithX11Fallback(`gpu-process-gone:${details.reason}`);
+});
+
 // ปิด Hardware Acceleration เพื่อแก้ปัญหาเส้นประบน screen
 app.disableHardwareAcceleration();
 
@@ -64,7 +251,7 @@ import { getConfig } from "./config.js";
 import { initAuth, getSession, getApiToken } from "./auth.js";
 
 // Discord RPC
-import { initDiscordRPC, destroyRPC } from "./discord.js";
+import { initDiscordRPC, destroyRPC, setPlayerInfo } from "./discord.js";
 
 // Game Launcher - for callbacks
 import { resetLauncherState, setOnGameCloseCallback } from "./launcher.js";
@@ -83,7 +270,7 @@ import { initTelemetry, cleanupTelemetry } from "./telemetry.js";
 // Constants
 // ========================================
 
-const isDev = !app.isPackaged;
+const isDev = !app.isPackaged && process.env.ML_CLIENT_FORCE_PROD !== "1";
 
 // ========================================
 // Window Management
@@ -207,6 +394,10 @@ app.whenReady().then(async () => {
 
   // Initialize Discord RPC
   const config = getConfig();
+  const rpcSession = getSession();
+  if (rpcSession) {
+    setPlayerInfo(rpcSession.minecraftUuid || rpcSession.uuid, rpcSession.username);
+  }
   if (config.discordRPCEnabled) {
     await initDiscordRPC();
   }
@@ -216,6 +407,7 @@ app.whenReady().then(async () => {
 
   // Create window shell first, but delay loading UI until IPC handlers are ready.
   mainWindow = createWindow();
+  monitorWaylandStartupWindow(mainWindow);
 
   // Register all IPC handlers from modules before renderer starts invoking them.
   await registerAllHandlers(() => mainWindow); // Now async

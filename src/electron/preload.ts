@@ -111,7 +111,8 @@ const api = {
   discordRPCUpdate: (
     status: "idle" | "playing" | "launching",
     serverName?: string,
-  ) => ipcRenderer.invoke("discord-rpc-update", status, serverName),
+    serverIcon?: string,
+  ) => ipcRenderer.invoke("discord-rpc-update", status, serverName, serverIcon),
   discordRPCIsConnected: () => ipcRenderer.invoke("discord-rpc-is-connected"),
 
   // ----------------------------------------
@@ -358,6 +359,9 @@ const api = {
 
     return _instancesCachePromise;
   },
+  fetchInstanceAgendas: (instanceId: string) =>
+    ipcRenderer.invoke("fetch-instance-agendas", instanceId),
+  fetchAllAgendas: () => ipcRenderer.invoke("fetch-all-agendas"),
   instancesGetJoinedServers: () => ipcRenderer.invoke("instances-get-joined"),
   instancesCloudInstall: (id: string) =>
     ipcRenderer.invoke("instances-cloud-install", id),

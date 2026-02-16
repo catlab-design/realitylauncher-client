@@ -72,7 +72,7 @@ export function LoadingScreen({ onComplete, themeColor }: LoadingScreenProps) {
     return (
         <div className="loading-screen fixed inset-0 z-50 flex flex-col" style={{ backgroundColor: themeColor }}>
             {/* Title Bar Drag Region with Window Controls */}
-            <div className="h-10 w-full flex-shrink-0 flex items-center justify-end pr-0 drag-region">
+            <div className="h-10 w-full shrink-0 flex items-center justify-end pr-0 drag-region">
                 {/* Window Control Buttons */}
                 <div className="flex items-center gap-0 no-drag">
                     {/* Minimize */}
@@ -100,7 +100,7 @@ export function LoadingScreen({ onComplete, themeColor }: LoadingScreenProps) {
                     {/* Close */}
                     <button
                         onClick={() => window.api?.windowClose()}
-                        className="w-12 h-10 flex items-center justify-center transition-all hover:bg-red-500 hover:!text-white"
+                        className="w-12 h-10 flex items-center justify-center transition-all hover:bg-red-500 hover:text-white!"
                         style={{ color: "#1a1a1a" }}
                         title="ปิดหน้าต่าง"
                     >

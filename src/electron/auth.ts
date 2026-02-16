@@ -348,6 +348,14 @@ export function setActiveSession(session: AuthSession): void {
     currentSession = session;
     saveSession();
     console.log("[Auth] Active session switched to:", session.username);
+
+    // Update Discord RPC player info
+    try {
+        const { setPlayerInfo } = require("./discord.js");
+        setPlayerInfo(session.minecraftUuid || session.uuid, session.username);
+    } catch {
+        // Discord module may not be loaded yet
+    }
 }
 
 /**

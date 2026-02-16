@@ -5,7 +5,7 @@ import { Icons } from "../ui/Icons";
 import { MCHead } from "../ui/MCHead";
 
 import rBackground from "../../assets/r_background.svg";
-import qTeamLogo from "../../assets/QTeam_logo.png";
+
 import rdcwLogo from "../../assets/rdcw_logo_transparent.webp";
 
 interface TeamMember {
@@ -141,26 +141,7 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
                     </div>
 
                     <div className="flex flex-wrap items-center justify-center gap-10 px-2 text-center">
-                        {/* Q Team */}
-                        <div
-                            className="group flex flex-col items-center gap-4 cursor-pointer"
-                            onClick={() => (window as any).api.openExternal('https://qteamwork.space')}
-                        >
-                            <img
-                                src={qTeamLogo.src}
-                                alt="Q Team"
-                                className="h-16 w-auto drop-shadow-xl transition-all duration-500 group-hover:scale-105"
-                            />
-                            <div className="flex flex-col items-center gap-1 transition-all">
-                                <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-all">
-                                    {/* Ghost element for optical centering vs icon */}
-                                    <div className="w-2.5 h-2.5" />
-                                    <span className="text-[10px] font-black opacity-80 uppercase tracking-[0.1em]" style={{ color: colors.onSurface }}>Q Team Studio</span>
-                                    <Icons.ExternalLink className="w-2.5 h-2.5" />
-                                </div>
-                                <span className="text-[9px] font-bold opacity-40 uppercase tracking-[0.1em]" style={{ color: colors.onSurface }}>{t('about_owner')}</span>
-                            </div>
-                        </div>
+
 
                         {/* RDCW */}
                         <div

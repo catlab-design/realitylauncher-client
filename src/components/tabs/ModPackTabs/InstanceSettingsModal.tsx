@@ -930,7 +930,7 @@ export function InstanceSettingsModal({
             {/* Minimized floating progress widget */}
             {isExporting && minimized && (
                 <div
-                    className="fixed bottom-6 right-6 z-[60] w-80 rounded-2xl shadow-2xl overflow-hidden border border-white/10 animate-fade-in-up cursor-pointer transition-transform hover:scale-105"
+                    className="fixed bottom-6 right-6 z-60 w-80 rounded-2xl shadow-2xl overflow-hidden border border-white/10 animate-fade-in-up cursor-pointer transition-transform hover:scale-105"
                     style={{ backgroundColor: colors.surfaceContainer }}
                     onClick={() => setMinimized(false)}
                 >
