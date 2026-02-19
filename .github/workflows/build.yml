@@ -84,9 +84,41 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
-      - name: Build Electron app (Windows)
+      - name: Cache Electron binaries (Windows)
         if: matrix.platform == 'win'
-        run: bun run dist:win
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\AppData\Local\electron\Cache
+            ~\AppData\Local\electron-builder\Cache
+          key: ${{ runner.os }}-electron-cache-${{ hashFiles('package.json', 'package-lock.json', 'bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-cache-
+
+      - name: Build Electron app (Windows, with retry)
+        if: matrix.platform == 'win'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $maxAttempts = 3
+
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            Write-Host "Running dist:win (attempt $attempt/$maxAttempts)"
+            bun run dist:win
+
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "dist:win succeeded on attempt $attempt"
+              exit 0
+            }
+
+            if ($attempt -lt $maxAttempts) {
+              $waitSeconds = 20 * $attempt
+              Write-Host "dist:win failed with exit code $LASTEXITCODE. Retrying in $waitSeconds seconds..."
+              Start-Sleep -Seconds $waitSeconds
+            }
+          }
+
+          throw "dist:win failed after $maxAttempts attempts."
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
