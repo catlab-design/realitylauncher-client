@@ -44,6 +44,8 @@ interface InstanceDetailProps {
     onDuplicate: (id: string) => void;
     onUpdate: (id: string, updates: Partial<GameInstance>) => void;
     onExport: (id: string, options: any) => Promise<void>;
+    onViewLogs: (id: string) => void;
+    onRepair?: (id: string) => void;
     launchingId: string | null;
     isGameRunning: boolean;
     playingInstanceId: string | null;
@@ -65,9 +67,11 @@ export function InstanceDetail({
     onDuplicate,
     onUpdate,
     onExport,
+    onViewLogs,
     launchingId,
     isGameRunning,
     playingInstanceId,
+    onRepair,
 }: InstanceDetailProps) {
     const { t } = useTranslation(config.language);
     // Mods state
@@ -567,6 +571,16 @@ export function InstanceDetail({
                                 <Icons.Folder className="w-5 h-5" />
                             </button>
 
+                            {/* View Logs button */}
+                            <button
+                                onClick={() => { playClick(); onViewLogs(instance.id); }}
+                                className="w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:bg-white/5 active:scale-95"
+                                style={{ border: `1px solid ${colors.outline}30`, color: colors.onSurface }}
+                                title={t('view_logs')}
+                            >
+                                <Icons.Terminal className="w-5 h-5" />
+                            </button>
+
                             {/* Settings button */}
                             <button
                                 onClick={() => { playClick(); setShowSettings(true); }}
@@ -662,6 +676,16 @@ export function InstanceDetail({
                             title={t('open_folder')}
                         >
                             <Icons.Folder className="w-5 h-5" />
+                        </button>
+
+                        {/* View Logs button */}
+                        <button
+                            onClick={() => { playClick(); onViewLogs(instance.id); }}
+                            className="w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:bg-white/5 active:scale-95"
+                            style={{ border: `1px solid ${colors.outline}30`, color: colors.onSurface }}
+                            title={t('view_logs')}
+                        >
+                            <Icons.Terminal className="w-5 h-5" />
                         </button>
 
                         {/* Settings button */}
@@ -839,6 +863,8 @@ export function InstanceDetail({
                         onDuplicate={onDuplicate}
                         onExport={onExport}
                         language={config.language}
+                        config={config}
+                        onRepair={onRepair}
                     />
                 )
             }

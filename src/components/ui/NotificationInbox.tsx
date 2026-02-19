@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { playClick } from "../../lib/sounds";
 import SimpleMarkdown from "./SimpleMarkdown";
+import { useTranslation } from "../../hooks/useTranslation";
 
 interface Invitation {
     id: string;
@@ -36,6 +37,7 @@ interface NotificationInboxProps {
 }
 
 export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNotificationChanged, colors, announcements = [], notifications = [], isFullscreen = false }: NotificationInboxProps) {
+    const { t, language } = useTranslation();
     const [activeTab, setActiveTab] = useState<'news' | 'system'>('system');
     const [invitations, setInvitations] = useState<Invitation[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -131,12 +133,12 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
         const diffHours = Math.floor(diffMs / 3600000);
         const diffDays = Math.floor(diffMs / 86400000);
 
-        if (diffMins < 1) return 'เมื่อสักครู่';
-        if (diffMins < 60) return `${diffMins} นาทีที่แล้ว`;
-        if (diffHours < 24) return `${diffHours} ชั่วโมงที่แล้ว`;
-        if (diffDays < 7) return `${diffDays} วันที่แล้ว`;
+        if (diffMins < 1) return t('just_now');
+        if (diffMins < 60) return t('minutes_ago').replace('{count}', String(diffMins));
+        if (diffHours < 24) return t('hours_ago').replace('{count}', String(diffHours));
+        if (diffDays < 7) return t('days_ago').replace('{count}', String(diffDays));
 
-        return date.toLocaleDateString('th-TH', {
+        return date.toLocaleDateString(language === 'th' ? 'th-TH' : 'en-US', {
             year: 'numeric',
             month: 'short',
             day: 'numeric'
@@ -169,14 +171,14 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                     }}
                 >
                     <h3 className="font-bold text-lg" style={{ color: colors.onSurface }}>
-                        การแจ้งเตือน
+                        {t('news_and_notifications')}
                     </h3>
                     <div className="flex items-center gap-2">
                         <button
                             onClick={fetchInvitations}
                             disabled={isLoading}
                             className="p-2 rounded-xl hover:bg-white/10 transition-all disabled:opacity-50 active:scale-95"
-                            title="รีเฟรชข้อมูล"
+                            title={t('refresh')}
                         >
                             <svg
                                 className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`}
@@ -211,7 +213,7 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
                         </svg>
-                        ข่าวสาร
+                        {t('news_and_updates')}
                         {announcements.length > 0 && (
                             <span className="bg-red-500 text-white text-[10px] px-1.5 rounded-full font-bold shadow-sm">{announcements.length}</span>
                         )}
@@ -228,7 +230,7 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
-                        ระบบ
+                        {t('system')}
                         {(invitations.length + notifications.length) > 0 && (
                             <span className="bg-red-500 text-white text-[10px] px-1.5 rounded-full font-bold shadow-sm">
                                 {invitations.length + notifications.length}
@@ -297,7 +299,7 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
                                         </svg>
                                     </div>
-                                    <p className="text-sm font-medium">ยังไม่มีข่าวสารใหม่</p>
+                                    <p className="text-sm font-medium">{t('no_news_yet')}</p>
                                 </div>
                             )}
                         </div>
@@ -309,7 +311,7 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                                 <div className="py-12 flex flex-col items-center justify-center" style={{ color: colors.onSurfaceVariant }}>
                                     <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin mb-3"
                                         style={{ color: colors.primary }} />
-                                    <p className="text-sm opacity-60">กำลังโหลดข้อมูล...</p>
+                                    <p className="text-sm opacity-60">{t('loading')}</p>
                                 </div>
                             ) : invitations.length === 0 && notifications.length === 0 ? (
                                 <div className="py-12 flex flex-col items-center justify-center opacity-40" style={{ color: colors.onSurfaceVariant }}>
@@ -318,7 +320,7 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
                                         </svg>
                                     </div>
-                                    <p className="text-sm font-medium">ไม่มีการแจ้งเตือนระบบ</p>
+                                    <p className="text-sm font-medium">{t('no_system_notifications')}</p>
                                 </div>
                             ) : (
                                 <>
@@ -353,10 +355,14 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                                                 {/* Content */}
                                                 <div className="flex-1 min-w-0">
                                                     <p className="text-sm font-bold truncate mb-1" style={{ color: colors.onSurface }}>
-                                                        เชิญร่วม {invitation.instanceName}
+                                                        {t('invited_to_instance').replace('{instance}', invitation.instanceName)}
                                                     </p>
                                                     <p className="text-xs opacity-80 mb-2" style={{ color: colors.onSurfaceVariant }}>
-                                                        {invitation.inviterName ? `โดย ${invitation.inviterName}` : 'คำเชิญใหม่'} • <span className="px-1.5 py-0.5 rounded bg-white/10">{invitation.role === 'admin' ? 'ผู้ดูแล' : 'สมาชิก'}</span>
+                                                        {invitation.inviterName
+                                                            ? t('invited_by').replace('{name}', invitation.inviterName)
+                                                            : t('new_invitation')}
+                                                        {" • "}
+                                                        <span className="px-1.5 py-0.5 rounded bg-white/10">{invitation.role === 'admin' ? t('admin') : t('member_badge')}</span>
                                                     </p>
 
                                                     {/* Actions */}
@@ -374,7 +380,7 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                                                                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                                                                     </svg>
-                                                                    รับคำเชิญ
+                                                                    {t('accept_invitation')}
                                                                 </>
                                                             )}
                                                         </button>
@@ -391,7 +397,7 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                                                                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
                                                                     </svg>
-                                                                    ปฏิเสธ
+                                                                    {t('reject_invitation')}
                                                                 </>
                                                             )}
                                                         </button>
@@ -426,7 +432,7 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                                                     className="absolute top-2 right-2 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500 hover:text-white"
                                                     style={{ color: colors.onSurfaceVariant }}
                                                     disabled={processingId === notification.id}
-                                                    title="ลบการแจ้งเตือน"
+                                                    title={t('delete')}
                                                 >
                                                     {processingId === notification.id ? (
                                                         <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />

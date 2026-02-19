@@ -1,10 +1,11 @@
-/**
- * ModItem - Component แสดง mod item (ไม่มี lazy loading)
+﻿/**
+ * ModItem - Component for displaying a single mod item
  */
 
 import React from "react";
 import { Icons } from "../../ui/Icons";
 import { playClick } from "../../../lib/sounds";
+import { useTranslation } from "../../../hooks/useTranslation";
 
 export interface ModInfo {
     filename: string;
@@ -32,6 +33,8 @@ export interface LazyModItemProps {
 }
 
 export function LazyModItem({ mod, instanceId, colors, formatSize, onToggle, onDelete, isLocked, onToggleLock, isServerManaged, index = 0 }: LazyModItemProps) {
+    const { t } = useTranslation();
+
     // Safety check for undefined mod (can happen during loading skeleton states if rendered prematurely)
     if (!mod) return null;
 
@@ -75,7 +78,7 @@ export function LazyModItem({ mod, instanceId, colors, formatSize, onToggle, onD
                     )}
                 </div>
                 <p className="text-xs truncate" style={{ color: colors.onSurfaceVariant }}>
-                    {author ? `by ${author} • ` : ""}{formatSize(mod.size)}
+                    {author ? `${t("by")} ${author} • ` : ""}{formatSize(mod.size)}
                 </p>
             </div>
 
@@ -88,7 +91,7 @@ export function LazyModItem({ mod, instanceId, colors, formatSize, onToggle, onD
                         color: isLocked ? colors.secondary : colors.onSurfaceVariant,
                         backgroundColor: isLocked ? colors.secondary + "20" : "transparent"
                     }}
-                    title={isLocked ? "ปลดล็อค (จะถูกลบเมื่อ Sync)" : "ล็อค (ป้องกันการลบเมื่อ Sync)"}
+                    title={isLocked ? t("unlock_sync_hint") : t("lock_sync_hint")}
                 >
                     {isLocked ? (Icons?.Lock ? <Icons.Lock className="w-5 h-5" /> : "L") : (Icons?.Unlock ? <Icons.Unlock className="w-5 h-5" /> : "U")}
                 </button>
@@ -99,7 +102,7 @@ export function LazyModItem({ mod, instanceId, colors, formatSize, onToggle, onD
                 onClick={() => { playClick(); onToggle(mod.filename); }}
                 className="relative w-12 h-6 rounded-full transition-colors"
                 style={{ backgroundColor: mod.enabled ? colors.secondary : colors.surfaceContainerHighest }}
-                title={mod.enabled ? "ปิด Mod" : "เปิด Mod"}
+                title={mod.enabled ? t("disable") : t("enable")}
             >
                 <div
                     className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow"
@@ -113,7 +116,7 @@ export function LazyModItem({ mod, instanceId, colors, formatSize, onToggle, onD
                 className="w-10 h-10 rounded-lg flex items-center justify-center transition-all hover:bg-red-500/20"
                 style={{ color: "#ef4444", opacity: isLocked ? 0.5 : 1, cursor: isLocked ? "not-allowed" : "pointer" }}
                 disabled={isLocked}
-                title={isLocked ? "ไม่สามารถลบได้ (Locked)" : "ลบ Mod"}
+                title={isLocked ? t("cannot_delete_locked") : t("delete_mod")}
             >
                 <Icons.Trash className="w-5 h-5" />
             </button>

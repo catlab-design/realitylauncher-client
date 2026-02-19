@@ -155,10 +155,10 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
                             />
                             <div className="flex flex-col items-center gap-1 transition-all">
                                 <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-all">
-                                    <span className="text-[10px] font-black uppercase tracking-[0.05em]" style={{ color: colors.onSurface }}>Ren Dear Co(de) Working Studio</span>
+                                    <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: colors.onSurface }}>Ren Dear Co(de) Working Studio</span>
                                     <Icons.ExternalLink className="w-2.5 h-2.5" />
                                 </div>
-                                <span className="text-[9px] font-bold opacity-40 uppercase tracking-[0.1em]" style={{ color: colors.onSurface }}>{t('partner_special_thanks')}</span>
+                                <span className="text-[9px] font-bold opacity-40 uppercase tracking-widest" style={{ color: colors.onSurface }}>{t('partner_special_thanks')}</span>
                             </div>
                         </div>
 
@@ -176,7 +176,7 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
                         {TEAM.map((member) => (
                             <div
                                 key={member.userGame}
-                                className="group flex items-start gap-4 p-5 rounded-3xl border transition-all duration-300 hover:bg-white/[0.04] bg-white/[0.01]"
+                                className="group flex items-start gap-4 p-5 rounded-3xl border transition-all duration-300 hover:bg-white/4 bg-white/1"
                                 style={{ borderColor: colors.outlineVariant || colors.outline }}
                             >
                                 <div className="relative shrink-0">
@@ -215,7 +215,7 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
                         <span className="text-[9px] font-black uppercase tracking-[0.3em]" style={{ color: colors.onSurface }}>{t('about_made_in')}</span>
                         <Icons.Heart className="w-3 h-3" style={{ fill: colors.secondary }} />
                     </div>
-                    <p className="text-[10px] font-bold opacity-40 uppercase tracking-[0.1em]" style={{ color: colors.onSurface }}>
+                    <p className="text-[10px] font-bold opacity-40 uppercase tracking-widest" style={{ color: colors.onSurface }}>
                         {t('about_copyright')}
                     </p>
                 </div>

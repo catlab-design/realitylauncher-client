@@ -10,6 +10,7 @@
  * Options for launching Minecraft
  */
 export interface LaunchOptions {
+    instanceId?: string;
     version: string;
     username: string;
     uuid: string;

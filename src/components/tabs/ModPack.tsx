@@ -15,6 +15,7 @@ import {
     type ModInfo,
 } from "./ModPackTabs";
 import { useProgressStore } from "../../store/progressStore";
+import { useAuthStore } from "../../store/authStore";
 
 // ========================================
 // Types
@@ -205,6 +206,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
     language,
 }: ModPackProps) {
     const { t } = useTranslation(language);
+    const { accounts, setSession: setAuthSession, updateAccount } = useAuthStore();
     const [instances, setInstances] = useState<GameInstance[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [showCreateModal, setShowCreateModal] = useState(false);
@@ -217,11 +219,14 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
     const [isDragging, setIsDragging] = useState(false);
     const [logViewerInstanceId, setLogViewerInstanceId] = useState<string | null>(null);
 
-    // Installation progress state
-    const [isInstalling, setIsInstalling] = useState(false);
-    const [installProgress, setInstallProgress] = useState<(InstallProgress & { type?: string; filename?: string }) | null>(null);
-    const [isInstallMinimized, setIsInstallMinimized] = useState(false);
-    const [operationType, setOperationType] = useState<"install" | "repair" | null>(null);
+    // Installation progress state (Global)
+    const { 
+        isInstalling, setInstalling,
+        installProgress, setInstallProgress,
+        isInstallMinimized, setInstallMinimized,
+        operationType, setOperationType,
+        installingInstanceId, setInstallingInstanceId
+    } = useProgressStore();
 
 
     // Export State (Global)
@@ -467,22 +472,22 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                 // Optional: Delay close?
                 setTimeout(() => {
                     if (!isCancellingRef.current) {
-                        setIsInstalling(false);
+                        setInstalling(false);
                         setInstallProgress(null);
-                        setIsInstallMinimized(false);
+                        setInstallMinimized(false);
                         loadInstances(); // Reload list
                     }
                 }, 1000);
             } else if (data.type === "error" || data.type === "cancelled" || data.type === "sync-error") {
-                setIsInstalling(false);
+                setInstalling(false);
                 setInstallProgress(null);
-                setIsInstallMinimized(false);
+                setInstallMinimized(false);
                 setOperationType(null);
             } else {
                 if (!isInstalling) {
                     setOperationType("install");
                 }
-                setIsInstalling(true);
+                setInstalling(true);
             }
         });
 
@@ -504,22 +509,22 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
             if (data.percent === 100 || data.stage === "complete") {
                 setTimeout(() => {
                     if (!isCancellingRef.current) {
-                        setIsInstalling(false);
+                        setInstalling(false);
                         setInstallProgress(null);
-                        setIsInstallMinimized(false);
+                        setInstallMinimized(false);
                         loadInstances();
                     }
                 }, 1000);
             } else if (data.stage === "error" || data.stage === "cancelled") {
-                setIsInstalling(false);
+                setInstalling(false);
                 setInstallProgress(null);
-                setIsInstallMinimized(false);
+                setInstallMinimized(false);
                 setOperationType(null);
             } else {
                 if (!isInstalling) {
                     setOperationType("install");
                 }
-                setIsInstalling(true);
+                setInstalling(true);
             }
         });
 
@@ -532,7 +537,6 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
     // ... (rest of code)
 
     // Track which instance is being installed/synced for cancellation
-    const [installingInstanceId, setInstallingInstanceId] = useState<string | null>(null);
 
     const handleCancelInstall = async () => {
         isCancellingRef.current = true;
@@ -545,7 +549,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
             await (window.api as any)?.modpackCancelInstall?.();
 
             toast.error(t('cancel_install_success'));
-            setIsInstalling(false);
+            setInstalling(false);
             setInstallProgress(null);
             setInstallingInstanceId(null);
             setOperationType(null);
@@ -669,7 +673,8 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
     const handleRepair = async (id: string) => {
         // Show progress modal instead of toast
         setOperationType("repair");
-        setIsInstalling(true);
+        setInstalling(true);
+        setInstallMinimized(false);
         setInstallProgress({ stage: "sync-start", message: t('sync-start' as any) });
 
         try {
@@ -678,20 +683,20 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                 // Progress modal will auto-close when percent reaches 100
                 // Show success toast after a delay
                 setTimeout(() => {
-                    setIsInstalling(false);
+                    setInstalling(false);
                     setInstallProgress(null);
                     setOperationType(null);
                     toast.success(result.message || t('repair_success'));
                     loadInstances(); // Reload instances
                 }, 1000);
             } else {
-                setIsInstalling(false);
+                setInstalling(false);
                 setInstallProgress(null);
                 setOperationType(null);
                 toast.error(result?.error || t('repair_failed'));
             }
         } catch (error: any) {
-            setIsInstalling(false);
+            setInstalling(false);
             setInstallProgress(null);
             setOperationType(null);
             toast.error(error?.message || t('error_occurred'));
@@ -723,14 +728,40 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
         // Optimistic: add to playing immediately? No, wait for success or use 'launchingId' for UI.
 
         try {
-            const refreshResult = await (window.api as any)?.authRefreshToken?.();
-            if (refreshResult && !refreshResult.ok && refreshResult.error) {
-                const refreshErr = typeof refreshResult.error === 'string' ? refreshResult.error : '';
-                if (refreshErr.includes("re-login")) {
+            const targetInstance = instances.find((item) => item.id === id);
+            const isServerInstance = !!targetInstance?.cloudId;
+
+            if (isServerInstance && session?.type === "catid" && session.minecraftUuid) {
+                const linkedMsAccount = accounts.find(
+                    (account) =>
+                        account.type === "microsoft" &&
+                        account.uuid === session.minecraftUuid,
+                );
+
+                if (linkedMsAccount) {
+                    const switchedSession = await window.api?.setActiveSession?.(linkedMsAccount);
+                    if (switchedSession) {
+                        setAuthSession(switchedSession as AuthSession);
+                        updateAccount(switchedSession as AuthSession);
+                    }
+                } else {
                     toastError(t('session_expired_login_server'));
-                    setLaunchingId(null);
                     return;
                 }
+            }
+
+            const refreshResult = await window.api?.authRefreshToken?.();
+            if (refreshResult && refreshResult.ok === false) {
+                const requiresRelogin = refreshResult.requiresRelogin === true;
+                const refreshErr = typeof refreshResult.error === "string"
+                    ? refreshResult.error
+                    : "";
+                toastError(
+                    requiresRelogin
+                        ? t('session_expired_login_server')
+                        : (refreshErr || t('session_expired_login_server')),
+                );
+                return;
             }
 
             // Note: instancesLaunch logic in backend now checks isGameRunning(id)
@@ -852,7 +883,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
 
             // Start installation
             setOperationType("install");
-            setIsInstalling(true);
+            setInstalling(true);
             setInstallProgress({ stage: "extracting", message: t('extracting_modpack_dot') });
 
             // Install the modpack (will create new instance)
@@ -875,7 +906,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                 toast.error(error.message || t('error_occurred'));
             }
         } finally {
-            setIsInstalling(false);
+            setInstalling(false);
             setInstallProgress(null);
             setOperationType(null);
         }
@@ -885,7 +916,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
 
     const handleInstallServerInstance = async (id?: string) => {
         setOperationType("install");
-        setIsInstalling(true);
+        setInstalling(true);
         isCancellingRef.current = false; // Ensure flag is reset
         // For Sync (no ID passed), we might fallback to checking selectedInstance or just handle specific Cloud Install (ID passed)
         // If id is undefined, it's global sync... which might be iterating multiple instances or checking updates.
@@ -928,9 +959,9 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                 toast.error(error?.message || t('error_occurred'), { id: toastId });
             }
         } finally {
-            setIsInstalling(false);
+            setInstalling(false);
             setInstallingInstanceId(null);
-            setIsInstallMinimized(false);
+            setInstallMinimized(false);
             setOperationType(null);
         }
     };
@@ -998,33 +1029,6 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
 
 
     // If an instance is selected, show detail view
-    if (selectedInstance) {
-        return (
-            <InstanceDetail
-                instance={selectedInstance}
-                colors={colors}
-                config={config}
-                onBack={() => {
-                    setSelectedInstance(null);
-                    loadInstances(); // Reload in case of changes
-                }}
-                onPlay={handlePlay}
-                onStop={() => handleStop(selectedInstance.id)}
-                onOpenFolder={handleOpenFolder}
-                onDelete={(id) => {
-                    handleDelete(id);
-                    setSelectedInstance(null);
-                }}
-                onDuplicate={handleDuplicate}
-                onUpdate={handleUpdate}
-                onExport={handleExportInstance}
-                launchingId={launchingId}
-                isGameRunning={playingInstances.size > 0}
-                playingInstanceId={playingInstances.has(selectedInstance.id) ? selectedInstance.id : (playingInstances.size > 0 ? "OTHER" : null)}
-            />
-        );
-    }
-
     return (
         <>
             {/* Live Log Viewer */}
@@ -1035,7 +1039,35 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                 instanceId={logViewerInstanceId}
             />
 
-            <div className="space-y-6">
+            {selectedInstance ? (
+                <InstanceDetail
+                    instance={selectedInstance}
+                    colors={colors}
+                    config={config}
+                    onBack={() => {
+                        setSelectedInstance(null);
+                        loadInstances(); // Reload in case of changes
+                    }}
+                    onPlay={handlePlay}
+                    onStop={() => handleStop(selectedInstance.id)}
+                    onOpenFolder={handleOpenFolder}
+                    onDelete={(id) => {
+                        handleDelete(id);
+                        setSelectedInstance(null);
+                    }}
+                    onDuplicate={handleDuplicate}
+                    onUpdate={handleUpdate}
+                    onExport={handleExportInstance}
+                    onViewLogs={(id) => setLogViewerInstanceId(id)}
+                    onRepair={handleRepair}
+                    launchingId={launchingId}
+                    isGameRunning={playingInstances.size > 0}
+                    playingInstanceId={playingInstances.has(selectedInstance.id) ? selectedInstance.id : (playingInstances.size > 0 ? "OTHER" : null)}
+                />
+            ) : (
+                <div className="space-y-6">
+
+
                 {/* Header */}
                 <div className="flex items-center justify-between flex-wrap gap-4">
                     <h2 className="text-xl font-medium" style={{ color: colors.onSurface }}>{t('modpacks')}</h2>
@@ -1525,76 +1557,10 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                     />
                 )}
 
-                {/* Installation Progress Modal */}
-                {isInstalling && installProgress && !isInstallMinimized && (
-                    <InstallProgressModal
-                        colors={colors}
-                        installProgress={installProgress}
-                        title={operationType === "repair" ? t('repairing_instance') : undefined}
-                        onCancel={handleCancelInstall}
-                        onMinimize={() => setIsInstallMinimized(true)}
-                        language={language}
-                    />
-                )}
-
-                {/* Minimized Progress Widget */}
-                {isInstalling && installProgress && isInstallMinimized && (
-                    <div
-                        className="fixed bottom-6 right-6 z-50 w-80 rounded-2xl shadow-2xl overflow-hidden border border-white/10 animate-fade-in-up cursor-pointer transition-transform hover:scale-105"
-                        style={{ backgroundColor: colors.surfaceContainer }}
-                        onClick={() => setIsInstallMinimized(false)}
-                    >
-                        <div className="p-4 flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full flex items-center justify-center relative shrink-0"
-                                style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                                {installProgress.percent !== undefined ? (
-                                    <svg className="w-10 h-10 -rotate-90 transform" viewBox="0 0 36 36">
-                                        <path
-                                            className="text-gray-200 opacity-20"
-                                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="3"
-                                        />
-                                        <path
-                                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                                            fill="none"
-                                            stroke={colors.secondary}
-                                            strokeWidth="3"
-                                            strokeDasharray={`${installProgress.percent}, 100`}
-                                        />
-                                    </svg>
-                                ) : (
-                                    <div className="animate-spin rounded-full h-5 w-5 border-b-2" style={{ borderColor: colors.secondary }}></div>
-                                )}
-                                <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold" style={{ color: colors.onSurface }}>
-                                    {installProgress.percent}%
-                                </div>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <h4 className="font-medium text-sm truncate" style={{ color: colors.onSurface }}>
-                                    {operationType === "repair" ? t('repairing_instance') : t('installing')}
-                                </h4>
-                                <p className="text-xs truncate" style={{ color: colors.onSurfaceVariant }}>
-                                    {installProgress.type ? t(installProgress.type as any, { filename: installProgress.filename, current: installProgress.current, total: installProgress.total } as any) : installProgress.message}
-                                </p>
-                            </div>
-                            <button
-                                onClick={(e) => { e.stopPropagation(); setIsInstallMinimized(false); }}
-                                className="p-2 rounded-lg hover:bg-white/10"
-                                title="Expand"
-                            >
-                                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" style={{ color: colors.onSurfaceVariant }}>
-                                    <path d="M12 8l-6 6 1.41 1.41L12 10.83l4.59 4.58L18 14z" />
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-                )}
 
             </div >
             
-
+            )}
         </>
     );
 }

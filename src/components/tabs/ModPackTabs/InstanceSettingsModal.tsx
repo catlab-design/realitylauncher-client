@@ -12,8 +12,9 @@ import { InstallProgressModal, type InstallProgress } from "./InstallProgressMod
 import { FileSelectionTree, type FileNode } from "./FileSelectionTree";
 import modrinthIcon from "../../../assets/modrinth.svg";
 import curseforgeIcon from "../../../assets/curseforge.svg";
+import type { LauncherConfig } from "../../../types/launcher";
 
-type SettingsTab = "general" | "installation" | "export";
+type SettingsTab = "general" | "installation" | "java" | "export";
 type LoaderType = "vanilla" | "fabric" | "forge" | "neoforge" | "quilt";
 
 export interface InstanceSettingsModalProps {
@@ -25,6 +26,8 @@ export interface InstanceSettingsModalProps {
     onDuplicate: (id: string) => void;
     onExport: (id: string, options: any) => Promise<void>;
     language: "th" | "en";
+    config: LauncherConfig;
+    onRepair?: (id: string) => void;
 }
 
 export function InstanceSettingsModal({
@@ -36,6 +39,8 @@ export function InstanceSettingsModal({
     onDuplicate,
     onExport,
     language,
+    config,
+    onRepair,
 }: InstanceSettingsModalProps) {
     const { t } = useTranslation(language);
     const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
@@ -206,8 +211,24 @@ export function InstanceSettingsModal({
     const [editedLoader, setEditedLoader] = useState<LoaderType>(instance.loader as LoaderType);
     const [editedVersion, setEditedVersion] = useState(instance.minecraftVersion);
     const [editedLoaderVersion, setEditedLoaderVersion] = useState(instance.loaderVersion);
+    // Java settings
+    const [editedJavaPath, setEditedJavaPath] = useState(instance.javaPath || "");
+    const [editedRam, setEditedRam] = useState(instance.ramMB || config.ramMB);
+    const [editedJavaArgs, setEditedJavaArgs] = useState(instance.javaArguments || instance.javaArguments === "" ? instance.javaArguments : config.javaArguments);
+    // Advanced settings
     const [loaderVersions, setLoaderVersions] = useState<string[]>([]);
     const [loadingLoaderVersions, setLoadingLoaderVersions] = useState(false);
+    const [maxRamMB, setMaxRamMB] = useState(0);
+
+    // Fetch system info
+    useEffect(() => {
+        (async () => {
+            if (window.api) {
+                const sysRam = await (window.api as any).getSystemRam?.();
+                if (sysRam) setMaxRamMB(sysRam);
+            }
+        })();
+    }, []);
 
     // Sync local state with instance prop (e.g. when background sync updates loader/version)
     useEffect(() => {
@@ -215,7 +236,10 @@ export function InstanceSettingsModal({
         setEditedLoader(instance.loader as LoaderType);
         setEditedVersion(instance.minecraftVersion);
         setEditedLoaderVersion(instance.loaderVersion);
-    }, [instance]);
+        setEditedJavaPath(instance.javaPath || "");
+        setEditedRam(instance.ramMB || config.ramMB);
+        setEditedJavaArgs(instance.javaArguments || instance.javaArguments === "" ? instance.javaArguments : config.javaArguments);
+    }, [instance, config]);
 
     // Fetch loader versions when loader or mc version changes
     useEffect(() => {
@@ -291,6 +315,19 @@ export function InstanceSettingsModal({
         }
     };
 
+    const handleSaveJava = () => {
+        const updates: Partial<GameInstance> = {};
+        if (editedJavaPath !== (instance.javaPath || "")) updates.javaPath = editedJavaPath;
+        if (editedRam !== (instance.ramMB || config.ramMB)) updates.ramMB = editedRam;
+        if (editedJavaArgs !== (instance.javaArguments || instance.javaArguments === "" ? instance.javaArguments : config.javaArguments)) updates.javaArguments = editedJavaArgs;
+
+        if (Object.keys(updates).length > 0) {
+            onUpdate(instance.id, updates);
+            toast.success(t('settings_saved_success'));
+        }
+    };
+
+
     const filteredVersions = showAllVersions
         ? gameVersions
         : gameVersions.filter((v) => v.version_type === "release");
@@ -314,6 +351,7 @@ export function InstanceSettingsModal({
     };
 
     return (
+        <>
         <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm ${isExporting && minimized ? 'pointer-events-none opacity-0' : ''}`}>
             <div
                 className="w-[90%] max-w-[1400px] h-[65vh] min-h-[480px] rounded-2xl overflow-hidden shadow-2xl flex flex-col"
@@ -364,6 +402,16 @@ export function InstanceSettingsModal({
                             }}
                         >
                             <i className="fa-solid fa-download w-4" /> {t('installation')}
+                        </button>
+                        <button
+                            onClick={() => { playClick(); setSettingsTab("java"); }}
+                            className="w-full flex items-center gap-3 px-4 py-2 rounded-lg text-sm mb-1 transition-all"
+                            style={{
+                                backgroundColor: settingsTab === "java" ? colors.secondary : "transparent",
+                                color: settingsTab === "java" ? "#1a1a1a" : colors.onSurfaceVariant
+                            }}
+                        >
+                            <i className="fa-brands fa-java w-4" /> Java
                         </button>
                         <button
                             onClick={() => { playClick(); setSettingsTab("export"); }}
@@ -432,7 +480,7 @@ export function InstanceSettingsModal({
                                                         </p>
                                                     </div>
                                                     <div className="mt-8 flex items-center gap-2 text-xs font-bold uppercase tracking-widest opacity-40 group-hover:opacity-100 group-hover:text-[#1bd96a] transition-all" style={{ color: colors.onSurfaceVariant }}>
-                                                        Choose format <i className="fa-solid fa-arrow-right ml-1" />
+                                                        {t('choose_format')} <i className="fa-solid fa-arrow-right ml-1" />
                                                     </div>
                                                 </button>
 
@@ -459,7 +507,7 @@ export function InstanceSettingsModal({
                                                         </p>
                                                     </div>
                                                     <div className="mt-8 flex items-center gap-2 text-xs font-bold uppercase tracking-widest opacity-40 group-hover:opacity-100 group-hover:text-[#f16436] transition-all" style={{ color: colors.onSurfaceVariant }}>
-                                                        Choose format <i className="fa-solid fa-arrow-right ml-1" />
+                                                        {t('choose_format')} <i className="fa-solid fa-arrow-right ml-1" />
                                                     </div>
                                                 </button>
                                             </div>
@@ -808,7 +856,7 @@ export function InstanceSettingsModal({
                                     <>
                                         {/* Platform */}
                                         <div>
-                                            <h4 className="font-medium mb-3" style={{ color: colors.onSurface }}>Platform</h4>
+                                            <h4 className="font-medium mb-3" style={{ color: colors.onSurface }}>{t('platform')}</h4>
                                             <div className="flex flex-wrap gap-2">
                                                 {(["vanilla", "fabric", "forge", "neoforge", "quilt"] as LoaderType[]).map((loader) => (
                                                     <button
@@ -868,7 +916,7 @@ export function InstanceSettingsModal({
                                         {/* Loader Version Selection */}
                                         {editedLoader !== "vanilla" && (
                                             <div className="mt-4">
-                                                <label className="block text-sm font-medium mb-2" style={{ color: colors.onSurface }}>Loader Version</label>
+                                                <label className="block text-sm font-medium mb-2" style={{ color: colors.onSurface }}>{t('loader_version')}</label>
                                                 <select
                                                     value={editedLoaderVersion || ""}
                                                     onChange={(e) => { playClick(); setEditedLoaderVersion(e.target.value); }}
@@ -908,21 +956,300 @@ export function InstanceSettingsModal({
                                     </>
                                 ) : (
                                     /* Server Managed Message */
-                                    <div className="flex flex-col items-center justify-center py-12 text-center space-y-4 rounded-2xl border-2 border-dashed"
-                                        style={{ borderColor: colors.outline + "40" }}>
-                                        <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                                            <Icons.Info className="w-8 h-8" style={{ color: colors.primary }} />
+                                    /* Server Managed Section */
+                                    <div className="space-y-6">
+                                        <div className="flex flex-col items-center justify-center py-12 text-center space-y-4 rounded-2xl border-2 border-dashed"
+                                            style={{ borderColor: colors.outline + "40" }}>
+                                            <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ backgroundColor: colors.surfaceContainerHighest }}>
+                                                <Icons.Info className="w-8 h-8" style={{ color: colors.primary }} />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-lg font-bold mb-1" style={{ color: colors.onSurface }}>{t('managed_by_server')}</h3>
+                                                <p className="text-sm max-w-xs mx-auto" style={{ color: colors.onSurfaceVariant }}>
+                                                    {t('server_managed_settings_desc')}
+                                                </p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <h3 className="text-lg font-bold mb-1" style={{ color: colors.onSurface }}>{t('managed_by_server')}</h3>
-                                            <p className="text-sm max-w-xs mx-auto" style={{ color: colors.onSurfaceVariant }}>
-                                                {t('server_managed_settings_desc')}
-                                            </p>
+
+                                        {/* Auto Update - Only for Server Instances */}
+                                        <div className="p-4 rounded-xl flex items-center justify-between transition-colors" style={{ backgroundColor: colors.surfaceContainerHighest }}>
+                                            <div>
+                                                <h4 className="font-medium" style={{ color: colors.onSurface }}>{t('auto_update')}</h4>
+                                                <p className="text-sm opacity-70" style={{ color: colors.onSurfaceVariant }}>
+                                                    {t('auto_update_desc')}
+                                                </p>
+                                            </div>
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={instance.autoUpdate !== false}
+                                                    onChange={(e) => {
+                                                        playClick();
+                                                        onUpdate(instance.id, { autoUpdate: e.target.checked });
+                                                    }}
+                                                    className="sr-only peer"
+                                                />
+                                                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                                            </label>
+                                        </div>
+
+                                        {/* Repair Files - Only for Server Instances */}
+                                        <div className="p-4 rounded-xl flex items-center justify-between transition-colors" style={{ backgroundColor: colors.surfaceContainerHighest }}>
+                                            <div className="flex-1 mr-4">
+                                                <h4 className="font-medium" style={{ color: colors.onSurface }}>{t('repair_files')}</h4>
+                                                <p className="text-sm opacity-70" style={{ color: colors.onSurfaceVariant }}>
+                                                    {t('repair_files_desc' as any)}
+                                                </p>
+                                            </div>
+                                            <button
+                                                onClick={() => { playClick(); onRepair?.(instance.id); onClose(); }}
+                                                className="px-6 py-2.5 rounded-xl text-sm font-bold transition-all hover:bg-red-500 hover:text-white border flex items-center gap-2 shrink-0"
+                                                style={{ borderColor: colors.outline + "30", color: colors.onSurface }}
+                                            >
+                                                <Icons.Wrench className="w-4 h-4" />
+                                                {t('repair_files' as any)}
+                                            </button>
                                         </div>
                                     </div>
                                 )}
                             </div>
                         )}
+
+                        {settingsTab === "java" && (
+                            <div className="space-y-6">
+                                {/* Java Path */}
+                                <div>
+                                    <label className="block text-sm font-medium mb-1.5" style={{ color: colors.onSurface }}>
+                                        {t('java_install_path', { version: "" })}
+                                    </label>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            value={editedJavaPath}
+                                            onChange={(e) => setEditedJavaPath(e.target.value)}
+                                            onBlur={handleSaveJava}
+                                            placeholder={config.javaPath || t('follow_system')}
+                                            className="flex-1 px-4 py-2.5 rounded-xl outline-none text-sm transition-all focus:ring-2 focus:ring-opacity-50"
+                                            style={{ 
+                                                backgroundColor: colors.surfaceContainerHighest, 
+                                                color: colors.onSurface,
+                                                outlineColor: colors.primary
+                                            }}
+                                        />
+                                        <button
+                                            onClick={async () => {
+                                                playClick();
+                                                const result = await window.api?.browseJava?.();
+                                                if (result) {
+                                                    setEditedJavaPath(result);
+                                                    onUpdate(instance.id, { javaPath: result });
+                                                    toast.success(t('settings_saved_success'));
+                                                }
+                                            }}
+                                            className="px-4 py-2 rounded-xl text-sm font-medium"
+                                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                        >
+                                            {t('browse')}
+                                        </button>
+                                    </div>
+                                    <p className="text-xs mt-1 opacity-70" style={{ color: colors.onSurfaceVariant }}>
+                                        {t('leave_empty_to_use_default')}
+                                    </p>
+                                </div>
+
+                                {/* RAM */}
+                                <div>
+                                    <div className="flex items-center gap-2 mb-4">
+                                        <div 
+                                            className="w-5 h-5 rounded flex items-center justify-center cursor-pointer transition-colors"
+                                            style={{ 
+                                                backgroundColor: editedRam > 0 && instance.ramMB !== 0 ? "#10b981" : colors.surfaceContainerHighest,
+                                                border: `1px solid ${editedRam > 0 && instance.ramMB !== 0 ? "#10b981" : colors.outline + "50"}`
+                                            }}
+                                            onClick={() => {
+                                                const isCustom = instance.ramMB !== 0;
+                                                if (isCustom) {
+                                                    // Disable custom (revert to default)
+                                                    onUpdate(instance.id, { ramMB: 0 });
+                                                    setEditedRam(config.ramMB);
+                                                } else {
+                                                    // Enable custom (start with current/default)
+                                                    onUpdate(instance.id, { ramMB: config.ramMB });
+                                                    setEditedRam(config.ramMB);
+                                                }
+                                            }}
+                                        >
+                                            {instance.ramMB !== 0 && <i className="fa-solid fa-check text-xs text-white"></i>}
+                                        </div>
+                                        <span className="text-sm font-medium" style={{ color: colors.onSurface }}>
+                                            {t('custom_memory_allocation' as any)}
+                                        </span>
+                                    </div>
+
+                                    <div className={`transition-all duration-200 space-y-3 ${instance.ramMB === 0 ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
+                                        {/* Header & Input */}
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <div className="font-medium text-sm flex items-center gap-2" style={{ color: colors.onSurface }}>
+                                                    <i className="fa-solid fa-memory text-xs opacity-70"></i>
+                                                    {t('memory_allocated')}
+                                                </div>
+                                                <p className="text-xs mt-0.5" style={{ color: colors.onSurfaceVariant }}>
+                                                    {/* Using a static text for now as exact translation key might differ, matching the style */}
+                                                    {t('ram_description', { gb: maxRamMB ? (maxRamMB / 1024).toFixed(0) : '8' })}
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-colors focus-within:ring-2"
+                                                style={{ 
+                                                    backgroundColor: colors.surfaceContainerHighest, 
+                                                    borderColor: colors.outline + "40",
+                                                    color: colors.onSurface 
+                                                }}>
+                                                <input
+                                                    type="number"
+                                                    value={editedRam}
+                                                    onChange={(e) => {
+                                                        const val = Math.min(Math.max(512, Number(e.target.value)), maxRamMB || 8192);
+                                                        setEditedRam(val);
+                                                    }}
+                                                    onBlur={handleSaveJava}
+                                                    className="w-16 bg-transparent text-right font-mono font-medium text-sm focus:outline-none"
+                                                />
+                                                <span className="text-xs opacity-70">MB</span>
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Slider */}
+                                        <div className="relative pt-2 pb-1">
+                                            {/* Track */}
+                                            <div className="h-3 w-full rounded-full relative overflow-hidden" 
+                                                style={{ backgroundColor: colors.surfaceContainerHighest }}>
+                                                <div 
+                                                    className="absolute top-0 left-0 h-full rounded-full transition-all duration-150 ease-out"
+                                                    style={{ 
+                                                        width: `${((editedRam - 512) / ((maxRamMB || 8192) - 512)) * 100}%`,
+                                                        backgroundColor: "#10b981" 
+                                                    }}
+                                                />
+                                            </div>
+
+                                            {/* Tick Marks (20%, 40%, 60%, 80%) */}
+                                            <div className="absolute top-[14px] w-full h-3 pointer-events-none px-[6px]">
+                                                {[0.2, 0.4, 0.6, 0.8].map((tick) => (
+                                                    <div 
+                                                        key={tick}
+                                                        className="absolute top-0 w-px h-full bg-white/20"
+                                                        style={{ left: `${tick * 100}%` }}
+                                                    />
+                                                ))}
+                                            </div>
+
+                                            {/* Slider Input */}
+                                            <input
+                                                type="range"
+                                                min={512}
+                                                max={maxRamMB || 8192}
+                                                step={256}
+                                                value={editedRam}
+                                                onChange={(e) => setEditedRam(Number(e.target.value))}
+                                                onMouseUp={handleSaveJava}
+                                                onTouchEnd={handleSaveJava}
+                                                className="absolute top-2 left-0 w-full h-3 opacity-0 cursor-pointer"
+                                                style={{ margin: 0 }}
+                                            />
+
+                                            {/* Labels */}
+                                            <div className="flex justify-between text-[10px] mt-2 font-medium px-1" style={{ color: colors.onSurfaceVariant }}>
+                                                <span>512 MB</span>
+                                                <span className="text-center absolute left-1/2 -translate-x-1/2" style={{ opacity: 0.5 }}>
+                                                    {editedRam >= 1024 ? `${(editedRam / 1024).toFixed(1)} GB` : `${editedRam} MB`}
+                                                </span>
+                                                <span>{maxRamMB ? `${(maxRamMB / 1024).toFixed(1)} GB` : "8.0 GB"}</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Presets */}
+                                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
+                                            <button
+                                                onClick={() => {
+                                                    let recommended = 4096;
+                                                    const sysRam = maxRamMB || 8192;
+                                                    if (sysRam >= 32000) recommended = 16384;
+                                                    else if (sysRam >= 16000) recommended = 8192;
+                                                    else if (sysRam >= 12000) recommended = 6144;
+                                                    else if (sysRam >= 8000) recommended = 4096;
+                                                    else recommended = Math.max(2048, sysRam - 2048);
+                                                    
+                                                    recommended = Math.min(recommended, sysRam);
+                                                    setEditedRam(recommended);
+                                                    onUpdate(instance.id, { ramMB: recommended });
+                                                    toast.success(`${t('recommended')}: ${recommended >= 1024 ? (recommended/1024).toFixed(1) + ' GB' : recommended + ' MB'}`);
+                                                }}
+                                                className="flex flex-col items-center justify-center py-2 px-1 rounded-lg border transition-all active:scale-95"
+                                                style={{ 
+                                                    backgroundColor: colors.surface, 
+                                                    borderColor: colors.outline + "30",
+                                                    color: colors.onSurface
+                                                }}
+                                            >
+                                                <span className="text-xs font-medium mb-0.5"><i className="fa-solid fa-thumbs-up mr-1.5"/>{t('recommended')}</span>
+                                            </button>
+
+                                            {[
+                                                { label: "Lite", value: 2048 },
+                                                { label: "Standard", value: 4096 },
+                                                { label: "High", value: 8192 },
+                                                { label: "Ultra", value: 16384 },
+                                            ].map((preset) => (
+                                                <button
+                                                    key={preset.label}
+                                                    onClick={() => {
+                                                        const val = Math.min(preset.value, maxRamMB || 8192);
+                                                        setEditedRam(val);
+                                                        onUpdate(instance.id, { ramMB: val });
+                                                    }}
+                                                    className={`flex flex-col items-center justify-center py-2 px-1 rounded-lg border transition-all active:scale-95 ${
+                                                        editedRam === preset.value 
+                                                            ? 'ring-2 ring-offset-1' 
+                                                            : 'hover:bg-black/5 dark:hover:bg-white/5'
+                                                    }`}
+                                                    style={{ 
+                                                        backgroundColor: editedRam === preset.value ? "#10b981" : colors.surface,
+                                                        borderColor: editedRam === preset.value ? "#10b981" : colors.outline + "30",
+                                                        color: editedRam === preset.value ? '#ffffff' : colors.onSurface,
+                                                        boxShadow: editedRam === preset.value ? "0 0 0 2px #10b981" : "none"
+                                                    }}
+                                                >
+                                                    <span className="text-xs font-medium mb-0.5">{preset.label}</span>
+                                                    <span className="text-[10px] opacity-80">{preset.value / 1024} GB</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Java Arguments */}
+                                <div>
+                                    <label className="block text-sm font-medium mb-1.5" style={{ color: colors.onSurface }}>
+                                        {t('java_args')}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={editedJavaArgs}
+                                        onChange={(e) => setEditedJavaArgs(e.target.value)}
+                                        onBlur={handleSaveJava}
+                                        placeholder={t('java_args_placeholder')}
+                                        className="w-full px-4 py-2.5 rounded-xl outline-none text-sm transition-all focus:ring-2 focus:ring-opacity-50"
+                                        style={{ 
+                                            backgroundColor: colors.surfaceContainerHighest, 
+                                            color: colors.onSurface,
+                                            outlineColor: colors.primary
+                                        }}
+                                    />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -972,7 +1299,7 @@ export function InstanceSettingsModal({
                         <button
                             onClick={(e) => { e.stopPropagation(); setMinimized(false); }}
                             className="p-2 rounded-lg hover:bg-white/10"
-                            title="Expand"
+                            title={t('expand')}
                         >
                             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" style={{ color: colors.onSurfaceVariant }}>
                                 <path d="M12 8l-6 6 1.41 1.41L12 10.83l4.59 4.58L18 14z" />
@@ -981,6 +1308,6 @@ export function InstanceSettingsModal({
                     </div>
                 </div>
             )}
-        </div>
+        </>
     );
 }

@@ -49,6 +49,9 @@ export interface Server {
   image?: string;
   bannerUrl?: string; // From API
   description?: string;
+  websiteUrl?: string;
+  socials?: string | null; // JSON string
+  richDescription?: string;
   playerCount?: number;
   maxPlayers?: number;
   address?: string;
@@ -177,6 +180,8 @@ export interface CreateInstanceOptions {
 
 export interface UpdateInstanceOptions {
   name?: string;
+  description?: string;
+  richDescription?: string;
   icon?: string;
   loader?: LoaderType;
   loaderVersion?: string;

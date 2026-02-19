@@ -190,7 +190,14 @@ function LauncherAppContent() {
       exportProgress,
       isExportMinimized,
       setExportMinimized,
-      exportingInstanceId
+      exportingInstanceId,
+
+      // Install/Repair State
+      isInstalling, setInstalling,
+      installProgress, setInstallProgress,
+      isInstallMinimized, setInstallMinimized,
+      operationType, setOperationType,
+      installingInstanceId, setInstallingInstanceId
   } = useProgressStore();
 
   const handleCancelExport = async (instanceId: string) => {
@@ -201,7 +208,26 @@ function LauncherAppContent() {
           console.error("Failed to cancel export:", error);
       }
   };
-  const { session, accounts, setSession, setAccounts, addAccount, updateAccount, removeAccount: removeAccountAction } = useAuthStore();
+
+  const handleCancelInstall = async () => {
+      try {
+          if (installingInstanceId) {
+              await (window.api as any)?.instanceCancelAction?.(installingInstanceId);
+          }
+          await (window.api as any)?.modpackCancelInstall?.();
+          toast.error(t('cancel_install_success'));
+          
+          // Reset state (Optimistic)
+          setInstalling(false);
+          setInstallProgress(null);
+          setInstallingInstanceId(null);
+          setOperationType(null);
+      } catch (error) {
+          console.error("Failed to cancel install:", error);
+      }
+  };
+
+  const { session, accounts, setSession, addAccount, updateAccount, removeAccount: removeAccountAction } = useAuthStore();
   const { activeTab, setActiveTab, settingsTab, setSettingsTab, modals, openModal, closeModal } = useUiStore();
 
   const [isLoading, setIsLoading] = useState(true);
@@ -634,11 +660,11 @@ function LauncherAppContent() {
           }
           toast.success(t('login_success'), { id: loadingId });
         } else {
-          toast.error(result?.error || "Login Failed", { id: loadingId });
+          toast.error(result?.error || t('login_failed'), { id: loadingId });
         }
       } catch (error) {
         console.error("[Auth] Deep link login error:", error);
-        toast.error("Login Error", { id: loadingId });
+        toast.error(t('login_failed'), { id: loadingId });
       }
     });
 
@@ -819,7 +845,11 @@ function LauncherAppContent() {
             setDeviceCodeError(null);
 
             if (result.linkSwitched) {
-              toast.success(t('link_success') + ` (ย้ายการเชื่อมต่อจากบัญชี ${result.oldCatID})`);
+              toast.success(
+                t('link_success') +
+                ' ' +
+                t('link_migrated_from').replace('{oldCatID}', String(result.oldCatID))
+              );
             } else {
               toast.success(t('welcome_user').replace('{username}', newSession.username));
             }
@@ -1068,16 +1098,6 @@ function LauncherAppContent() {
             accessToken: result.token,
             createdAt: Date.now(),
           };
-          // Add to accounts using addAccount (which handles uniqueness)
-          // But here logic was "filter existing then add".
-          // addAccount simply checks if exists and returns if so.
-          // But we want to UPDATE if exists (re-login case).
-          // So strict equality:
-          addAccount(session); // Store's addAccount doesn't update if exists.
-          // To ensure update, we should remove then add, or update.
-          // Let's rely on simple add for now, or use:
-          // setAccounts([...accounts.filter(a => a.uuid !== session.uuid), session]); // This is safe given 'accounts' is in scope
-          // Wait, 'accounts' variable from hook effectively replaces 'prev'.
           addAccount(session);
           setSession(session);
           await window.api?.setActiveSession?.(session);
@@ -1098,24 +1118,37 @@ function LauncherAppContent() {
   // Select account to use
   const selectAccount = async (account: AuthSession) => {
     // Sync session with backend FIRST to ensure data consistency
+    // The backend may auto-refresh the token if expired
+    let finalSession: AuthSession = account;
+
     try {
-      await window.api?.setActiveSession?.(account);
+      const refreshedSession = await window.api?.setActiveSession?.(account);
+      if (refreshedSession) {
+        console.log("[Auth] Backend returned refreshed session:", refreshedSession.username);
+        finalSession = refreshedSession as AuthSession;
+        // Also update in accounts list
+        updateAccount(refreshedSession);
+      }
     } catch (err) {
       console.error("[Auth] Failed to sync session with backend:", err);
     }
 
-    setSession(account);
+    setSession(finalSession);
     setAccountManagerOpen(false);
-    toast.success(t('switched_to_account').replace('{username}', account.username));
+    toast.success(t('switched_to_account').replace('{username}', finalSession.username));
 
     // Check admin status if switching to CatID account
-    if (account.type === "catid" && account.accessToken) {
-      setAdminToken(account.accessToken);
+    if (finalSession.type === "catid" && finalSession.accessToken) {
+      setAdminToken(finalSession.accessToken);
       try {
-        const adminCheck = await window.api?.checkAdminStatus(account.accessToken);
+        const adminCheck = await window.api?.checkAdminStatus(finalSession.accessToken);
         setIsAdmin(adminCheck?.isAdmin || false);
         if (adminCheck?.isAdmin) {
-          console.log("[Admin] Switched to admin account:", account.username);
+          console.log("[Admin] Switched to admin account:", finalSession.username);
+          // Ensure admin status is saved in account
+          if (!finalSession.isAdmin) {
+             updateAccount({ ...finalSession, isAdmin: true });
+          }
         }
       } catch (e) {
         setIsAdmin(false);
@@ -1165,7 +1198,12 @@ function LauncherAppContent() {
       const res = await (window as any).api.linkCatID(username, password);
       if (res?.ok) {
         if (res.linkSwitched) {
-          toast.success(t('link_success') + ` (ย้ายการเชื่อมต่อจากบัญชี ${res.oldCatID})`, { id: loader, icon: '🔄' });
+          toast.success(
+            t('link_success') +
+            ' ' +
+            t('link_migrated_from').replace('{oldCatID}', String(res.oldCatID)),
+            { id: loader, icon: '🔄' }
+          );
         } else {
           toast.success(t('link_success'), { id: loader });
         }
@@ -2117,7 +2155,7 @@ function LauncherAppContent() {
                     }}
                     className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 hover:bg-black/10 ${calendarOpen ? 'bg-black/10 scale-110' : ''}`}
                     style={{ color: colors.onSurfaceVariant }}
-                    title={config.language === 'th' ? "ปฏิทิน" : "Calendar"}
+                    title={t('calendar')}
                   >
                     <Icons.Calendar className="w-5 h-5" />
                   </button>
@@ -2601,6 +2639,73 @@ function LauncherAppContent() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Global Installation Progress Modal */}
+      {isInstalling && installProgress && !isInstallMinimized && (
+          <InstallProgressModal
+              colors={colors}
+              installProgress={installProgress}
+              title={operationType === "repair" ? t('repairing_instance') : undefined}
+              onCancel={handleCancelInstall}
+              onMinimize={() => setInstallMinimized(true)}
+              language={config.language}
+          />
+      )}
+
+      {/* Global Minimized Installation Widget */}
+      {isInstalling && installProgress && isInstallMinimized && (
+          <div
+              className="fixed bottom-6 right-6 z-50 w-80 rounded-2xl shadow-2xl overflow-hidden border border-white/10 animate-fade-in-up cursor-pointer transition-transform hover:scale-105"
+              style={{ backgroundColor: colors.surfaceContainer }}
+              onClick={() => setInstallMinimized(false)}
+          >
+              <div className="p-4 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center relative shrink-0"
+                      style={{ backgroundColor: colors.surfaceContainerHighest }}>
+                      {installProgress.percent !== undefined ? (
+                          <svg className="w-10 h-10 -rotate-90 transform" viewBox="0 0 36 36">
+                              <path
+                                  className="text-gray-200 opacity-20"
+                                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="3"
+                              />
+                              <path
+                                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                  fill="none"
+                                  stroke={colors.secondary}
+                                  strokeWidth="3"
+                                  strokeDasharray={`${installProgress.percent}, 100`}
+                              />
+                          </svg>
+                      ) : (
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2" style={{ borderColor: colors.secondary }}></div>
+                      )}
+                      <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold" style={{ color: colors.onSurface }}>
+                          {installProgress.percent}%
+                      </div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                      <h4 className="font-medium text-sm truncate" style={{ color: colors.onSurface }}>
+                          {operationType === "repair" ? t('repairing_instance') : t('installing')}
+                      </h4>
+                      <p className="text-xs truncate" style={{ color: colors.onSurfaceVariant }}>
+                          {installProgress.type ? t(installProgress.type as any, { filename: installProgress.filename, current: installProgress.current, total: installProgress.total } as any) : installProgress.message}
+                      </p>
+                  </div>
+                  <button
+                      onClick={(e) => { e.stopPropagation(); setInstallMinimized(false); }}
+                      className="p-2 rounded-lg hover:bg-white/10"
+                      title="Expand"
+                  >
+                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" style={{ color: colors.onSurfaceVariant }}>
+                          <path d="M12 8l-6 6 1.41 1.41L12 10.83l4.59 4.58L18 14z" />
+                      </svg>
+                  </button>
+              </div>
+          </div>
       )}
     </div>
   );

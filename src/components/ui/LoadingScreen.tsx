@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+﻿import { useState, useEffect, useRef } from "react";
 import gsap from "gsap";
 import rIcon from "../../assets/r.svg";
+import { useTranslation } from "../../hooks/useTranslation";
 
 interface LoadingScreenProps {
     onComplete: () => void;
@@ -8,6 +9,7 @@ interface LoadingScreenProps {
 }
 
 export function LoadingScreen({ onComplete, themeColor }: LoadingScreenProps) {
+    const { t } = useTranslation();
     const logoRef = useRef<HTMLDivElement>(null);
     const [progress, setProgress] = useState(0);
 
@@ -80,7 +82,7 @@ export function LoadingScreen({ onComplete, themeColor }: LoadingScreenProps) {
                         onClick={() => window.api?.windowMinimize()}
                         className="w-12 h-10 flex items-center justify-center transition-all hover:bg-black/10"
                         style={{ color: "#1a1a1a" }}
-                        title="ย่อหน้าต่าง"
+                        title={t("minimize")}
                     >
                         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M19 13H5v-2h14v2z" />
@@ -91,7 +93,7 @@ export function LoadingScreen({ onComplete, themeColor }: LoadingScreenProps) {
                         onClick={() => window.api?.windowMaximize()}
                         className="w-12 h-10 flex items-center justify-center transition-all hover:bg-black/10"
                         style={{ color: "#1a1a1a" }}
-                        title="ขยายหน้าต่าง"
+                        title={t("maximize")}
                     >
                         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z" />
@@ -102,7 +104,7 @@ export function LoadingScreen({ onComplete, themeColor }: LoadingScreenProps) {
                         onClick={() => window.api?.windowClose()}
                         className="w-12 h-10 flex items-center justify-center transition-all hover:bg-red-500 hover:text-white!"
                         style={{ color: "#1a1a1a" }}
-                        title="ปิดหน้าต่าง"
+                        title={t("close")}
                     >
                         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />

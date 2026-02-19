@@ -9,6 +9,7 @@
 import { ipcMain, BrowserWindow } from "electron";
 import { getConfig } from "../config.js";
 import { getSession } from "../auth.js";
+import { refreshMicrosoftTokenIfNeeded } from "../auth-refresh.js";
 import {
     launchGame,
     getInstalledVersions,
@@ -101,11 +102,22 @@ export function registerLauncherHandlers(getMainWindow: () => BrowserWindow | nu
         "launch-game",
         async (_event, payload: { version: string; username: string; ramMB: number }) => {
             const mainWindow = getMainWindow();
-            const session = getSession();
+            let session = getSession();
 
             if (!session) {
                 return { ok: false, message: "Please login first" };
             }
+
+            const refreshResult = await refreshMicrosoftTokenIfNeeded();
+            if (!refreshResult.ok) {
+                return {
+                    ok: false,
+                    message:
+                        refreshResult.error ||
+                        "Microsoft session refresh failed. Please login again.",
+                };
+            }
+            session = refreshResult.session || session;
 
             if (isGameRunning()) {
                 return { ok: false, message: "เกมกำลังรันอยู่แล้ว" };

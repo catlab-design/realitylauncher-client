@@ -73,10 +73,10 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
                 setClientIdInput(result.settings.microsoftClientId || "");
                 setDeviceClientIdInput(result.settings.microsoftDeviceClientId || "");
             } else {
-                setError(result?.error || "ไม่สามารถโหลด settings ได้");
+                setError(result?.error || t('load_failed'));
             }
         } catch (err: any) {
-            setError(err.message || "เกิดข้อผิดพลาด");
+            setError(err.message || t('error_occurred'));
         } finally {
             setLoading(false);
         }
@@ -99,10 +99,10 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
                 setEditingClientId(false);
                 loadSettings();
             } else {
-                alert(result?.error || "บันทึกไม่สำเร็จ");
+                alert(result?.error || t('save_failed'));
             }
         } catch {
-            alert("เกิดข้อผิดพลาด");
+            alert(t('error_occurred'));
         } finally {
             setSaving(false);
         }
@@ -116,10 +116,10 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
                 setEditingDeviceClientId(false);
                 loadSettings();
             } else {
-                alert(result?.error || "บันทึกไม่สำเร็จ");
+                alert(result?.error || t('save_failed'));
             }
         } catch {
-            alert("เกิดข้อผิดพลาด");
+            alert(t('error_occurred'));
         } finally {
             setSaving(false);
         }
@@ -135,10 +135,10 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
                 setSecretInput("");
                 loadSettings();
             } else {
-                alert(result?.error || "บันทึกไม่สำเร็จ");
+                alert(result?.error || t('save_failed'));
             }
         } catch {
-            alert("เกิดข้อผิดพลาด");
+            alert(t('error_occurred'));
         } finally {
             setSaving(false);
         }
@@ -212,7 +212,7 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
                     {/* Client ID */}
                     <div className="p-3 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHigh }}>
                         <div className="flex items-center justify-between mb-2">
-                            <span style={{ color: colors.onSurfaceVariant }}>Client ID (Web)</span>
+                            <span style={{ color: colors.onSurfaceVariant }}>{t('client_id_web')}</span>
                             {!editingClientId && (
                                 <button
                                     onClick={() => setEditingClientId(true)}
@@ -280,7 +280,7 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
                                     style={{ color: colors.secondary }}
                                 >
                                     <Icons.Edit className="w-3 h-3" />
-                                    แก้ไข
+                                    {t('edit')}
                                 </button>
                             )}
                         </div>
@@ -296,7 +296,7 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
                                         color: colors.onSurface,
                                         border: `1px solid ${colors.outline}`
                                     }}
-                                    placeholder="ใส่ Device Client ID"
+                                    placeholder={t('enter_device_client_id')}
                                 />
                                 <button
                                     onClick={saveDeviceClientId}
@@ -319,7 +319,7 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
                             </div>
                         ) : (
                             <code className="text-sm break-all" style={{ color: colors.secondary }}>
-                                {settings?.microsoftDeviceClientId || <span style={{ color: colors.onSurfaceVariant }}>ยังไม่ได้ตั้งค่า</span>}
+                                {settings?.microsoftDeviceClientId || <span style={{ color: colors.onSurfaceVariant }}>{t('not_set_yet')}</span>}
                             </code>
                         )}
                     </div>
@@ -328,7 +328,7 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
                     <div className="p-3 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHigh }}>
                         <div className="flex items-center justify-between">
                             <div>
-                                <span style={{ color: colors.onSurfaceVariant }}>Client Secret</span>
+                                <span style={{ color: colors.onSurfaceVariant }}>{t('client_secret')}</span>
                                 <div className="flex items-center gap-2 mt-1">
                                     {settings?.hasMicrosoftSecret ? (
                                         <>
@@ -362,7 +362,7 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
             <div className="rounded-xl p-5" style={{ backgroundColor: colors.surfaceContainer }}>
                 <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: colors.onSurface }}>
                     <Icons.Box className="w-5 h-5" style={{ color: "#f16436" }} />
-                    CurseForge API
+                    {t('curseforge_api')}
                 </h3>
 
                 <div className="p-3 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHigh }}>
@@ -442,7 +442,7 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
                                 color: colors.onSurface,
                                 border: `1px solid ${colors.outline}`
                             }}
-                            placeholder={secretType === "microsoft" ? "ใส่ Client Secret ใหม่" : "ใส่ API Key ใหม่"}
+                            placeholder={secretType === "microsoft" ? t('client_secret_placeholder') : t('api_key_placeholder')}
                         />
 
                         <div className="flex gap-3 justify-end">

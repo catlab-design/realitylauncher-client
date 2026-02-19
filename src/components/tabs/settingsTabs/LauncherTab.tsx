@@ -1,4 +1,4 @@
-import toast from "react-hot-toast";
+﻿import toast from "react-hot-toast";
 import type { LauncherConfig } from "../../../types/launcher";
 import type { SettingsTabProps } from "./AccountTab";
 import { useTranslation } from "../../../hooks/useTranslation";
@@ -32,10 +32,10 @@ export function LauncherTab({ config, updateConfig, colors }: SettingsTabProps) 
                                 color: colors.onSurfaceVariant,
                                 borderColor: colors.outline
                             }}
-                            title="Edit Translations"
+                            title={t('edit_translations')}
                         >
                             <Icons.Edit className="w-3.5 h-3.5" />
-                            <span>Edit</span>
+                            <span>{t('edit')}</span>
                         </button>
 
                         <div className="flex gap-2">
@@ -51,7 +51,7 @@ export function LauncherTab({ config, updateConfig, colors }: SettingsTabProps) 
                                     color: config.language === "th" ? colors.secondary : colors.onSurfaceVariant
                                 }}
                             >
-                                ไทย
+                                {t('language_thai')}
                             </button>
                             <button
                                 onClick={() => updateConfig({ language: "en" })}
@@ -65,7 +65,7 @@ export function LauncherTab({ config, updateConfig, colors }: SettingsTabProps) 
                                     color: config.language === "en" ? colors.secondary : colors.onSurfaceVariant
                                 }}
                             >
-                                English
+                                {t('language_english')}
                             </button>
                         </div>
                     </div>
@@ -162,9 +162,9 @@ export function LauncherTab({ config, updateConfig, colors }: SettingsTabProps) 
                     </div>
                     <div className="flex gap-1">
                         {[
-                            { value: "keep-open", label: t('keep_open') || "เปิดไว้" },
-                            { value: "hide-reopen", label: t('hide_reopen') || "ซ่อน/กลับมา" },
-                            { value: "close", label: t('close_launcher') || "ปิด" },
+                            { value: "keep-open", label: t('keep_open') },
+                            { value: "hide-reopen", label: t('hide_reopen') },
+                            { value: "close", label: t('close_launcher') },
                         ].map((option) => (
                             <button
                                 key={option.value}
@@ -192,28 +192,28 @@ export function LauncherTab({ config, updateConfig, colors }: SettingsTabProps) 
                     </div>
                     <button
                         onClick={async () => {
-                            if (confirm("Are you sure you want to reset all settings?")) {
+                            if (confirm(t('reset_settings_confirm'))) {
                                 try {
                                     // Reset in store
                                     const { useConfigStore } = await import("../../../store/configStore");
                                     useConfigStore.getState().resetConfig();
-                                    
+
                                     // Also reset in electron config
                                     if (windowApi?.resetConfig) {
                                         await windowApi.resetConfig();
                                     }
-                                    
-                                    toast.success("Settings reset to default - reloading...");
+
+                                    toast.success(t('settings_reset_success_reload'));
                                     // Reload page to apply all changes
                                     setTimeout(() => window.location.reload(), 500);
                                 } catch (err) {
                                     console.error("Reset failed:", err);
-                                    toast.error("Failed to reset settings");
+                                    toast.error(t('settings_reset_failed'));
                                 }
                             }
                         }}
                         className="p-2 rounded-xl transition-all hover:bg-red-500/10 text-red-500 hover:text-red-400 group"
-                        title="Reset All Settings"
+                        title={t('reset_settings')}
                     >
                         <Icons.Trash className="w-5 h-5" />
                     </button>
@@ -229,4 +229,3 @@ export function LauncherTab({ config, updateConfig, colors }: SettingsTabProps) 
         </div>
     );
 }
-

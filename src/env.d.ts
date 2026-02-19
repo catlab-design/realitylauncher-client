@@ -100,7 +100,7 @@ declare global {
       // Auth (Note: loginOffline removed, use loginCatID instead)
       logout: () => Promise<void>;
       getSession: () => Promise<AuthSession | null>;
-      setActiveSession: (session: AuthSession) => Promise<void>;
+      setActiveSession: (session: AuthSession) => Promise<AuthSession | null>;
       isLoggedIn: () => Promise<boolean>;
       forgotPassword: (
         email: string,
@@ -314,6 +314,14 @@ declare global {
           username: string;
           uuid: string;
         };
+        error?: string;
+      }>;
+      authRefreshToken: () => Promise<{
+        ok: boolean;
+        refreshed?: boolean;
+        newAccessToken?: string;
+        newApiToken?: string;
+        requiresRelogin?: boolean;
         error?: string;
       }>;
       // Window Control

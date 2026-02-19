@@ -5,9 +5,11 @@ import { cn } from "../../lib/utils";
 import type { Server } from "../../types/launcher";
 import { LiveLog } from "./LiveLog";
 import ServerItem, { type Instance } from "./ServerItem";
+import { ServerDetailView } from "./ServerDetailView";
 import { Icons } from "../ui/Icons";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import toast from "react-hot-toast";
+import { useAuthStore } from "../../store/authStore";
 
 
 
@@ -28,7 +30,6 @@ interface ServerMenuProps {
 
 
 export function ServerMenu({
-    servers,
     selectedServer,
     setSelectedServer,
     colors,
@@ -39,12 +40,15 @@ export function ServerMenu({
     language = "th",
 }: ServerMenuProps) {
     const { t } = useTranslation(language);
+    const { accounts, setSession: setAuthSession, updateAccount } = useAuthStore();
     const [instances, setInstances] = useState<{ owned: Instance[]; member: Instance[] } | null>(null);
     const [loading, setLoading] = useState(true);
+    const [apiError, setApiError] = useState<string | null>(null);
 
     const [logViewerInstanceId, setLogViewerInstanceId] = useState<string | null>(null);
     const [playingInstances, setPlayingInstances] = useState<Set<string>>(new Set());
     const [launchingId, setLaunchingId] = useState<string | null>(null);
+    const [viewingInstance, setViewingInstance] = useState<Instance | null>(null);
     const [timestamp, setTimestamp] = useState(Date.now());
     const [localInstances, setLocalInstances] = useState<Set<string>>(new Set());
 
@@ -171,15 +175,38 @@ export function ServerMenu({
         setLaunchingId(instance.id);
 
         try {
-            // Check Token first like ModPack
-            const refreshResult = await (window.api as any)?.authRefreshToken?.();
-            if (refreshResult && !refreshResult.ok && refreshResult.error) {
-                const refreshErr = typeof refreshResult.error === 'string' ? refreshResult.error : '';
-                if (refreshErr.includes("re-login")) {
+            if (session?.type === "catid" && session.minecraftUuid) {
+                const linkedMsAccount = accounts.find(
+                    (account) =>
+                        account.type === "microsoft" &&
+                        account.uuid === session.minecraftUuid,
+                );
+
+                if (linkedMsAccount) {
+                    const switchedSession = await window.api?.setActiveSession?.(linkedMsAccount);
+                    if (switchedSession) {
+                        setAuthSession(switchedSession as AuthSession);
+                        updateAccount(switchedSession as AuthSession);
+                    }
+                } else {
                     toast.error(t('session_expired_login_server'));
-                    setLaunchingId(null);
                     return;
                 }
+            }
+
+            // Check Token first like ModPack
+            const refreshResult = await window.api?.authRefreshToken?.();
+            if (refreshResult && refreshResult.ok === false) {
+                const requiresRelogin = refreshResult.requiresRelogin === true;
+                const refreshErr = typeof refreshResult.error === "string"
+                    ? refreshResult.error
+                    : "";
+                toast.error(
+                    requiresRelogin
+                        ? t('session_expired_login_server')
+                        : (refreshErr || t('session_expired_login_server')),
+                );
+                return;
             }
 
             // Use instancesLaunch (High-level API)
@@ -271,16 +298,24 @@ export function ServerMenu({
         if (!instances) {
             setLoading(true);
         }
+        setApiError(null);
 
         try {
             // Run both fetches in parallel for faster loading
+            let cloudError: string | null = null;
             const [cloudData, localList] = await Promise.all([
                 // 1. Fetch Cloud Instances
                 (async () => {
                     try {
                         const result = await (window.api as any)?.instancesGetJoinedServers?.();
                         if (result?.ok && result.data) return result.data;
-                    } catch { }
+                        // API returned error (e.g. not logged in, server down)
+                        if (result && !result.ok) {
+                            cloudError = result.error || "API error";
+                        }
+                    } catch (err: any) {
+                        cloudError = err.message || "Network error";
+                    }
                     return { owned: [], member: [] };
                 })(),
                 // 2. Fetch Local Instances
@@ -294,6 +329,11 @@ export function ServerMenu({
 
             setInstances({ owned, member });
 
+            // Track API error only when we got zero cloud results
+            if (cloudError && owned.length === 0 && member.length === 0) {
+                setApiError(cloudError);
+            }
+
             // Set joined servers (Owned + Member) for flat lookup
             const all = [...owned, ...member];
             const unique = all.filter((v: any, i: number, a: any[]) => a.findIndex(t => t.id === v.id) === i);
@@ -304,10 +344,11 @@ export function ServerMenu({
                 setLocalInstances(new Set(localList.map((i: any) => i.id)));
             }
 
-        } catch (e) {
+        } catch (e: any) {
             console.error("Error fetching instances", e);
             setInstances({ owned: [], member: [] });
             setJoinedServers([]);
+            setApiError(e.message || "Unknown error");
         } finally {
             setLoading(false);
         }
@@ -330,11 +371,12 @@ export function ServerMenu({
 
             if (res.ok) {
                 const data = await res.json();
-                setPublicInstances(data.length ? data : []);
-                if (data && !Array.isArray(data) && Array.isArray(data.data)) {
-                    setPublicInstances(data.data);
-                } else if (Array.isArray(data)) {
+                if (Array.isArray(data)) {
                     setPublicInstances(data);
+                } else if (data && Array.isArray(data.data)) {
+                    setPublicInstances(data.data);
+                } else {
+                    setPublicInstances([]);
                 }
             } else {
                 setPublicInstances([]);
@@ -361,12 +403,9 @@ export function ServerMenu({
     };
 
     // Combine for display
-    // If showPublic is true, display ONLY public instances (or mixed? Usually distinct views are better)
     const displayedInstances = showPublic
         ? publicInstances
-        : (instances && (instances.owned.length > 0 || instances.member.length > 0)
-            ? [...(instances.owned || []), ...(instances.member || [])]
-            : servers);
+        : [...(instances?.owned || []), ...(instances?.member || [])];
 
     // Helper to select an instance and create a 'Server' object from it
     const handleInstanceClick = (instance: any) => {
@@ -444,6 +483,11 @@ export function ServerMenu({
         });
     };
 
+    const handleViewLogs = (e: React.MouseEvent, instance: any) => {
+        e.stopPropagation();
+        setLogViewerInstanceId(instance.id);
+    };
+
     return (
         <div className="h-full flex flex-col">
             {/* LiveLog Viewer */}
@@ -454,7 +498,27 @@ export function ServerMenu({
                 instanceId={logViewerInstanceId}
             />
 
-            <div className="flex justify-between items-center mb-6 gap-4">
+            {/* Server Detail View */}
+            {viewingInstance ? (
+                <ServerDetailView 
+                    instance={viewingInstance}
+                    onBack={() => setViewingInstance(null)}
+                    onPlay={handlePlayServer}
+                    onStop={handleStopServer}
+                    onInstall={handleInstall}
+                    onJoin={handleJoinServer}
+                    onViewLogs={handleViewLogs}
+                    isInstalled={localInstances.has(viewingInstance.storagePath || viewingInstance.id)}
+                    isPlaying={playingInstances.has(viewingInstance.id)}
+                    isLaunching={launchingId === viewingInstance.id}
+                    isMember={joinedServers.some(s => s.id === viewingInstance.id)}
+                    colors={colors}
+                    t={t}
+                    getWithTimestamp={getWithTimestamp}
+                />
+            ) : (
+                <>
+                <div className="flex justify-between items-center mb-6 gap-4">
                 <div className="flex-1">
                     <h2 className="text-2xl font-bold mb-1" style={{ color: colors.onSurface }}>
                         {isJoinMode ? t('enter_key') : (showPublic ? t('explore_servers') : t('server_list'))}
@@ -646,34 +710,55 @@ export function ServerMenu({
                         </div>
                     ))}
                 </div>
-            ) : displayedInstances.length === 0 && servers.length === 0 ? (
+            ) : displayedInstances.length === 0 ? (
                 <div className="flex-1 flex flex-col items-center justify-center gap-6 opacity-60">
                     <div className="w-24 h-24 rounded-3xl flex items-center justify-center bg-gray-500/10">
-                        {showPublic ? <Icons.Search className="w-12 h-12" /> : <span className="text-4xl text-gray-500">?</span>}
+                        {apiError ? (
+                            <svg className="w-12 h-12" style={{ color: colors.error || "#ef4444" }} viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
+                            </svg>
+                        ) : showPublic ? (
+                            <Icons.Search className="w-12 h-12" />
+                        ) : (
+                            <span className="text-4xl text-gray-500">?</span>
+                        )}
                     </div>
                     <div className="text-center">
                         <h3 className="text-xl font-bold mb-2" style={{ color: colors.onSurface }}>
-                            {showPublic ? t('no_public_servers') : session?.type === "offline" ? t('offline_mode') : t('no_servers_found_in_list')}
+                            {apiError
+                                ? (t('api_connection_error') || "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้")
+                                : showPublic ? t('no_public_servers')
+                                : session?.type === "offline" ? t('offline_mode')
+                                : t('no_servers_found_in_list')
+                            }
                         </h3>
                         <p style={{ color: colors.onSurfaceVariant }}>
-                            {showPublic
-                                ? t('no_search_results')
-                                : session?.type === "offline"
-                                    ? t('use_catid_to_play')
-                                    : t('no_server_invite_desc')
+                            {apiError
+                                ? (t('api_connection_error_desc') || "API อาจล่มหรือเครือข่ายขัดข้อง กดลองใหม่อีกครั้ง")
+                                : showPublic
+                                    ? t('no_search_results')
+                                    : session?.type === "offline"
+                                        ? t('use_catid_to_play')
+                                        : t('no_server_invite_desc')
                             }
                         </p>
+                        {apiError && (
+                            <button
+                                type="button"
+                                onClick={() => { setLoading(true); fetchInstances(); }}
+                                className="mt-4 px-6 py-2.5 rounded-xl font-medium transition-all hover:brightness-110 active:scale-95"
+                                style={{ backgroundColor: colors.primary, color: colors.onPrimary }}
+                            >
+                                {t('retry') || "ลองใหม่"}
+                            </button>
+                        )}
                     </div>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-4 overflow-y-auto">
-                    {/* Instances List */}
                     {displayedInstances.map((instance: any, index: number) => {
-                        // Check if installed
                         const targetId = instance.storagePath || instance.id;
                         const isInstalled = localInstances.has(targetId);
-                        
-                        // Check if member (for Join/Play button logic)
                         const isMember = joinedServers.some(s => s.id === instance.id);
 
                         return (
@@ -689,7 +774,10 @@ export function ServerMenu({
                                 isPlaying={playingInstances.has(instance.id)}
                                 isLaunching={launchingId === instance.id}
                                 getWithTimestamp={getWithTimestamp}
-                                onSelect={handleInstanceClick}
+                                onSelect={(inst) => {
+                                    handleInstanceClick(inst);
+                                    setViewingInstance(inst);
+                                }}
                                 onPlay={handlePlayServer}
                                 onStop={handleStopServer}
                                 onJoin={handleJoinServer}
@@ -697,84 +785,8 @@ export function ServerMenu({
                                 onLeave={handleLeaveServer}
                                 t={t}
                             />
-
                         );
                     })}
-
-                    {/* Only show legacy servers if NOT searching public */}
-                    {!showPublic && servers.map((server, index) => (
-                        <div
-                            key={server.id}
-                            className="animate-card-appear"
-                            style={{ animationDelay: `${Math.min((displayedInstances.length + index) * 25, 200)}ms` }}
-                        >
-                            <div
-                                onClick={() => setSelectedServer(server)}
-                                className="group relative rounded-2xl overflow-hidden cursor-pointer h-48 transition-all hover:shadow-xl"
-                                style={{
-                                    border: selectedServer?.id === server.id
-                                        ? `2px solid ${colors.primary}`
-                                        : "2px solid transparent",
-                                }}
-                            >
-                                {/* Full Background Image */}
-                                <div
-                                    className="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105"
-                                    style={{ 
-                                        backgroundImage: (server.image || server.bannerUrl) 
-                                            ? `url(${getWithTimestamp(server.image || server.bannerUrl)})` 
-                                            : undefined,
-                                        backgroundColor: (server.image || server.bannerUrl) ? undefined : colors.surfaceContainer
-                                    }}
-                                >
-                                    {(!server.image && !server.bannerUrl) && (
-                                        <div className="w-full h-full flex items-center justify-center">
-                                            <span className="text-6xl font-bold opacity-10" style={{ color: colors.onSurface }}>
-                                                {server.name[0]?.toUpperCase()}
-                                            </span>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Gradient Overlay */}
-                                <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/50 to-transparent" />
-
-                                {/* Status - Top Right */}
-                                <div className="absolute top-3 right-3">
-                                    <span
-                                        className={cn(
-                                            "w-3 h-3 rounded-full border border-white/20 shadow-sm block",
-                                            server.status === "online" ? "bg-green-500" : "bg-red-500"
-                                        )}
-                                    />
-                                </div>
-
-                                {/* Content & Actions - Bottom */}
-                                <div className="absolute bottom-0 left-0 right-0 p-4 flex items-end gap-3">
-                                    <div className="flex-1 min-w-0">
-                                        <h3 className="text-xl font-bold text-white truncate drop-shadow-md">
-                                            {server.name}
-                                        </h3>
-                                        <p className="text-sm text-gray-300 truncate drop-shadow-sm">
-                                            {server.description}
-                                        </p>
-                                    </div>
-
-                                    <div className="flex gap-2 shrink-0">
-                                        <button
-                                            className="h-10 px-4 rounded-xl flex items-center justify-center gap-2 transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10"
-                                            style={{ backgroundColor: "rgba(255,255,255,0.1)", color: "#fff" }}
-                                        >
-                                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                                                <path d="M8 5v14l11-7z" />
-                                            </svg>
-                                            <span className="font-bold">{t('play')}</span>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
                 </div>
             )
             }
@@ -790,6 +802,8 @@ export function ServerMenu({
                 confirmColor={confirmDialog.confirmColor}
                 colors={colors}
             />
+            </>
+            )}
         </div >
     );
 }

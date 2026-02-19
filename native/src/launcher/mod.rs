@@ -682,17 +682,33 @@ fn verify_file(path: &PathBuf, expected_sha1: Option<&str>) -> bool {
 
 fn build_jvm_args(version: &VersionDetail, options: &LaunchOptions, classpath: &[String]) -> Vec<String> {
     let mut args = Vec::new();
-    
+
     // Memory settings
     let min_ram = options.ram_min_mb.unwrap_or(512);
     let max_ram = options.ram_max_mb.unwrap_or(2048);
     args.push(format!("-Xms{}M", min_ram));
     args.push(format!("-Xmx{}M", max_ram));
-    
+
     // Natives path
     args.push(format!("-Djava.library.path={}", options.natives_dir));
 
-    
+    // Pre-scan: check if version JSON already includes -cp / ${classpath} in JVM args
+    // Modern MC (1.13+) version JSONs include "-cp ${classpath}" in their jvm args list.
+    // If present, we skip the manual -cp addition below to avoid duplicate -cp flags.
+    let mut classpath_in_json = false;
+    if let Some(ref arguments) = version.arguments {
+        if let Some(ref jvm) = arguments.jvm {
+            for arg in jvm {
+                if let Some(s) = arg.as_str() {
+                    if s == "${classpath}" || s == "-cp" || s == "-classpath" {
+                        classpath_in_json = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     // Process JVM arguments from version JSON
     if let Some(ref arguments) = version.arguments {
         if let Some(ref jvm) = arguments.jvm {
@@ -719,17 +735,21 @@ fn build_jvm_args(version: &VersionDetail, options: &LaunchOptions, classpath: &
             }
         }
     }
-    
-    // Classpath - MUST come after standard JVM options but BEFORE main class
-    let cp_separator = if cfg!(windows) { ";" } else { ":" };
-    args.push("-cp".to_string());
-    args.push(classpath.join(cp_separator));
+
+    // Add -cp only if it was NOT already included via version JSON JVM args.
+    // Legacy MC (<1.13) uses minecraftArguments string format and has no jvm args list,
+    // so we must add -cp manually for those versions.
+    if !classpath_in_json {
+        let cp_separator = if cfg!(windows) { ";" } else { ":" };
+        args.push("-cp".to_string());
+        args.push(classpath.join(cp_separator));
+    }
 
     // Extra JVM args - Append LAST to override any previous properties
     if let Some(ref extra) = options.extra_jvm_args {
         args.extend(extra.clone());
     }
-    
+
     args
 }
 

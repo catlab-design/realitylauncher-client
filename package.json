@@ -1,7 +1,7 @@
 {
   "name": "reality-launcher",
   "type": "module",
-  "version": "2.1.0",
+  "version": "2.1.2",
   "main": "dist-electron/main.cjs",
   "author": {
     "name": "Cat Lab_ Design",
@@ -18,7 +18,11 @@
     "dist:win": "bun run build && electron-builder --win",
     "dist:mac": "bun run build && electron-builder --mac",
     "dist:linux": "bun run build && electron-builder --linux",
-    "build:rust": "cd ../ml-launcher-core && cargo build --release"
+    "dist:flatpak": "bun run build && electron-builder --linux flatpak --publish never",
+    "dist:flatpak:fast": "electron-builder --linux flatpak --publish never",
+    "dist:store": "node scripts/build-msixupload.cjs",
+    "dist:store:fast": "SKIP_DIST_WIN=true node scripts/build-msixupload.cjs",
+    "build:rust": "cd ./native && cargo build --release"
   },
   "build": {
     "appId": "net.catlab.reality-launcher",

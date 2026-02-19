@@ -1,3 +1,4 @@
+import { motion } from "framer-motion";
 import type { AuthSession, LauncherConfig } from "../../types/launcher";
 import { playClick } from "../../lib/sounds";
 import {
@@ -70,14 +71,21 @@ export function Settings({
                         <button
                             key={item.id}
                             onClick={() => { if (config.clickSoundEnabled) playClick(); setSettingsTab(item.id as typeof settingsTab); }}
-                            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all text-left whitespace-nowrap"
+                            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all text-left whitespace-nowrap relative group"
                             style={{
-                                backgroundColor: settingsTab === item.id ? colors.secondary : "transparent",
                                 color: settingsTab === item.id ? "#1a1a1a" : colors.onSurfaceVariant,
                             }}
                         >
-                            <i className={`fa-solid ${item.icon} w-5`}></i>
-                            {item.label}
+                            {settingsTab === item.id && (
+                                <motion.div
+                                    layoutId="settings-active-pill"
+                                    className="absolute inset-0 rounded-xl"
+                                    style={{ backgroundColor: colors.secondary }}
+                                    transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                                />
+                            )}
+                            <i className={`fa-solid ${item.icon} w-5 z-10 relative`}></i>
+                            <span className="z-10 relative">{item.label}</span>
                         </button>
                     ))}
                 </div>

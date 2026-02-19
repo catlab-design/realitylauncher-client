@@ -105,7 +105,7 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
                 setBanModalOpen(false);
                 loadUsers();
             } else {
-                alert(result?.error || "ระงับบัญชีไม่สำเร็จ");
+                alert(result?.error || t('ban_failed'));
             }
         } finally {
             setActionLoading(null);
@@ -119,7 +119,7 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
             if (result?.ok) {
                 loadUsers();
             } else {
-                alert(result?.error || "ยกเลิกการระงับไม่สำเร็จ");
+                alert(result?.error || t('unban_failed'));
             }
         } finally {
             setActionLoading(null);
@@ -133,7 +133,7 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
             if (result?.ok) {
                 loadUsers();
             } else {
-                alert(result?.error || "เปลี่ยนสถานะ admin ไม่สำเร็จ");
+                alert(result?.error || t('toggle_admin_failed'));
             }
         } finally {
             setActionLoading(null);
@@ -142,7 +142,8 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
 
     const handleAddUser = async () => {
         if (!newUserEmail || !newUserUsername || !newUserPassword) {
-            setAddUserError("กรุณากรอกข้อมูลให้ครบ");
+            setAddUserError(t('fill_all_info'));
+
             return;
         }
 
@@ -163,7 +164,8 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
                 setNewUserIsAdmin(false);
                 loadUsers();
             } else {
-                setAddUserError(result?.error || "สร้างผู้ใช้ไม่สำเร็จ");
+                setAddUserError(result?.error || t('create_user_failed'));
+
             }
         } finally {
             setAddUserLoading(false);
@@ -183,11 +185,13 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
                 setViewUser(result.user);
                 setViewSessions(result.sessions || []);
             } else {
-                setViewError(result?.error || "ไม่สามารถโหลดข้อมูลได้");
+                setViewError(result?.error || t('load_failed'));
+
             }
         } catch (e: any) {
             console.error("Failed to load user details:", e);
-            setViewError(e?.message || "เกิดข้อผิดพลาด");
+            setViewError(e?.message || t('error_occurred'));
+
         } finally {
             setViewLoading(false);
         }
@@ -260,8 +264,8 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
                                                 : (user.catidUsername || user.email)
                                             }
                                         </span>
-                                        {user.isAdmin && <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400">Admin</span>}
-                                        {user.isBanned && <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/20 text-red-400">Banned</span>}
+                                        {user.isAdmin && <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400">{t('admin')}</span>}
+                                        {user.isBanned && <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/20 text-red-400">{t('ban_user')}</span>}
                                     </div>
                                     <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{user.email}</p>
                                 </div>
@@ -342,15 +346,15 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
                         <div className="space-y-3 mb-4">
                             <div>
                                 <label className="text-xs mb-1 block" style={{ color: colors.onSurfaceVariant }}>{t('email')}</label>
-                                <input type="email" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm" style={inputStyle} placeholder="email@example.com" />
+                                <input type="email" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm" style={inputStyle} placeholder={t('email_placeholder')} />
                             </div>
                             <div>
                                 <label className="text-xs mb-1 block" style={{ color: colors.onSurfaceVariant }}>{t('catid_username')}</label>
-                                <input type="text" value={newUserUsername} onChange={(e) => setNewUserUsername(e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm" style={inputStyle} placeholder="username" />
+                                <input type="text" value={newUserUsername} onChange={(e) => setNewUserUsername(e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm" style={inputStyle} placeholder={t('username')} />
                             </div>
                             <div>
                                 <label className="text-xs mb-1 block" style={{ color: colors.onSurfaceVariant }}>{t('password')}</label>
-                                <input type="password" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm" style={inputStyle} placeholder="••••••••" />
+                                <input type="password" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} className="w-full px-3 py-2 rounded-lg text-sm" style={inputStyle} placeholder={t('password_placeholder')} />
                             </div>
                             <div className="flex items-center gap-2">
                                 <input type="checkbox" id="newUserAdmin" checked={newUserIsAdmin} onChange={(e) => setNewUserIsAdmin(e.target.checked)} className="w-4 h-4" />
@@ -400,14 +404,14 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
                                         <p style={{ color: colors.onSurface }}>{viewUser.email}</p>
                                     </div>
                                     <div className="p-3 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHigh }}>
-                                        <p style={{ color: colors.onSurfaceVariant }}>Minecraft Username</p>
+                                        <p style={{ color: colors.onSurfaceVariant }}>{t('minecraft_username')}</p>
                                         <p style={{ color: colors.onSurface }}>{viewUser.minecraftUsername || "-"}</p>
                                     </div>
                                     <div className="p-3 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHigh }}>
                                         <p style={{ color: colors.onSurfaceVariant }}>{t('status')}</p>
                                         <div className="flex gap-1">
-                                            {viewUser.isAdmin && <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400">Admin</span>}
-                                            {viewUser.bannedAt ? <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/20 text-red-400">Banned</span> : <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-400">Active</span>}
+                                            {viewUser.isAdmin && <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400">{t('admin')}</span>}
+                                            {viewUser.bannedAt ? <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/20 text-red-400">{t('ban_user')}</span> : <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-400">{t('active')}</span>}
                                         </div>
                                     </div>
                                     <div className="p-3 rounded-lg col-span-2" style={{ backgroundColor: colors.surfaceContainerHigh }}>

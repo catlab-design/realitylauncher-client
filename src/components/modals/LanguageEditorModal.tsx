@@ -39,15 +39,15 @@ export function LanguageEditorModal({ isOpen, onClose, colors, currentLanguage }
             downloadAnchorNode.click();
             downloadAnchorNode.remove();
 
-            toast.success("Exported JSON successfully!");
+            toast.success(t("export_json_success"));
         } catch (error) {
             console.error(error);
-            toast.error("Failed to export JSON");
+            toast.error(t("export_json_failed"));
         }
     };
 
     const openDiscord = () => {
-        window.open("https://discord.com/invite/PewhYEehFQ", "_blank");
+        (window as any).api.openExternal("https://discord.com/invite/PewhYEehFQ");
     };
 
     const filteredKeys = Object.keys(editableTranslations).filter(key =>
@@ -74,12 +74,12 @@ export function LanguageEditorModal({ isOpen, onClose, colors, currentLanguage }
                         </div>
                         <div>
                             <h2 className="text-xl font-black tracking-tight" style={{ color: colors.onSurface }}>
-                                Language Editor
+                                {t("language_editor")}
                             </h2>
                             <p className="text-sm font-medium opacity-60 flex items-center gap-2" style={{ color: colors.onSurfaceVariant }}>
-                                <span>{currentLanguage === 'th' ? 'Thai' : 'English'}</span>
+                                <span>{currentLanguage === "th" ? t("language_thai") : t("language_english")}</span>
                                 <span className="w-1 h-1 rounded-full bg-current opacity-50" />
-                                <span>{modifiedCount} changes</span>
+                                <span>{t("changes_count").replace("{count}", String(modifiedCount))}</span>
                             </p>
                         </div>
                     </div>
@@ -91,7 +91,7 @@ export function LanguageEditorModal({ isOpen, onClose, colors, currentLanguage }
                             style={{ backgroundColor: colors.secondary, color: colors.onPrimary }}
                         >
                             <Icons.Download className="w-4 h-4" />
-                            Export .json
+                            {t("export_json")}
                         </button>
                         <button
                             onClick={onClose}
@@ -114,7 +114,7 @@ export function LanguageEditorModal({ isOpen, onClose, colors, currentLanguage }
                                 <Icons.Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 opacity-50" style={{ color: colors.onSurface }} />
                                 <input
                                     type="text"
-                                    placeholder="Search keys..."
+                                    placeholder={t("search_keys")}
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     className="w-full pl-9 pr-4 py-2.5 rounded-xl border text-sm transition-all outline-none focus:ring-2"
@@ -160,7 +160,7 @@ export function LanguageEditorModal({ isOpen, onClose, colors, currentLanguage }
                                 })
                             ) : (
                                 <div className="p-8 text-center opacity-50 text-sm">
-                                    No keys found
+                                    {t("no_keys_found")}
                                 </div>
                             )}
                         </div>
@@ -173,7 +173,7 @@ export function LanguageEditorModal({ isOpen, onClose, colors, currentLanguage }
                                 
                                 <div className="mb-6">
                                     <label className="text-xs font-bold uppercase tracking-wider opacity-50 mb-2 block" style={{ color: colors.onSurfaceVariant }}>
-                                        Translation Key
+                                        {t("translation_key")}
                                     </label>
                                     <div className="font-mono text-lg font-bold select-all" style={{ color: colors.onSurface }}>
                                         {selectedKey}
@@ -185,7 +185,7 @@ export function LanguageEditorModal({ isOpen, onClose, colors, currentLanguage }
                                          style={{ borderColor: colors.outline + "30", backgroundColor: colors.surfaceContainerLow + "50" }}>
                                         <label className="absolute -top-2.5 left-3 px-1 text-xs font-bold bg-surface" 
                                                style={{ color: colors.onSurfaceVariant, backgroundColor: colors.surface }}>
-                                            Original Value
+                                            {t("original_value")}
                                         </label>
                                         <p className="text-base leading-relaxed opacity-80" style={{ color: colors.onSurface }}>
                                             {originalTranslations[selectedKey]}
@@ -194,13 +194,13 @@ export function LanguageEditorModal({ isOpen, onClose, colors, currentLanguage }
 
                                     <div className="flex-1 flex flex-col relative">
                                         <label className="text-xs font-bold uppercase tracking-wider opacity-70 mb-2 flex justify-between" style={{ color: colors.onSurfaceVariant }}>
-                                            <span>Edit Value</span>
+                                            <span>{t("edit_value")}</span>
                                             {isModified(selectedKey) && (
                                                 <button 
                                                     onClick={() => setEditableTranslations(prev => ({ ...prev, [selectedKey]: originalTranslations[selectedKey] }))}
                                                     className="text-[10px] hover:underline"
                                                 >
-                                                    Reset to original
+                                                    {t("reset_to_original")}
                                                 </button>
                                             )}
                                         </label>
@@ -208,7 +208,7 @@ export function LanguageEditorModal({ isOpen, onClose, colors, currentLanguage }
                                             value={editableTranslations[selectedKey]}
                                             onChange={(e) => setEditableTranslations(prev => ({ ...prev, [selectedKey]: e.target.value }))}
                                             className="w-full flex-1 p-6 rounded-2xl border text-lg leading-relaxed resize-none transition-all outline-none focus:ring-2 focus:ring-offset-2"
-                                            placeholder="Enter translation here..."
+                                            placeholder={t("enter_translation_here")}
                                             style={{ 
                                                 backgroundColor: colors.surfaceContainer,
                                                 borderColor: isModified(selectedKey) ? colors.secondary : 'transparent',
@@ -217,7 +217,7 @@ export function LanguageEditorModal({ isOpen, onClose, colors, currentLanguage }
                                             }}
                                         />
                                         <div className="absolute bottom-4 right-4 text-xs opacity-40 pointer-events-none">
-                                            {editableTranslations[selectedKey].length} chars
+                                            {t("chars_count").replace("{count}", String(editableTranslations[selectedKey].length))}
                                         </div>
                                     </div>
                                 </div>
@@ -229,8 +229,8 @@ export function LanguageEditorModal({ isOpen, onClose, colors, currentLanguage }
                                      style={{ backgroundColor: colors.surfaceContainerHighest }}>
                                     <Icons.Edit className="w-10 h-10" />
                                 </div>
-                                <h3 className="text-xl font-bold mb-2">Select a key to edit</h3>
-                                <p className="max-w-xs text-sm">Choose a translation key from the sidebar to modify its value.</p>
+                                <h3 className="text-xl font-bold mb-2">{t("select_key_to_edit")}</h3>
+                                <p className="max-w-xs text-sm">{t("choose_translation_key_desc")}</p>
                             </div>
                         )}
 
@@ -242,7 +242,7 @@ export function LanguageEditorModal({ isOpen, onClose, colors, currentLanguage }
                                 style={{ color: colors.secondary }}
                             >
                                 <Icons.Discord className="w-3 h-3" />
-                                Found a translation error? Report to Developer
+                                {t("translation_error_report")}
                             </button>
                         </div>
                     </div>

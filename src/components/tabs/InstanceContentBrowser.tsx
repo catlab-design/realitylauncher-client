@@ -8,6 +8,8 @@ import toast from "react-hot-toast";
 import type { GameInstance, LauncherConfig } from "../../types/launcher";
 import { playClick } from "../../lib/sounds";
 import { useTranslation } from "../../hooks/useTranslation";
+import { motion } from "framer-motion";
+import type { TranslationKey } from "../../i18n/translations";
 
 // Icons for content sources
 import modrinthIcon from "../../assets/modrinth.svg";
@@ -50,11 +52,11 @@ const SORT_OPTIONS = [
     { value: "updated", labelKey: "sort.updated" },
 ];
 
-const CONTENT_TABS: { type: ContentType; labelKey: string }[] = [
-    { type: "mod", labelKey: "mods" },
-    { type: "resourcepack", labelKey: "resourcepacks" },
-    { type: "datapack", labelKey: "datapacks" },
-    { type: "shader", labelKey: "shaders" },
+const CONTENT_TABS: { type: ContentType; labelKey: string; icon: React.ComponentType<any> }[] = [
+    { type: "mod", labelKey: "mods", icon: Icons.Box },
+    { type: "resourcepack", labelKey: "resourcepacks", icon: Icons.Palette },
+    { type: "datapack", labelKey: "datapacks", icon: Icons.Scroll },
+    { type: "shader", labelKey: "shaders", icon: Icons.Sun },
 ];
 
 // Filter tabs based on instance loader
@@ -562,28 +564,42 @@ export function InstanceContentBrowser({
                         </div>
 
                         {/* Source Toggle - right side */}
-                        <div className="flex items-center gap-1 flex-shrink-0">
+                        <div className="flex items-center gap-1 shrink-0">
                             <button
                                 onClick={() => { playClick(); setContentSource(CONTENT_SOURCES.MODRINTH); setPage(1); }}
-                                className="px-2.5 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors"
+                                className="px-2.5 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all relative group"
                                 style={{
-                                    backgroundColor: contentSource === CONTENT_SOURCES.MODRINTH ? "#1bd96a" : "transparent",
                                     color: contentSource === CONTENT_SOURCES.MODRINTH ? "#000" : colors.onSurfaceVariant,
                                 }}
                             >
-                                <img src={modrinthIcon.src} alt="" className="w-4 h-4" />
-                                Modrinth
+                                {contentSource === CONTENT_SOURCES.MODRINTH && (
+                                    <motion.div
+                                        layoutId="instance-browser-source-indicator"
+                                        className="absolute inset-0 rounded-md shadow-sm"
+                                        style={{ backgroundColor: "#1bd96a" }}
+                                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                                    />
+                                )}
+                                <img src={modrinthIcon.src} alt="" className="w-4 h-4 z-10 relative" />
+                                <span className="z-10 relative">Modrinth</span>
                             </button>
                             <button
                                 onClick={() => { playClick(); setContentSource(CONTENT_SOURCES.CURSEFORGE); setPage(1); }}
-                                className="px-2.5 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors"
+                                className="px-2.5 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all relative group"
                                 style={{
-                                    backgroundColor: contentSource === CONTENT_SOURCES.CURSEFORGE ? "#f16436" : "transparent",
                                     color: contentSource === CONTENT_SOURCES.CURSEFORGE ? "#fff" : colors.onSurfaceVariant,
                                 }}
                             >
-                                <img src={curseforgeIcon.src} alt="" className="w-4 h-4" />
-                                CurseForge
+                                {contentSource === CONTENT_SOURCES.CURSEFORGE && (
+                                    <motion.div
+                                        layoutId="instance-browser-source-indicator"
+                                        className="absolute inset-0 rounded-md shadow-sm"
+                                        style={{ backgroundColor: "#f16436" }}
+                                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                                    />
+                                )}
+                                <img src={curseforgeIcon.src} alt="" className="w-4 h-4 z-10 relative" />
+                                <span className="z-10 relative">CurseForge</span>
                             </button>
                         </div>
                     </div>
@@ -592,19 +608,31 @@ export function InstanceContentBrowser({
                     <div className="px-4 py-2 flex items-center gap-2">
                         {/* Type tabs */}
                         <div className="flex items-center gap-1">
-                            {getAvailableTabs(instance.loader).map((tab) => (
-                                <button
-                                    key={tab.type}
-                                    onClick={() => { playClick(); setContentType(tab.type); setPage(1); }}
-                                    className="px-2.5 py-1 rounded-md text-xs font-medium transition-colors"
-                                    style={{
-                                        backgroundColor: contentType === tab.type ? colors.secondary : "transparent",
-                                        color: contentType === tab.type ? "#1a1a1a" : colors.onSurfaceVariant,
-                                    }}
-                                >
-                                    {t(tab.labelKey as any)}
-                                </button>
-                            ))}
+                            {getAvailableTabs(instance.loader).map((tab) => {
+                                const active = contentType === tab.type;
+                                const TabIcon = tab.icon;
+                                return (
+                                    <button
+                                        key={tab.type}
+                                        onClick={() => { playClick(); setContentType(tab.type); setPage(1); }}
+                                        className="px-3 py-1 rounded-md text-xs font-medium transition-all relative group flex items-center gap-2"
+                                        style={{
+                                            color: active ? "#1a1a1a" : colors.onSurfaceVariant,
+                                        }}
+                                    >
+                                        {active && (
+                                            <motion.div
+                                                layoutId="instance-browser-tabs-indicator"
+                                                className="absolute inset-0 rounded-md"
+                                                style={{ backgroundColor: colors.secondary }}
+                                                transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                                            />
+                                        )}
+                                        <TabIcon className="w-3.5 h-3.5 z-10 relative" />
+                                        <span className="z-10 relative">{t(tab.labelKey as TranslationKey)}</span>
+                                    </button>
+                                );
+                            })}
                         </div>
 
                         <div className="flex-1" />
@@ -701,7 +729,7 @@ export function InstanceContentBrowser({
                                             }}
                                         >
                                             {/* Icon skeleton */}
-                                            <div className="w-12 h-12 rounded-xl flex-shrink-0 overflow-hidden relative"
+                                            <div className="w-12 h-12 rounded-xl shrink-0 overflow-hidden relative"
                                                 style={{ backgroundColor: colors.surfaceContainerHighest }}>
                                                 {/* Gradient removed */}
                                             </div>
@@ -820,7 +848,7 @@ export function InstanceContentBrowser({
                                             return `url(${url})`;
                                         })()
                                     }}>
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                                    <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent" />
 
                                     {/* Installed Badge */}
                                     {isProjectInstalled(previewProject) && (

@@ -21,11 +21,10 @@ import {
   setActiveSession,
   updateApiToken,
   loginMicrosoft,
-  updateTokens,
-  isTokenExpired,
   type AuthSession,
 } from "../auth.js";
 import { createIpcLogger } from "../lib/logger.js";
+import { refreshMicrosoftTokenIfNeeded } from "../auth-refresh.js";
 
 // Create logger for auth handlers
 const logger = createIpcLogger("Auth");
@@ -118,8 +117,21 @@ export function registerAuthHandlers(
 
   ipcMain.handle(
     "auth-set-active-session",
-    async (_event, session: AuthSession): Promise<void> => {
+    async (_event, session: AuthSession): Promise<AuthSession | null> => {
       setActiveSession(session);
+      if (session.type !== "microsoft") {
+        return getSession();
+      }
+
+      const refreshResult = await refreshMicrosoftTokenIfNeeded(logger);
+      if (!refreshResult.ok) {
+        logger.warn("Failed to refresh token while switching active session", {
+          error: refreshResult.error,
+          requiresRelogin: refreshResult.requiresRelogin,
+        });
+      }
+
+      return refreshResult.session ?? getSession();
     },
   );
 
@@ -566,183 +578,28 @@ export function registerAuthHandlers(
   // ----------------------------------------
 
   ipcMain.handle("auth-refresh-token", async () => {
-    try {
-      const session = getSession();
+    const refreshResult = await refreshMicrosoftTokenIfNeeded(logger);
+    if (!refreshResult.ok) {
+      return {
+        ok: false,
+        error: refreshResult.error || "Token refresh failed",
+        requiresRelogin: refreshResult.requiresRelogin || false,
+      };
+    }
 
-      if (!session) return { ok: false, error: "Not logged in" };
-      if (session.type !== "microsoft") return { ok: true };
-      if (!session.refreshToken)
-        return { ok: true, newAccessToken: session.accessToken };
-      if (!isTokenExpired())
-        return { ok: true, newAccessToken: session.accessToken };
-
-      // Ensure we have client ID before attempting refresh
-      if (!MICROSOFT_CLIENT_ID) {
-        await fetchOAuthConfig();
-      }
-      if (!MICROSOFT_CLIENT_ID) {
-        return { ok: false, error: "Microsoft Client ID not configured" };
-      }
-
-      // Refresh flow
-      const tokenResponse = await fetch(
-        "https://login.microsoftonline.com/consumers/oauth2/v2.0/token",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            grant_type: "refresh_token",
-            client_id: MICROSOFT_CLIENT_ID,
-            refresh_token: session.refreshToken,
-            scope: "XboxLive.signin offline_access",
-          }),
-        },
-      );
-
-      const tokenData = (await tokenResponse.json()) as any;
-      if (tokenData.error)
-        return { ok: false, error: tokenData.error_description };
-      if (!tokenData.access_token)
-        return { ok: false, error: "No access token" };
-
-      // Xbox + XSTS + Minecraft auth (same as device code poll)
-      const xblResponse = await fetch(
-        "https://user.auth.xboxlive.com/user/authenticate",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          body: JSON.stringify({
-            Properties: {
-              AuthMethod: "RPS",
-              SiteName: "user.auth.xboxlive.com",
-              RpsTicket: `d=${tokenData.access_token}`,
-            },
-            RelyingParty: "http://auth.xboxlive.com",
-            TokenType: "JWT",
-          }),
-        },
-      );
-      const xblData = (await xblResponse.json()) as any;
-      if (!xblData.Token) return { ok: false, error: "Xbox Live failed" };
-
-      const xstsResponse = await fetch(
-        "https://xsts.auth.xboxlive.com/xsts/authorize",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          body: JSON.stringify({
-            Properties: { SandboxId: "RETAIL", UserTokens: [xblData.Token] },
-            RelyingParty: "rp://api.minecraftservices.com/",
-            TokenType: "JWT",
-          }),
-        },
-      );
-      const xstsData = (await xstsResponse.json()) as any;
-      if (!xstsData.Token) return { ok: false, error: "XSTS failed" };
-
-      const mcResponse = await fetch(
-        "https://api.minecraftservices.com/authentication/login_with_xbox",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            identityToken: `XBL3.0 x=${xstsData.DisplayClaims?.xui?.[0]?.uhs};${xstsData.Token}`,
-          }),
-        },
-      );
-      const mcData = (await mcResponse.json()) as any;
-      if (!mcData.access_token)
-        return { ok: false, error: "Minecraft auth failed" };
-
-      updateTokens(
-        mcData.access_token,
-        tokenData.refresh_token,
-        tokenData.expires_in,
-      );
-
-      // ===============================================
-      // CRITICAL Fix: Refresh CatID Token (via Link)
-      // ===============================================
-      // When Microsoft token refreshes, we MUST also refresh the CatID API token.
-      // We do this by "re-linking" which exchanges the fresh MS token for a fresh CatID token.
-      let newApiToken = mcData.access_token; // Default fallback
-
-      try {
-        // Only re-link if we actually have a CatID apiToken to refresh
-        if (session.apiToken) {
-          logger.info(
-            "[Auth Refresh] Attempting to refresh CatID token via re-link...",
-          );
-          const msExpiresAt = mcData.expires_in
-            ? new Date(Date.now() + mcData.expires_in * 1000).toISOString()
-            : undefined;
-
-          // Bug #3 Fix: Build headers conditionally - never send empty Authorization
-          const linkHeaders: Record<string, string> = {
-            "Content-Type": "application/json",
-            "X-Client-App": "RealityLauncher",
-          };
-          if (session.apiToken) {
-            linkHeaders["Authorization"] = `Bearer ${session.apiToken}`;
-          }
-
-          const linkResponse = await fetch(
-            `${ML_API_URL}/auth/microsoft/link`,
-            {
-              method: "POST",
-              headers: linkHeaders,
-              body: JSON.stringify({
-                accessToken: mcData.access_token,
-                uuid: session.uuid,
-                username: session.username,
-                accessTokenExpiresAt: msExpiresAt,
-              }),
-            },
-          );
-
-          if (linkResponse.ok) {
-            const linkData = (await linkResponse.json()) as any;
-            if (linkData.token) {
-              newApiToken = linkData.token;
-              updateApiToken(newApiToken, linkData.expiresAt);
-              logger.info("[Auth Refresh] Successfully refreshed CatID token!");
-            }
-          } else {
-            logger.warn(
-              "[Auth Refresh] Failed to refresh CatID token (Server error)",
-              { status: linkResponse.status },
-            );
-          }
-        }
-      } catch (linkError) {
-        logger.warn("[Auth Refresh] Failed to refresh CatID token (Network)", {
-          error: linkError,
-        });
-      }
-
-      // Sync instances with the NEW token
+    if (refreshResult.newApiToken) {
       const { syncCloudInstances } = await import("../cloud-instances.js");
-      syncCloudInstances(newApiToken).catch((err) =>
+      syncCloudInstances(refreshResult.newApiToken).catch((err) =>
         logger.error("Cloud sync failed", err),
       );
-
-      return { ok: true, newAccessToken: mcData.access_token, newApiToken };
-    } catch (error: any) {
-      const session = getSession();
-      if (session?.apiToken) {
-        const cleaned = { ...session } as any;
-        delete cleaned.apiToken;
-        delete cleaned.apiTokenExpiresAt;
-        setActiveSession(cleaned);
-      }
-      return { ok: false, error: error.message };
     }
+
+    return {
+      ok: true,
+      refreshed: refreshResult.refreshed,
+      newAccessToken: refreshResult.newAccessToken,
+      newApiToken: refreshResult.newApiToken,
+    };
   });
 
   // ----------------------------------------

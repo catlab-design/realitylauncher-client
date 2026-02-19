@@ -104,7 +104,7 @@ export function MicrosoftVerificationModal({
                             }}
                         >
                             <div className="text-left overflow-hidden">
-                                <div className="text-[10px] uppercase font-black tracking-widest opacity-40 mb-1" style={{ color: colors.onSurface }}>Step 1: Website</div>
+                                <div className="text-[10px] uppercase font-black tracking-widest opacity-40 mb-1" style={{ color: colors.onSurface }}>{t('step_1_website')}</div>
                                 <div className="text-sm font-bold truncate text-blue-400 group-hover:underline opacity-90">{data.verificationUri}</div>
                             </div>
                             <div className="w-8 h-8 rounded-full flex items-center justify-center border transition-colors"
@@ -126,7 +126,7 @@ export function MicrosoftVerificationModal({
                         >
                             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-current to-transparent opacity-0 group-hover:opacity-20 transition-opacity" style={{ color: colors.onSurface }} />
 
-                            <div className="text-[10px] uppercase font-black tracking-widest opacity-40 mb-4" style={{ color: colors.onSurface }}>Step 2: Device Code</div>
+                            <div className="text-[10px] uppercase font-black tracking-widest opacity-40 mb-4" style={{ color: colors.onSurface }}>{t('step_2_device_code')}</div>
 
                             <div className="text-5xl font-black tracking-[0.2em] select-all relative z-10 leading-none" style={{ color: colors.primary }}>
                                 {data.userCode}

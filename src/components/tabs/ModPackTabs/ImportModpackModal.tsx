@@ -5,6 +5,8 @@
 import React from "react";
 import { Icons } from "../../ui/Icons";
 import { useTranslation } from "../../../hooks/useTranslation";
+import modrinthIcon from "../../../assets/modrinth.svg";
+import curseforgeIcon from "../../../assets/curseforge.svg";
 
 export interface ImportModpackModalProps {
     colors: any;
@@ -75,7 +77,7 @@ export function ImportModpackModal({
                     <p className="font-medium mb-1" style={{ color: isDragging ? colors.secondary : colors.onSurfaceVariant }}>
                         {isDragging ? t('drop_now_to_import') : t('drag_file_here')}
                     </p>
-                    <p className="text-sm mb-4" style={{ color: colors.onSurfaceVariant }}>หรือ</p>
+                    <p className="text-sm mb-4" style={{ color: colors.onSurfaceVariant }}>{t('or')}</p>
                     <button
                         disabled={isInstalling}
                         className="px-6 py-2 rounded-xl font-medium disabled:opacity-50"
@@ -88,27 +90,27 @@ export function ImportModpackModal({
                 {/* Source Options */}
                 <div className="grid grid-cols-2 gap-3">
                     <div
-                        className="p-3 rounded-xl flex items-center gap-2"
+                        className="p-3 rounded-xl flex items-center gap-3 transition-colors hover:bg-gray-500/5 group"
                         style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}` }}
                     >
-                        <div className="w-6 h-6 rounded flex items-center justify-center" style={{ backgroundColor: "#f16436" }}>
-                            <span className="text-white text-xs font-bold">CF</span>
+                        <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "#f16436" }}>
+                             <img src={curseforgeIcon.src} alt="CurseForge" className="w-6 h-6 brightness-0 invert" />
                         </div>
                         <div>
-                            <div className="text-sm font-medium" style={{ color: colors.onSurface }}>CurseForge</div>
-                            <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t('curseforge_desc')}</div>
+                            <div className="text-sm font-bold leading-tight" style={{ color: colors.onSurface }}>CurseForge</div>
+                            <div className="text-xs opacity-80" style={{ color: colors.onSurfaceVariant }}>{t('curseforge_desc')}</div>
                         </div>
                     </div>
                     <div
-                        className="p-3 rounded-xl flex items-center gap-2"
+                        className="p-3 rounded-xl flex items-center gap-3 transition-colors hover:bg-gray-500/5 group"
                         style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}` }}
                     >
-                        <div className="w-6 h-6 rounded flex items-center justify-center" style={{ backgroundColor: "#1bd96a" }}>
-                            <span className="text-white text-xs font-bold">M</span>
+                        <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "#1bd96a" }}>
+                            <img src={modrinthIcon.src} alt="Modrinth" className="w-6 h-6 brightness-0 invert" />
                         </div>
                         <div>
-                            <div className="text-sm font-medium" style={{ color: colors.onSurface }}>Modrinth</div>
-                            <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t('modrinth_desc')}</div>
+                            <div className="text-sm font-bold leading-tight" style={{ color: colors.onSurface }}>Modrinth</div>
+                            <div className="text-xs opacity-80" style={{ color: colors.onSurfaceVariant }}>{t('modrinth_desc')}</div>
                         </div>
                     </div>
                 </div>

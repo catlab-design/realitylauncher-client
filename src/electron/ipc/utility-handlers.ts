@@ -420,38 +420,108 @@ export function registerUtilityHandlers(getMainWindow: () => BrowserWindow | nul
             if (fs.existsSync(extractDir)) fs.rmSync(extractDir, { recursive: true });
             fs.mkdirSync(extractDir, { recursive: true });
 
-            // Use async spawn instead of spawnSync to prevent UI freeze
-            await new Promise<void>((resolve, reject) => {
-                const child = spawn("powershell", [
-                    "-NoProfile",
-                    "-Command",
-                    `Expand-Archive -Path "${zipPath}" -DestinationPath "${extractDir}" -Force`
-                ], {
-                    windowsHide: true,
+            const toSignedExitCode = (code: number | null): number | null => {
+                if (code === null) return null;
+                return code > 0x7fffffff ? code - 0x100000000 : code;
+            };
+
+            const runExtractAttempt = (label: string, command: string, args: string[]): Promise<void> => {
+                return new Promise<void>((resolve, reject) => {
+                    let stderr = "";
+                    let stdout = "";
+                    const child = spawn(command, args, {
+                        windowsHide: true,
+                    });
+
+                    child.stdout?.on("data", (chunk) => {
+                        stdout += chunk.toString();
+                    });
+
+                    child.stderr?.on("data", (chunk) => {
+                        stderr += chunk.toString();
+                    });
+
+                    child.on("close", (code) => {
+                        if (code === 0) {
+                            resolve();
+                            return;
+                        }
+
+                        const signedCode = toSignedExitCode(code);
+                        const codeText = signedCode !== null && signedCode !== code
+                            ? `${code} (signed ${signedCode})`
+                            : `${code}`;
+                        const detail = [stderr.trim(), stdout.trim()].filter(Boolean).join("\n");
+                        reject(new Error(`${label} failed with code ${codeText}${detail ? `: ${detail}` : ""}`));
+                    });
+
+                    child.on("error", (err) => {
+                        reject(new Error(`${label} spawn error: ${err.message}`));
+                    });
                 });
+            };
 
-                // Update progress periodically during extraction
-                let extractPercent = 0;
-                const progressInterval = setInterval(() => {
-                    extractPercent = Math.min(extractPercent + 10, 90);
-                    sendProgress("extract", extractPercent, `กำลังแตกไฟล์... ${extractPercent}%`);
-                }, 1000);
+            const psZipPath = zipPath.replace(/'/g, "''");
+            const psExtractDir = extractDir.replace(/'/g, "''");
+            const extractAttempts = [
+                {
+                    label: "PowerShell Expand-Archive",
+                    command: "powershell",
+                    args: [
+                        "-NoProfile",
+                        "-Command",
+                        `$ErrorActionPreference = 'Stop'; Expand-Archive -LiteralPath '${psZipPath}' -DestinationPath '${psExtractDir}' -Force`,
+                    ],
+                },
+                {
+                    label: "PowerShell ZipFile",
+                    command: "powershell",
+                    args: [
+                        "-NoProfile",
+                        "-Command",
+                        `$ErrorActionPreference = 'Stop'; Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('${psZipPath}', '${psExtractDir}', $true)`,
+                    ],
+                },
+                {
+                    label: "tar",
+                    command: "tar",
+                    args: ["-xf", zipPath, "-C", extractDir],
+                },
+            ] as const;
 
-                child.on("close", (code) => {
-                    clearInterval(progressInterval);
-                    if (code === 0) {
-                        sendProgress("extract", 100, "แตกไฟล์เสร็จสิ้น");
-                        resolve();
-                    } else {
-                        reject(new Error(`Extract failed with code ${code}`));
+            // Update progress periodically during extraction
+            let extractPercent = 0;
+            const progressInterval = setInterval(() => {
+                extractPercent = Math.min(extractPercent + 10, 90);
+                sendProgress("extract", extractPercent, `Extracting files... ${extractPercent}%`);
+            }, 1000);
+
+            try {
+                let extracted = false;
+                let lastError: Error | null = null;
+
+                for (const attempt of extractAttempts) {
+                    try {
+                        console.log(`[Java] Extract attempt: ${attempt.label}`);
+                        await runExtractAttempt(attempt.label, attempt.command, [...attempt.args]);
+                        extracted = true;
+                        break;
+                    } catch (error: any) {
+                        lastError = error instanceof Error ? error : new Error(String(error));
+                        console.warn(`[Java] ${attempt.label} failed: ${lastError.message}`);
+                        if (fs.existsSync(extractDir)) fs.rmSync(extractDir, { recursive: true, force: true });
+                        fs.mkdirSync(extractDir, { recursive: true });
                     }
-                });
+                }
 
-                child.on("error", (err) => {
-                    clearInterval(progressInterval);
-                    reject(err);
-                });
-            });
+                if (!extracted) {
+                    throw lastError || new Error("Extract failed");
+                }
+
+                sendProgress("extract", 100, "Extraction complete");
+            } finally {
+                clearInterval(progressInterval);
+            }
 
             fs.unlinkSync(zipPath);
 

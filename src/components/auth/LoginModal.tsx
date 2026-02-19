@@ -39,11 +39,11 @@ export function LoginModal({
                         <Icons.Login className="w-10 h-10" style={{ color: "#1a1a1a" }} />
                     </div>
                     <h2 className="text-2xl font-black tracking-tighter text-center z-10" style={{ color: colors.onSurface }}>
-                        Access
+                        {t('login')}
                     </h2>
                     <div className="mt-2 px-3 py-1 rounded-full bg-yellow-500/20 text-[10px] font-black uppercase tracking-widest z-10"
                         style={{ color: colors.secondary }}>
-                        Access Point
+                        {t('access_point')}
                     </div>
                     <p className="mt-8 text-xs font-bold opacity-30 text-center leading-relaxed z-10"
                         style={{ color: colors.onSurface }}

@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { Icons } from '../ui/Icons';
-import './JoinInstanceDialog.css'; // Keeping for animations
+import { useTranslation } from '../../hooks/useTranslation';
+import './JoinInstanceDialog.css';
 
 interface JoinInstanceDialogProps {
     isOpen: boolean;
@@ -11,6 +12,7 @@ interface JoinInstanceDialogProps {
 }
 
 export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = '', colors }: JoinInstanceDialogProps) {
+    const { t } = useTranslation();
     const [key, setKey] = useState(initialKey);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -37,7 +39,7 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
         e.preventDefault();
 
         if (!key.trim()) {
-            setError('กรุณาใส่รหัสเชิญ (Invite Key)');
+            setError(t('please_enter_invite_key'));
             return;
         }
 
@@ -58,14 +60,14 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
                     setSuccess(false);
                 }, 1500);
             } else {
-                let errMsg = typeof result?.error === 'string' ? result.error : 'ไม่สามารถเข้าร่วม instance ได้';
-                if (errMsg.includes("API token") || errMsg.includes("Unauthorized") || errMsg.includes("No token")) {
-                    errMsg = "ไม่มี CatID กรุณาสมัครหรือเข้าสู่ระบบ";
+                let errMsg = typeof result?.error === 'string' ? result.error : t('join_failed');
+                if (errMsg.includes('API token') || errMsg.includes('Unauthorized') || errMsg.includes('No token')) {
+                    errMsg = t('session_expired_game');
                 }
                 setError(errMsg);
             }
         } catch (err: any) {
-            setError(err.message || 'เกิดข้อผิดพลาดในการเข้าร่วม');
+            setError(err.message || t('error_occurred'));
         }
 
         setLoading(false);
@@ -111,11 +113,11 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
                         <Icons.Key className="w-10 h-10" style={{ color: onPrimary }} />
                     </div>
 
-                    <h2 className="text-2xl font-black tracking-tighter text-center z-10">เข้าร่วมเกม</h2>
-                    <div className="mt-2 px-3 py-1 rounded-full bg-yellow-500/20 text-[10px] font-black uppercase tracking-widest z-10" style={{ color: colors?.secondary || '#fbbf24' }}>รหัสเชิญ</div>
+                    <h2 className="text-2xl font-black tracking-tighter text-center z-10">{t('join')}</h2>
+                    <div className="mt-2 px-3 py-1 rounded-full bg-yellow-500/20 text-[10px] font-black uppercase tracking-widest z-10" style={{ color: colors?.secondary || '#fbbf24' }}>{t('enter_key')}</div>
 
                     <p className="mt-12 text-xs font-bold opacity-30 text-center leading-relaxed z-10">
-                        ระบุรหัสเชิญเฉพาะของคุณ<br />เพื่อเข้าถึง Instance นี้
+                        {t('enter_invite_key_desc')}
                     </p>
                 </div>
 
@@ -133,8 +135,8 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
                     </div>
 
                     <div className="mb-8">
-                        <h3 className="text-3xl font-black tracking-tight mb-2">เข้าร่วม Instance</h3>
-                        <p className="text-sm font-medium opacity-60">ระบุรหัสเชิญเพื่อเริ่มต้นการเดินทางของคุณ</p>
+                        <h3 className="text-3xl font-black tracking-tight mb-2">{t('join_instance_title')}</h3>
+                        <p className="text-sm font-medium opacity-60">{t('enter_invite_key_desc')}</p>
                     </div>
 
                     <form onSubmit={handleSubmit} className="flex-1 flex flex-col">
@@ -145,14 +147,14 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
                                     <Icons.Info className="w-6 h-6 text-blue-400" />
                                 </div>
                                 <p className="text-xs font-medium opacity-70 leading-relaxed pt-0.5">
-                                    รหัสเชิญ (Invite Key) จะช่วยให้คุณเข้าถึงเซิร์ฟเวอร์หรือกลุ่มที่ต้องการเล่นร่วมกับเพื่อนของคุณ
+                                    {t('join_instance_info')}
                                 </p>
                             </div>
 
                             {/* Input Field */}
                             <div className="space-y-2.5">
                                 <label htmlFor="instance-key" className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-widest">
-                                    รหัสเชิญของคุณ
+                                    {t('your_invite_key')}
                                 </label>
                                 <div className="relative group">
                                     <input
@@ -165,7 +167,7 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
                                             color: text,
                                             '--tw-ring-color': `${primary}10`
                                         } as any}
-                                        placeholder="วางรหัสเชิญที่นี่..."
+                                        placeholder={t('enter_invite_key_placeholder')}
                                         value={key}
                                         onChange={handleKeyChange}
                                         disabled={loading || success}
@@ -188,7 +190,7 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
                                     {success && (
                                         <div className="flex items-center gap-2 text-sm font-black text-green-400 animate-in fade-in slide-in-from-top-1">
                                             <Icons.Check className="w-4 h-4" />
-                                            <span>เข้าร่วมสำเร็จแล้ว!</span>
+                                            <span>{t('join_success')}</span>
                                         </div>
                                     )}
                                 </div>
@@ -210,16 +212,16 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
                                 {loading ? (
                                     <>
                                         <Icons.Spinner className="w-6 h-6 animate-spin" />
-                                        <span>กำลังตรวจสอบ...</span>
+                                        <span>{t('submitting')}</span>
                                     </>
                                 ) : success ? (
                                     <>
                                         <Icons.Check className="w-6 h-6" />
-                                        <span>ยืนยันแล้ว</span>
+                                        <span>{t('confirm')}</span>
                                     </>
                                 ) : (
                                     <>
-                                        <span>เข้าร่วมทันที</span>
+                                        <span>{t('join')}</span>
                                         <Icons.Login className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                                     </>
                                 )}
@@ -231,7 +233,7 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
                                 className="flex-1 py-4 rounded-2xl font-bold transition-all hover:bg-white/5 active:scale-[0.98] disabled:opacity-30 border-2 border-white/5"
                                 style={{ color: text }}
                             >
-                                ยกเลิก
+                                {t('cancel')}
                             </button>
                         </div>
                     </form>

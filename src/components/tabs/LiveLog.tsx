@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { Icons } from "../ui/Icons";
+import { useTranslation } from "../../hooks/useTranslation";
 
 // ========================================
 // Types
@@ -24,6 +25,7 @@ interface LiveLogProps {
 // ========================================
 
 export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
+    const { t } = useTranslation();
     const [logs, setLogs] = useState<LogEntry[]>([]);
     const [filter, setFilter] = useState<"all" | "info" | "warn" | "error">("all");
     const [autoScroll, setAutoScroll] = useState(true);
@@ -165,6 +167,13 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
 
     if (!isOpen) return null;
 
+    const filterLabels = {
+        all: t("log_filter_all"),
+        info: t("log_filter_info"),
+        warn: t("log_filter_warn"),
+        error: t("log_filter_error"),
+    } as const;
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
             <div
@@ -185,10 +194,12 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
                         </div>
                         <div>
                             <h2 className="text-lg font-bold" style={{ color: colors.onSurface }}>
-                                Game Logs
+                                {t("game_logs")}
                             </h2>
                             <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>
-                                {isLoadingFile ? "Loading..." : `${logs.length} entries`}
+                                {isLoadingFile
+                                    ? t("loading")
+                                    : t("entries_count").replace("{count}", String(logs.length))}
                             </p>
                         </div>
                     </div>
@@ -206,7 +217,7 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
                                         color: filter === f ? colors.onPrimary : colors.onSurfaceVariant
                                     }}
                                 >
-                                    {f.toUpperCase()}
+                                    {filterLabels[f].toUpperCase()}
                                 </button>
                             ))}
                         </div>
@@ -219,7 +230,7 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
                                 backgroundColor: autoScroll ? colors.primary + "20" : colors.surfaceContainerHighest,
                                 color: autoScroll ? colors.primary : colors.onSurfaceVariant
                             }}
-                            title={autoScroll ? "Auto-scroll enabled" : "Auto-scroll disabled"}
+                            title={autoScroll ? t("auto_scroll_enabled") : t("auto_scroll_disabled")}
                         >
                             <Icons.ArrowDown className="w-4 h-4" />
                         </button>
@@ -231,7 +242,7 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
                                 backgroundColor: isPaused ? "#f59e0b20" : colors.surfaceContainerHighest,
                                 color: isPaused ? "#f59e0b" : colors.onSurfaceVariant
                             }}
-                            title={isPaused ? "Resume logging" : "Pause logging"}
+                            title={isPaused ? t("resume_logging") : t("pause_logging")}
                         >
                             {isPaused ? <Icons.Play className="w-4 h-4" /> : <Icons.Pause className="w-4 h-4" />}
                         </button>
@@ -241,7 +252,7 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
                             disabled={isLoadingFile}
                             className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:bg-black/10 disabled:opacity-50"
                             style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}
-                            title="Reload logs from file"
+                            title={t("reload_logs")}
                         >
                             <Icons.Refresh className="w-4 h-4" />
                         </button>
@@ -250,7 +261,7 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
                             onClick={copyLogs}
                             className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:bg-black/10"
                             style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}
-                            title="Copy logs"
+                            title={t("copy_logs")}
                         >
                             <Icons.Copy className="w-4 h-4" />
                         </button>
@@ -259,7 +270,7 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
                             onClick={clearLogs}
                             className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:bg-black/10"
                             style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}
-                            title="Clear logs"
+                            title={t("clear_logs")}
                         >
                             <Icons.Trash className="w-4 h-4" />
                         </button>
@@ -284,13 +295,13 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
                     {isLoadingFile ? (
                         <div className="flex flex-col items-center justify-center h-full text-center">
                             <Icons.Refresh className="w-12 h-12 mb-3 opacity-30 animate-spin" style={{ color: colors.onSurfaceVariant }} />
-                            <p style={{ color: colors.onSurfaceVariant }}>Loading logs...</p>
+                            <p style={{ color: colors.onSurfaceVariant }}>{t("loading_logs")}</p>
                         </div>
                     ) : filteredLogs.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-full text-center">
                             <Icons.Terminal className="w-12 h-12 mb-3 opacity-30" style={{ color: colors.onSurfaceVariant }} />
                             <p style={{ color: colors.onSurfaceVariant }}>
-                                {logs.length === 0 ? "No logs found. Start the game to see logs here." : "No logs match the current filter."}
+                                {logs.length === 0 ? t("no_logs_found_start_game") : t("no_logs_match_filter")}
                             </p>
                         </div>
                     ) : (
@@ -322,17 +333,19 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
                     style={{ borderColor: colors.outline, backgroundColor: colors.surfaceContainer }}
                 >
                     <span style={{ color: colors.onSurfaceVariant }}>
-                        Showing {filteredLogs.length} of {logs.length} logs
+                        {t("showing_logs_count")
+                            .replace("{filtered}", String(filteredLogs.length))
+                            .replace("{total}", String(logs.length))}
                     </span>
                     <div className="flex items-center gap-2">
                         {isPaused && (
                             <span className="px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-500 font-medium">
-                                PAUSED
+                                {t("paused").toUpperCase()}
                             </span>
                         )}
                         {autoScroll && (
                             <span style={{ color: colors.onSurfaceVariant }}>
-                                Auto-scroll ON
+                                {t("auto_scroll_on")}
                             </span>
                         )}
                     </div>

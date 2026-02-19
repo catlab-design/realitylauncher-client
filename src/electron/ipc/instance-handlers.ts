@@ -55,6 +55,7 @@ import {
 } from "../instances.js";
 import { getConfig, getAppDataDir } from "../config.js";
 import { getSession, getApiToken } from "../auth.js";
+import { refreshMicrosoftTokenIfNeeded } from "../auth-refresh.js";
 import { API_URL } from "../lib/constants.js";
 import {
   launchGame,
@@ -927,8 +928,19 @@ export function registerInstanceHandlers(
       return { ok: false, message: "Instance ไม่พบ" };
     }
 
-    const session = getSession();
+    let session = getSession();
     if (!session) return { ok: false, message: "กรุณา login ก่อน" };
+
+    const refreshResult = await refreshMicrosoftTokenIfNeeded(logger);
+    if (!refreshResult.ok) {
+      return {
+        ok: false,
+        message:
+          refreshResult.error ||
+          "Microsoft session refresh failed. Please login again.",
+      };
+    }
+    session = refreshResult.session || session;
 
     if (isGameRunning(id))
       return { ok: false, message: "Instance นี้กำลังทำงานอยู่" };
@@ -943,9 +955,9 @@ export function registerInstanceHandlers(
     // Auto-Sync Server Mods
     // ----------------------------------------
     if (instance.cloudId && instance.autoUpdate !== false) {
-      const session = getSession();
+      const syncSession = getSession();
       // If user is offline/not logged in, we skip sync (or should we fail? Prefer skip for offline play)
-      if (session && session.apiToken) {
+      if (syncSession && syncSession.apiToken) {
         try {
           const { syncServerMods } = await import("../cloud-instances.js");
 
@@ -962,7 +974,7 @@ export function registerInstanceHandlers(
           try {
             await syncServerMods(
               id,
-              session.apiToken,
+              syncSession.apiToken,
               (progress) => {
                 mainWindow?.webContents.send("launch-progress", progress);
               },

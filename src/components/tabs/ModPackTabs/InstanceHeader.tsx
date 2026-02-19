@@ -1,10 +1,11 @@
-/**
+﻿/**
  * InstanceHeader - Header section for instance detail view
  */
 
 import React from "react";
 import { Icons } from "../../ui/Icons";
 import type { GameInstance } from "../../../types/launcher";
+import { useTranslation } from "../../../hooks/useTranslation";
 
 export interface InstanceHeaderProps {
     colors: any;
@@ -29,6 +30,7 @@ export function InstanceHeader({
     onOpenSettings,
     onOpenFolder,
 }: InstanceHeaderProps) {
+    const { t } = useTranslation();
 
     const getLoaderLabel = (loader: string): string => {
         const labels: Record<string, string> = {
@@ -42,9 +44,9 @@ export function InstanceHeader({
     };
 
     const formatPlayTime = (minutes: number): string => {
-        if (minutes < 60) return `${minutes} นาที`;
+        if (minutes < 60) return `${minutes} ${t("minutes_unit")}`;
         const hours = Math.floor(minutes / 60);
-        return `${hours} ชั่วโมง`;
+        return `${hours} ${t("hours_unit")}`;
     };
 
     return (
@@ -78,7 +80,7 @@ export function InstanceHeader({
                 <div className="flex items-center gap-3 text-sm" style={{ color: colors.onSurfaceVariant }}>
                     <span>{getLoaderLabel(instance.loader)} {instance.minecraftVersion}</span>
                     {instance.totalPlayTime > 0 && (
-                        <span>• {formatPlayTime(instance.totalPlayTime)}</span>
+                        <span>&bull; {formatPlayTime(instance.totalPlayTime)}</span>
                     )}
                 </div>
             </div>
@@ -96,21 +98,21 @@ export function InstanceHeader({
                 {launchingId === instance.id ? (
                     <>
                         <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        กำลังเปิด...
+                        {t("launching")}
                     </>
                 ) : isThisInstancePlaying ? (
                     <>
                         <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M6 6h12v12H6z" />
                         </svg>
-                        หยุด
+                        {t("stop")}
                     </>
                 ) : (
                     <>
                         <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M8 5v14l11-7z" />
                         </svg>
-                        เล่น
+                        {t("play")}
                     </>
                 )}
             </button>
@@ -120,7 +122,7 @@ export function InstanceHeader({
                 onClick={onOpenSettings}
                 className="w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:opacity-80"
                 style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                title="ตั้งค่า"
+                title={t("settings")}
             >
                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
@@ -132,7 +134,7 @@ export function InstanceHeader({
                 onClick={onOpenFolder}
                 className="w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:opacity-80"
                 style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                title="เปิดโฟลเดอร์"
+                title={t("open_folder")}
             >
                 <Icons.Folder className="w-5 h-5" />
             </button>

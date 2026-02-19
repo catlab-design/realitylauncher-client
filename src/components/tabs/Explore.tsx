@@ -142,49 +142,89 @@ export function Explore({ colors, config }: ExploreProps) {
     }, [results]);
 
     const fetchFullProjectDetails = async (project: ModrinthProject) => {
-        // Only fetch if Modrinth
-        if (contentSource !== CONTENT_SOURCES.MODRINTH) return;
-
+        // Fetch for both Modrinth and CurseForge
         if (!project.project_id) return;
 
         try {
-            const fullProject = await window.api?.modrinthGetProject?.(project.project_id);
+            if (contentSource === CONTENT_SOURCES.MODRINTH) {
+                const fullProject = await window.api?.modrinthGetProject?.(project.project_id);
 
-            if (fullProject) {
-                // Normalize Modrinth data (camelCase -> snake_case fallback)
-                // API usually returns snake_case, but we check both just in case
-                const normalized: ModrinthProject = {
-                    slug: fullProject.slug,
-                    title: fullProject.title,
-                    description: fullProject.description,
-                    categories: fullProject.categories || fullProject.displayCategories || fullProject.display_categories || [],
-                    downloads: fullProject.downloads,
-                    icon_url: normalizeImageUrl(fullProject.icon_url || fullProject.iconUrl || null, 'modrinth'),
-                    project_id: fullProject.project_id || fullProject.projectId || project.project_id,
-                    author: fullProject.author || project.author || t('unknown'),
-                    versions: fullProject.versions || project.versions || [],
-                    game_versions: fullProject.game_versions || fullProject.gameVersions || project.game_versions || [],
-                    loaders: fullProject.loaders || project.loaders || [],
-                    follows: fullProject.follows || 0,
-                    client_side: fullProject.clientSide || fullProject.client_side,
-                    server_side: fullProject.serverSide || fullProject.server_side,
-                    gallery: fullProject.gallery || [],
-                    // Preserve existing featured_gallery to prevent flash
-                    featured_gallery: project.featured_gallery || fullProject.featured_gallery || fullProject.featuredGallery || null,
-                };
+                if (fullProject) {
+                    // Normalize Modrinth data (camelCase -> snake_case fallback)
+                    // API usually returns snake_case, but we check both just in case
+                    const normalized: ModrinthProject = {
+                        slug: fullProject.slug,
+                        title: fullProject.title,
+                        description: fullProject.description,
+                        categories: fullProject.categories || fullProject.displayCategories || fullProject.display_categories || [],
+                        downloads: fullProject.downloads,
+                        icon_url: normalizeImageUrl(fullProject.icon_url || fullProject.iconUrl || null, 'modrinth'),
+                        project_id: fullProject.project_id || fullProject.projectId || project.project_id,
+                        author: fullProject.author || project.author || t('unknown'),
+                        versions: fullProject.versions || project.versions || [],
+                        game_versions: fullProject.game_versions || fullProject.gameVersions || project.game_versions || [],
+                        loaders: fullProject.loaders || project.loaders || [],
+                        follows: fullProject.followers || fullProject.follows || 0,
+                        client_side: fullProject.clientSide || fullProject.client_side,
+                        server_side: fullProject.serverSide || fullProject.server_side,
+                        gallery: fullProject.gallery || [],
+                        // Preserve existing featured_gallery to prevent flash
+                        featured_gallery: project.featured_gallery || fullProject.featured_gallery || fullProject.featuredGallery || null,
+                    };
 
-                // Update Preview if matched
-                setPreviewProject(prev => {
-                    if (prev && prev.project_id === normalized.project_id) {
-                        return normalized;
-                    }
-                    return prev;
-                });
+                    // Update Preview if matched
+                    setPreviewProject(prev => {
+                        if (prev && prev.project_id === normalized.project_id) {
+                            return normalized;
+                        }
+                        return prev;
+                    });
 
-                // Update List Results to show icon/colors
-                setResults(prev => prev.map(p =>
-                    p.project_id === normalized.project_id ? normalized : p
-                ));
+                    // Update List Results to show icon/colors
+                    setResults(prev => prev.map(p =>
+                        p.project_id === normalized.project_id ? normalized : p
+                    ));
+                }
+            } else if (contentSource === CONTENT_SOURCES.CURSEFORGE) {
+                const result = await window.api?.curseforgeGetProject?.(project.project_id);
+                
+                if (result?.data) {
+                    const cf = result.data;
+                    const normalized: ModrinthProject = {
+                        slug: cf.slug || cf.id.toString(),
+                        title: cf.name,
+                        description: cf.summary,
+                        categories: cf.categories?.map((c: any) => c.name) || [],
+                        downloads: cf.downloadCount,
+                        icon_url: normalizeImageUrl(cf.logo?.url || null, 'curseforge'),
+                        project_id: cf.id.toString(),
+                        author: cf.authors?.[0]?.name || t('unknown'),
+                        versions: cf.latestFiles?.flatMap((f: any) => f.gameVersions) || [],
+                        follows: cf.thumbsUpCount || 0,
+                        client_side: "required",
+                        server_side: "optional",
+                        gallery: cf.screenshots?.map((s: any) => ({
+                            url: s.url,
+                            featured: false,
+                            created: "",
+                            ordering: 0
+                        })) || [],
+                        featured_gallery: cf.screenshots?.[0]?.url || null,
+                    };
+
+                    // Update Preview if matched
+                    setPreviewProject(prev => {
+                        if (prev && prev.project_id === normalized.project_id) {
+                            return normalized;
+                        }
+                        return prev;
+                    });
+
+                    // Update List Results
+                    setResults(prev => prev.map(p =>
+                        p.project_id === normalized.project_id ? normalized : p
+                    ));
+                }
             }
         } catch (error) {
             console.error("[Explore] Failed to fetch full project details:", error);
@@ -749,6 +789,7 @@ export function Explore({ colors, config }: ExploreProps) {
                         onInstallModpack={handleInstallModpack}
                         onAddToInstance={handleAddToInstance}
                         isLoading={isLoading}
+                        showFollows={contentSource === CONTENT_SOURCES.MODRINTH}
                     />
                 </div>
             </div>

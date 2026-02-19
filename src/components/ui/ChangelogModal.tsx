@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useState } from "react";
 import ReactMarkdown from 'react-markdown';
+import { useTranslation } from "../../hooks/useTranslation";
 
 interface ChangelogModalProps {
     isOpen: boolean;
@@ -25,6 +26,7 @@ export function ChangelogModal({
     changelog,
     colors,
 }: ChangelogModalProps) {
+    const { t } = useTranslation();
     const [isAnimating, setIsAnimating] = useState(false);
     const [shouldRender, setShouldRender] = useState(false);
 
@@ -57,9 +59,6 @@ export function ChangelogModal({
         ul: ({ node, ...props }: any) => <ul className="list-none space-y-1 my-2" {...props} />,
         ol: ({ node, ...props }: any) => <ol className="list-decimal list-inside space-y-1 my-2" style={{ color: colors.onSurfaceVariant }} {...props} />,
         li: ({ node, children, ...props }: any) => {
-            // Check if children content contains specific keywords for icons
-            // This is a bit complex with React children, so we might simplify or just use standard bullets
-            // But let's try to keep the icon logic if possible, or just use a nice bullet
             return (
                 <li className="text-xs flex items-start gap-2" style={{ color: colors.onSurfaceVariant }} {...props}>
                     <span className="mt-1.5 w-1 h-1 rounded-full shrink-0" style={{ backgroundColor: colors.onSurfaceVariant }}></span>
@@ -123,10 +122,10 @@ export function ChangelogModal({
                     </div>
                     <div className="flex-1">
                         <h2 className="text-sm font-semibold" style={{ color: colors.onSurface }}>
-                            อัปเดตสำเร็จ
+                            {t('update_successful')}
                         </h2>
                         <span className="text-xs" style={{ color: colors.onSurfaceVariant }}>
-                            เวอร์ชัน {version}
+                            {t('version')} {version}
                         </span>
                     </div>
                     <button
@@ -143,14 +142,14 @@ export function ChangelogModal({
                     style={{ backgroundColor: colors.surface }}
                 >
                     <p className="text-[10px] font-medium uppercase tracking-wider mb-2" style={{ color: colors.onSurfaceVariant }}>
-                        มีอะไรใหม่
+                        {t('whats_new')}
                     </p>
                     {changelog ? (
                         <ReactMarkdown components={components}>
                             {changelog}
                         </ReactMarkdown>
                     ) : (
-                        <p style={{ color: colors.onSurfaceVariant }}>ไม่มีรายละเอียดการอัปเดต</p>
+                        <p style={{ color: colors.onSurfaceVariant }}>{t('no_update_details')}</p>
                     )}
                 </div>
 
@@ -161,7 +160,7 @@ export function ChangelogModal({
                         className="w-full py-2 rounded-md text-sm font-medium transition-colors"
                         style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
                     >
-                        ตกลง
+                        {t('confirm')}
                     </button>
                 </div>
             </div>

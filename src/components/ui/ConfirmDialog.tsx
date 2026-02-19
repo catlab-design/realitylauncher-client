@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useState } from "react";
 import { Icons } from "./Icons";
+import { useTranslation } from "../../hooks/useTranslation";
 
 interface ConfirmDialogProps {
     isOpen: boolean;
@@ -22,16 +23,19 @@ export function ConfirmDialog({
     onConfirm,
     title,
     message,
-    confirmText = "ตกลง",
-    cancelText = "ยกเลิก",
+    confirmText,
+    cancelText,
     confirmColor,
     tertiaryText,
     onTertiary,
     tertiaryColor,
     colors,
 }: ConfirmDialogProps) {
+    const { t } = useTranslation();
     const [isAnimating, setIsAnimating] = useState(false);
     const [shouldRender, setShouldRender] = useState(false);
+    const finalConfirmText = confirmText ?? t("confirm");
+    const finalCancelText = cancelText ?? t("cancel");
 
     useEffect(() => {
         if (isOpen) {
@@ -84,7 +88,7 @@ export function ConfirmDialog({
                             borderColor: colors.outline
                         }}
                     >
-                        {cancelText}
+                        {finalCancelText}
                     </button>
                     {tertiaryText && (
                         <button
@@ -112,7 +116,7 @@ export function ConfirmDialog({
                             color: "#ffffff"
                         }}
                     >
-                        {confirmText}
+                        {finalConfirmText}
                     </button>
                 </div>
             </div>

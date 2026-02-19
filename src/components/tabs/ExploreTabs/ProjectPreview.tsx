@@ -19,6 +19,7 @@ interface ProjectPreviewProps {
     onInstallModpack: (project: ModrinthProject) => void;
     onAddToInstance: (project: ModrinthProject) => void;
     isLoading?: boolean; // Add optional isLoading prop
+    showFollows?: boolean;
 }
 
 // ========================================
@@ -36,6 +37,7 @@ export function ProjectPreview({
     onInstallModpack,
     onAddToInstance,
     isLoading = false,
+    showFollows = true,
 }: ProjectPreviewProps) {
     const { t } = useTranslation();
     const [selectedImageIndex, setSelectedImageIndex] = React.useState<number | null>(null);
@@ -233,11 +235,15 @@ export function ProjectPreview({
                                 <i className="fa-solid fa-download text-[10px]"></i>
                                 {formatNumber(project.downloads)}
                             </div>
-                            <span>•</span>
-                            <div className="flex items-center gap-1">
-                                <i className="fa-solid fa-heart text-[10px]"></i>
-                                {formatNumber(project.follows)}
-                            </div>
+                            {showFollows && (
+                                <>
+                                    <span>•</span>
+                                    <div className="flex items-center gap-1">
+                                        <i className="fa-solid fa-heart text-[10px]"></i>
+                                        {formatNumber(project.follows)}
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </div>
 

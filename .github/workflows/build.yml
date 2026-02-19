@@ -90,6 +90,63 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
+      - name: Setup Microsoft Store CLI (Windows release only)
+        if: matrix.platform == 'win' && vars.ENABLE_MS_STORE_RELEASE == 'true' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch')
+        uses: microsoft/microsoft-store-apppublisher@v1.2
+
+      - name: Build MSIX package (Windows release only)
+        if: matrix.platform == 'win' && vars.ENABLE_MS_STORE_RELEASE == 'true' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch')
+        shell: pwsh
+        env:
+          MS_STORE_MSIX_ARCH: ${{ vars.MS_STORE_MSIX_ARCH }}
+          MS_STORE_PRODUCT_ID: ${{ secrets.MS_STORE_PRODUCT_ID }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $arch = if ([string]::IsNullOrWhiteSpace($env:MS_STORE_MSIX_ARCH)) { 'x64' } else { $env:MS_STORE_MSIX_ARCH }
+          $outputDir = Join-Path $env:GITHUB_WORKSPACE 'release-build\store-msix'
+          New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+
+          if ([string]::IsNullOrWhiteSpace($env:MS_STORE_PRODUCT_ID)) {
+            msstore package "$env:GITHUB_WORKSPACE" -o "$outputDir" -a "$arch"
+          } else {
+            msstore package "$env:GITHUB_WORKSPACE" -o "$outputDir" -a "$arch" -id "$env:MS_STORE_PRODUCT_ID"
+          }
+
+          # Prefer .msixupload for Store submission. If only .msix exists, generate .msixupload.
+          $msixUpload = Get-ChildItem -Path $outputDir -Recurse -File -Filter '*.msixupload' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          $msix = Get-ChildItem -Path $outputDir -Recurse -File -Filter '*.msix' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+
+          if (-not $msixUpload -and $msix) {
+            $baseName = [System.IO.Path]::GetFileNameWithoutExtension($msix.Name)
+            $sym = Get-ChildItem -Path $outputDir -Recurse -File -Filter '*.appxsym' | Where-Object { $_.BaseName -eq $baseName } | Select-Object -First 1
+
+            $staging = Join-Path $outputDir '_msixupload'
+            Remove-Item -Path $staging -Recurse -Force -ErrorAction SilentlyContinue
+            New-Item -ItemType Directory -Path $staging | Out-Null
+
+            Copy-Item -Path $msix.FullName -Destination $staging -Force
+            if ($sym) {
+              Copy-Item -Path $sym.FullName -Destination $staging -Force
+            }
+
+            $zipPath = Join-Path $outputDir "$baseName.zip"
+            $uploadPath = Join-Path $outputDir "$baseName.msixupload"
+            Remove-Item -Path $zipPath, $uploadPath -Force -ErrorAction SilentlyContinue
+            Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $zipPath -Force
+            Move-Item -Path $zipPath -Destination $uploadPath -Force
+            Remove-Item -Path $staging -Recurse -Force -ErrorAction SilentlyContinue
+
+            $msixUpload = Get-Item -Path $uploadPath
+            Write-Host "Generated MSIXUPLOAD package: $($msixUpload.FullName)"
+          }
+
+          $package = if ($msixUpload) { $msixUpload } else { $msix }
+          if (-not $package) {
+            throw 'MSIX package was not generated. Check msstore package logs.'
+          }
+
+          Write-Host "Generated Store package: $($package.FullName)"
+
       # macOS build disabled
       # - name: Build Electron app (macOS)
       #   if: matrix.platform == 'mac'
@@ -98,6 +155,19 @@ jobs:
       - name: Build Electron app (Linux)
         if: matrix.platform == 'linux'
         run: bun run dist:linux
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+
+      - name: Install Flatpak dependencies (Linux release only)
+        if: matrix.platform == 'linux' && vars.ENABLE_FLATPAK_RELEASE == 'true' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder elfutils
+          flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+
+      - name: Build Flatpak bundle (Linux release only)
+        if: matrix.platform == 'linux' && vars.ENABLE_FLATPAK_RELEASE == 'true' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch')
+        run: bunx electron-builder --linux flatpak --publish never
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
@@ -115,6 +185,8 @@ jobs:
           path: |
             release-build/*.exe
             release-build/*.exe.blockmap
+            release-build/store-msix/*.msix
+            release-build/store-msix/*.msixupload
             release-build/latest.yml
           retention-days: 30
 
@@ -139,6 +211,7 @@ jobs:
             release-build/*.AppImage
             release-build/*.deb
             release-build/*.rpm
+            release-build/*.flatpak
             release-build/latest-linux.yml
           retention-days: 30
 
@@ -157,6 +230,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch'
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     
     permissions:
       contents: write
@@ -256,6 +331,16 @@ jobs:
             fi
           done
           
+          # Upload MSIX packages to versioned folder
+          while IFS= read -r file; do
+            if [ -f "$file" ]; then
+              FILENAME=$(basename "$file")
+              echo "Uploading $FILENAME to /client/$VERSION/..."
+              wrangler r2 object put --remote "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file" --content-type="application/vnd.ms-appx"
+              echo "Uploaded $FILENAME"
+            fi
+          done < <(find artifacts/reality-launcher-windows -type f \( -name "*.msix" -o -name "*.msixupload" \))
+          
           # Modify latest.yml to include version folder in URL paths
           LATEST_YML=$(find artifacts/reality-launcher-windows -name latest.yml | head -n 1)
           if [ -n "$LATEST_YML" ]; then
@@ -317,7 +402,7 @@ jobs:
           VERSION=${{ steps.version.outputs.version }}
           echo "=== Uploading Linux build for version $VERSION ==="
           
-          for file in artifacts/reality-launcher-linux/*.AppImage artifacts/reality-launcher-linux/*.deb; do
+          for file in artifacts/reality-launcher-linux/*.AppImage artifacts/reality-launcher-linux/*.deb artifacts/reality-launcher-linux/*.rpm artifacts/reality-launcher-linux/*.flatpak; do
             if [ -f "$file" ]; then
               FILENAME=$(basename "$file")
               echo "Uploading $FILENAME to /client/$VERSION/..."
@@ -346,12 +431,12 @@ jobs:
           set -e
           VERSION=${{ steps.version.outputs.version }}
           CHANGELOG="${INPUT_CHANGELOG:-${DISPATCH_CHANGELOG:-}}"
-          CHANGELOG_ESCAPED=$(echo "$CHANGELOG" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')
           
           # Detect actual filenames (handle spaces correctly)
           WIN_PATH=$(find artifacts/reality-launcher-windows -name "*.exe" | head -n 1)
           MAC_PATH=$(find artifacts/reality-launcher-macos -name "*.dmg" | head -n 1)
           LINUX_PATH=$(find artifacts/reality-launcher-linux -name "*.AppImage" | head -n 1)
+          FLATPAK_PATH=$(find artifacts/reality-launcher-linux -name "*.flatpak" | head -n 1 || true)
           
           WIN_FILE=$(basename "$WIN_PATH")
           MAC_FILE=$(basename "$MAC_PATH")
@@ -361,19 +446,29 @@ jobs:
           WIN_URL="$CDN_URL/client/$VERSION/$(echo "$WIN_FILE" | sed 's/ /%20/g')"
           MAC_URL="$CDN_URL/client/$VERSION/$(echo "$MAC_FILE" | sed 's/ /%20/g')"
           LINUX_URL="$CDN_URL/client/$VERSION/$(echo "$LINUX_FILE" | sed 's/ /%20/g')"
-          
-          cat > latest.json <<EOF
-          {
-            "version": "$VERSION",
-            "releaseDate": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "changelog": "$CHANGELOG_ESCAPED",
-            "downloads": {
-              "windows": "$WIN_URL",
-              "mac": "$MAC_URL",
-              "linux": "$LINUX_URL"
-            }
-          }
-          EOF
+          FLATPAK_URL=""
+          if [ -n "$FLATPAK_PATH" ]; then
+            FLATPAK_FILE=$(basename "$FLATPAK_PATH")
+            FLATPAK_URL="$CDN_URL/client/$VERSION/$(echo "$FLATPAK_FILE" | sed 's/ /%20/g')"
+          fi
+
+          jq -n \
+            --arg version "$VERSION" \
+            --arg releaseDate "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg changelog "$CHANGELOG" \
+            --arg windows "$WIN_URL" \
+            --arg mac "$MAC_URL" \
+            --arg linux "$LINUX_URL" \
+            --arg flatpak "$FLATPAK_URL" \
+            '{
+              version: $version,
+              releaseDate: $releaseDate,
+              changelog: $changelog,
+              downloads: (
+                { windows: $windows, mac: $mac, linux: $linux } +
+                (if $flatpak == "" then {} else { flatpak: $flatpak } end)
+              )
+            }' > latest.json
           
           echo "=== latest.json ==="
           cat latest.json
@@ -408,11 +503,99 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
+          fail_on_unmatched_files: false
           files: |
             artifacts/reality-launcher-windows/*.exe
+            artifacts/reality-launcher-windows/**/*.msix
+            artifacts/reality-launcher-windows/**/*.msixupload
             artifacts/reality-launcher-macos/*.dmg
             artifacts/reality-launcher-linux/*.AppImage
             artifacts/reality-launcher-linux/*.deb
             artifacts/reality-launcher-linux/*.rpm
+            artifacts/reality-launcher-linux/*.flatpak
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  microsoft-store:
+    needs: release
+    runs-on: windows-latest
+    if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch') && vars.ENABLE_MS_STORE_RELEASE == 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: reality-launcher-windows
+          path: artifacts/reality-launcher-windows
+
+      - name: Validate Microsoft Store secrets
+        shell: pwsh
+        env:
+          MS_STORE_SELLER_ID: ${{ secrets.MS_STORE_SELLER_ID }}
+          MS_STORE_PRODUCT_ID: ${{ secrets.MS_STORE_PRODUCT_ID }}
+          MS_STORE_TENANT_ID: ${{ secrets.MS_STORE_TENANT_ID }}
+          MS_STORE_CLIENT_ID: ${{ secrets.MS_STORE_CLIENT_ID }}
+          MS_STORE_CLIENT_SECRET: ${{ secrets.MS_STORE_CLIENT_SECRET }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $required = @(
+            'MS_STORE_SELLER_ID',
+            'MS_STORE_PRODUCT_ID',
+            'MS_STORE_TENANT_ID',
+            'MS_STORE_CLIENT_ID',
+            'MS_STORE_CLIENT_SECRET'
+          )
+
+          $missing = @()
+          foreach ($key in $required) {
+            if ([string]::IsNullOrWhiteSpace((Get-Item "env:$key" -ErrorAction SilentlyContinue).Value)) {
+              $missing += $key
+            }
+          }
+
+          if ($missing.Count -gt 0) {
+            throw "Missing required secrets: $($missing -join ', ')"
+          }
+
+      - name: Setup Microsoft Store CLI
+        uses: microsoft/microsoft-store-apppublisher@v1.2
+
+      - name: Configure Microsoft Store CLI credentials
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          msstore reconfigure --tenantId "${{ secrets.MS_STORE_TENANT_ID }}" --sellerId "${{ secrets.MS_STORE_SELLER_ID }}" --clientId "${{ secrets.MS_STORE_CLIENT_ID }}" --clientSecret "${{ secrets.MS_STORE_CLIENT_SECRET }}"
+
+      - name: Locate MSIX artifact
+        id: msix
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $package = Get-ChildItem -Path 'artifacts/reality-launcher-windows' -Recurse -File | Where-Object { $_.Extension -in '.msix', '.msixupload' } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $package) {
+            throw 'MSIX package artifact not found. Ensure build job generated release-build/store-msix/*.msix or *.msixupload.'
+          }
+
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "package_path=$($package.FullName)"
+          Write-Host "Using package: $($package.FullName)"
+
+      - name: Publish MSIX to Microsoft Store
+        shell: pwsh
+        env:
+          MS_STORE_NO_COMMIT: ${{ vars.MS_STORE_NO_COMMIT }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $packagePath = "${{ steps.msix.outputs.package_path }}"
+          $appId = "${{ secrets.MS_STORE_PRODUCT_ID }}"
+          $noCommit = "${env:MS_STORE_NO_COMMIT}"
+
+          if ($noCommit -eq 'true') {
+            msstore publish "${{ github.workspace }}" -i "$packagePath" -id "$appId" -nc
+            Write-Host 'Submission created as draft (no commit).'
+          } else {
+            msstore publish "${{ github.workspace }}" -i "$packagePath" -id "$appId"
+            msstore submission poll "$appId"
+          }

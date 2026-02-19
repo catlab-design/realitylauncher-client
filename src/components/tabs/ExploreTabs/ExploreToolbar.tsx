@@ -7,6 +7,7 @@ import { useTranslation } from "../../../hooks/useTranslation";
 import type { TranslationKey } from "../../../i18n/translations";
 import modrinthIcon from "../../../assets/modrinth.svg";
 import curseforgeIcon from "../../../assets/curseforge.svg";
+import { motion } from "framer-motion";
 import { CONTENT_SOURCES, type ContentSource, type ProjectType } from "./types";
 import { PROJECT_TABS, SORT_OPTIONS } from "./constants";
 import { playClick } from "../../../lib/sounds";
@@ -82,25 +83,39 @@ export function ExploreToolbar({
                 <div className="flex items-center gap-1">
                     <button
                         onClick={() => { playClick(); onContentSourceChange(CONTENT_SOURCES.MODRINTH); }}
-                        className="px-2.5 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors"
+                        className="px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all relative group"
                         style={{
-                            backgroundColor: contentSource === CONTENT_SOURCES.MODRINTH ? "#1bd96a" : "transparent",
                             color: contentSource === CONTENT_SOURCES.MODRINTH ? "#000" : colors.onSurfaceVariant,
                         }}
                     >
-                        <img src={modrinthIcon.src} alt="" className="w-4 h-4" />
-                        Modrinth
+                        {contentSource === CONTENT_SOURCES.MODRINTH && (
+                            <motion.div
+                                layoutId="explore-source-indicator"
+                                className="absolute inset-0 rounded-md shadow-sm"
+                                style={{ backgroundColor: "#1bd96a" }}
+                                transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                            />
+                        )}
+                        <img src={modrinthIcon.src} alt="" className="w-4 h-4 z-10 relative" />
+                        <span className="z-10 relative">Modrinth</span>
                     </button>
                     <button
                         onClick={() => { playClick(); onContentSourceChange(CONTENT_SOURCES.CURSEFORGE); }}
-                        className="px-2.5 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors"
+                        className="px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all relative group"
                         style={{
-                            backgroundColor: contentSource === CONTENT_SOURCES.CURSEFORGE ? "#f16436" : "transparent",
                             color: contentSource === CONTENT_SOURCES.CURSEFORGE ? "#fff" : colors.onSurfaceVariant,
                         }}
                     >
-                        <img src={curseforgeIcon.src} alt="" className="w-4 h-4" />
-                        CurseForge
+                        {contentSource === CONTENT_SOURCES.CURSEFORGE && (
+                            <motion.div
+                                layoutId="explore-source-indicator"
+                                className="absolute inset-0 rounded-md shadow-sm"
+                                style={{ backgroundColor: "#f16436" }}
+                                transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                            />
+                        )}
+                        <img src={curseforgeIcon.src} alt="" className="w-4 h-4 z-10 relative" />
+                        <span className="z-10 relative">CurseForge</span>
                     </button>
                 </div>
             </div>
@@ -109,20 +124,29 @@ export function ExploreToolbar({
             <div className="px-4 py-2 flex items-center gap-2">
                 {/* Type tabs */}
                 <div className="flex items-center gap-1">
-                        {PROJECT_TABS.map((tab) => {
+                    {PROJECT_TABS.map((tab) => {
                         const active = projectType === tab.id;
+                        const TabIcon = tab.icon;
                         return (
                             <button
                                 key={tab.id}
                                 onClick={() => { playClick(); onProjectTypeChange(tab.id); }}
-                                className="px-2.5 py-1 rounded-md text-xs font-medium transition-colors"
+                                className="px-3 py-1 rounded-md text-xs font-medium transition-all relative group flex items-center gap-2"
                                 style={{
-                                    backgroundColor: active ? colors.secondary : "transparent",
                                     color: active ? "#1a1a1a" : colors.onSurfaceVariant,
                                 }}
-                                    >
-                                        {t(tab.labelKey as TranslationKey)}
-                                    </button>
+                            >
+                                {active && (
+                                    <motion.div
+                                        layoutId="explore-tabs-indicator"
+                                        className="absolute inset-0 rounded-md"
+                                        style={{ backgroundColor: colors.secondary }}
+                                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                                    />
+                                )}
+                                <TabIcon className="w-3.5 h-3.5 z-10 relative" />
+                                <span className="z-10 relative">{t(tab.labelKey as TranslationKey)}</span>
+                            </button>
                         );
                     })}
                 </div>

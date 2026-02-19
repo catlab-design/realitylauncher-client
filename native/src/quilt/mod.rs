@@ -207,9 +207,9 @@ async fn download_quilt_libraries(
             continue;
         }
 
-        // Determine download URL
+        // Determine download URL - use "/" separator between base URL and relative path
         let url = if let Some(ref lib_url) = lib.url {
-            format!("{}{}", lib_url.trim_end_matches('/'), &rel_path)
+            format!("{}/{}", lib_url.trim_end_matches('/'), rel_path)
         } else if lib.name.starts_with("org.quiltmc") {
             format!("{}{}", quilt_maven, rel_path)
         } else {

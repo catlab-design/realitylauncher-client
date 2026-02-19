@@ -47,7 +47,7 @@ export function InstallProgressModal({ colors, installProgress, title, isBytes, 
                         onClick={onMinimize}
                         className="absolute top-3 right-3 p-1.5 rounded-full hover:bg-black/5 transition-colors"
                         style={{ color: colors.onSurfaceVariant }}
-                        title="Minimize"
+                        title={t("minimize")}
                     >
                         <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M19 13H5v-2h14v2z" />

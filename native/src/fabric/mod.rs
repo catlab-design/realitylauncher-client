@@ -207,9 +207,9 @@ async fn download_fabric_libraries(
             continue;
         }
 
-        // Determine download URL
+        // Determine download URL - use "/" separator between base URL and relative path
         let url = if let Some(ref lib_url) = lib.url {
-            format!("{}{}", lib_url.trim_end_matches('/'), &rel_path)
+            format!("{}/{}", lib_url.trim_end_matches('/'), rel_path)
         } else {
             format!("{}{}", base_url, rel_path)
         };
