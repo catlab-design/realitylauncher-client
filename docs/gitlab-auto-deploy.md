@@ -1,96 +1,130 @@
-# GitLab CI/CD Auto Deploy Setup (External Repository)
+# GitLab CI/CD Auto Deploy Setup (Linux + Windows + macOS)
 
 This guide uses `.gitlab-ci.yml` in the `ml-client` root.
 
-What this pipeline does:
+## Pipeline Summary
 
-- Build Linux release artifacts (`AppImage`, `deb`, `rpm`, optional `flatpak`)
-- Upload artifacts to Cloudflare R2 under `client/<version>/...`
-- Update:
-  - `client/latest-linux.yml`
-  - `client/latest.json`
+The pipeline now supports 3 build jobs:
 
-Current scope:
+- `build:linux` (always enabled)
+- `build:windows` (enabled when `ENABLE_WINDOWS_RELEASE=true`)
+- `build:macos` (enabled when `ENABLE_MACOS_RELEASE=true`)
 
-- Works out of the box on GitLab Linux runners
-- Windows/macOS builds need self-hosted runners and separate jobs
+Then `deploy:r2` uploads all available artifacts to Cloudflare R2/CDN and updates:
+
+- `client/latest.yml` (Windows updater metadata, when available)
+- `client/latest-mac.yml` (macOS updater metadata, when available)
+- `client/latest-linux.yml`
+- `client/latest.json` (combined download map)
 
 ## 1) Connect External Repository in GitLab
 
-From the page in your screenshot (`Run CI/CD for external repository`):
+From GitLab page `Run CI/CD for external repository`:
 
-1. Use `GitHub` button if possible (recommended).
-2. If you use `Repository by URL`:
-   - Public repo: URL only is enough.
-   - Private repo: fill credentials:
-     - Username: your GitHub username (or `x-access-token`)
-     - Password: GitHub Personal Access Token with repo read access
-3. Create the project after connection succeeds.
+1. Use `GitHub` button if possible.
+2. If using `Repository by URL`:
+   - Public repo: URL only.
+   - Private repo:
+     - Username: GitHub username (or `x-access-token`)
+     - Password: GitHub PAT with repo read permission
+3. Create project after connection succeeds.
 
-## 2) Add CI/CD Variables in GitLab
+## 2) Configure GitLab CI/CD Variables
 
-Go to:
+Path:
 
 - `Project -> Settings -> CI/CD -> Variables`
 
-Required variables:
+Required (Masked + Protected):
 
-- `CLOUDFLARE_API_TOKEN` (Masked + Protected)
-- `CLOUDFLARE_ACCOUNT_ID` (Masked + Protected)
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
 
-Optional variables:
+Optional:
 
-- `R2_BUCKET` (default: `realitystorage`)
-- `CDN_URL` (default: `https://cdn.reality.catlabdesign.space`)
-- `ENABLE_FLATPAK_RELEASE` (`true` to also build/upload `.flatpak`)
-- `DEPLOY_ON_MAIN` (`true` to auto-deploy on every push to `main`)
-- `RELEASE_VERSION` (force version for manual deploy run)
-- `CHANGELOG` (used in `latest.json` for manual deploy run)
+- `R2_BUCKET` (default `realitystorage`)
+- `CDN_URL` (default `https://cdn.reality.catlabdesign.space`)
+- `ENABLE_FLATPAK_RELEASE` (`true` to build/upload `.flatpak`)
+- `ENABLE_WINDOWS_RELEASE` (`true` to run Windows build job)
+- `ENABLE_MACOS_RELEASE` (`true` to run macOS build job)
+- `DEPLOY_ON_MAIN` (`true` to auto-deploy on `main`)
+- `MANUAL_DEPLOY` (`true` for manual deploy via Run pipeline UI)
+- `RELEASE_VERSION` (override release version)
+- `CHANGELOG` (insert into `latest.json`)
 
-Important:
+Recommended:
 
-- If variables are `Protected`, deploy from protected tags/branches only.
-- Recommended: protect tags with pattern `v*`.
+- Protect tag pattern `v*`
+- Keep Cloudflare secrets as `Protected`
 
-## 3) Trigger Auto Deploy
+## 3) Runner Setup by Platform
 
-Default behavior:
+Linux:
 
-- Build runs on `main`, tags, and manual web pipelines.
-- Deploy runs automatically on tags that start with `v` (example: `v2.2.1`).
+- GitLab shared runner is enough for `build:linux` + `deploy:r2`.
 
-Release by tag:
+Windows (self-hosted required):
+
+1. Install GitLab Runner on Windows host.
+2. Register with `shell` executor.
+3. Add tag: `windows`.
+4. Install dependencies on runner machine:
+   - Bun
+   - Rust toolchain (`rustc`, `cargo`)
+
+macOS (self-hosted required):
+
+1. Install GitLab Runner on macOS host.
+2. Register with `shell` executor.
+3. Add tag: `macos`.
+4. Install dependencies on runner machine:
+   - Bun
+   - Rust toolchain (`rustc`, `cargo`)
+
+Example register command:
+
+```bash
+gitlab-runner register \
+  --url "https://gitlab.com/" \
+  --token "<PROJECT_RUNNER_TOKEN>" \
+  --executor "shell" \
+  --description "windows-runner" \
+  --tag-list "windows" \
+  --run-untagged="false"
+```
+
+Use the same pattern for macOS with tag `macos`.
+
+## 4) Trigger Release Deploy
+
+Recommended release flow:
 
 ```bash
 git tag v2.2.1
 git push origin v2.2.1
 ```
 
-Main branch auto deploy (optional):
+Behavior:
 
-- Set `DEPLOY_ON_MAIN=true` in CI variables.
+- On tag `v*`, pipeline builds enabled platforms and deploys automatically.
+- On `main`, deploy runs only when `DEPLOY_ON_MAIN=true`.
 
-## 4) Manual Deploy in GitLab UI
+## 5) Manual Deploy from GitLab UI
 
 1. Open `Build -> Pipelines -> Run pipeline`
-2. Branch: `main`
-3. Set variables if needed:
+2. Choose branch (usually `main`)
+3. Set variable `MANUAL_DEPLOY=true`
+4. Optional variables:
    - `RELEASE_VERSION=2.2.1`
    - `CHANGELOG=...`
-4. Run pipeline
+5. Run pipeline
 
-## 5) Verify Deploy
+## 6) Verify Outputs
 
-After deploy job success, check:
+After `deploy:r2` succeeds:
 
-- `https://cdn.reality.catlabdesign.space/client/latest-linux.yml`
 - `https://cdn.reality.catlabdesign.space/client/latest.json`
+- `https://cdn.reality.catlabdesign.space/client/latest-linux.yml`
+- `https://cdn.reality.catlabdesign.space/client/latest.yml` (if Windows build enabled)
+- `https://cdn.reality.catlabdesign.space/client/latest-mac.yml` (if macOS build enabled)
 - `https://cdn.reality.catlabdesign.space/client/<version>/`
-
-## Notes for Windows/macOS
-
-GitLab shared runners are usually Linux only.
-If you want Windows/macOS artifacts in GitLab CI:
-
-- register self-hosted Windows/macOS runners
-- add dedicated jobs with matching runner tags

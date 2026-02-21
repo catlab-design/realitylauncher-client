@@ -10,18 +10,31 @@ stages:
   - build
   - deploy
 
+variables:
+  NODE_OPTIONS: "--max-old-space-size=4096"
+  R2_BUCKET: "realitystorage"
+  CDN_URL: "https://cdn.reality.catlabdesign.space"
+  ENABLE_FLATPAK_RELEASE: "false"
+  ENABLE_WINDOWS_RELEASE: "false"
+  ENABLE_MACOS_RELEASE: "false"
+  CARGO_HOME: "$CI_PROJECT_DIR/.cache/cargo"
+  RUSTUP_HOME: "$CI_PROJECT_DIR/.cache/rustup"
+  BUN_INSTALL_CACHE_DIR: "$CI_PROJECT_DIR/.cache/bun/install/cache"
+  ELECTRON_CACHE: "$CI_PROJECT_DIR/.cache/electron"
+  ELECTRON_BUILDER_CACHE: "$CI_PROJECT_DIR/.cache/electron-builder"
+
 default:
-  image: oven/bun:1.2.22
   interruptible: true
-  variables:
-    NODE_OPTIONS: "--max-old-space-size=4096"
-    R2_BUCKET: "realitystorage"
-    CDN_URL: "https://cdn.reality.catlabdesign.space"
-    CARGO_HOME: "$CI_PROJECT_DIR/.cache/cargo"
-    RUSTUP_HOME: "$CI_PROJECT_DIR/.cache/rustup"
-    BUN_INSTALL_CACHE_DIR: "$CI_PROJECT_DIR/.cache/bun/install/cache"
-    ELECTRON_CACHE: "$CI_PROJECT_DIR/.cache/electron"
-    ELECTRON_BUILDER_CACHE: "$CI_PROJECT_DIR/.cache/electron-builder"
+
+.build_rules:
+  rules:
+    - if: "$CI_COMMIT_TAG"
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+    - when: never
+
+.linux_base:
+  image: oven/bun:1.2.22
   before_script:
     - apt-get update -y
     - apt-get install -y --no-install-recommends ca-certificates curl git jq findutils sed
@@ -39,10 +52,14 @@ default:
       - .cache/electron-builder
       - .cache/cargo
       - .cache/rustup
+      - native/target
     policy: pull-push
 
 build:linux:
   stage: build
+  extends:
+    - .build_rules
+    - .linux_base
   script:
     - apt-get install -y --no-install-recommends build-essential pkg-config libssl-dev python3 make g++ rpm fakeroot xz-utils
     - |
@@ -77,17 +94,140 @@ build:linux:
       - release-build/*.rpm
       - release-build/*.flatpak
       - release-build/latest-linux.yml
+
+build:windows:
+  stage: build
+  tags:
+    - windows
+  variables:
+    BUN_INSTALL_CACHE_DIR: "$CI_PROJECT_DIR/.cache/bun/install/cache"
+    ELECTRON_CACHE: "$CI_PROJECT_DIR/.cache/electron"
+    ELECTRON_BUILDER_CACHE: "$CI_PROJECT_DIR/.cache/electron-builder"
+  before_script:
+    - '$ErrorActionPreference = "Stop"'
+    - 'if (-not (Get-Command bun -ErrorAction SilentlyContinue)) { throw "bun not found on runner. Install bun first." }'
+    - 'if (-not (Get-Command rustc -ErrorAction SilentlyContinue)) { throw "rustc not found on runner. Install Rust toolchain first." }'
+    - 'if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { throw "cargo not found on runner. Install Rust toolchain first." }'
+    - 'New-Item -ItemType Directory -Force -Path "$env:BUN_INSTALL_CACHE_DIR","$env:ELECTRON_CACHE","$env:ELECTRON_BUILDER_CACHE" | Out-Null'
+    - "bun --version"
+    - "rustc --version"
+    - "cargo --version"
+  cache:
+    key:
+      files:
+        - bun.lock
+        - package.json
+        - native/package.json
+        - native/Cargo.lock
+    paths:
+      - .cache/bun/install/cache
+      - .cache/electron
+      - .cache/electron-builder
+      - native/target
+    policy: pull-push
+  script:
+    - '$ErrorActionPreference = "Stop"'
+    - "bun install --frozen-lockfile"
+    - "Push-Location native"
+    - "bun install --frozen-lockfile"
+    - "bun run build"
+    - "Pop-Location"
+    - "bun run build"
+    - |
+      $ErrorActionPreference = 'Continue'
+      $maxAttempts = 3
+      for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        Write-Host "Running electron-builder --win (attempt $attempt/$maxAttempts)"
+        bunx electron-builder --win --publish never
+        if ($LASTEXITCODE -eq 0) {
+          Write-Host "electron-builder --win succeeded on attempt $attempt"
+          exit 0
+        }
+        if ($attempt -lt $maxAttempts) {
+          $waitSeconds = 20 * $attempt
+          Write-Host "electron-builder --win failed with exit code $LASTEXITCODE. Retrying in $waitSeconds seconds..."
+          Start-Sleep -Seconds $waitSeconds
+        }
+      }
+      throw "electron-builder --win failed after $maxAttempts attempts."
+    - 'if (-not (Test-Path "release-build/latest.yml")) { throw "release-build/latest.yml not found" }'
+    - "Get-ChildItem release-build | Format-Table -Auto Name,Length"
+  artifacts:
+    name: "reality-launcher-windows-$CI_COMMIT_SHORT_SHA"
+    expire_in: 30 days
+    paths:
+      - release-build/*.exe
+      - release-build/*.exe.blockmap
+      - release-build/latest.yml
   rules:
-    - if: "$CI_COMMIT_TAG"
-    - if: '$CI_COMMIT_BRANCH == "main"'
-    - if: '$CI_PIPELINE_SOURCE == "web"'
+    - if: '$ENABLE_WINDOWS_RELEASE == "true" && $CI_COMMIT_TAG'
+    - if: '$ENABLE_WINDOWS_RELEASE == "true" && $CI_COMMIT_BRANCH == "main"'
+    - if: '$ENABLE_WINDOWS_RELEASE == "true" && $CI_PIPELINE_SOURCE == "web"'
+    - when: never
+
+build:macos:
+  stage: build
+  tags:
+    - macos
+  before_script:
+    - set -eu
+    - command -v bun >/dev/null 2>&1 || { echo "bun not found on runner. Install bun first."; exit 1; }
+    - command -v rustc >/dev/null 2>&1 || { echo "rustc not found on runner. Install Rust toolchain first."; exit 1; }
+    - command -v cargo >/dev/null 2>&1 || { echo "cargo not found on runner. Install Rust toolchain first."; exit 1; }
+    - mkdir -p "$BUN_INSTALL_CACHE_DIR" "$ELECTRON_CACHE" "$ELECTRON_BUILDER_CACHE"
+    - bun --version
+    - rustc --version
+    - cargo --version
+  cache:
+    key:
+      files:
+        - bun.lock
+        - package.json
+        - native/package.json
+        - native/Cargo.lock
+    paths:
+      - .cache/bun/install/cache
+      - .cache/electron
+      - .cache/electron-builder
+      - native/target
+    policy: pull-push
+  script:
+    - set -eu
+    - bun install --frozen-lockfile
+    - cd native
+    - bun install --frozen-lockfile
+    - bun run build
+    - cd ..
+    - bun run build
+    - bunx electron-builder --mac --publish never
+    - test -f release-build/latest-mac.yml
+    - ls -lah release-build
+  artifacts:
+    name: "reality-launcher-macos-$CI_COMMIT_SHORT_SHA"
+    expire_in: 30 days
+    paths:
+      - release-build/*.dmg
+      - release-build/*.dmg.blockmap
+      - release-build/latest-mac.yml
+  rules:
+    - if: '$ENABLE_MACOS_RELEASE == "true" && $CI_COMMIT_TAG'
+    - if: '$ENABLE_MACOS_RELEASE == "true" && $CI_COMMIT_BRANCH == "main"'
+    - if: '$ENABLE_MACOS_RELEASE == "true" && $CI_PIPELINE_SOURCE == "web"'
     - when: never
 
 deploy:r2:
   stage: deploy
+  extends:
+    - .linux_base
   needs:
     - job: build:linux
       artifacts: true
+    - job: build:windows
+      artifacts: true
+      optional: true
+    - job: build:macos
+      artifacts: true
+      optional: true
   script:
     - set -eu
     - |
@@ -111,13 +251,28 @@ deploy:r2:
       echo "VERSION=$VERSION" >> deploy.env
       export VERSION
     - |
-      for file in release-build/*.AppImage release-build/*.deb release-build/*.rpm release-build/*.flatpak; do
+      echo "=== Available files ==="
+      find release-build -maxdepth 2 -type f | sort || true
+    - |
+      for file in release-build/*.AppImage release-build/*.deb release-build/*.rpm release-build/*.flatpak release-build/*.exe release-build/*.exe.blockmap release-build/*.dmg release-build/*.dmg.blockmap; do
         if [ -f "$file" ]; then
           filename="$(basename "$file")"
           echo "Uploading $filename to /client/$VERSION/"
           bunx wrangler r2 object put --remote "$R2_BUCKET/client/$VERSION/$filename" --file="$file" --content-type="application/octet-stream"
         fi
       done
+    - |
+      latest_win_yml="$(find release-build -name latest.yml | head -n 1 || true)"
+      if [ -n "$latest_win_yml" ]; then
+        sed -i -E "s|^([[:space:]]*-[[:space:]]+url:[[:space:]]+)|\1$VERSION/|; s|^([[:space:]]*path:[[:space:]]+)|\1$VERSION/|" "$latest_win_yml"
+        bunx wrangler r2 object put --remote "$R2_BUCKET/client/latest.yml" --file="$latest_win_yml" --content-type="text/yaml"
+      fi
+    - |
+      latest_mac_yml="$(find release-build -name latest-mac.yml | head -n 1 || true)"
+      if [ -n "$latest_mac_yml" ]; then
+        sed -i -E "s|^([[:space:]]*-[[:space:]]+url:[[:space:]]+)|\1$VERSION/|; s|^([[:space:]]*path:[[:space:]]+)|\1$VERSION/|" "$latest_mac_yml"
+        bunx wrangler r2 object put --remote "$R2_BUCKET/client/latest-mac.yml" --file="$latest_mac_yml" --content-type="text/yaml"
+      fi
     - |
       latest_linux_yml="$(find release-build -name latest-linux.yml | head -n 1 || true)"
       if [ -n "$latest_linux_yml" ]; then
@@ -128,25 +283,38 @@ deploy:r2:
         exit 1
       fi
     - |
-      linux_path="$(find release-build -name '*.AppImage' | head -n 1 || true)"
-      flatpak_path="$(find release-build -name '*.flatpak' | head -n 1 || true)"
+      win_path="$(find release-build -type f -name '*.exe' | head -n 1 || true)"
+      mac_path="$(find release-build -type f -name '*.dmg' | head -n 1 || true)"
+      linux_path="$(find release-build -type f -name '*.AppImage' | head -n 1 || true)"
+      flatpak_path="$(find release-build -type f -name '*.flatpak' | head -n 1 || true)"
+
       if [ -z "$linux_path" ]; then
-        echo "ERROR: AppImage artifact not found"
+        echo "ERROR: Linux AppImage artifact not found"
         exit 1
       fi
-      linux_file="$(basename "$linux_path")"
-      linux_url="$CDN_URL/client/$VERSION/$(echo "$linux_file" | sed 's/ /%20/g')"
-      if [ -n "$flatpak_path" ]; then
-        flatpak_file="$(basename "$flatpak_path")"
-        flatpak_url="$CDN_URL/client/$VERSION/$(echo "$flatpak_file" | sed 's/ /%20/g')"
-      else
-        flatpak_url=""
+
+      win_url=""
+      mac_url=""
+      linux_url="$CDN_URL/client/$VERSION/$(basename "$linux_path" | sed 's/ /%20/g')"
+      flatpak_url=""
+
+      if [ -n "$win_path" ]; then
+        win_url="$CDN_URL/client/$VERSION/$(basename "$win_path" | sed 's/ /%20/g')"
       fi
+      if [ -n "$mac_path" ]; then
+        mac_url="$CDN_URL/client/$VERSION/$(basename "$mac_path" | sed 's/ /%20/g')"
+      fi
+      if [ -n "$flatpak_path" ]; then
+        flatpak_url="$CDN_URL/client/$VERSION/$(basename "$flatpak_path" | sed 's/ /%20/g')"
+      fi
+
       changelog="${CHANGELOG:-}"
       jq -n \
         --arg version "$VERSION" \
         --arg releaseDate "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         --arg changelog "$changelog" \
+        --arg windows "$win_url" \
+        --arg mac "$mac_url" \
         --arg linux "$linux_url" \
         --arg flatpak "$flatpak_url" \
         '{
@@ -154,6 +322,8 @@ deploy:r2:
           releaseDate: $releaseDate,
           changelog: $changelog,
           downloads: (
+            (if $windows == "" then {} else { windows: $windows } end) +
+            (if $mac == "" then {} else { mac: $mac } end) +
             { linux: $linux } +
             (if $flatpak == "" then {} else { flatpak: $flatpak } end)
           )
@@ -168,8 +338,11 @@ deploy:r2:
       dotenv: deploy.env
     paths:
       - latest.json
+      - release-build/latest.yml
+      - release-build/latest-mac.yml
       - release-build/latest-linux.yml
   rules:
     - if: "$CI_COMMIT_TAG =~ /^v.+$/"
     - if: '$CI_COMMIT_BRANCH == "main" && $DEPLOY_ON_MAIN == "true"'
+    - if: '$CI_PIPELINE_SOURCE == "web" && $MANUAL_DEPLOY == "true"'
     - when: never
