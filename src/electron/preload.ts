@@ -171,6 +171,19 @@ const api = {
   // Token Refresh API
   authRefreshToken: () => ipcRenderer.invoke("auth-refresh-token"),
 
+  // Minecraft Skin APIs (Microsoft account)
+  minecraftGetProfile: () => ipcRenderer.invoke("minecraft-get-profile"),
+  minecraftUploadSkin: (
+    dataUrl: string,
+    variant: "classic" | "slim",
+    fileName?: string,
+  ) =>
+    ipcRenderer.invoke("minecraft-upload-skin", {
+      dataUrl,
+      variant,
+      fileName,
+    }),
+
   // ----------------------------------------
   // Auto Update APIs
   // ----------------------------------------
@@ -727,6 +740,7 @@ const api = {
   notificationsFetchAnnouncements: () =>
     ipcRenderer.invoke("notifications-fetch-announcements"),
   notificationsFetchUser: () => ipcRenderer.invoke("notifications-fetch-user"),
+  notificationsSync: () => ipcRenderer.invoke("notifications-sync"),
   notificationsMarkRead: (notificationId: string) =>
     ipcRenderer.invoke("notifications-mark-read", notificationId),
   notificationsDelete: (notificationId: string) =>

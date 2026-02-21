@@ -9,7 +9,7 @@ interface Invitation {
     instanceName: string;
     instanceIcon?: string | null;
     invitedBy: string;
-    inviterName?: string;
+    inviterName?: string | null;
     role: 'member' | 'admin';
     message?: string | null;
     status: 'pending' | 'accepted' | 'rejected';
@@ -44,11 +44,16 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
     const [processingId, setProcessingId] = useState<string | null>(null);
 
     const fetchInvitations = useCallback(async () => {
-        if (!window.api?.invitationsFetch) return;
+        if (!window.api?.notificationsSync && !window.api?.invitationsFetch) return;
         setIsLoading(true);
         try {
-            const data = await window.api.invitationsFetch();
-            setInvitations(data || []);
+            if (window.api?.notificationsSync) {
+                const sync = await window.api.notificationsSync();
+                setInvitations(sync?.invitations || []);
+            } else if (window.api?.invitationsFetch) {
+                const data = await window.api.invitationsFetch();
+                setInvitations(data || []);
+            }
         } catch (error) {
             console.error('[NotificationInbox] Error fetching invitations:', error);
         } finally {
@@ -215,7 +220,14 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                         </svg>
                         {t('news_and_updates')}
                         {announcements.length > 0 && (
-                            <span className="bg-red-500 text-white text-[10px] px-1.5 rounded-full font-bold shadow-sm">{announcements.length}</span>
+                            <span 
+                                className="text-[13px] font-black ml-1.5"
+                                style={{ 
+                                    color: activeTab === 'news' ? 'white' : '#000000'
+                                }}
+                            >
+                                {announcements.length}
+                            </span>
                         )}
                     </button>
                     <button
@@ -232,7 +244,12 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                         </svg>
                         {t('system')}
                         {(invitations.length + notifications.length) > 0 && (
-                            <span className="bg-red-500 text-white text-[10px] px-1.5 rounded-full font-bold shadow-sm">
+                            <span 
+                                className="text-[12px] font-black ml-1.5" 
+                                style={{ 
+                                    color: activeTab === 'system' ? 'white' : '#000000'
+                                }}
+                            >
                                 {invitations.length + notifications.length}
                             </span>
                         )}
@@ -454,7 +471,12 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                                                         <h4 className="font-bold text-sm mb-1 leading-snug flex items-center gap-2" style={{ color: colors.onSurface }}>
                                                             {notification.title}
                                                             {!notification.isRead && (
-                                                                <span className="w-2 h-2 rounded-full bg-red-500 inline-block shadow-sm" />
+                                                                <span 
+                                                                    className="text-[10px] font-black uppercase" 
+                                                                    style={{ color: colors.secondary }}
+                                                                >
+                                                                    New
+                                                                </span>
                                                             )}
                                                         </h4>
                                                         {notification.message && (

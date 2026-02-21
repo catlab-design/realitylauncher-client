@@ -133,6 +133,7 @@
     "react-dom": "^19.2.3",
     "react-hot-toast": "^2.6.0",
     "react-markdown": "^10.1.0",
+    "skinview3d": "^3.4.1",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3",
     "userland": "^0.4.3",

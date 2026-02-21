@@ -2,9 +2,12 @@ import { useState, useEffect } from "react";
 
 interface AppVersionBadgeProps {
     colors: any;
+    className?: string;
+    bgColor?: string;
+    textColor?: string;
 }
 
-export function AppVersionBadge({ colors }: AppVersionBadgeProps) {
+export function AppVersionBadge({ colors, className, bgColor, textColor }: AppVersionBadgeProps) {
     const [version, setVersion] = useState<string>("...");
 
     useEffect(() => {
@@ -20,8 +23,8 @@ export function AppVersionBadge({ colors }: AppVersionBadgeProps) {
 
     return (
         <span
-            className="text-xs px-2 py-0.5 rounded-full"
-            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}
+            className={`text-xs px-2 py-0.5 rounded-full ${className || ""}`}
+            style={{ backgroundColor: bgColor ?? colors.surfaceContainerHighest, color: textColor ?? colors.onSurfaceVariant }}
         >
             v{version}
         </span>

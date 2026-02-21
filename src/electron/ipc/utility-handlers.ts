@@ -10,6 +10,57 @@ import { ipcMain, shell, dialog, BrowserWindow } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { getMinecraftDir, getAppDataDir } from "../config.js";
+import { getSession } from "../auth.js";
+import { refreshMicrosoftTokenIfNeeded } from "../auth-refresh.js";
+
+type SkinVariant = "classic" | "slim";
+
+function parsePngDataUrl(dataUrl: string): Buffer | null {
+    const match = dataUrl.match(/^data:image\/png;base64,([A-Za-z0-9+/=]+)$/);
+    if (!match || !match[1]) return null;
+    try {
+        return Buffer.from(match[1], "base64");
+    } catch {
+        return null;
+    }
+}
+
+async function fetchMinecraftProfile(accessToken: string): Promise<{ ok: boolean; profile?: any; error?: string }> {
+    const profileResponse = await fetch("https://api.minecraftservices.com/minecraft/profile", {
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: "application/json",
+        },
+    });
+
+    if (!profileResponse.ok) {
+        let errorText = `Minecraft profile error (${profileResponse.status})`;
+        try {
+            const errorData = await profileResponse.json();
+            errorText = errorData?.errorMessage || errorData?.error || errorText;
+        } catch { }
+        return { ok: false, error: errorText };
+    }
+
+    const profileData = await profileResponse.json();
+    const activeSkin =
+        profileData?.skins?.find((skin: any) => skin?.state === "ACTIVE") ||
+        profileData?.skins?.[0] ||
+        null;
+
+    return {
+        ok: true,
+        profile: {
+            id: profileData?.id,
+            name: profileData?.name,
+            skins: profileData?.skins || [],
+            capes: profileData?.capes || [],
+            activeSkin,
+            skinUrl: activeSkin?.url || null,
+            variant: (activeSkin?.variant || "CLASSIC").toLowerCase(),
+        },
+    };
+}
 
 export function registerUtilityHandlers(getMainWindow: () => BrowserWindow | null): void {
     /**
@@ -568,6 +619,110 @@ export function registerUtilityHandlers(getMainWindow: () => BrowserWindow | nul
             return { ok: false, error: error.message };
         }
     });
+
+    ipcMain.handle("minecraft-get-profile", async () => {
+        try {
+            const session = getSession();
+            if (!session || session.type !== "microsoft") {
+                return { ok: false, error: "Microsoft account is required." };
+            }
+
+            const refreshResult = await refreshMicrosoftTokenIfNeeded();
+            if (!refreshResult.ok) {
+                return {
+                    ok: false,
+                    error: refreshResult.error || "Could not refresh Microsoft token.",
+                    requiresRelogin: refreshResult.requiresRelogin || false,
+                };
+            }
+
+            const accessToken = refreshResult.session?.accessToken || session.accessToken;
+            if (!accessToken) {
+                return { ok: false, error: "Microsoft access token not found." };
+            }
+
+            return await fetchMinecraftProfile(accessToken);
+        } catch (error: any) {
+            return { ok: false, error: error?.message || "Failed to load Minecraft profile." };
+        }
+    });
+
+    ipcMain.handle(
+        "minecraft-upload-skin",
+        async (
+            _event,
+            payload: { dataUrl: string; variant?: SkinVariant; fileName?: string },
+        ) => {
+            try {
+                const session = getSession();
+                if (!session || session.type !== "microsoft") {
+                    return { ok: false, error: "Microsoft account is required." };
+                }
+
+                const refreshResult = await refreshMicrosoftTokenIfNeeded();
+                if (!refreshResult.ok) {
+                    return {
+                        ok: false,
+                        error: refreshResult.error || "Could not refresh Microsoft token.",
+                        requiresRelogin: refreshResult.requiresRelogin || false,
+                    };
+                }
+
+                const accessToken = refreshResult.session?.accessToken || session.accessToken;
+                if (!accessToken) {
+                    return { ok: false, error: "Microsoft access token not found." };
+                }
+
+                const skinData = parsePngDataUrl(payload.dataUrl || "");
+                if (!skinData) {
+                    return { ok: false, error: "Invalid skin file. Please use PNG format." };
+                }
+
+                const variant: SkinVariant = payload.variant === "slim" ? "slim" : "classic";
+                const skinBytes = Uint8Array.from(skinData);
+                const form = new FormData();
+                form.append("variant", variant);
+                form.append(
+                    "file",
+                    new Blob([skinBytes], { type: "image/png" }),
+                    payload.fileName || "skin.png",
+                );
+
+                const uploadResponse = await fetch(
+                    "https://api.minecraftservices.com/minecraft/profile/skins",
+                    {
+                        method: "PUT",
+                        headers: {
+                            Authorization: `Bearer ${accessToken}`,
+                        },
+                        body: form,
+                    },
+                );
+
+                if (!uploadResponse.ok) {
+                    let errorText = `Skin upload failed (${uploadResponse.status})`;
+                    try {
+                        const errorData = await uploadResponse.json();
+                        errorText = errorData?.errorMessage || errorData?.error || errorText;
+                    } catch { }
+                    return { ok: false, error: errorText };
+                }
+
+                const profileResult = await fetchMinecraftProfile(accessToken);
+                if (!profileResult.ok) {
+                    return profileResult;
+                }
+
+                return {
+                    ok: true,
+                    profile: profileResult.profile,
+                    message: "Skin updated successfully.",
+                };
+            } catch (error: any) {
+                return { ok: false, error: error?.message || "Failed to upload skin." };
+            }
+        },
+    );
 
     console.log("[IPC] Utility handlers registered");
 }

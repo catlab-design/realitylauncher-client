@@ -195,6 +195,49 @@ export function ContentList({
                     })}
                 </div>
             )}
+                
+            {/* Bottom Pagination */}
+            {!isLoading && totalPages > 1 && (
+                <div className="flex justify-center mt-6 animate-fade-in" style={{ animationDelay: '300ms' }}>
+                    <div className="flex items-center gap-2 p-1.5 rounded-2xl"
+                            style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}20` }}>
+
+                            <button
+                                onClick={() => {
+                                    playClick();
+                                    setPage(p => Math.max(1, p - 1));
+                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                }}
+                                disabled={page === 1}
+                                className="px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-2"
+                                style={{ color: colors.onSurface }}
+                            >
+                                <i className="fa-solid fa-chevron-left text-xs"></i>
+                                {t('previous')}
+                            </button>
+
+                            <div className="px-4 min-w-[90px] text-center" style={{ color: colors.onSurfaceVariant }}>
+                                <span className="text-sm font-bold" style={{ color: colors.onSurface }}>{page}</span>
+                                <span className="text-xs opacity-70 mx-1">/</span>
+                                <span className="text-sm opacity-70">{totalPages}</span>
+                            </div>
+
+                            <button
+                                onClick={() => {
+                                    playClick();
+                                    setPage(p => Math.min(totalPages, p + 1));
+                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                }}
+                                disabled={page === totalPages}
+                                className="px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-2"
+                                style={{ color: colors.onSurface }}
+                            >
+                                {t('next')}
+                                <i className="fa-solid fa-chevron-right text-xs"></i>
+                            </button>
+                        </div>
+                    </div>
+            )}
         </>
     );
 }

@@ -103,7 +103,7 @@ const DEFAULT_CONFIG: LauncherConfig = {
   ramMB: 4096,
   javaPath: "",
   javaArguments: "",
-  maxConcurrentDownloads: 5,
+  maxConcurrentDownloads: 8,
   downloadSpeedLimit: 0,
   windowAutoSize: true,
   windowWidth: 1100,

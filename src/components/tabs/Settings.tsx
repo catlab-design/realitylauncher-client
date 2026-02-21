@@ -29,6 +29,7 @@ interface SettingsProps {
     setLoginDialogOpen: (open: boolean) => void;
     handleUnlink: (provider: "catid" | "microsoft") => void;
     setLinkCatIDOpen: (open: boolean) => void;
+    onLinkMicrosoft: () => void;
 }
 
 export function Settings({
@@ -47,6 +48,7 @@ export function Settings({
     setLoginDialogOpen,
     handleUnlink,
     setLinkCatIDOpen,
+    onLinkMicrosoft,
 }: SettingsProps) {
     const { t } = useTranslation(config.language);
     const tabItems = [
@@ -104,6 +106,7 @@ export function Settings({
                         setLoginDialogOpen={setLoginDialogOpen}
                         handleUnlink={handleUnlink}
                         setLinkCatIDOpen={setLinkCatIDOpen}
+                        onLinkMicrosoft={onLinkMicrosoft}
                     />
                 )}
 

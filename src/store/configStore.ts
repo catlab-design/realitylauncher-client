@@ -28,7 +28,7 @@ const defaultConfig: LauncherConfig = {
     rainbowMode: false,
     fullscreen: false,
     javaArguments: "",
-    maxConcurrentDownloads: 5,
+    maxConcurrentDownloads: 8,
     telemetryEnabled: true,
     autoUpdateEnabled: true,
 };

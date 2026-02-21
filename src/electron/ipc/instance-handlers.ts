@@ -340,7 +340,11 @@ async function fetchIconFromOnline(
 }
 
 function getModCacheKey(filepath: string, size: number, mtime: string): string {
-  return `${filepath}|${size}|${mtime}`;
+  // Strip .disabled suffix to maintain same cache key when toggled
+  const cleanPath = filepath.endsWith(".disabled")
+    ? filepath.slice(0, -".disabled".length)
+    : filepath;
+  return `${cleanPath}|${size}|${mtime}`;
 }
 
 async function calculateSha1(filePath: string): Promise<string> {
@@ -1630,7 +1634,7 @@ export function registerInstanceHandlers(
           return { ok: false, error: "Invalid mod file" };
         }
 
-        fs.renameSync(filePath, path.join(modsDir, newFilename));
+        await fs.promises.rename(filePath, path.join(modsDir, newFilename));
         return { ok: true, newFilename, enabled };
       } catch (error: any) {
         return { ok: false, error: error.message };
@@ -1654,7 +1658,7 @@ export function registerInstanceHandlers(
         return { ok: false, error: "Mod not found" };
 
       try {
-        fs.rmSync(filePath, { force: true });
+        await fs.promises.rm(filePath, { force: true });
         return { ok: true };
       } catch (error: any) {
         return { ok: false, error: error.message };
@@ -1720,7 +1724,7 @@ export function registerInstanceHandlers(
               filename: progress.filename,
             });
           },
-          abortController.signal
+          abortController.signal,
         );
 
         // Notify frontend that instance data might have changed (loader, version)

@@ -38,6 +38,23 @@ export function registerNotificationHandlers(): void {
     });
 
     /**
+     * notifications-sync - Fetch notifications + invitations in one request
+     */
+    ipcMain.handle("notifications-sync", async () => {
+        try {
+            const session = getSession();
+            if (!session?.apiToken) {
+                return { notifications: [], invitations: [] };
+            }
+
+            const { fetchNotificationSync } = await import("../notifications.js");
+            return await fetchNotificationSync(session.apiToken);
+        } catch {
+            return { notifications: [], invitations: [] };
+        }
+    });
+
+    /**
      * notifications-mark-read - Mark notification as read
      */
     ipcMain.handle("notifications-mark-read", async (_event, notificationId: string) => {

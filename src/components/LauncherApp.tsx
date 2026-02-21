@@ -29,10 +29,11 @@ import { LoginModal } from "./auth/LoginModal";
 import { MicrosoftVerificationModal } from "./auth/MicrosoftVerificationModal";
 import { AppVersionBadge } from "./ui/AppVersionBadge";
 import microsoftIcon from "../assets/microsoft_icon.svg";
+import rIcon from "../assets/r.svg";
 import { Sidebar } from "./layout/Sidebar";
 import { ErrorBoundary as UIErrorBoundary } from "./ui/ErrorBoundary";
 
-import { Home, Settings, ServerMenu, ModPack, Explore, About } from "./tabs";
+import { Home, Settings, ServerMenu, ModPack, Explore, About, Wardrobe } from "./tabs";
 import { StateDebug } from "./StateDebug";
 import AdminPanel from "./tabs/AdminPanel";
 import { type AuthSession, type Server, type NewsItem, type LauncherConfig, type ColorTheme, type GameInstance } from "../types/launcher";
@@ -381,6 +382,21 @@ function LauncherAppContent() {
     return config.theme;
   }, [config.theme]);
 
+  const titleBarColors = useMemo(() => {
+    return {
+      background: colors.surface,
+      border: colors.outlineVariant,
+      text: colors.onSurface,
+      muted: colors.onSurfaceVariant,
+      hover: colors.surfaceContainerHigh,
+      active: colors.surfaceContainerHighest,
+      accent: colors.primary,
+      dotRing: colors.surface,
+      versionBg: effectiveThemeMode === 'light' ? colors.primaryContainer : colors.surfaceContainerHighest,
+      versionText: colors.onSurface,
+    };
+  }, [colors, effectiveThemeMode]);
+
   // Set data-theme attribute on <html> so global CSS can respond to theme changes
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", effectiveThemeMode);
@@ -450,11 +466,39 @@ function LauncherAppContent() {
     } finally {
         setIsLoadingAgendas(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     fetchAgendas();
   }, [fetchAgendas]);
+
+  // Check for events today to show red dot on calendar button
+  const hasEventsToday = useMemo(() => {
+    if (!agendas || agendas.length === 0) return false;
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const dateStr = now.toLocaleDateString('en-CA'); // YYYY-MM-DD
+
+    return agendas.some(item => {
+      // 1. Recurring items (dayOfWeek matches)
+      if (item.dayOfWeek !== null && item.dayOfWeek !== undefined && item.dayOfWeek === dayOfWeek) {
+        // If recurringUntil is set, check if target date is within range
+        if (item.recurringUntil) {
+          const untilDate = new Date(item.recurringUntil);
+          untilDate.setHours(23, 59, 59, 999);
+          if (now > untilDate) return false;
+        }
+        return true;
+      }
+      
+      // 2. One-time date items
+      if (item.date) {
+        const itemDate = new Date(item.date).toLocaleDateString('en-CA');
+        return itemDate === dateStr;
+      }
+      return false;
+    });
+  }, [agendas]);
 
 
   // Sync Config/Session from Electron API on mount (if available)
@@ -529,89 +573,98 @@ function LauncherAppContent() {
     fetchAnnouncements();
   }, []);
 
-  // Poll user notifications when logged in (detect new notifications)
+  // Poll notifications + invitations together (reduced request volume)
   useEffect(() => {
-    let timer: NodeJS.Timeout | null = null;
+    let pollTimer: NodeJS.Timeout | null = null;
+    let expirationTimer: NodeJS.Timeout | null = null;
+    let cancelled = false;
 
-    const fetchAndNotify = async () => {
+    const clearInboxState = () => {
+      setUserNotifications([]);
+      setInvitations([]);
+      prevNotificationIdsRef.current = [];
+      prevInvRef.current = [];
+    };
+
+    const syncInbox = async () => {
       if (!session) {
-        setUserNotifications([]);
-        prevNotificationIdsRef.current = [];
+        clearInboxState();
         return;
       }
 
       setNotificationsLoading(true);
       try {
-        const data = await window.api?.notificationsFetchUser?.();
-        if (data) {
-          const prevIds = prevNotificationIdsRef.current || [];
-          const added = data.filter((n: any) => !prevIds.includes(n.id));
+        const syncData = await window.api?.notificationsSync?.();
+        const notificationsData = Array.isArray(syncData?.notifications)
+          ? syncData.notifications
+          : (await window.api?.notificationsFetchUser?.()) || [];
+        const invitationsData = Array.isArray(syncData?.invitations)
+          ? syncData.invitations
+          : (await window.api?.invitationsFetch?.()) || [];
 
-          // Only show toast for newly added unread notifications
-          if (added.length > 0 && prevIds.length > 0) {
-            added.forEach((n: any) => {
-              if (!n.isRead) {
-                toast(t('notification_prefix').replace('{title}', n.title));
-              }
-            });
-          }
+        const prevNotificationIds = prevNotificationIdsRef.current || [];
+        const addedNotifications = notificationsData.filter(
+          (n: any) => !prevNotificationIds.includes(n.id),
+        );
+        if (addedNotifications.length > 0 && prevNotificationIds.length > 0) {
+          addedNotifications.forEach((n: any) => {
+            if (!n.isRead) {
+              toast(t('notification_prefix').replace('{title}', n.title));
+            }
+          });
+        }
 
-          prevNotificationIdsRef.current = data.map((d: any) => d.id);
-          setUserNotifications(data);
-          console.log("[Notifications] Loaded user notifications:", data.length);
+        const prevInvitationIds = prevInvRef.current || [];
+        const addedInvitations = invitationsData.filter(
+          (inv: any) => !prevInvitationIds.includes(inv.id),
+        );
+        if (addedInvitations.length > 0 && prevInvitationIds.length > 0) {
+          addedInvitations.forEach((inv: any) => {
+            const name = inv.inviterName || t('user_label');
+            toast.success(
+              t('new_invitation_msg')
+                .replace('{name}', name)
+                .replace('{instance}', inv.instanceName),
+            );
+          });
+        }
+
+        if (!cancelled) {
+          prevNotificationIdsRef.current = notificationsData.map((d: any) => d.id);
+          prevInvRef.current = invitationsData.map((d: any) => d.id);
+          setUserNotifications(notificationsData);
+          setInvitations(invitationsData);
         }
       } catch (error) {
-        console.error("[Notifications] Error fetching user notifications:", error);
+        console.error("[Notifications] Sync error:", error);
       } finally {
-        setNotificationsLoading(false);
-      }
-    };
-
-    fetchAndNotify();
-    timer = setInterval(fetchAndNotify, 10000);
-
-    return () => {
-      if (timer) clearInterval(timer);
-    };
-  }, [session, notificationRefreshTrigger]);
-
-  // Poll pending invitations when logged in (detect new ones)
-  useEffect(() => {
-    let timer: NodeJS.Timeout | null = null;
-    let expirationTimer: NodeJS.Timeout | null = null;
-
-    const fetchAndNotifyInvitations = async () => {
-      if (!session) {
-        setInvitations([]);
-        prevInvRef.current = [];
-        return;
-      }
-
-      try {
-        const data = await window.api?.invitationsFetch?.();
-        if (data) {
-          // Detect newly added invitation IDs
-          const prevIds = prevInvRef.current || [];
-          const added = data.filter((inv: any) => !prevIds.includes(inv.id));
-
-          // If there are new invitations (and not the initial load), notify user
-          if (added.length > 0 && prevIds.length > 0) {
-            added.forEach((inv: any) => {
-              const name = inv.inviterName || t('user_label');
-              toast.success(t('new_invitation_msg').replace('{name}', name).replace('{instance}', inv.instanceName));
-            });
-          }
-
-          prevInvRef.current = data.map((d: any) => d.id);
-          setInvitations(data);
-          console.log("[Invitations] Loaded pending invitations:", data.length);
+        if (!cancelled) {
+          setNotificationsLoading(false);
         }
-      } catch (error) {
-        console.error("[Invitations] Error fetching invitations:", error);
       }
     };
 
-    // Auto-logout check for CatID sessions with checking every 1s
+    const getPollDelay = () =>
+      typeof document !== "undefined" && document.visibilityState === "hidden"
+        ? 120000
+        : 30000;
+
+    const scheduleNextPoll = () => {
+      if (cancelled) return;
+      if (pollTimer) clearTimeout(pollTimer);
+      pollTimer = setTimeout(async () => {
+        await syncInbox();
+        scheduleNextPoll();
+      }, getPollDelay());
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        syncInbox();
+        scheduleNextPoll();
+      }
+    };
+
     const checkExpiration = () => {
       if (session?.type === "catid" && session.tokenExpiresAt) {
         if (Date.now() >= session.tokenExpiresAt) {
@@ -621,22 +674,34 @@ function LauncherAppContent() {
            setSession(null);
            window.api?.logout?.(); // Clear backend/electron session too
            toast.error(t('session_expired'));
-        }
+       }
       }
     };
 
-    // Initial load + polling
-    fetchAndNotifyInvitations();
+    syncInbox();
     checkExpiration();
-    
-    timer = setInterval(fetchAndNotifyInvitations, 10000);
-    expirationTimer = setInterval(checkExpiration, 1000);
+    scheduleNextPoll();
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVisibilityChange);
+    }
+
+    expirationTimer = setInterval(checkExpiration, 10000);
 
     return () => {
-      if (timer) clearInterval(timer);
+      cancelled = true;
+      if (pollTimer) clearTimeout(pollTimer);
       if (expirationTimer) clearInterval(expirationTimer);
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+      }
     };
-  }, [session]);
+  }, [session, notificationRefreshTrigger, t]);
+
+  const unreadCount = useMemo(() => {
+    const notificationsUnread = userNotifications.filter(n => !n.isRead).length;
+    return notificationsUnread + invitations.length;
+  }, [userNotifications, invitations]);
 
 
   // Handle Deep Link Login
@@ -843,6 +908,7 @@ function LauncherAppContent() {
             setDeviceCodePolling(false);
             setDeviceCodeData(null);
             setDeviceCodeError(null);
+            setIsLinkingMicrosoft(false);
 
             if (result.linkSwitched) {
               toast.success(
@@ -856,9 +922,11 @@ function LauncherAppContent() {
           } else if (result.status === "expired") {
             setDeviceCodePolling(false);
             setDeviceCodeError(result.error || t('error_expired_code'));
+            setIsLinkingMicrosoft(false);
           } else if (result.status === "error") {
             setDeviceCodePolling(false);
             setDeviceCodeError(result.error || t('error_occurred'));
+            setIsLinkingMicrosoft(false);
           }
           // If status === "pending", continue polling
         } catch (error) {
@@ -868,7 +936,7 @@ function LauncherAppContent() {
     }, 5000); // Poll every 5 seconds
 
     return () => clearInterval(pollInterval);
-  }, [deviceCodePolling, deviceCodeData]);
+  }, [deviceCodePolling, deviceCodeData, isLinkingMicrosoft]);
 
   // Save config helper - อัพเดท state ทันทีก่อน แล้วค่อยบันทึก
   // Save config helper - อัพเดท state ทันทีก่อน แล้วค่อยบันทึก
@@ -1274,6 +1342,33 @@ function LauncherAppContent() {
     });
   };
 
+  const handleLinkMicrosoft = async () => {
+    console.log("[Auth] Link Microsoft clicked");
+    if (window.api?.startDeviceCodeAuth) {
+      try {
+        const toastId = toast.loading(t('requesting_link_code'));
+        const result = await window.api.startDeviceCodeAuth();
+        toast.dismiss(toastId);
+
+        if (!result.ok || !result.deviceCode || !result.userCode) {
+          toast.error(result.error || t('request_code_failed'));
+          return;
+        }
+
+        setDeviceCodeData({
+          deviceCode: result.deviceCode,
+          userCode: result.userCode,
+          verificationUri: result.verificationUri || "https://microsoft.com/link",
+          expiresAt: Date.now() + ((result.expiresIn || 900) * 1000),
+        });
+        setDeviceCodePolling(true);
+        setDeviceCodeModalOpen(true);
+        setIsLinkingMicrosoft(true);
+      } catch (error) {
+        toast.error(t('error_occurred'));
+      }
+    }
+  };
 
   // Show loading screen
   if (isLoading) {
@@ -1435,6 +1530,7 @@ function LauncherAppContent() {
           setDeviceCodePolling(false);
           setDeviceCodeData(null);
           setDeviceCodeError(null);
+          setIsLinkingMicrosoft(false);
         }}
         colors={colors}
       />
@@ -2115,33 +2211,39 @@ function LauncherAppContent() {
 
 
       {/* Main App Layout */}
-      <div className={`flex-1 flex overflow-hidden ${config.rainbowMode ? 'rainbow-mode' : ''}`}>
-        {/* Sidebar */}
-        {/* Sidebar */}
-        <Sidebar 
-          colors={colors} 
-          onTabSelect={(tabId) => {
-            // When user manually clicks Modpack tab, reset to list view
-            if (tabId === 'modpack') {
-              setSelectedInstance(null);
-            }
-          }}
-        />
-
-        {/* Main Content */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Header with Drag Region */}
-          <header
-            className="h-16 flex items-center justify-between pl-6 pr-0 drag-region"
-            style={{ backgroundColor: colors.surface }}
-          >
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold" style={{ fontFamily: "'Inter', sans-serif", color: colors.onSurface }}>Reality</h1>
-              <AppVersionBadge colors={colors} />
+      <div className={`flex-1 flex flex-col overflow-hidden ${config.rainbowMode ? 'rainbow-mode' : ''}`}>
+        {/* Header with Drag Region (Unified Title Bar) */}
+        <header
+          className="h-10 flex items-center justify-between pr-0 drag-region"
+          style={{ background: titleBarColors.background }}
+        >
+          <div className="flex items-center h-full">
+            {/* Logo box aligning with sidebar width (w-20) */}
+            <div 
+              className="w-20 h-full flex items-center justify-center no-drag"
+              style={{ backgroundColor: colors.secondary }}
+            >
+              <img src={rIcon.src} alt="Logo" className="w-13 h-13 object-contain select-none transform translate-y-2" draggable={false} style={{ WebkitUserDrag: "none" } as React.CSSProperties} />
             </div>
 
+            {/* Separated Title Section */}
+            <div className="flex items-center gap-2 pl-4">
+              <h1 className="text-[18px] leading-none font-bold" style={{ fontFamily: "'Inter', sans-serif", color: titleBarColors.text }}>Reality</h1>
+              <AppVersionBadge
+                colors={colors}
+                className="border border-white/10 font-semibold tracking-tight"
+                bgColor={titleBarColors.versionBg}
+                textColor={titleBarColors.versionText}
+              />
+            </div>
+          </div>
+          {/* Header with Drag Region */}
+
             {/* Right Side - Notifications and Account - Fixed at top */}
-            <div className="fixed top-0 right-36 h-10 flex items-center gap-2 no-drag z-99">
+            <div
+              className="fixed top-0 right-36 h-10 flex items-center gap-2 pr-2 no-drag"
+              style={{ zIndex: 99, pointerEvents: "auto" }}
+            >
               {/* Calendar Button */}
               {session && (
                 <div className="relative">
@@ -2153,11 +2255,17 @@ function LauncherAppContent() {
                             fetchAgendas();
                         }
                     }}
-                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 hover:bg-black/10 ${calendarOpen ? 'bg-black/10 scale-110' : ''}`}
-                    style={{ color: colors.onSurfaceVariant }}
+                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 hover:bg-white/10 ${calendarOpen ? 'scale-110' : ''}`}
+                    style={{ color: titleBarColors.muted, backgroundColor: calendarOpen ? titleBarColors.active : "transparent" }}
                     title={t('calendar')}
                   >
                     <Icons.Calendar className="w-5 h-5" />
+                    {hasEventsToday && (
+                        <span
+                            className="absolute top-1 right-1 w-2 h-2 rounded-full border-2"
+                            style={{ backgroundColor: "#ef4444", borderColor: titleBarColors.dotRing }}
+                        />
+                    )}
                   </button>
                   {calendarOpen && (
                     <CalendarWidget
@@ -2169,6 +2277,7 @@ function LauncherAppContent() {
                       instanceName={selectedInstance?.name}
                       preFetchedAgendas={agendas}
                       isPreLoading={isLoadingAgendas}
+                      onRefresh={fetchAgendas}
                     />
                   )}
                 </div>
@@ -2179,19 +2288,19 @@ function LauncherAppContent() {
                 <div className="relative">
                   <button
                     onClick={() => setInboxOpen(!inboxOpen)}
-                    className="w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 hover:bg-black/10 relative"
-                    style={{ color: colors.onSurfaceVariant }}
+                    className="w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 hover:bg-white/10 relative"
+                    style={{ color: titleBarColors.muted, backgroundColor: inboxOpen ? titleBarColors.active : "transparent" }}
                     title={t('news_and_notifications')}
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                     </svg>
-                    {invitations.length > 0 && (
+                    {unreadCount > 0 && (
                       <span
-                        className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold"
-                        style={{ backgroundColor: '#22c55e', color: 'white' }}
+                        className="absolute -top-1.5 -right-1.5 text-[13px] font-black pointer-events-none select-none"
+                        style={{ color: '#000000', textShadow: '0 0 2px rgba(255,255,255,0.7)' }}
                       >
-                        {invitations.length > 9 ? '9+' : invitations.length}
+                        {unreadCount > 9 ? '9+' : unreadCount}
                       </span>
                     )}
                   </button>
@@ -2203,7 +2312,11 @@ function LauncherAppContent() {
                     colors={colors}
                     isFullscreen={config.fullscreen}
                     onInvitationAccepted={() => {
-                      if (window.api?.invitationsFetch) {
+                      if (window.api?.notificationsSync) {
+                        window.api.notificationsSync().then((data) => {
+                          if (data?.invitations) setInvitations(data.invitations);
+                        });
+                      } else if (window.api?.invitationsFetch) {
                         window.api.invitationsFetch().then(setInvitations);
                       }
                       setServerRefreshTrigger(prev => prev + 1);
@@ -2218,8 +2331,8 @@ function LauncherAppContent() {
                 {/* Account Button */}
                 <button
                   onClick={() => setAccountDropdownOpen(!accountDropdownOpen)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm transition-all hover:scale-105 hover:bg-black/5"
-                  style={{ color: colors.onSurface }}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm transition-all hover:scale-105 hover:bg-white/10"
+                  style={{ color: titleBarColors.text, backgroundColor: accountDropdownOpen ? titleBarColors.active : "transparent" }}
                 >
                   {session ? (
                     <MCHead username={session.username} size={22} className="rounded-full" />
@@ -2362,36 +2475,7 @@ function LauncherAppContent() {
                           onClick={async () => {
                             playClick();
                             setAccountDropdownOpen(false);
-                            console.log("[Auth] Link Microsoft clicked");
-
-                            if (window.api?.startDeviceCodeAuth) {
-                              try {
-                                const toastId = toast.loading(t('requesting_link_code'));
-                                const result = await window.api.startDeviceCodeAuth();
-                                toast.dismiss(toastId);
-
-                                if (!result.ok || !result.deviceCode || !result.userCode) {
-                                  toast.error(result.error || t('request_code_failed'));
-                                  return;
-                                }
-
-                                setDeviceCodeData({
-                                  deviceCode: result.deviceCode,
-                                  userCode: result.userCode,
-                                  verificationUri: result.verificationUri || "https://microsoft.com/link",
-                                  expiresAt: Date.now() + ((result.expiresIn || 900) * 1000),
-                                });
-                                // Set flag for linking mode if I add it to state, or just reuse modal 
-                                // For now, I'll rely on the modal's polling call checking a new state or just standard poll
-                                // I need to update the polling logic to pass 'isLinking'
-                                setDeviceCodePolling(true);
-                                setDeviceCodeModalOpen(true);
-                                // Actually, I need a state to tell the modal this is a LINK operation, not a LOGIN
-                                setIsLinkingMicrosoft(true);
-                              } catch (error) {
-                                toast.error(t('error_occurred'));
-                              }
-                            }
+                            await handleLinkMicrosoft();
                           }}
                           className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all hover:bg-gray-500/10"
                           style={{ color: colors.onSurface }}
@@ -2433,12 +2517,12 @@ function LauncherAppContent() {
               </div>
 
               {/* Window Control Buttons - Fixed at top-right corner */}
-              <div className="fixed top-0 right-0 flex items-center gap-0 z-100 no-drag" style={{ pointerEvents: "auto" }}>
+              <div className="fixed top-0 right-0 flex items-center gap-0 no-drag" style={{ pointerEvents: "auto", zIndex: 100 }}>
                 {/* Minimize */}
                 <button
                   onClick={() => window.api?.windowMinimize()}
-                  className="w-12 h-10 flex items-center justify-center transition-all hover:bg-black/10"
-                  style={{ color: colors.onSurfaceVariant }}
+                  className="w-12 h-10 flex items-center justify-center transition-all hover:bg-white/10"
+                  style={{ color: titleBarColors.muted }}
                   title={t('minimize')}
                 >
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
@@ -2453,8 +2537,8 @@ function LauncherAppContent() {
                     const isMaximized = await window.api?.windowIsMaximized?.();
                     updateConfig({ fullscreen: isMaximized ?? false });
                   }}
-                  className="w-12 h-10 flex items-center justify-center transition-all hover:bg-black/10"
-                  style={{ color: config.fullscreen ? colors.secondary : colors.onSurfaceVariant }}
+                  className="w-12 h-10 flex items-center justify-center transition-all hover:bg-white/10"
+                  style={{ color: config.fullscreen ? titleBarColors.accent : titleBarColors.muted }}
                   title={config.fullscreen ? t('restore') : t('maximize')}
                 >
                   {config.fullscreen ? (
@@ -2471,7 +2555,7 @@ function LauncherAppContent() {
                 <button
                   onClick={() => window.api?.windowClose()}
                   className="w-12 h-10 flex items-center justify-center transition-all hover:bg-red-500 hover:text-white!"
-                  style={{ color: colors.onSurfaceVariant }}
+                  style={{ color: titleBarColors.muted }}
                   title={t('close')}
                 >
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
@@ -2482,8 +2566,20 @@ function LauncherAppContent() {
             </div>
           </header>
 
-          {/* Content */}
-          <main className="flex-1 overflow-auto p-6">
+          <div className="flex-1 flex overflow-hidden">
+            {/* Sidebar */}
+            <Sidebar
+              colors={colors}
+              onTabSelect={(tabId) => {
+                // When user manually clicks Modpack tab, reset to list view
+                if (tabId === 'modpack') {
+                  setSelectedInstance(null);
+                }
+              }}
+            />
+
+            {/* Content Area */}
+          <main className="flex-1 overflow-auto pt-3 px-6 pb-6">
             {activeTab === "home" && (
               <Home
                 session={session}
@@ -2508,6 +2604,9 @@ function LauncherAppContent() {
                 setActiveTab={setActiveTab}
                 refreshTrigger={serverRefreshTrigger}
                 language={config.language}
+                config={config}
+                updateConfig={updateConfig}
+                setSettingsTab={setSettingsTab}
               />
             )}
 
@@ -2557,6 +2656,7 @@ function LauncherAppContent() {
                 setLoginDialogOpen={setLoginDialogOpen}
                 handleUnlink={handleUnlink}
                 setLinkCatIDOpen={setLinkCatIDOpen}
+                onLinkMicrosoft={handleLinkMicrosoft}
               />
             )}
 
@@ -2571,6 +2671,8 @@ function LauncherAppContent() {
 
             {/* About Tab - New Premium Component */}
             {activeTab === "about" && <About colors={colors} config={config} />}
+            {/* Wardrobe Tab */}
+            {activeTab === "wardrobe" && <Wardrobe colors={colors} />}
           </main>
         </div>
       </div>

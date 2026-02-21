@@ -6,6 +6,14 @@
 import { API_URL } from './lib/constants.js';
 // API URL imported from shared constants
 
+const ANNOUNCEMENTS_CACHE_TTL_MS = 5 * 60 * 1000;
+const SYNC_CACHE_TTL_MS = 15 * 1000;
+
+let announcementsCache: { data: Announcement[]; timestamp: number } | null = null;
+let syncCache:
+    | { data: { notifications: Notification[]; invitations: Invitation[] }; timestamp: number }
+    | null = null;
+
 /** Validate and sanitize an ID before using in URL paths */
 function sanitizeId(id: string): string {
     // Only allow alphanumeric, hyphens, and underscores
@@ -40,10 +48,32 @@ export interface Notification {
     createdAt: string;
 }
 
+function mapInvitations(data: any): Invitation[] {
+    return (data.invitations || []).map((inv: any) => ({
+        id: inv.invitation?.id || inv.id,
+        instanceId: inv.instance?.id || inv.instanceId,
+        instanceName: inv.instance?.name || inv.instanceName || 'Unknown',
+        instanceIcon: inv.instance?.iconUrl || null,
+        invitedBy: inv.invitation?.invitedBy || inv.invitedBy,
+        inviterName: inv.inviter?.catidUsername || inv.inviter?.username || null,
+        role: inv.invitation?.role || inv.role || 'member',
+        message: inv.invitation?.message || inv.message,
+        status: inv.invitation?.status || inv.status || 'pending',
+        createdAt: inv.invitation?.createdAt || inv.createdAt,
+    }));
+}
+
 /**
  * Fetch all active announcements (public, no auth required)
  */
 export async function fetchAnnouncements(): Promise<Announcement[]> {
+    if (
+        announcementsCache &&
+        Date.now() - announcementsCache.timestamp < ANNOUNCEMENTS_CACHE_TTL_MS
+    ) {
+        return announcementsCache.data;
+    }
+
     try {
         const response = await fetch(`${API_URL}/announcements`, {
             method: 'GET',
@@ -58,6 +88,7 @@ export async function fetchAnnouncements(): Promise<Announcement[]> {
         }
 
         const data = await response.json();
+        announcementsCache = { data, timestamp: Date.now() };
         return data;
     } catch (error) {
         console.error('[Notifications] Error fetching announcements:', error);
@@ -92,6 +123,41 @@ export async function fetchUserNotifications(authToken: string): Promise<Notific
 }
 
 /**
+ * Fetch notifications and invitations in a single API call
+ */
+export async function fetchNotificationSync(
+    authToken: string,
+): Promise<{ notifications: Notification[]; invitations: Invitation[] }> {
+    if (syncCache && Date.now() - syncCache.timestamp < SYNC_CACHE_TTL_MS) {
+        return syncCache.data;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/announcements/sync?limit=50`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`,
+            },
+        });
+
+        if (!response.ok) {
+            return { notifications: [], invitations: [] };
+        }
+
+        const data = await response.json();
+        const parsed = {
+            notifications: (data.notifications || []) as Notification[],
+            invitations: mapInvitations(data),
+        };
+        syncCache = { data: parsed, timestamp: Date.now() };
+        return parsed;
+    } catch {
+        return { notifications: [], invitations: [] };
+    }
+}
+
+/**
  * Mark notification as read
  */
 export async function markNotificationAsRead(notificationId: string, authToken: string): Promise<boolean> {
@@ -104,6 +170,9 @@ export async function markNotificationAsRead(notificationId: string, authToken: 
             },
         });
 
+        if (response.ok) {
+            syncCache = null;
+        }
         return response.ok;
     } catch (error) {
         console.error('[Notifications] Error marking notification as read:', error);
@@ -124,6 +193,9 @@ export async function deleteNotification(notificationId: string, authToken: stri
             },
         });
 
+        if (response.ok) {
+            syncCache = null;
+        }
         return response.ok;
     } catch (error) {
         console.error('[Notifications] Error deleting notification:', error);
@@ -207,19 +279,7 @@ export async function fetchInvitations(authToken: string): Promise<Invitation[]>
         }
 
         const data = await response.json();
-        // Transform API response to our Invitation interface
-        return (data.invitations || []).map((inv: any) => ({
-            id: inv.invitation?.id || inv.id,
-            instanceId: inv.instance?.id || inv.instanceId,
-            instanceName: inv.instance?.name || inv.instanceName || 'Unknown',
-            instanceIcon: inv.instance?.iconUrl || null,
-            invitedBy: inv.invitation?.invitedBy || inv.invitedBy,
-            inviterName: inv.inviter?.catidUsername || null,
-            role: inv.invitation?.role || inv.role || 'member',
-            message: inv.invitation?.message || inv.message,
-            status: inv.invitation?.status || inv.status || 'pending',
-            createdAt: inv.invitation?.createdAt || inv.createdAt,
-        }));
+        return mapInvitations(data);
     } catch (error) {
         // console.error('[Invitations] Error fetching:', error);
         return [];
@@ -246,6 +306,7 @@ export async function acceptInvitation(invitationId: string, authToken: string):
             return false;
         }
 
+        syncCache = null;
         return true;
     } catch (error) {
         console.error('[Invitations] Error accepting:', error);
@@ -273,6 +334,7 @@ export async function rejectInvitation(invitationId: string, authToken: string):
             return false;
         }
 
+        syncCache = null;
         return true;
     } catch (error) {
         console.error('[Invitations] Error rejecting:', error);

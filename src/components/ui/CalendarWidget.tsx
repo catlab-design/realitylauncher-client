@@ -18,6 +18,7 @@ interface CalendarWidgetProps {
     instanceName?: string;
     preFetchedAgendas?: any[];
     isPreLoading?: boolean;
+    onRefresh?: () => void;
 }
 
 let lastMessageIndex = -1;
@@ -140,7 +141,8 @@ export function CalendarWidget({
     instanceId, 
     instanceName,
     preFetchedAgendas,
-    isPreLoading
+    isPreLoading,
+    onRefresh
 }: CalendarWidgetProps) {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [viewDate, setViewDate] = useState(new Date());
@@ -489,6 +491,28 @@ export function CalendarWidget({
                             </button>
 
                             <div className="w-px h-4 bg-black/10 mx-1" />
+
+                            <button 
+                                onClick={() => {
+                                    onRefresh?.();
+                                    // Also trigger local fetch if instanceId exists
+                                    if (instanceId) {
+                                        setIsLoadingAgendas(true);
+                                        (window as any).api?.fetchInstanceAgendas?.(instanceId)
+                                            .then((res: any) => {
+                                                if (res && res.ok) {
+                                                    setAgendas(res.agendas || []);
+                                                }
+                                            })
+                                            .finally(() => setIsLoadingAgendas(false));
+                                    }
+                                }}
+                                className={`p-1.5 rounded-lg hover:bg-black/5 transition-colors ${isLoadingAgendas ? 'opacity-40 pointer-events-none' : ''}`}
+                                style={{ color: colors.secondary }}
+                                title={language === 'th' ? 'รีเฟรช' : 'Refresh'}
+                            >
+                                <Icons.Refresh className={`w-4 h-4 ${isLoadingAgendas ? 'animate-spin' : ''}`} />
+                            </button>
 
                             <button 
                                 onClick={() => setIsFull(!isFull)}

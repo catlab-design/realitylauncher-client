@@ -324,6 +324,63 @@ declare global {
         requiresRelogin?: boolean;
         error?: string;
       }>;
+      minecraftGetProfile: () => Promise<{
+        ok: boolean;
+        profile?: {
+          id: string;
+          name: string;
+          skins: Array<{
+            id: string;
+            state: string;
+            url: string;
+            variant: string;
+            alias?: string;
+          }>;
+          capes: any[];
+          activeSkin?: {
+            id: string;
+            state: string;
+            url: string;
+            variant: string;
+            alias?: string;
+          } | null;
+          skinUrl?: string | null;
+          variant?: string;
+        };
+        requiresRelogin?: boolean;
+        error?: string;
+      }>;
+      minecraftUploadSkin: (
+        dataUrl: string,
+        variant: "classic" | "slim",
+        fileName?: string,
+      ) => Promise<{
+        ok: boolean;
+        profile?: {
+          id: string;
+          name: string;
+          skins: Array<{
+            id: string;
+            state: string;
+            url: string;
+            variant: string;
+            alias?: string;
+          }>;
+          capes: any[];
+          activeSkin?: {
+            id: string;
+            state: string;
+            url: string;
+            variant: string;
+            alias?: string;
+          } | null;
+          skinUrl?: string | null;
+          variant?: string;
+        };
+        message?: string;
+        requiresRelogin?: boolean;
+        error?: string;
+      }>;
       // Window Control
       windowMinimize: () => Promise<void>;
       windowMaximize: () => Promise<void>;
@@ -594,6 +651,21 @@ declare global {
       // Notifications APIs
       notificationsFetchAnnouncements: () => Promise<any[]>;
       notificationsFetchUser: () => Promise<any[]>;
+      notificationsSync: () => Promise<{
+        notifications: any[];
+        invitations: Array<{
+          id: string;
+          instanceId: string;
+          instanceName: string;
+          instanceIcon?: string | null;
+          invitedBy: string;
+          inviterName?: string | null;
+          role: "member" | "admin";
+          message?: string | null;
+          status: "pending" | "accepted" | "rejected";
+          createdAt: string;
+        }>;
+      }>;
       notificationsMarkRead: (notificationId: string) => Promise<boolean>;
       notificationsDelete: (notificationId: string) => Promise<boolean>;
       // Invitation APIs

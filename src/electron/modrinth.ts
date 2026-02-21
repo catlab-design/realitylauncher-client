@@ -24,6 +24,28 @@ const MODRINTH_API = "https://api.modrinth.com/v2";
 // Dynamic User-Agent with app version
 const USER_AGENT = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) RealityLauncher/${app?.getVersion?.() || "1.0.0"} Chrome/120.0.0.0 Electron/28.1.0 Safari/537.36`;
 
+// Reuse TCP/TLS connections across many mod downloads to reduce handshake overhead.
+const HTTP_AGENT = new http.Agent({
+  keepAlive: true,
+  maxSockets: 48,
+  maxFreeSockets: 12,
+});
+const HTTPS_AGENT = new https.Agent({
+  keepAlive: true,
+  maxSockets: 48,
+  maxFreeSockets: 12,
+});
+
+function getRequestClient(url: string): {
+  protocol: typeof https | typeof http;
+  agent: http.Agent | https.Agent;
+} {
+  if (url.startsWith("https")) {
+    return { protocol: https, agent: HTTPS_AGENT };
+  }
+  return { protocol: http, agent: HTTP_AGENT };
+}
+
 // ========================================
 // Types
 // ========================================
@@ -156,10 +178,11 @@ export interface SearchFilters {
 
 function fetchJSON<T>(url: string): Promise<T> {
   return new Promise((resolve, reject) => {
-    const protocol = url.startsWith("https") ? https : http;
+    const { protocol, agent } = getRequestClient(url);
     const request = protocol.get(
       url,
       {
+        agent,
         headers: {
           "User-Agent": USER_AGENT,
           Accept: "application/json",
@@ -174,10 +197,11 @@ function fetchJSON<T>(url: string): Promise<T> {
           response.statusCode === 308
         ) {
           if (response.headers.location) {
+            const nextUrl = new URL(response.headers.location, url).toString();
             console.log(
-              `[Modrinth] Following redirect: ${url} -> ${response.headers.location}`,
+              `[Modrinth] Following redirect: ${url} -> ${nextUrl}`,
             );
-            fetchJSON<T>(response.headers.location).then(resolve).catch(reject);
+            fetchJSON<T>(nextUrl).then(resolve).catch(reject);
             return;
           }
         }
@@ -201,7 +225,6 @@ function fetchJSON<T>(url: string): Promise<T> {
       },
     );
 
-    request.on("error", reject);
     request.on("error", reject);
     request.setTimeout(60000, () => {
       request.destroy();
@@ -512,14 +535,19 @@ export function downloadFile(
     const file = fs.createWriteStream(dest);
     const filename = path.basename(dest);
 
-    const protocol = url.startsWith("https") ? https : http;
+    const { protocol, agent } = getRequestClient(url);
 
     let currentResponse: any = null;
     let dataTimeout: NodeJS.Timeout | null = null;
+    let onAbort: (() => void) | null = null;
     const TIMEOUT_MS = 60000; // 60 seconds (increased from 15s)
 
     const cleanup = () => {
       if (dataTimeout) clearTimeout(dataTimeout);
+      if (signal && onAbort) {
+        signal.removeEventListener("abort", onAbort);
+        onAbort = null;
+      }
     };
 
     const resetTimeout = () => {
@@ -555,7 +583,7 @@ export function downloadFile(
 
     const request = protocol.get(
       url,
-      { headers: { "User-Agent": USER_AGENT } },
+      { agent, headers: { "User-Agent": USER_AGENT } },
       (response) => {
         // Headers received: CLEAR the connection timeout
         clearTimeout(connectionTimeout);
@@ -563,13 +591,21 @@ export function downloadFile(
         currentResponse = response;
 
         // Handle redirects
-        if (response.statusCode === 301 || response.statusCode === 302) {
+        if (
+          response.statusCode === 301 ||
+          response.statusCode === 302 ||
+          response.statusCode === 303 ||
+          response.statusCode === 307 ||
+          response.statusCode === 308
+        ) {
           const redirectUrl = response.headers.location;
           cleanup();
           if (redirectUrl) {
+            const resolvedRedirectUrl = new URL(redirectUrl, url).toString();
+            response.destroy();
             file.close();
             if (fs.existsSync(dest)) fs.rmSync(dest, { force: true });
-            downloadFile(redirectUrl, dest, onProgress, signal)
+            downloadFile(resolvedRedirectUrl, dest, onProgress, signal)
               .then(resolve)
               .catch(reject);
             return;
@@ -652,7 +688,7 @@ export function downloadFile(
     });
 
     if (signal) {
-      signal.addEventListener("abort", () => {
+      onAbort = () => {
         console.log("[Modrinth] Download cancelled by user");
         cleanup();
         request.destroy();
@@ -664,7 +700,9 @@ export function downloadFile(
           if (fs.existsSync(dest)) fs.rmSync(dest, { force: true });
         } catch {}
         reject(new Error("Download cancelled"));
-      });
+      };
+
+      signal.addEventListener("abort", onAbort);
     }
   });
 }

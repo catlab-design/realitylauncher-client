@@ -24,11 +24,21 @@ export function Sidebar({ colors, onTabSelect }: SidebarProps) {
     // Calculate isAdmin based on session logic as done in LauncherApp
     const isAdmin = session?.isAdmin || false;
 
+    // Derive effective theme mode
+    const effectiveThemeMode = React.useMemo(() => {
+        if (config.theme === "auto") {
+            const hour = new Date().getHours();
+            return hour >= 6 && hour < 18 ? "light" : "dark";
+        }
+        return config.theme;
+    }, [config.theme]);
+
     const mainNavItems = [
         { id: "home", icon: Icons.Home, label: t('home') },
         { id: "servers", icon: Icons.Dns, label: t('servers') },
         { id: "modpack", icon: Icons.Modpack, label: t('modpacks') },
         { id: "explore", icon: Icons.Search, label: t('explore') },
+        { id: "wardrobe", icon: Icons.Hanger, label: t('wardrobe') },
     ];
 
     const bottomNavItems = [
@@ -68,14 +78,8 @@ export function Sidebar({ colors, onTabSelect }: SidebarProps) {
 
     return (
         <nav className="w-20 flex flex-col items-center" style={{ backgroundColor: colors.secondary }}>
-            {/* Top Section - Logo and Main Nav */}
-            <div className="flex-1 flex flex-col items-center gap-2">
-                {/* Drag region for sidebar top */}
-                <div className="w-full pt-2 pb-2 flex justify-center drag-region">
-                    <div className="w-12 h-12 rounded-2xl overflow-hidden">
-                        <img src={rIcon.src} alt="Logo" className="w-full h-full object-cover select-none" draggable={false} style={{ WebkitUserDrag: "none" } as React.CSSProperties} />
-                    </div>
-                </div>
+            {/* Main Nav - Added top spacing since logo is moved to header */}
+            <div className="flex-1 flex flex-col items-center gap-2 pt-[22px]">
 
                 {/* Main Navigation Items */}
                 {mainNavItems.map(({ id, icon: Icon, label }: { id: string, icon: any, label: string }) => (

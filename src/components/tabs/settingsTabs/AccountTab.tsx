@@ -20,6 +20,7 @@ export interface AccountTabProps extends SettingsTabProps {
     setLoginDialogOpen: (open: boolean) => void;
     handleUnlink: (provider: "catid" | "microsoft") => void;
     setLinkCatIDOpen: (open: boolean) => void;
+    onLinkMicrosoft: () => void;
 }
 
 export function AccountTab({
@@ -34,6 +35,7 @@ export function AccountTab({
     setLoginDialogOpen,
     handleUnlink,
     setLinkCatIDOpen,
+    onLinkMicrosoft,
 }: AccountTabProps) {
     const { t, language } = useTranslation(config.language);
 
@@ -114,6 +116,34 @@ export function AccountTab({
                                                 <Icons.Check className="w-3.5 h-3.5 text-white" />
                                             </span>
                                             <span>{t('link_catid')}</span>
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* CatID Account: Link/Status for Microsoft */}
+                        {session.type === "catid" && (
+                            <div className="pt-3 border-t flex flex-col gap-2" style={{ borderColor: colors.outline + "20" }}>
+                                <div className="text-xs font-medium" style={{ color: colors.onSurfaceVariant }}>{t('account_connections')}</div>
+                                <div className="flex gap-2">
+                                    {session.minecraftUuid ? (
+                                        <div
+                                            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm"
+                                            style={{ backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
+                                        >
+                                            <img src={microsoftIcon.src} alt="Microsoft" className="w-4 h-4" />
+                                            <Icons.Check className="w-4 h-4" style={{ color: "#22c55e" }} />
+                                            <span>{t('linked_with_microsoft')}</span>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            onClick={() => onLinkMicrosoft()}
+                                            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm transition-all hover:bg-black/5"
+                                            style={{ backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
+                                        >
+                                            <img src={microsoftIcon.src} alt="Microsoft" className="w-4 h-4" />
+                                            <span>{t('link_microsoft')}</span>
                                         </button>
                                     )}
                                 </div>

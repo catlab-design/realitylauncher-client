@@ -593,7 +593,7 @@ export async function syncServerMods(
 
     const launcherConfig = getConfig();
     const configuredConcurrency = Number(
-      launcherConfig.maxConcurrentDownloads || 5,
+      launcherConfig.maxConcurrentDownloads || 8,
     );
     const downloadConcurrency = Math.max(
       1,

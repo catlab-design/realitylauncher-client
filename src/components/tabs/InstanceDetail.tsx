@@ -478,7 +478,7 @@ export function InstanceDetail({
 
     return (
         <div
-            className="space-y-4 relative"
+            className="space-y-4 relative w-full"
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}

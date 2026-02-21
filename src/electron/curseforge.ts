@@ -21,6 +21,7 @@ import {
   moveResourcePacks,
 } from "./modpack-installer.js";
 import AdmZip from "adm-zip";
+import { getConfig } from "./config.js";
 
 // ========================================
 // Types
@@ -52,6 +53,48 @@ interface CurseForgeManifest {
 // ========================================
 
 const PROXY_API = "https://api.curse.tools/v1/cf";
+
+const MIN_CF_DOWNLOAD_CONCURRENCY = 3;
+const MAX_CF_DOWNLOAD_CONCURRENCY = 10;
+const DEFAULT_CF_DOWNLOAD_CONCURRENCY = 7;
+
+function getConfiguredCurseforgeConcurrency(): number | null {
+  try {
+    const cfg = getConfig();
+    const configured = Number(cfg.maxConcurrentDownloads || 0);
+    if (!Number.isFinite(configured) || configured <= 0) {
+      return null;
+    }
+    return Math.max(
+      MIN_CF_DOWNLOAD_CONCURRENCY,
+      Math.min(MAX_CF_DOWNLOAD_CONCURRENCY, Math.floor(configured)),
+    );
+  } catch {
+    return null;
+  }
+}
+
+function resolveCurseForgeDownloadConcurrency(totalFiles: number): number {
+  const envValue = Number(process.env.ML_CURSEFORGE_DOWNLOAD_CONCURRENCY || "");
+  if (Number.isFinite(envValue) && envValue > 0) {
+    return Math.max(
+      MIN_CF_DOWNLOAD_CONCURRENCY,
+      Math.min(MAX_CF_DOWNLOAD_CONCURRENCY, Math.floor(envValue)),
+    );
+  }
+
+  const configured = getConfiguredCurseforgeConcurrency();
+  if (configured !== null) {
+    if (totalFiles >= 180) {
+      return Math.min(MAX_CF_DOWNLOAD_CONCURRENCY, configured + 1);
+    }
+    return configured;
+  }
+
+  if (totalFiles >= 240) return 9;
+  if (totalFiles >= 120) return 8;
+  return DEFAULT_CF_DOWNLOAD_CONCURRENCY;
+}
 
 async function resolveFileUrl(
   projectId: number,
@@ -203,105 +246,103 @@ export async function installCurseForgeModpack(
     let completed = 0;
     const total = files.length;
 
-    // Download in batches
-    // REDUCED BATCH SIZE (5 -> 3) to match modpack-installer and prevent network congestion
-    const batchSize = 3;
+    const concurrency = resolveCurseForgeDownloadConcurrency(total);
+    console.log(
+      `[CurseForge] Download worker count: ${concurrency} (files=${total})`,
+    );
+    const queue = [...files];
 
-    for (let i = 0; i < files.length; i += batchSize) {
-      if (signal?.aborted) throw new Error("Installation cancelled");
+    await Promise.all(
+      Array(Math.min(concurrency, queue.length))
+        .fill(null)
+        .map(async () => {
+          while (queue.length > 0) {
+            if (signal?.aborted) throw new Error("Installation cancelled");
+            const fileInfo = queue.shift();
+            if (!fileInfo) break;
 
-      const batch = files.slice(i, i + batchSize);
+            let attempts = 0;
+            const maxAttempts = 3;
+            let downloadedFilename = `file-${fileInfo.fileID}.jar`;
 
-      await Promise.all(
-        batch.map(async (fileInfo) => {
-          if (signal?.aborted) return;
+            while (attempts < maxAttempts) {
+              try {
+                attempts++;
 
-          // Retry logic (3 attempts)
-          let attempts = 0;
-          const maxAttempts = 3;
-
-          while (attempts < maxAttempts) {
-            try {
-              attempts++;
-
-              // Resolve URL (inside retry loop as resolution might fail too)
-              const downloadUrl = await resolveFileUrl(
-                fileInfo.projectID,
-                fileInfo.fileID,
-              );
-
-              if (!downloadUrl) {
-                console.warn(
-                  `[CurseForge] Skipping file ${fileInfo.fileID} (no URL found)`,
+                const downloadUrl = await resolveFileUrl(
+                  fileInfo.projectID,
+                  fileInfo.fileID,
                 );
-                return; // Fatal for this file, skip
-              }
 
-              // Determine filename from URL
-              const filename = decodeURIComponent(
-                downloadUrl.split("/").pop() || `file-${fileInfo.fileID}.jar`,
-              );
-              const destPath = path.join(
-                instance.gameDirectory,
-                "mods",
-                filename,
-              );
+                if (!downloadUrl) {
+                  console.warn(
+                    `[CurseForge] Skipping file ${fileInfo.fileID} (no URL found)`,
+                  );
+                  completed++;
+                  break;
+                }
 
-              // Ensure mods dir exists
-              if (!fs.existsSync(path.dirname(destPath))) {
-                fs.mkdirSync(path.dirname(destPath), { recursive: true });
-              }
+                downloadedFilename = decodeURIComponent(
+                  downloadUrl.split("/").pop() || downloadedFilename,
+                );
+                const destPath = path.join(
+                  instance.gameDirectory,
+                  "mods",
+                  downloadedFilename,
+                );
 
-              // Download (using patched downloadFile with timeout)
-              await downloadFile(downloadUrl, destPath, undefined, signal);
-              completed++;
-
-              if (onProgress) {
-                onProgress({
-                  stage: "downloading",
-                  message: `กำลังดาวน์โหลด: ${filename}`,
-                  current: completed,
-                  total,
-                  percent: Math.round((completed / total) * 100),
+                await fs.promises.mkdir(path.dirname(destPath), {
+                  recursive: true,
                 });
-              }
 
-              // Success
-              break;
-            } catch (error: any) {
-              if (
-                error.message === "Download cancelled" ||
-                error.message.includes("Cancelled") ||
-                signal?.aborted
-              ) {
-                throw error; // Fatal
-              }
+                await downloadFile(downloadUrl, destPath, undefined, signal);
+                completed++;
 
-              console.warn(
-                `[CurseForge] Failed to process file ${fileInfo.fileID} (Attempt ${attempts}/${maxAttempts}):`,
-                error.message,
-              );
-
-              if (attempts >= maxAttempts) {
-                console.error(
-                  `[CurseForge] Gave up on file ${fileInfo.fileID} after ${maxAttempts} attempts.`,
-                );
-                // Don't throw to avoid failing the whole batch? No, better to fail or just count as error?
-                // Original logic logged error but continued?
-                // "We still count it" kind of logic?
-                // Let's just log and continue for now to be safe, but ideally we should track errors.
-                // completed++;  <-- Don't increment completed count for failures
+                if (onProgress) {
+                  onProgress({
+                    stage: "downloading",
+                    message: `Downloading: ${downloadedFilename}`,
+                    current: completed,
+                    total,
+                    percent: Math.round((completed / total) * 100),
+                  });
+                }
                 break;
-              }
+              } catch (error) {
+                const err = error;
+                if (
+                  err instanceof Error &&
+                  (err.message === "Download cancelled" ||
+                    err.message.includes("Cancelled") ||
+                    signal?.aborted)
+                ) {
+                  throw err;
+                }
 
-              // Backoff
-              const delay = Math.random() * 1000 + attempts * 1000;
-              await new Promise((r) => setTimeout(r, delay));
+                console.warn(
+                  `[CurseForge] Failed to process file ${fileInfo.fileID} (Attempt ${attempts}/${maxAttempts}):`,
+                  err,
+                );
+
+                if (attempts >= maxAttempts) {
+                  console.error(
+                    `[CurseForge] Gave up on file ${fileInfo.fileID} after ${maxAttempts} attempts.`,
+                  );
+                  completed++;
+                  break;
+                }
+
+                const errorMessage = err instanceof Error ? err.message : String(err);
+                const isRateLimited = /429|rate limit/i.test(errorMessage);
+                const delay = isRateLimited
+                  ? Math.random() * 1500 + attempts * 2500
+                  : Math.random() * 1000 + attempts * 1000;
+                await new Promise((r) => setTimeout(r, delay));
+              }
             }
           }
         }),
-      );
-    }
+    );
 
     // Step 3: Extract Overrides
     const overridesDir = manifest.overrides || "overrides";

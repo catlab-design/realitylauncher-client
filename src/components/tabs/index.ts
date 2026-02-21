@@ -6,3 +6,4 @@ export * from "./Explore";
 export * from "./InstanceDetail";
 export * from "./LiveLog";
 export * from "./About";
+export * from "./Wardrobe";

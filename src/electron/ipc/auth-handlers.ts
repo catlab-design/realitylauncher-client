@@ -40,6 +40,72 @@ const ML_API_URL = process.env.ML_API_URL || API_URL;
 // Microsoft OAuth Client ID - fetched from ml-api
 let MICROSOFT_CLIENT_ID: string | null = null;
 
+type CatIDUserPayload = {
+  id?: string | number | null;
+  username?: string | null;
+  minecraftUsername?: string | null;
+  minecraftUuid?: string | null;
+};
+
+function getCatIDDisplayName(
+  user: CatIDUserPayload | undefined,
+  fallback: string,
+): string {
+  return user?.minecraftUsername || user?.username || fallback;
+}
+
+function getCatIDSessionUuid(
+  user: CatIDUserPayload | undefined,
+  fallback: string,
+): string {
+  if (!user?.id) return fallback;
+  return `catid-${user.id}`;
+}
+
+async function syncCatIDSessionIdentity(
+  session: AuthSession,
+): Promise<AuthSession> {
+  if (session.type !== "catid" || !session.accessToken) {
+    return session;
+  }
+
+  const response = await fetch(`${ML_API_URL}/auth/catid/me`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${session.accessToken}`,
+      "Content-Type": "application/json",
+      "X-Client-App": "RealityLauncher",
+    },
+  });
+
+  if (!response.ok) {
+    return session;
+  }
+
+  const data = (await response.json()) as { user?: CatIDUserPayload };
+  const user = data.user;
+  const normalizedUsername = getCatIDDisplayName(user, session.username);
+  const normalizedUuid = getCatIDSessionUuid(user, session.uuid);
+  const normalizedMinecraftUuid = user
+    ? user.minecraftUuid || undefined
+    : session.minecraftUuid;
+
+  if (
+    normalizedUsername === session.username &&
+    normalizedUuid === session.uuid &&
+    normalizedMinecraftUuid === session.minecraftUuid
+  ) {
+    return session;
+  }
+
+  return {
+    ...session,
+    username: normalizedUsername,
+    uuid: normalizedUuid,
+    minecraftUuid: normalizedMinecraftUuid || undefined,
+  };
+}
+
 // Fetch Device Client ID from ml-api
 async function fetchOAuthConfig(): Promise<boolean> {
   try {
@@ -108,6 +174,27 @@ export function registerAuthHandlers(
       }
     }
 
+    if (
+      session &&
+      session.type === "catid" &&
+      session.accessToken &&
+      (session.minecraftUuid || !session.uuid.startsWith("catid-"))
+    ) {
+      try {
+        const normalizedSession = await syncCatIDSessionIdentity(session);
+        if (
+          normalizedSession.username !== session.username ||
+          normalizedSession.uuid !== session.uuid ||
+          normalizedSession.minecraftUuid !== session.minecraftUuid
+        ) {
+          setActiveSession(normalizedSession);
+          return getSession();
+        }
+      } catch (error) {
+        logger.warn("Could not sync CatID profile", { error: String(error) });
+      }
+    }
+
     return session;
   });
 
@@ -118,8 +205,20 @@ export function registerAuthHandlers(
   ipcMain.handle(
     "auth-set-active-session",
     async (_event, session: AuthSession): Promise<AuthSession | null> => {
-      setActiveSession(session);
-      if (session.type !== "microsoft") {
+      let nextSession = session;
+
+      if (session.type === "catid" && session.accessToken) {
+        try {
+          nextSession = await syncCatIDSessionIdentity(session);
+        } catch (error) {
+          logger.warn("Could not sync CatID profile while switching", {
+            error: String(error),
+          });
+        }
+      }
+
+      setActiveSession(nextSession);
+      if (nextSession.type !== "microsoft") {
         return getSession();
       }
 
@@ -635,9 +734,8 @@ export function registerAuthHandlers(
           return { ok: false, error: data.message || "เข้าสู่ระบบไม่สำเร็จ" };
         }
 
-        const displayName =
-          data.user?.minecraftUsername || data.user?.username || username;
-        const uuid = `catid-${data.user?.id || Date.now()}`;
+        const displayName = getCatIDDisplayName(data.user, username);
+        const uuid = getCatIDSessionUuid(data.user, `catid-${Date.now()}`);
         const minecraftUuid = data.user?.minecraftUuid; // Real Minecraft UUID from linked Microsoft account
         const expiresAt = data.expiresAt; // New field from API
 
@@ -981,10 +1079,13 @@ export function registerAuthHandlers(
         };
       }
 
+      const displayName = getCatIDDisplayName(data.user, "Player");
+      const uuid = getCatIDSessionUuid(data.user, `catid-${Date.now()}`);
+
       const session: AuthSession = {
         type: "catid" as const,
-        username: data.user.username,
-        uuid: data.user.id,
+        username: displayName,
+        uuid,
         accessToken: token,
         minecraftUuid: data.user.minecraftUuid,
         createdAt: Date.now(),

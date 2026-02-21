@@ -43,6 +43,62 @@ export function ModsList({
     const { t } = useTranslation();
     const [searchQuery, setSearchQuery] = useState("");
     const [page, setPage] = useState(1);
+    const [selectedFilenames, setSelectedFilenames] = useState<Set<string>>(new Set());
+
+    const handleToggleSelection = (filename: string) => {
+        setSelectedFilenames(prev => {
+            const next = new Set(prev);
+            if (next.has(filename)) next.delete(filename);
+            else next.add(filename);
+            return next;
+        });
+    };
+
+    const handleSelectAll = (filteredMods: ModInfo[]) => {
+        if (selectedFilenames.size === filteredMods.length && filteredMods.length > 0) {
+            setSelectedFilenames(new Set());
+        } else {
+            setSelectedFilenames(new Set(filteredMods.map(m => m.filename)));
+        }
+    };
+
+    const handleBulkToggle = async (enabled: boolean) => {
+        const filenames = Array.from(selectedFilenames);
+        if (filenames.length === 0) return;
+
+        playClick();
+        
+        // Use Promise.all to toggle all selected mods concurrently
+        const togglePromises = filenames.map(async (filename) => {
+            const mod = mods.find(m => m.filename === filename);
+            if (mod && mod.enabled !== enabled) {
+                return onToggle(filename);
+            }
+            return Promise.resolve();
+        });
+        
+        await Promise.all(togglePromises);
+        
+        setSelectedFilenames(new Set());
+        onRefresh();
+    };
+
+    const handleBulkDelete = async () => {
+        const filenames = Array.from(selectedFilenames);
+        if (filenames.length === 0) return;
+
+        // Simple confirmation
+        if (confirm(`${t('confirm_delete_multiple' as any).replace('{count}', String(filenames.length))}`)) {
+            playClick();
+            const deletePromises = filenames.map(async (filename) => {
+                return onDelete(filename);
+            });
+            await Promise.all(deletePromises);
+            
+            setSelectedFilenames(new Set());
+            onRefresh();
+        }
+    };
 
     // Reset page when search changes
     useEffect(() => {
@@ -64,38 +120,89 @@ export function ModsList({
         <>
             {/* Header Controls - Unified Row */}
             <div className="flex items-center justify-between mb-4">
-                {/* Left Side: Title OR Pagination */}
+                {/* Left Side: Title OR Pagination OR Selection Info */}
                 <div className="flex items-center gap-4">
-                    {totalPages > 1 ? (
-                        <div className="flex items-center gap-2">
+                    {selectedFilenames.size > 0 ? (
+                        <div className="flex items-center gap-3">
                             <button
-                                onClick={() => { playClick(); setPage(p => Math.max(1, p - 1)); }}
-                                disabled={page === 1}
-                                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5"
-                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                onClick={() => handleSelectAll(filteredMods)}
+                                className="w-5 h-5 rounded-md flex items-center justify-center transition-all cursor-pointer border-2"
+                                style={{
+                                    backgroundColor: selectedFilenames.size === filteredMods.length ? colors.secondary : "transparent",
+                                    borderColor: selectedFilenames.size === filteredMods.length ? colors.secondary : colors.onSurfaceVariant
+                                }}
                             >
-                                <i className="fa-solid fa-chevron-left text-xs"></i>
-                                {t('previous')}
+                                {selectedFilenames.size === filteredMods.length ? (
+                                    <Icons.Check className="w-3.5 h-3.5" style={{ color: "#1a1a1a" }} />
+                                ) : (
+                                    selectedFilenames.size > 0 && <div className="w-2 h-0.5 rounded-full bg-current" />
+                                )}
                             </button>
-
-                            <span className="px-4 py-2 rounded-xl text-sm font-bold" style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}>
-                                {page} / {totalPages}
+                            <span className="font-bold" style={{ color: colors.secondary }}>
+                                {selectedFilenames.size} {t('selected' as any)}
                             </span>
 
+                            <div className="h-4 w-px bg-white/10 mx-1" />
+
                             <button
-                                onClick={() => { playClick(); setPage(p => Math.min(totalPages, p + 1)); }}
-                                disabled={page === totalPages}
-                                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5"
-                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                onClick={() => handleBulkToggle(true)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all hover:bg-white/10 flex items-center gap-1.5"
+                                style={{ color: colors.onSurface }}
                             >
-                                {t('next')}
-                                <i className="fa-solid fa-chevron-right text-xs"></i>
+                                <div className="w-2 h-2 rounded-full bg-green-500" />
+                                {t('enable_all' as any)}
+                            </button>
+
+                            <button
+                                onClick={() => handleBulkToggle(false)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all hover:bg-white/10 flex items-center gap-1.5"
+                                style={{ color: colors.onSurface }}
+                            >
+                                <div className="w-2 h-2 rounded-full bg-red-500" />
+                                {t('disable_all' as any)}
+                            </button>
+
+                            <button
+                                onClick={handleBulkDelete}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all hover:bg-red-500/20 flex items-center gap-1.5"
+                                style={{ color: "#ef4444" }}
+                            >
+                                <Icons.Trash className="w-3.5 h-3.5" />
+                                {t('delete' as any)}
                             </button>
                         </div>
                     ) : (
-                        <h3 className="text-lg font-medium" style={{ color: colors.onSurface }}>
-                            {t('mods')} {isLoading ? "" : `(${mods.length})`}
-                        </h3>
+                        totalPages > 1 ? (
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => { playClick(); setPage(p => Math.max(1, p - 1)); }}
+                                    disabled={page === 1}
+                                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5"
+                                    style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                >
+                                    <i className="fa-solid fa-chevron-left text-xs"></i>
+                                    {t('previous')}
+                                </button>
+
+                                <span className="px-4 py-2 rounded-xl text-sm font-bold" style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}>
+                                    {page} / {totalPages}
+                                </span>
+
+                                <button
+                                    onClick={() => { playClick(); setPage(p => Math.min(totalPages, p + 1)); }}
+                                    disabled={page === totalPages}
+                                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5"
+                                    style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                >
+                                    {t('next')}
+                                    <i className="fa-solid fa-chevron-right text-xs"></i>
+                                </button>
+                            </div>
+                        ) : (
+                            <h3 className="text-lg font-medium" style={{ color: colors.onSurface }}>
+                                {t('mods')} {isLoading ? "" : `(${mods.length})`}
+                            </h3>
+                        )
                     )}
                 </div>
 
@@ -169,54 +276,56 @@ export function ModsList({
                                 onToggleLock={onToggleLock}
                                 isServerManaged={isServerManaged}
                                 index={index}
+                                isSelected={selectedFilenames.has((mod as ModInfo)?.filename)}
+                                onToggleSelection={handleToggleSelection}
                             />
                         </ModListItemWrapper>
                     ))}
                 </div>
             )}
 
-            {/* Bottom Pagination - Only show if fully loaded and has pages */}
+            {/* Bottom Pagination */}
             {!isLoading && totalPages > 1 && (
                 <div className="flex justify-center mt-6 animate-fade-in" style={{ animationDelay: '300ms' }}>
                     <div className="flex items-center gap-2 p-1.5 rounded-2xl"
-                        style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}20` }}>
+                            style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}20` }}>
 
-                        <button
-                            onClick={() => {
-                                playClick();
-                                setPage(p => Math.max(1, p - 1));
-                                window.scrollTo({ top: 0, behavior: 'smooth' });
-                            }}
-                            disabled={page === 1}
-                            className="px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-2"
-                            style={{ color: colors.onSurface }}
-                        >
-                            <i className="fa-solid fa-chevron-left text-xs"></i>
-                            {t('previous')}
-                        </button>
+                            <button
+                                onClick={() => {
+                                    playClick();
+                                    setPage(p => Math.max(1, p - 1));
+                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                }}
+                                disabled={page === 1}
+                                className="px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-2"
+                                style={{ color: colors.onSurface }}
+                            >
+                                <i className="fa-solid fa-chevron-left text-xs"></i>
+                                {t('previous')}
+                            </button>
 
-                        <div className="px-4 min-w-[90px] text-center" style={{ color: colors.onSurfaceVariant }}>
-                            <span className="text-sm font-bold" style={{ color: colors.onSurface }}>{page}</span>
-                            <span className="text-xs opacity-70 mx-1">/</span>
-                            <span className="text-sm opacity-70">{totalPages}</span>
+                            <div className="px-4 min-w-[90px] text-center" style={{ color: colors.onSurfaceVariant }}>
+                                <span className="text-sm font-bold" style={{ color: colors.onSurface }}>{page}</span>
+                                <span className="text-xs opacity-70 mx-1">/</span>
+                                <span className="text-sm opacity-70">{totalPages}</span>
+                            </div>
+
+                            <button
+                                onClick={() => {
+                                    playClick();
+                                    setPage(p => Math.min(totalPages, p + 1));
+                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                }}
+                                disabled={page === totalPages}
+                                className="px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-2"
+                                style={{ color: colors.onSurface }}
+                            >
+                                {t('next')}
+                                <i className="fa-solid fa-chevron-right text-xs"></i>
+                            </button>
                         </div>
-
-                        <button
-                            onClick={() => {
-                                playClick();
-                                setPage(p => Math.min(totalPages, p + 1));
-                                window.scrollTo({ top: 0, behavior: 'smooth' });
-                            }}
-                            disabled={page === totalPages}
-                            className="px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-2"
-                            style={{ color: colors.onSurface }}
-                        >
-                            {t('next')}
-                            <i className="fa-solid fa-chevron-right text-xs"></i>
-                        </button>
                     </div>
-                </div>
-            )}
+                )}
         </>
     );
 }

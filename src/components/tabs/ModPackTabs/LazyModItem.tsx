@@ -30,9 +30,24 @@ export interface LazyModItemProps {
     onToggleLock?: (filename: string) => void;
     isServerManaged?: boolean;
     index?: number;
+    isSelected?: boolean;
+    onToggleSelection?: (filename: string) => void;
 }
 
-export function LazyModItem({ mod, instanceId, colors, formatSize, onToggle, onDelete, isLocked, onToggleLock, isServerManaged, index = 0 }: LazyModItemProps) {
+export function LazyModItem({
+    mod,
+    instanceId,
+    colors,
+    formatSize,
+    onToggle,
+    onDelete,
+    isLocked,
+    onToggleLock,
+    isServerManaged,
+    index = 0,
+    isSelected = false,
+    onToggleSelection
+}: LazyModItemProps) {
     const { t } = useTranslation();
 
     // Safety check for undefined mod (can happen during loading skeleton states if rendered prematurely)
@@ -45,12 +60,29 @@ export function LazyModItem({ mod, instanceId, colors, formatSize, onToggle, onD
 
     return (
         <div
-            className="flex items-center gap-4 p-4 rounded-xl transition-all"
+            className="flex items-center gap-4 p-4 rounded-xl transition-all group"
             style={{
-                backgroundColor: colors.surfaceContainer,
-                opacity: mod.enabled ? 1 : 0.6
+                backgroundColor: isSelected ? colors.secondary + "15" : colors.surfaceContainer,
+                opacity: mod.enabled ? 1 : 0.6,
+                border: isSelected ? `1px solid ${colors.secondary}50` : "1px solid transparent"
             }}
         >
+            {/* Checkbox */}
+            <div
+                onClick={(e) => {
+                    e.stopPropagation();
+                    playClick();
+                    onToggleSelection?.(mod.filename);
+                }}
+                className={`w-5 h-5 rounded-md flex items-center justify-center transition-all cursor-pointer border-2 ${isSelected ? "scale-110" : "opacity-40 group-hover:opacity-100"}`}
+                style={{
+                    backgroundColor: isSelected ? colors.secondary : "transparent",
+                    borderColor: isSelected ? colors.secondary : colors.onSurfaceVariant
+                }}
+            >
+                {isSelected && <Icons.Check className="w-3.5 h-3.5" style={{ color: "#1a1a1a" }} />}
+            </div>
+
             {/* Mod icon */}
             {icon ? (
                 <img

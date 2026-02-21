@@ -29,6 +29,22 @@ export type TelemetryEventType = typeof TELEMETRY_EVENTS[keyof typeof TELEMETRY_
 // Session tracking
 let sessionStartTime: Date | null = null;
 let gameStartTimes: Map<string, Date> = new Map();
+let flushTimer: NodeJS.Timeout | null = null;
+let isFlushing = false;
+
+const telemetryQueue: Array<{
+    eventType: TelemetryEventType;
+    clientId: string;
+    userId?: string;
+    data?: Record<string, any>;
+    launcherVersion: string;
+    platform: string;
+    locale: string;
+}> = [];
+
+const TELEMETRY_BATCH_SIZE = 20;
+const TELEMETRY_FLUSH_INTERVAL_MS = 30 * 1000;
+const TELEMETRY_MAX_QUEUE_SIZE = 500;
 
 /**
  * Get or generate unique client ID
@@ -82,46 +98,87 @@ function getLocale(): string {
 }
 
 /**
- * Send telemetry event to API
+ * Flush queued telemetry events to API
  */
-async function sendEvent(
-    eventType: TelemetryEventType,
-    data?: Record<string, any>,
-    userId?: string
-): Promise<void> {
-    // Check if telemetry is enabled
-    if (!isTelemetryEnabled()) {
-        console.log("[Telemetry] Disabled, skipping event:", eventType);
-        return;
+async function flushTelemetryQueue(force: boolean = false): Promise<void> {
+    if (isFlushing) return;
+    if (telemetryQueue.length === 0) return;
+
+    if (flushTimer) {
+        clearTimeout(flushTimer);
+        flushTimer = null;
     }
 
+    isFlushing = true;
+    const batchSize = force ? telemetryQueue.length : Math.min(telemetryQueue.length, TELEMETRY_BATCH_SIZE);
+    const events = telemetryQueue.splice(0, batchSize);
+
     try {
-        const payload = {
-            eventType,
-            clientId: getClientId(),
-            userId: userId || undefined,
-            data: data || undefined,
-            launcherVersion: getLauncherVersion(),
-            platform: getPlatform(),
-            locale: getLocale(),
-        };
-
-        console.log("[Telemetry] Sending event:", eventType, data);
-
-        const response = await fetch(`${API_URL}/telemetry/event`, {
+        const response = await fetch(`${API_URL}/telemetry/batch`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
             },
-            body: JSON.stringify(payload),
+            body: JSON.stringify({ events }),
         });
 
         if (!response.ok) {
-            console.error("[Telemetry] Failed to send event:", response.status);
+            throw new Error(`Batch send failed (${response.status})`);
         }
     } catch (error) {
-        // Silently fail - telemetry should not affect user experience
-        console.error("[Telemetry] Error sending event:", error);
+        // Requeue on failure, preserving order
+        telemetryQueue.unshift(...events);
+        if (telemetryQueue.length > TELEMETRY_MAX_QUEUE_SIZE) {
+            telemetryQueue.splice(0, telemetryQueue.length - TELEMETRY_MAX_QUEUE_SIZE);
+        }
+        console.error("[Telemetry] Batch flush error:", error);
+    } finally {
+        isFlushing = false;
+    }
+
+    if (telemetryQueue.length > 0 && !force) {
+        scheduleTelemetryFlush();
+    }
+}
+
+function scheduleTelemetryFlush(): void {
+    if (flushTimer) return;
+    flushTimer = setTimeout(() => {
+        flushTimer = null;
+        void flushTelemetryQueue();
+    }, TELEMETRY_FLUSH_INTERVAL_MS);
+}
+
+/**
+ * Queue telemetry event for batched API send
+ */
+function queueEvent(
+    eventType: TelemetryEventType,
+    data?: Record<string, any>,
+    userId?: string
+): void {
+    if (!isTelemetryEnabled()) {
+        return;
+    }
+
+    telemetryQueue.push({
+        eventType,
+        clientId: getClientId(),
+        userId: userId || undefined,
+        data: data || undefined,
+        launcherVersion: getLauncherVersion(),
+        platform: getPlatform(),
+        locale: getLocale(),
+    });
+
+    if (telemetryQueue.length > TELEMETRY_MAX_QUEUE_SIZE) {
+        telemetryQueue.splice(0, telemetryQueue.length - TELEMETRY_MAX_QUEUE_SIZE);
+    }
+
+    if (telemetryQueue.length >= TELEMETRY_BATCH_SIZE) {
+        void flushTelemetryQueue();
+    } else {
+        scheduleTelemetryFlush();
     }
 }
 
@@ -142,7 +199,7 @@ export function trackAppOpen(): void {
         setConfig({ hasLaunchedBefore: true } as any);
     }
 
-    sendEvent(TELEMETRY_EVENTS.APP_OPEN, {
+    queueEvent(TELEMETRY_EVENTS.APP_OPEN, {
         firstLaunch: isFirstLaunch,
     });
 }
@@ -157,7 +214,7 @@ export function trackAppClose(): void {
         sessionDuration = Math.floor((Date.now() - sessionStartTime.getTime()) / 1000);
     }
 
-    sendEvent(TELEMETRY_EVENTS.APP_CLOSE, {
+    queueEvent(TELEMETRY_EVENTS.APP_CLOSE, {
         sessionDuration,
     });
 }
@@ -173,7 +230,7 @@ export function trackGameLaunch(
 ): void {
     gameStartTimes.set(instanceId, new Date());
 
-    sendEvent(TELEMETRY_EVENTS.GAME_LAUNCH, {
+    queueEvent(TELEMETRY_EVENTS.GAME_LAUNCH, {
         instanceId,
         version,
         loader: loader || "vanilla",
@@ -200,7 +257,7 @@ export function trackGameClose(instanceId: string, userId?: string): void {
         }
     }
 
-    sendEvent(TELEMETRY_EVENTS.GAME_CLOSE, {
+    queueEvent(TELEMETRY_EVENTS.GAME_CLOSE, {
         instanceId,
         playtime,
     }, userId);
@@ -215,7 +272,7 @@ export function trackInstanceCreate(
     source?: string,
     userId?: string
 ): void {
-    sendEvent(TELEMETRY_EVENTS.INSTANCE_CREATE, {
+    queueEvent(TELEMETRY_EVENTS.INSTANCE_CREATE, {
         version,
         loader,
         source: source || "manual",
@@ -230,7 +287,7 @@ export function trackModInstall(
     source: string,
     userId?: string
 ): void {
-    sendEvent(TELEMETRY_EVENTS.MOD_INSTALL, {
+    queueEvent(TELEMETRY_EVENTS.MOD_INSTALL, {
         modId,
         source,
     }, userId);
@@ -244,7 +301,7 @@ export function trackError(
     context?: string,
     stack?: string
 ): void {
-    sendEvent(TELEMETRY_EVENTS.ERROR, {
+    queueEvent(TELEMETRY_EVENTS.ERROR, {
         message: message.substring(0, 500), // Limit message length
         context,
         stack: stack ? stack.substring(0, 1000) : undefined, // Limit stack length
@@ -275,10 +332,9 @@ export function initTelemetry(): void {
 export async function cleanupTelemetry(): Promise<void> {
     console.log("[Telemetry] Cleaning up...");
 
-    // Track app close and await to ensure it's sent before quit
+    // Queue app close and flush immediately before quit
     trackAppClose();
-    // Give a short window for the HTTP request to complete
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await flushTelemetryQueue(true);
 }
 
 export default {

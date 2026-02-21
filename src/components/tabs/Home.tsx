@@ -234,24 +234,57 @@ export function Home({
     const [isHovering, setIsHovering] = useState(false);
     const [recentInstances, setRecentInstances] = useState<GameInstance[]>([]);
     const [selectedNews, setSelectedNews] = useState<Newsletter | null>(null);
+    const NEWSLETTER_CACHE_KEY = "launcher-newsletters-v1";
+    const NEWSLETTER_CACHE_TTL_MS = 5 * 60 * 1000;
 
-    const fetchNewsletters = useCallback(async () => {
+    const fetchNewsletters = useCallback(async (force = false) => {
+        if (!force) {
+            try {
+                const cached = localStorage.getItem(NEWSLETTER_CACHE_KEY);
+                if (cached) {
+                    const parsed = JSON.parse(cached) as {
+                        timestamp: number;
+                        newsletters: Newsletter[];
+                    };
+                    if (
+                        parsed?.timestamp &&
+                        Date.now() - parsed.timestamp < NEWSLETTER_CACHE_TTL_MS &&
+                        Array.isArray(parsed.newsletters)
+                    ) {
+                        setNewsletters(parsed.newsletters);
+                        setNewsletterLoading(false);
+                        return;
+                    }
+                }
+            } catch {
+                // Ignore cache parse issues
+            }
+        }
+
         try {
             const res = await fetch("https://api.reality.notpumpkins.com/newsletter/list");
             if (res.ok) {
                 const data = await res.json();
-                setNewsletters(data.newsletters || []);
+                const list = data.newsletters || [];
+                setNewsletters(list);
+                localStorage.setItem(
+                    NEWSLETTER_CACHE_KEY,
+                    JSON.stringify({
+                        timestamp: Date.now(),
+                        newsletters: list,
+                    }),
+                );
             }
         } catch {
             // Silent fail
         } finally {
             setNewsletterLoading(false);
         }
-    }, []);
+    }, [NEWSLETTER_CACHE_KEY]);
 
     useEffect(() => {
         fetchNewsletters();
-        const interval = setInterval(fetchNewsletters, 60000);
+        const interval = setInterval(() => fetchNewsletters(true), 300000);
         return () => clearInterval(interval);
     }, [fetchNewsletters]);
 

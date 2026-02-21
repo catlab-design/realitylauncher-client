@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useTranslation } from "../../hooks/useTranslation";
-import { playClick } from "../../lib/sounds";
+import { playClick, toastSuccess, toastError } from "../../lib/sounds";
 import { cn } from "../../lib/utils";
-import type { Server } from "../../types/launcher";
+import type { Server, LauncherConfig } from "../../types/launcher";
 import { LiveLog } from "./LiveLog";
 import ServerItem, { type Instance } from "./ServerItem";
 import { ServerDetailView } from "./ServerDetailView";
@@ -25,9 +25,10 @@ interface ServerMenuProps {
     setActiveTab?: (tab: string) => void;
     refreshTrigger?: number;
     language?: "th" | "en";
+    config: LauncherConfig;
+    updateConfig?: (newConfig: Partial<LauncherConfig>) => void;
+    setSettingsTab?: (tab: any) => void;
 }
-
-
 
 export function ServerMenu({
     selectedServer,
@@ -38,6 +39,9 @@ export function ServerMenu({
     setActiveTab,
     refreshTrigger = 0,
     language = "th",
+    config,
+    updateConfig,
+    setSettingsTab,
 }: ServerMenuProps) {
     const { t } = useTranslation(language);
     const { accounts, setSession: setAuthSession, updateAccount } = useAuthStore();
@@ -59,6 +63,10 @@ export function ServerMenu({
         message: string;
         confirmText?: string;
         confirmColor?: string;
+        tertiaryText?: string;
+        onTertiary?: () => void;
+        tertiaryColor?: string;
+        cancelText?: string;
         onConfirm: () => void;
     }>({
         isOpen: false,
@@ -223,7 +231,61 @@ export function ServerMenu({
                 toast.success(res.message || t('launching'));
                 setPlayingInstances(prev => new Set(prev).add(instance.id));
             } else {
-                toast.error(res?.message || t('launch_failed_server') || t('error_occurred'));
+                const errorMessage = res?.message || t('launch_failed_server') || t('error_occurred');
+                const isJavaError = errorMessage.toLowerCase().includes("java") ||
+                    errorMessage.toLowerCase().includes("jre") ||
+                    errorMessage.toLowerCase().includes("java_home");
+
+                if (isJavaError) {
+                    const javaVersionMatch = errorMessage.match(/Java (\d+)/i);
+                    const requiredVersion = javaVersionMatch ? parseInt(javaVersionMatch[1]) : 0;
+
+                    setConfirmDialog({
+                        isOpen: true,
+                        title: t('java_not_found_prompt') || "Java Not Found",
+                        message: `${errorMessage}\n${t('install_java_now_ask') || "Do you want to install Java now?"}`,
+                        confirmText: t('install_now') || "Install Now",
+                        cancelText: t('later') || "Later",
+                        tertiaryText: t('go_to_install_page') || "Go to Install Page",
+                        confirmColor: "#22c55e",
+                        onConfirm: () => {
+                             if (requiredVersion > 0 && (window.api as any)?.installJava) {
+                                setActiveTab?.("settings");
+                                setSettingsTab?.("java");
+                                toastSuccess(t('downloading_java_dot') || "Downloading Java...");
+                                setTimeout(() => {
+                                    (window.api as any).installJava(requiredVersion)
+                                        .then((result: any) => {
+                                            if (result?.ok && result.path) {
+                                                const pathKey = requiredVersion >= 21 ? "java21" : "java17";
+                                                if (updateConfig) {
+                                                    updateConfig({
+                                                        javaPaths: {
+                                                            ...config.javaPaths,
+                                                            [pathKey]: result.path
+                                                        }
+                                                    });
+                                                }
+                                                toastSuccess(t('java_install_success_simple') || "Java installed successfully");
+                                            }
+                                        })
+                                        .catch((err: any) => {
+                                            toastError((t('java_install_failed_prompt') || "Java install failed") + ": " + (err.message || "Unknown error"));
+                                        });
+                                }, 1000);
+                             } else {
+                                setActiveTab?.("settings");
+                                setSettingsTab?.("java");
+                             }
+                        },
+                        onTertiary: () => {
+                             setActiveTab?.("settings");
+                             setSettingsTab?.("java");
+                        }
+                    });
+                } else {
+                     toast.error(errorMessage);
+                }
                 setPlayingInstances(prev => { const s = new Set(prev); s.delete(instance.id); return s; });
             }
         } catch (err: any) {
@@ -800,6 +862,10 @@ export function ServerMenu({
                 message={confirmDialog.message}
                 confirmText={confirmDialog.confirmText}
                 confirmColor={confirmDialog.confirmColor}
+                tertiaryText={confirmDialog.tertiaryText}
+                onTertiary={confirmDialog.onTertiary}
+                tertiaryColor={confirmDialog.tertiaryColor}
+                cancelText={confirmDialog.cancelText}
                 colors={colors}
             />
             </>

@@ -19,13 +19,11 @@ import {
 } from "./instances.js";
 import {
   downloadFile,
-  downloadFileAtomic,
   verifyFileHash,
-  type DownloadProgress,
 } from "./modrinth.js";
 import { installCurseForgeModpack } from "./curseforge.js";
 import AdmZip from "adm-zip";
-import crypto from "node:crypto";
+import { getConfig } from "./config.js";
 
 // ========================================
 // Types
@@ -89,6 +87,100 @@ export interface InstallResult {
 // ========================================
 
 type ProgressCallback = (progress: InstallProgress) => void;
+type ZipSource = string | AdmZip;
+
+const MIN_MODPACK_DOWNLOAD_CONCURRENCY = 3;
+const MAX_MODPACK_DOWNLOAD_CONCURRENCY = 12;
+const DEFAULT_MODPACK_DOWNLOAD_CONCURRENCY = 8;
+
+const FAST_MIRROR_HINTS = [
+  "cdn.modrinth.com",
+  "github.com",
+  "objects.githubusercontent.com",
+  "edge.forgecdn.net",
+];
+
+function clampInt(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, Math.floor(value)));
+}
+
+function getConfiguredDownloadConcurrency(): number | null {
+  try {
+    const cfg = getConfig();
+    const configured = Number(cfg.maxConcurrentDownloads || 0);
+    if (!Number.isFinite(configured) || configured <= 0) {
+      return null;
+    }
+    return clampInt(
+      configured,
+      MIN_MODPACK_DOWNLOAD_CONCURRENCY,
+      MAX_MODPACK_DOWNLOAD_CONCURRENCY,
+    );
+  } catch {
+    return null;
+  }
+}
+
+function resolveModpackDownloadConcurrency(totalFiles: number): number {
+  const envValue = Number(process.env.ML_MODPACK_DOWNLOAD_CONCURRENCY || "");
+  if (Number.isFinite(envValue) && envValue > 0) {
+    return clampInt(
+      envValue,
+      MIN_MODPACK_DOWNLOAD_CONCURRENCY,
+      MAX_MODPACK_DOWNLOAD_CONCURRENCY,
+    );
+  }
+
+  const configured = getConfiguredDownloadConcurrency();
+  if (configured !== null) {
+    if (totalFiles >= 240) {
+      return clampInt(
+        configured + 2,
+        MIN_MODPACK_DOWNLOAD_CONCURRENCY,
+        MAX_MODPACK_DOWNLOAD_CONCURRENCY,
+      );
+    }
+    if (totalFiles >= 120) {
+      return clampInt(
+        configured + 1,
+        MIN_MODPACK_DOWNLOAD_CONCURRENCY,
+        MAX_MODPACK_DOWNLOAD_CONCURRENCY,
+      );
+    }
+    return configured;
+  }
+
+  if (totalFiles >= 300) return 10;
+  if (totalFiles >= 180) return 9;
+  if (totalFiles >= 90) return 8;
+  return DEFAULT_MODPACK_DOWNLOAD_CONCURRENCY;
+}
+
+function sortDownloadUrlsByPriority(downloads: string[]): string[] {
+  const unique = [...new Set(downloads.filter(Boolean))];
+
+  const score = (url: string): number => {
+    const lower = url.toLowerCase();
+    const hintIndex = FAST_MIRROR_HINTS.findIndex((hint) =>
+      lower.includes(hint),
+    );
+    if (hintIndex >= 0) {
+      return 100 - hintIndex;
+    }
+    return 10;
+  };
+
+  return unique.sort((a, b) => score(b) - score(a));
+}
+
+async function loadZip(zipPath: string): Promise<AdmZip> {
+  const buffer = await fs.promises.readFile(zipPath);
+  return new AdmZip(buffer);
+}
+
+async function getZip(zipSource: ZipSource): Promise<AdmZip> {
+  return typeof zipSource === "string" ? loadZip(zipSource) : zipSource;
+}
 
 // ========================================
 // ZIP Extraction (using adm-zip)
@@ -98,7 +190,7 @@ type ProgressCallback = (progress: InstallProgress) => void;
  * Extract a single entry from ZIP file (async version to prevent UI blocking)
  */
 async function extractZipEntry(
-  zipPath: string,
+  zipSource: ZipSource,
   entryPath: string,
 ): Promise<Buffer | null> {
   try {
@@ -106,12 +198,10 @@ async function extractZipEntry(
       "[ModpackInstaller] Extracting entry:",
       entryPath,
       "from:",
-      zipPath,
+      typeof zipSource === "string" ? zipSource : "(cached zip)",
     );
 
-    // Read file async to prevent blocking
-    const buffer = await fs.promises.readFile(zipPath);
-    const zip = new AdmZip(buffer);
+    const zip = await getZip(zipSource);
     const entry = zip.getEntry(entryPath);
 
     if (!entry) {
@@ -150,7 +240,7 @@ const PRESERVED_FILES = [
  * Extract a subdirectory from ZIP to destination (async version)
  */
 async function extractZipToDirectory(
-  zipPath: string,
+  zipSource: ZipSource,
   destDir: string,
   subPath?: string,
   onProgress?: (progress: InstallProgress) => void,
@@ -163,9 +253,7 @@ async function extractZipToDirectory(
       subPath || "(none)",
     );
 
-    // Read file async to prevent blocking
-    const buffer = await fs.promises.readFile(zipPath);
-    const zip = new AdmZip(buffer);
+    const zip = await getZip(zipSource);
 
     if (subPath) {
       // Extract only entries under the subPath
@@ -236,10 +324,14 @@ async function extractZipToDirectory(
 
 export async function parseModpackIndex(
   mrpackPath: string,
+  zipOverride?: AdmZip,
 ): Promise<ModpackIndex> {
   console.log("[ModpackInstaller] Parsing:", mrpackPath);
 
-  const content = await extractZipEntry(mrpackPath, "modrinth.index.json");
+  const content = await extractZipEntry(
+    zipOverride ?? mrpackPath,
+    "modrinth.index.json",
+  );
 
   if (!content) {
     throw new Error("Could not find modrinth.index.json in modpack");
@@ -309,10 +401,10 @@ async function downloadModpackFiles(
 
   let completed = 0;
   const total = clientFiles.length;
-
-  // Use a concurrency pool for better performance
-  // REDUCED CONCURRENCY (15 -> 3) to prevent rate limiting and network saturation
-  const concurrency = 3;
+  const concurrency = resolveModpackDownloadConcurrency(total);
+  console.log(
+    `[ModpackInstaller] Download worker count: ${concurrency} (files=${total})`,
+  );
 
   const queue = [...clientFiles];
   const activeWorkers = Array(Math.min(concurrency, queue.length))
@@ -326,18 +418,34 @@ async function downloadModpackFiles(
 
         const destPath = path.join(destDir, file.path);
         const destDirPath = path.dirname(destPath);
+        const displayName = path
+          .basename(file.path)
+          .replace(/\u00A7[0-9a-fk-or]/g, "");
 
-        // Ensure directory exists
-        if (!fs.existsSync(destDirPath)) {
-          fs.mkdirSync(destDirPath, { recursive: true });
+        const reportProgress = (message: string) => {
+          if (!onProgress) return;
+          onProgress({
+            stage: "downloading",
+            message,
+            current: completed,
+            total,
+            percent: Math.round((completed / total) * 100),
+          });
+        };
+
+        await fs.promises.mkdir(destDirPath, { recursive: true });
+
+        let shouldDownload = true;
+        let existingSize = 0;
+        try {
+          const stat = await fs.promises.stat(destPath);
+          existingSize = stat.size;
+        } catch {
+          existingSize = 0;
         }
 
-        // Skip if already exists with correct size and hash
-        let shouldDownload = true;
-        if (fs.existsSync(destPath)) {
-          const stat = fs.statSync(destPath);
-          if (stat.size === file.fileSize) {
-            // Also verify hash if available
+        if (existingSize > 0) {
+          if (existingSize === file.fileSize) {
             const isHashValid = await verifyFileHash(destPath, file.hashes);
             if (isHashValid) {
               console.log(
@@ -345,122 +453,91 @@ async function downloadModpackFiles(
               );
               completed++;
               shouldDownload = false;
+              reportProgress(`Validated existing: ${displayName}`);
             } else {
               console.warn(
                 `[ModpackInstaller] File exists but hash mismatch, re-downloading: ${file.path}`,
               );
-              fs.rmSync(destPath, { force: true });
+              await fs.promises.rm(destPath, { force: true });
             }
           } else {
             console.warn(
-              `[ModpackInstaller] File exists but size mismatch (${stat.size} vs ${file.fileSize}), re-downloading: ${file.path}`,
+              `[ModpackInstaller] File exists but size mismatch (${existingSize} vs ${file.fileSize}), re-downloading: ${file.path}`,
             );
-            fs.rmSync(destPath, { force: true });
+            await fs.promises.rm(destPath, { force: true });
           }
         }
 
-        if (shouldDownload) {
-          // Download from first available URL
-          const url = file.downloads[0];
-          if (!url) {
-            console.warn(
-              `[ModpackInstaller] No download URL for: ${file.path}`,
-            );
-            continue;
-          }
+        if (!shouldDownload) {
+          continue;
+        }
 
-          console.log(`[ModpackInstaller] Downloading: ${file.path}`);
+        const urls = sortDownloadUrlsByPriority(file.downloads);
+        if (urls.length === 0) {
+          console.warn(`[ModpackInstaller] No download URL for: ${file.path}`);
+          completed++;
+          reportProgress(`Skipped (no URL): ${displayName}`);
+          continue;
+        }
 
-          // Retry Logic (3 Attempts)
-          let attempts = 0;
-          const maxAttempts = 3;
+        console.log(`[ModpackInstaller] Downloading: ${file.path}`);
+        let attempts = 0;
+        const maxAttempts = Math.max(3, urls.length);
+        const tmpPath = `${destPath}.tmp`;
 
-          while (attempts < maxAttempts) {
-            try {
-              attempts++;
-              const tmpPath = `${destPath}.tmp`;
+        while (attempts < maxAttempts) {
+          try {
+            attempts++;
+            const url = urls[(attempts - 1) % urls.length];
+            await downloadFile(url, tmpPath, undefined, signal);
 
-              try {
-                // Note: downloadFile now has built-in timeout logic in modrinth.ts
-                await downloadFile(url, tmpPath, undefined, signal);
-
-                const isHashValid = await verifyFileHash(tmpPath, file.hashes);
-                if (!isHashValid) {
-                  fs.rmSync(tmpPath, { force: true });
-                  throw new Error(`Hash verification failed for ${file.path}`);
-                }
-
-                fs.rmSync(destPath, { force: true });
-                fs.renameSync(tmpPath, destPath);
-                completed++;
-                // Success!
-                break;
-              } catch (error) {
-                try {
-                  if (fs.existsSync(tmpPath))
-                    fs.rmSync(tmpPath, { force: true });
-                } catch {}
-                throw error;
-              }
-            } catch (error: any) {
-              if (
-                error.message === "Download cancelled" ||
-                error.message.includes("Cancelled") ||
-                signal?.aborted
-              ) {
-                throw error; // Fatal
-              }
-
-              console.warn(
-                `[ModpackInstaller] Download failed for ${file.path} (Attempt ${attempts}/${maxAttempts}):`,
-                error.message,
-              );
-
-              if (attempts >= maxAttempts) {
-                console.error(
-                  `[ModpackInstaller] Gave up on ${file.path} after ${maxAttempts} attempts.`,
-                );
-                // We still count it as "processed" for the progress bar so it doesn't hang forever
-                completed++;
-                break;
-              }
-
-              // Backoff
-              const delay = Math.random() * 1000 + attempts * 1000;
-              await new Promise((r) => setTimeout(r, delay));
+            const isHashValid = await verifyFileHash(tmpPath, file.hashes);
+            if (!isHashValid) {
+              await fs.promises.rm(tmpPath, { force: true });
+              throw new Error(`Hash verification failed for ${file.path}`);
             }
-          }
 
-          // Update progress after success OR failure (final attempt)
-          if (onProgress) {
-            // Strip Minecraft color codes (e.g. §r, §l, §4) from filename for display
-            const cleanFilename = path
-              .basename(file.path)
-              .replace(/§[0-9a-fk-or]/g, "");
+            await fs.promises.rm(destPath, { force: true });
+            await fs.promises.rename(tmpPath, destPath);
+            completed++;
+            break;
+          } catch (error: any) {
+            try {
+              await fs.promises.rm(tmpPath, { force: true });
+            } catch {}
 
-            onProgress({
-              stage: "downloading",
-              message: `กำลังดาวน์โหลด: ${cleanFilename}`,
-              current: completed,
-              total,
-              percent: Math.round((completed / total) * 100),
-            });
-          }
-        } else {
-          // Update progress even for skipped files
-          if (onProgress) {
-            const cleanFilename = path
-              .basename(file.path)
-              .replace(/§[0-9a-fk-or]/g, "");
-            onProgress({
-              stage: "downloading",
-              message: `ตรวจสอบไฟล์แล้ว: ${cleanFilename}`,
-              current: completed,
-              total,
-              percent: Math.round((completed / total) * 100),
-            });
+            if (
+              error.message === "Download cancelled" ||
+              error.message.includes("Cancelled") ||
+              signal?.aborted
+            ) {
+              throw error;
+            }
+
+            console.warn(
+              `[ModpackInstaller] Download failed for ${file.path} (Attempt ${attempts}/${maxAttempts}):`,
+              error.message,
+            );
+
+            if (attempts >= maxAttempts) {
+              console.error(
+                `[ModpackInstaller] Gave up on ${file.path} after ${maxAttempts} attempts.`,
+              );
+              completed++;
+              break;
+            }
+
+            const isRateLimited = /429|rate limit/i.test(
+              String(error.message || ""),
+            );
+            const delay = isRateLimited
+              ? Math.random() * 1500 + attempts * 2500
+              : Math.random() * 1000 + attempts * 1000;
+            await new Promise((r) => setTimeout(r, delay));
           }
         }
+
+        reportProgress(`Downloading: ${displayName}`);
       }
     });
 
@@ -620,6 +697,7 @@ async function extractOverrides(
   mrpackPath: string,
   destDir: string,
   onProgress?: ProgressCallback,
+  zipOverride?: AdmZip,
 ): Promise<void> {
   console.log("[ModpackInstaller] Extracting overrides to:", destDir);
 
@@ -632,7 +710,12 @@ async function extractOverrides(
 
   try {
     // Extract overrides folder
-    await extractZipToDirectory(mrpackPath, destDir, "overrides", onProgress);
+    await extractZipToDirectory(
+      zipOverride ?? mrpackPath,
+      destDir,
+      "overrides",
+      onProgress,
+    );
     console.log("[ModpackInstaller] Overrides extracted successfully");
   } catch (error) {
     console.log(
@@ -644,7 +727,7 @@ async function extractOverrides(
   try {
     // Also check for client-overrides
     await extractZipToDirectory(
-      mrpackPath,
+      zipOverride ?? mrpackPath,
       destDir,
       "client-overrides",
       onProgress,
@@ -705,7 +788,7 @@ export async function installModpack(
 
     if (zip.getEntry("modrinth.index.json")) {
       // Modrinth Format
-      return await installModrinthModpack(mrpackPath, onProgress, signal);
+      return await installModrinthModpack(mrpackPath, onProgress, signal, zip);
     } else if (zip.getEntry("manifest.json")) {
       // CurseForge Format
       return await installCurseForgeModpack(mrpackPath, onProgress, signal);
@@ -732,6 +815,7 @@ async function installModrinthModpack(
   mrpackPath: string,
   onProgress?: ProgressCallback,
   signal?: AbortSignal,
+  zipOverride?: AdmZip,
 ): Promise<InstallResult> {
   let createdInstance: GameInstance | null = null;
 
@@ -746,7 +830,7 @@ async function installModrinthModpack(
       });
     }
 
-    const index = await parseModpackIndex(mrpackPath);
+    const index = await parseModpackIndex(mrpackPath, zipOverride);
 
     // Step 2: Create instance
     if (onProgress) {
@@ -783,7 +867,12 @@ async function installModrinthModpack(
 
     // Step 4: Extract overrides
     if (signal?.aborted) throw new Error("Installation cancelled");
-    await extractOverrides(mrpackPath, instance.gameDirectory, onProgress);
+    await extractOverrides(
+      mrpackPath,
+      instance.gameDirectory,
+      onProgress,
+      zipOverride,
+    );
 
     // Step 5: Deduplicate mods (remove duplicates from downloaded + overrides)
     const modsDir = path.join(instance.gameDirectory, "mods");
