@@ -41,7 +41,7 @@ export function ContentTabs({
         : allTabs;
 
     return (
-        <div className="flex items-center gap-1 mb-4">
+        <div className="flex flex-wrap items-center gap-2 mb-4">
             {tabs.map((tab) => {
                 const active = activeTab === tab.id;
                 const TabIcon = tab.icon;
@@ -56,10 +56,11 @@ export function ContentTabs({
                     >
                         {active && (
                             <motion.div
-                                layoutId="instance-detail-tabs-indicator"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
                                 className="absolute inset-0 rounded-xl"
                                 style={{ backgroundColor: colors.secondary }}
-                                transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                                transition={{ duration: 0.15 }}
                             />
                         )}
                         <TabIcon className="w-4 h-4 z-10 relative" />

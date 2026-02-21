@@ -119,9 +119,9 @@ export function ModsList({
     return (
         <>
             {/* Header Controls - Unified Row */}
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between gap-4 mb-4 w-full overflow-x-auto no-scrollbar pb-1">
                 {/* Left Side: Title OR Pagination OR Selection Info */}
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 shrink-0">
                     {selectedFilenames.size > 0 ? (
                         <div className="flex items-center gap-3">
                             <button
@@ -138,37 +138,62 @@ export function ModsList({
                                     selectedFilenames.size > 0 && <div className="w-2 h-0.5 rounded-full bg-current" />
                                 )}
                             </button>
-                            <span className="font-bold" style={{ color: colors.secondary }}>
+                            <span className="font-bold whitespace-nowrap" style={{ color: colors.secondary }}>
                                 {selectedFilenames.size} {t('selected' as any)}
                             </span>
 
                             <div className="h-4 w-px bg-white/10 mx-1" />
 
-                            <button
-                                onClick={() => handleBulkToggle(true)}
-                                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all hover:bg-white/10 flex items-center gap-1.5"
-                                style={{ color: colors.onSurface }}
-                            >
-                                <div className="w-2 h-2 rounded-full bg-green-500" />
-                                {t('enable_all' as any)}
-                            </button>
+                            {(() => {
+                                const selectedMods = mods.filter(m => selectedFilenames.has(m.filename));
+                                const hasEnabledMods = selectedMods.some(m => m.enabled);
+                                const hasDisabledMods = selectedMods.some(m => !m.enabled);
 
-                            <button
-                                onClick={() => handleBulkToggle(false)}
-                                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all hover:bg-white/10 flex items-center gap-1.5"
-                                style={{ color: colors.onSurface }}
-                            >
-                                <div className="w-2 h-2 rounded-full bg-red-500" />
-                                {t('disable_all' as any)}
-                            </button>
+                                return (
+                                    <>
+                                        {hasDisabledMods && (
+                                            <button
+                                                onClick={() => handleBulkToggle(true)}
+                                                className="px-3.5 py-1.5 rounded-xl text-sm font-bold transition-all hover:opacity-80 flex items-center gap-2 whitespace-nowrap shadow-sm"
+                                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                            >
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                                    <circle cx="12" cy="12" r="10"></circle>
+                                                    <path d="M9 12l2 2 4-4"></path>
+                                                </svg>
+                                                Enable
+                                            </button>
+                                        )}
+
+                                        {hasEnabledMods && (
+                                            <button
+                                                onClick={() => handleBulkToggle(false)}
+                                                className="px-3.5 py-1.5 rounded-xl text-sm font-bold transition-all hover:opacity-80 flex items-center gap-2 whitespace-nowrap shadow-sm"
+                                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}
+                                            >
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                                    <circle cx="12" cy="12" r="10"></circle>
+                                                    <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+                                                </svg>
+                                                Disable
+                                            </button>
+                                        )}
+                                    </>
+                                );
+                            })()}
 
                             <button
                                 onClick={handleBulkDelete}
-                                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all hover:bg-red-500/20 flex items-center gap-1.5"
-                                style={{ color: "#ef4444" }}
+                                className="px-3.5 py-1.5 rounded-xl text-sm font-bold transition-all hover:opacity-80 flex items-center gap-2 whitespace-nowrap shadow-sm"
+                                style={{ backgroundColor: "#ff4d6d", color: "#1a1a1a" }}
                             >
-                                <Icons.Trash className="w-3.5 h-3.5" />
-                                {t('delete' as any)}
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                    <polyline points="3 6 5 6 21 6"></polyline>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                    <line x1="10" y1="11" x2="10" y2="17"></line>
+                                    <line x1="14" y1="11" x2="14" y2="17"></line>
+                                </svg>
+                                Remove
                             </button>
                         </div>
                     ) : (
@@ -177,21 +202,21 @@ export function ModsList({
                                 <button
                                     onClick={() => { playClick(); setPage(p => Math.max(1, p - 1)); }}
                                     disabled={page === 1}
-                                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5"
+                                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5 whitespace-nowrap"
                                     style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                                 >
                                     <i className="fa-solid fa-chevron-left text-xs"></i>
                                     {t('previous')}
                                 </button>
 
-                                <span className="px-4 py-2 rounded-xl text-sm font-bold" style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}>
+                                <span className="px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap" style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}>
                                     {page} / {totalPages}
                                 </span>
 
                                 <button
                                     onClick={() => { playClick(); setPage(p => Math.min(totalPages, p + 1)); }}
                                     disabled={page === totalPages}
-                                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5"
+                                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5 whitespace-nowrap"
                                     style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                                 >
                                     {t('next')}
@@ -199,7 +224,7 @@ export function ModsList({
                                 </button>
                             </div>
                         ) : (
-                            <h3 className="text-lg font-medium" style={{ color: colors.onSurface }}>
+                            <h3 className="text-lg font-medium whitespace-nowrap" style={{ color: colors.onSurface }}>
                                 {t('mods')} {isLoading ? "" : `(${mods.length})`}
                             </h3>
                         )
@@ -207,36 +232,36 @@ export function ModsList({
                 </div>
 
                 {/* Right Side: Actions (Search, Install, Refresh) */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0 max-w-full overflow-hidden">
                     {/* Search */}
                     <div
-                        className="flex items-center gap-2 px-4 py-2 rounded-xl transition-colors focus-within:ring-1 focus-within:ring-white/20"
+                        className="flex items-center gap-2 px-3 lg:px-4 py-2 rounded-xl transition-colors focus-within:ring-1 focus-within:ring-white/20 min-w-0 flex-1 lg:flex-none"
                         style={{ backgroundColor: colors.surfaceContainerHighest }}
                     >
-                        <i className="fa-solid fa-search text-sm" style={{ color: colors.onSurfaceVariant }}></i>
+                        <i className="fa-solid fa-search text-sm shrink-0" style={{ color: colors.onSurfaceVariant }}></i>
                         <input
                             type="text"
                             placeholder={t('search_mod_count' as any).replace('{count}', String(mods.length))}
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="bg-transparent outline-none text-sm w-56 placeholder:opacity-70"
+                            className="bg-transparent outline-none text-sm w-full lg:w-48 placeholder:opacity-70 min-w-0"
                             style={{ color: colors.onSurface }}
                         />
                     </div>
 
                     <button
                         onClick={() => { playClick(); onAddMod(); }}
-                        className="px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 transition-all hover:opacity-90 active:scale-95 shadow-lg"
+                        className="px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 transition-all hover:opacity-90 active:scale-95 shadow-lg shrink-0"
                         style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
                     >
                         <i className="fa-solid fa-plus text-xs"></i>
-                        {t('install_mod' as any)}
+                        <span className="hidden sm:inline">{t('install_mod' as any)}</span>
                     </button>
 
                     <button
                         onClick={() => { playClick(); onRefresh(); }}
                         disabled={isLoading}
-                        className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10 active:scale-95'}`}
+                        className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all shrink-0 ${isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10 active:scale-95'}`}
                         style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                         title={t('refresh')}
                     >
@@ -361,7 +386,13 @@ function ModListItemWrapper({
     }
 
     return (
-        <div className="animate-fade-in">
+        <div 
+            className="animate-fade-in opacity-0"
+            style={{ 
+                animationDelay: `${index * 50}ms`,
+                animationFillMode: 'forwards'
+            }}
+        >
             {children}
         </div>
     );

@@ -205,7 +205,7 @@ declare global {
       // Discord RPC
       discordRPCSetEnabled: (enabled: boolean) => Promise<void>;
       discordRPCUpdate: (
-        status: "idle" | "playing" | "launching",
+        status: "idle" | "playing" | "launching" | "browsing_modpacks" | "browsing_servers",
         serverName?: string,
         serverIcon?: string,
       ) => Promise<void>;

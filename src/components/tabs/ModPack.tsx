@@ -16,6 +16,7 @@ import {
 } from "./ModPackTabs";
 import { useProgressStore } from "../../store/progressStore";
 import { useAuthStore } from "../../store/authStore";
+import modpackIcon from "../../assets/modpack_icon.png";
 
 // ========================================
 // Types
@@ -214,6 +215,23 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
     const [launchingId, setLaunchingId] = useState<string | null>(null);
     const [playingInstances, setPlayingInstances] = useState<Set<string>>(new Set());
     const hasLoadedRef = useRef(false);
+
+    // Discord RPC
+    useEffect(() => {
+        if (!config.discordRPCEnabled || !window.api) return;
+        if (isActive) {
+            window.api.discordRPCUpdate?.("browsing_modpacks");
+        } else {
+            // Revert back to idle when we leave the tab, only if we are connected and not launching/playing
+            // The main app usually handles reverting to "idle", but we can safely call it here
+            // because if a game is playing, `updateRPC` checks the game state internally?
+            // Actually, `discordRPCUpdate` just sets what we tell it. We'll set it to idle.
+            // If a game is playing, we shouldn't overwrite it with idle.
+            // Let's check if the launcher app re-evaluates Discord RPC state properly later.
+            // Usually, going back to idle is safe here if we just leave the tab.
+            window.api.discordRPCUpdate?.("idle");
+        }
+    }, [isActive, config.discordRPCEnabled]);
 
     const [showImportModal, setShowImportModal] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
@@ -1098,10 +1116,10 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                 <div className="rounded-2xl p-4" style={{ backgroundColor: colors.surfaceContainer }}>
                     <div className="flex items-center gap-4 mb-4">
                         <div
-                            className="w-14 h-14 rounded-xl flex items-center justify-center"
+                            className="w-16 h-16 rounded-xl flex items-center justify-center overflow-hidden shrink-0"
                             style={{ backgroundColor: colors.surfaceContainerHighest }}
                         >
-                            <Icons.Box className="w-7 h-7" style={{ color: colors.secondary }} />
+                            <img src={modpackIcon.src} alt="Modpack Icon" className="w-14 h-14 opacity-90 drop-shadow-md" />
                         </div>
                         <div>
                             <h3 className="font-medium" style={{ color: colors.onSurface }}>{t('create_your_own')}</h3>

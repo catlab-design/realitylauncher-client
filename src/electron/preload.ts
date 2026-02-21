@@ -109,7 +109,7 @@ const api = {
   discordRPCSetEnabled: (enabled: boolean) =>
     ipcRenderer.invoke("discord-rpc-set-enabled", enabled),
   discordRPCUpdate: (
-    status: "idle" | "playing" | "launching",
+    status: "idle" | "playing" | "launching" | "browsing_modpacks" | "browsing_servers",
     serverName?: string,
     serverIcon?: string,
   ) => ipcRenderer.invoke("discord-rpc-update", status, serverName, serverIcon),

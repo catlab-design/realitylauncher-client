@@ -9,6 +9,7 @@
 
 import { app } from "electron";
 import { getConfig, setConfig } from "./config.js";
+import { getSession } from "./auth.js";
 
 // API URL (hardcoded for bundled Electron - process.env doesn't work in production)
 import { API_URL } from "./lib/constants.js";
@@ -45,6 +46,22 @@ const telemetryQueue: Array<{
 const TELEMETRY_BATCH_SIZE = 20;
 const TELEMETRY_FLUSH_INTERVAL_MS = 30 * 1000;
 const TELEMETRY_MAX_QUEUE_SIZE = 500;
+const TELEMETRY_USER_ID_CACHE_MS = 10 * 60 * 1000;
+const TELEMETRY_USER_ID_RESOLVE_TIMEOUT_MS = 2000;
+
+let cachedTokenUserId: string | null = null;
+let cachedTokenValue: string | null = null;
+let cachedTokenResolvedAt = 0;
+let tokenUserIdResolvePromise: Promise<string | undefined> | null = null;
+
+function extractCatIdUserId(uuid?: string | null): string | undefined {
+    if (!uuid || !uuid.startsWith("catid-")) {
+        return undefined;
+    }
+
+    const extracted = uuid.slice("catid-".length).trim();
+    return extracted || undefined;
+}
 
 /**
  * Get or generate unique client ID
@@ -149,6 +166,122 @@ function scheduleTelemetryFlush(): void {
     }, TELEMETRY_FLUSH_INTERVAL_MS);
 }
 
+function getCachedTokenUserId(token?: string): string | undefined {
+    if (!token) {
+        return undefined;
+    }
+
+    if (cachedTokenValue !== token || !cachedTokenUserId) {
+        return undefined;
+    }
+
+    if (Date.now() - cachedTokenResolvedAt > TELEMETRY_USER_ID_CACHE_MS) {
+        return undefined;
+    }
+
+    return cachedTokenUserId;
+}
+
+/**
+ * Resolve CatID user ID from active session with cache + API fallback.
+ * Uses /auth/session/me for linked Microsoft sessions that don't have catid-* UUID.
+ */
+export async function resolveTelemetryUserIdForSession(sessionOverride?: {
+    uuid?: string;
+    apiToken?: string;
+} | null): Promise<string | undefined> {
+    const session = sessionOverride || getSession();
+    if (!session) {
+        return undefined;
+    }
+
+    const fromUuid = extractCatIdUserId(session.uuid);
+    if (fromUuid) {
+        return fromUuid;
+    }
+
+    const token = session.apiToken?.trim();
+    if (!token) {
+        return undefined;
+    }
+
+    const cached = getCachedTokenUserId(token);
+    if (cached) {
+        return cached;
+    }
+
+    if (tokenUserIdResolvePromise && cachedTokenValue === token) {
+        return tokenUserIdResolvePromise;
+    }
+
+    cachedTokenValue = token;
+    tokenUserIdResolvePromise = (async () => {
+        try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), TELEMETRY_USER_ID_RESOLVE_TIMEOUT_MS);
+
+            try {
+                const response = await fetch(`${API_URL}/auth/session/me`, {
+                    method: "GET",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                    signal: controller.signal,
+                });
+
+                if (!response.ok) {
+                    return undefined;
+                }
+
+                const payload = await response.json() as { id?: string };
+                const resolvedId = payload.id?.trim();
+                if (!resolvedId) {
+                    return undefined;
+                }
+
+                cachedTokenUserId = resolvedId;
+                cachedTokenResolvedAt = Date.now();
+                return resolvedId;
+            } finally {
+                clearTimeout(timeout);
+            }
+        } catch {
+            return undefined;
+        } finally {
+            tokenUserIdResolvePromise = null;
+        }
+    })();
+
+    return tokenUserIdResolvePromise;
+}
+
+/**
+ * Resolve current authenticated user ID for queueing without waiting on network.
+ */
+function resolveTelemetryUserId(explicitUserId?: string): string | undefined {
+    if (explicitUserId && explicitUserId.trim()) {
+        return explicitUserId.trim();
+    }
+
+    const session = getSession();
+    if (!session) {
+        return undefined;
+    }
+
+    const fromUuid = extractCatIdUserId(session.uuid);
+    if (fromUuid) {
+        return fromUuid;
+    }
+
+    const token = session.apiToken?.trim();
+    const cached = getCachedTokenUserId(token);
+    if (cached) {
+        return cached;
+    }
+
+    return undefined;
+}
+
 /**
  * Queue telemetry event for batched API send
  */
@@ -161,10 +294,16 @@ function queueEvent(
         return;
     }
 
+    const resolvedUserId = resolveTelemetryUserId(userId);
+    if (!resolvedUserId) {
+        // Best effort background resolve for linked Microsoft sessions.
+        void resolveTelemetryUserIdForSession();
+    }
+
     telemetryQueue.push({
         eventType,
         clientId: getClientId(),
-        userId: userId || undefined,
+        userId: resolvedUserId,
         data: data || undefined,
         launcherVersion: getLauncherVersion(),
         platform: getPlatform(),
@@ -320,6 +459,7 @@ export function initTelemetry(): void {
     console.log("[Telemetry] Initializing...");
     console.log("[Telemetry] Enabled:", isTelemetryEnabled());
     console.log("[Telemetry] Client ID:", getClientId());
+    void resolveTelemetryUserIdForSession();
 
     // Track app open
     trackAppOpen();

@@ -11,6 +11,7 @@
  */
 export interface LaunchOptions {
     instanceId?: string;
+    telemetryUserId?: string;
     version: string;
     username: string;
     uuid: string;

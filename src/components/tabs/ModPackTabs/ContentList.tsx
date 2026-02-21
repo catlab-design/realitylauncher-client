@@ -53,11 +53,13 @@ export function ContentList({
     const [searchQuery, setSearchQuery] = useState("");
     const [page, setPage] = useState(1);
     const ITEMS_PER_PAGE = 20;
+    const [selectedFilenames, setSelectedFilenames] = useState<Set<string>>(new Set());
 
     // Reset page when search changes
     useEffect(() => {
         setPage(1);
-    }, [searchQuery]);
+        setSelectedFilenames(new Set());
+    }, [searchQuery, contentType]);
 
     const filteredItems = items.filter(item =>
         cleanName(item.name).toLowerCase().includes(searchQuery.toLowerCase())
@@ -77,75 +79,184 @@ export function ContentList({
 
     const isDatapack = contentType === "datapack";
 
+    const handleSelectAll = (currentViewItems: (ContentItem | DatapackItem)[]) => {
+        playClick();
+        const newSelected = new Set(selectedFilenames);
+        if (selectedFilenames.size === currentViewItems.length && currentViewItems.length > 0) {
+            newSelected.clear();
+        } else {
+            currentViewItems.forEach(item => newSelected.add(item.filename));
+        }
+        setSelectedFilenames(newSelected);
+    };
 
+    const handleBulkToggle = (enable: boolean) => {
+        playClick();
+        Array.from(selectedFilenames).forEach(filename => {
+            const item = items.find(i => i.filename === filename);
+            if (item && item.enabled !== enable) {
+                onToggle(filename, isDatapack ? (item as DatapackItem).worldName : undefined);
+            }
+        });
+        setSelectedFilenames(new Set());
+    };
+
+    const handleBulkDelete = () => {
+        playClick();
+        if (confirm(`Are you sure you want to delete ${selectedFilenames.size} selected items?`)) {
+            Array.from(selectedFilenames).forEach(filename => {
+                const item = items.find(i => i.filename === filename);
+                if (item) {
+                     onDelete(filename, isDatapack ? (item as DatapackItem).worldName : undefined);
+                }
+            });
+            setSelectedFilenames(new Set());
+        }
+    };
 
     return (
         <>
-            <div className="flex items-center justify-between mb-4">
-                {/* Left Side: Title OR Pagination */}
-                <div className="flex items-center gap-4">
-                    {totalPages > 1 ? (
-                        <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between gap-4 mb-4 w-full overflow-x-auto no-scrollbar pb-1">
+                {/* Left Side: Title OR Pagination OR Selection Info */}
+                <div className="flex items-center gap-4 shrink-0">
+                    {selectedFilenames.size > 0 ? (
+                        <div className="flex items-center gap-3">
                             <button
-                                onClick={() => { playClick(); setPage(p => Math.max(1, p - 1)); }}
-                                disabled={page === 1}
-                                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5"
-                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                onClick={() => handleSelectAll(filteredItems)}
+                                className="w-5 h-5 rounded-md flex items-center justify-center transition-all cursor-pointer border-2"
+                                style={{
+                                    backgroundColor: selectedFilenames.size === filteredItems.length ? colors.secondary : "transparent",
+                                    borderColor: selectedFilenames.size === filteredItems.length ? colors.secondary : colors.onSurfaceVariant
+                                }}
                             >
-                                <i className="fa-solid fa-chevron-left text-xs"></i>
-                                {t('previous')}
+                                {selectedFilenames.size === filteredItems.length ? (
+                                    <Icons.Check className="w-3.5 h-3.5" style={{ color: "#1a1a1a" }} />
+                                ) : (
+                                    selectedFilenames.size > 0 && <div className="w-2 h-0.5 rounded-full bg-current" />
+                                )}
                             </button>
-
-                            <span className="px-4 py-2 rounded-xl text-sm font-bold" style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}>
-                                {page} / {totalPages}
+                            <span className="font-bold whitespace-nowrap" style={{ color: colors.secondary }}>
+                                {selectedFilenames.size} {t('selected' as any)}
                             </span>
 
+                            <div className="h-4 w-px bg-white/10 mx-1" />
+
+                            {(() => {
+                                const selectedItems = items.filter(m => selectedFilenames.has(m.filename));
+                                const hasEnabledItems = selectedItems.some(m => m.enabled);
+                                const hasDisabledItems = selectedItems.some(m => !m.enabled);
+
+                                return (
+                                    <>
+                                        {hasDisabledItems && (
+                                            <button
+                                                onClick={() => handleBulkToggle(true)}
+                                                className="px-3.5 py-1.5 rounded-xl text-sm font-bold transition-all hover:opacity-80 flex items-center gap-2 whitespace-nowrap shadow-sm"
+                                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                            >
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                                    <circle cx="12" cy="12" r="10"></circle>
+                                                    <path d="M9 12l2 2 4-4"></path>
+                                                </svg>
+                                                Enable
+                                            </button>
+                                        )}
+
+                                        {hasEnabledItems && (
+                                            <button
+                                                onClick={() => handleBulkToggle(false)}
+                                                className="px-3.5 py-1.5 rounded-xl text-sm font-bold transition-all hover:opacity-80 flex items-center gap-2 whitespace-nowrap shadow-sm"
+                                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}
+                                            >
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                                    <circle cx="12" cy="12" r="10"></circle>
+                                                    <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+                                                </svg>
+                                                Disable
+                                            </button>
+                                        )}
+                                    </>
+                                );
+                            })()}
+
                             <button
-                                onClick={() => { playClick(); setPage(p => Math.min(totalPages, p + 1)); }}
-                                disabled={page === totalPages}
-                                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5"
-                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                onClick={handleBulkDelete}
+                                className="px-3.5 py-1.5 rounded-xl text-sm font-bold transition-all hover:opacity-80 flex items-center gap-2 whitespace-nowrap shadow-sm"
+                                style={{ backgroundColor: "#ff4d6d", color: "#1a1a1a" }}
                             >
-                                {t('next')}
-                                <i className="fa-solid fa-chevron-right text-xs"></i>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                    <polyline points="3 6 5 6 21 6"></polyline>
+                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                    <line x1="10" y1="11" x2="10" y2="17"></line>
+                                    <line x1="14" y1="11" x2="14" y2="17"></line>
+                                </svg>
+                                Remove
                             </button>
                         </div>
                     ) : (
-                        <h3 className="text-lg font-medium" style={{ color: colors.onSurface }}>
-                            {labels[contentType].title} {isLoading ? "" : `(${items.length})`}
-                        </h3>
+                        totalPages > 1 ? (
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => { playClick(); setPage(p => Math.max(1, p - 1)); }}
+                                    disabled={page === 1}
+                                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5 whitespace-nowrap"
+                                    style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                >
+                                    <i className="fa-solid fa-chevron-left text-xs"></i>
+                                    {t('previous')}
+                                </button>
+
+                                <span className="px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap" style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}>
+                                    {page} / {totalPages}
+                                </span>
+
+                                <button
+                                    onClick={() => { playClick(); setPage(p => Math.min(totalPages, p + 1)); }}
+                                    disabled={page === totalPages}
+                                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5 whitespace-nowrap"
+                                    style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                >
+                                    {t('next')}
+                                    <i className="fa-solid fa-chevron-right text-xs"></i>
+                                </button>
+                            </div>
+                        ) : (
+                            <h3 className="text-lg font-medium whitespace-nowrap" style={{ color: colors.onSurface }}>
+                                {labels[contentType].title} {isLoading ? "" : `(${items.length})`}
+                            </h3>
+                        )
                     )}
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0 max-w-full overflow-hidden">
                     {/* Search */}
                     <div
-                        className="flex items-center gap-2 px-4 py-2 rounded-xl transition-colors focus-within:ring-1 focus-within:ring-white/20"
+                        className="flex items-center gap-2 px-3 lg:px-4 py-2 rounded-xl transition-colors focus-within:ring-1 focus-within:ring-white/20 min-w-0 flex-1 lg:flex-none"
                         style={{ backgroundColor: colors.surfaceContainerHighest }}
                     >
-                        <i className="fa-solid fa-search text-sm" style={{ color: colors.onSurfaceVariant }}></i>
+                        <i className="fa-solid fa-search text-sm shrink-0" style={{ color: colors.onSurfaceVariant }}></i>
                         <input
                             type="text"
                             placeholder={(t('search_content_placeholder' as any) as string).replace('{type}', labels[contentType].title)}
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="bg-transparent outline-none text-sm w-40 placeholder:opacity-70"
+                            className="bg-transparent outline-none text-sm w-full lg:w-48 placeholder:opacity-70 min-w-0"
                             style={{ color: colors.onSurface }}
                         />
                     </div>
 
                     <button
                         onClick={() => { playClick(); onAddContent(); }}
-                        className="px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 transition-all hover:opacity-90"
+                        className="px-3.5 lg:px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all hover:opacity-90 whitespace-nowrap shrink-0"
                         style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
                     >
                         <i className="fa-solid fa-plus text-xs"></i>
-                        {labels[contentType].addLabel}
+                        <span className="hidden sm:inline">{labels[contentType].addLabel}</span>
                     </button>
                     <button
                         onClick={() => { playClick(); onRefresh && onRefresh(); }}
                         disabled={isLoading}
-                        className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10 active:scale-95'}`}
+                        className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all shrink-0 ${isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10 active:scale-95'}`}
                         style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                         title={t('refresh')}
                     >
@@ -178,6 +289,13 @@ export function ContentList({
                                     onToggle={onToggle}
                                     onDelete={onDelete}
                                     index={index}
+                                    isSelected={selectedFilenames.has((item as ContentItem).filename)}
+                                    onToggleSelection={(filename: string) => {
+                                        const next = new Set(selectedFilenames);
+                                        if (next.has(filename)) next.delete(filename);
+                                        else next.add(filename);
+                                        setSelectedFilenames(next);
+                                    }}
                                 />
                             );
                         }
@@ -272,7 +390,13 @@ function ContentListItemWrapper({
     }
 
     return (
-        <div className="animate-fade-in">
+        <div 
+            className="animate-fade-in opacity-0"
+            style={{ 
+                animationDelay: `${index * 50}ms`,
+                animationFillMode: 'forwards'
+            }}
+        >
             {children}
         </div>
     );

@@ -64,6 +64,7 @@ import {
   setGameLogCallback,
 } from "../launcher.js";
 import { updateRPC } from "../discord.js";
+import { resolveTelemetryUserIdForSession } from "../telemetry.js";
 
 // Map to track active exports for cancellation: instanceId -> { abort: () => void }
 const activeExports = new Map<string, { abort: () => void }>();
@@ -85,6 +86,7 @@ interface ModMetadataCache {
   hash?: string;
   modrinthId?: string; // "found" | "checked"
   id?: string; // The internal Mod ID (slug)
+  version?: string;
 }
 const modMetadataCache = new Map<string, ModMetadataCache>();
 // Persistent Cache Logic
@@ -407,6 +409,7 @@ async function extractModInfo(jarPath: string): Promise<ModMetadataCache> {
           : json.authors || "Unknown",
         description: json.description,
         icon,
+        version: json.version,
       };
     }
 
@@ -417,6 +420,7 @@ async function extractModInfo(jarPath: string): Promise<ModMetadataCache> {
       const modIdMatch = content.match(/modId\s*=\s*"([^"]+)"/);
       const displayNameMatch = content.match(/displayName\s*=\s*"([^"]+)"/);
       const authorsMatch = content.match(/authors\s*=\s*"([^"]+)"/);
+      const versionMatch = content.match(/version\s*=\s*"([^"]+)"/);
       const descMatch =
         content.match(/description\s*=\s*'''([^']+)'''/s) ||
         content.match(/description\s*=\s*"([^"]+)"/);
@@ -433,11 +437,17 @@ async function extractModInfo(jarPath: string): Promise<ModMetadataCache> {
         }
       }
 
+      let version = versionMatch?.[1];
+      if (version === "${file.jarVersion}") {
+        version = undefined;
+      }
+
       return {
         id: modIdMatch?.[1],
         displayName: displayNameMatch?.[1] || modIdMatch?.[1],
         author: authorsMatch?.[1],
         description: descMatch?.[1]?.trim(),
+        version,
         icon,
       };
     }
@@ -632,6 +642,9 @@ const ModrinthAPI = {
 };
 
 // Helper to ensure metadata is loaded (Local -> Hash -> Slug)
+const pendingModrinthLookups = new Set<string>();
+
+// Helper to ensure metadata is loaded (Local -> Hash -> Slug)
 // Moved inside registerInstanceHandlers to access getMainWindow
 export function registerInstanceHandlers(
   getMainWindow: () => BrowserWindow | null,
@@ -642,13 +655,18 @@ export function registerInstanceHandlers(
   async function ensureModMetadata(
     filePath: string,
     instanceId?: string,
+    precalculatedSize?: number,
+    precalculatedMtime?: string,
   ): Promise<ModMetadataCache> {
-    const stats = await fs.promises.stat(filePath);
-    const cacheKey = getModCacheKey(
-      filePath,
-      stats.size,
-      stats.mtime.toISOString(),
-    );
+    const size =
+      precalculatedSize !== undefined
+        ? precalculatedSize
+        : (await fs.promises.stat(filePath)).size;
+    const mtime =
+      precalculatedMtime !== undefined
+        ? precalculatedMtime
+        : (await fs.promises.stat(filePath)).mtime.toISOString();
+    const cacheKey = getModCacheKey(filePath, size, mtime);
     let metadata = modMetadataCache.get(cacheKey);
 
     // 1. Check if complete
@@ -670,85 +688,101 @@ export function registerInstanceHandlers(
       metadata.modrinthId !== "checked_missing" &&
       metadata.modrinthId !== "found"
     ) {
-      try {
-        // Calculate Hash
-        const hash = metadata.hash || (await calculateSha1(filePath));
-        metadata.hash = hash;
-        modMetadataCache.set(cacheKey, metadata);
-        // No save here yet, wait for lookup
+      if (!pendingModrinthLookups.has(cacheKey)) {
+        pendingModrinthLookups.add(cacheKey);
 
-        // Hash Lookup
-        const modrinthIcons = await ModrinthAPI.resolveHashes([hash]);
-        if (modrinthIcons[hash]) {
-          metadata.modrinthIcon = modrinthIcons[hash];
-          metadata.icon = modrinthIcons[hash];
-          metadata.modrinthId = "found";
-          modMetadataCache.set(cacheKey, metadata);
-          saveMetadataCache(); // Save found icon
-          if (instanceId)
-            getMainWindow()?.webContents.send(
-              "instance-mods-icons-updated",
-              instanceId,
-            );
-          return metadata;
-        }
+        // Fire and forget async lookup
+        (async () => {
+          try {
+            // Need the mutable reference from the map to ensure we don't overwrite if it changed
+            let currentMeta = modMetadataCache.get(cacheKey) || metadata;
 
-        // Slug Lookup (Fallback)
-        if (metadata.id) {
-          const slugIcons = await ModrinthAPI.resolveSlugs([metadata.id]);
-          if (slugIcons[metadata.id]) {
-            metadata.modrinthIcon = slugIcons[metadata.id];
-            metadata.icon = slugIcons[metadata.id];
-            metadata.modrinthId = "found";
-            modMetadataCache.set(cacheKey, metadata);
-            saveMetadataCache(); // Save found icon
-            if (instanceId)
-              getMainWindow()?.webContents.send(
-                "instance-mods-icons-updated",
-                instanceId,
-              );
-            return metadata;
-          }
-        }
+            // Calculate Hash
+            const hash = currentMeta.hash || (await calculateSha1(filePath));
+            currentMeta.hash = hash;
+            modMetadataCache.set(cacheKey, currentMeta);
 
-        // 4. Fallback: Search by Filename
-        // Always try fallback search if we don't have an icon yet (and haven't definitively found it) Or if it was marked checked/checked_missing
-        if (
-          !metadata.icon ||
-          metadata.modrinthId === "found_fuzzy" ||
-          metadata.modrinthId === "checked"
-        ) {
-          const searchName = metadata.displayName || path.basename(filePath);
-
-          // Search if not already found strictly
-          if (metadata.modrinthId !== "found") {
-            const foundData = await ModrinthAPI.searchByName(searchName);
-            if (foundData) {
-              if (foundData.icon) metadata.icon = foundData.icon;
-              if (foundData.title) metadata.displayName = foundData.title;
-              if (foundData.author) metadata.author = foundData.author;
-              if (foundData.description)
-                metadata.description = foundData.description;
-
-              metadata.modrinthId = "found_fuzzy";
-              modMetadataCache.set(cacheKey, metadata);
-              saveMetadataCache();
+            // Hash Lookup
+            const modrinthIcons = await ModrinthAPI.resolveHashes([hash]);
+            if (modrinthIcons[hash]) {
+              currentMeta.modrinthIcon = modrinthIcons[hash];
+              currentMeta.icon = modrinthIcons[hash];
+              currentMeta.modrinthId = "found";
+              modMetadataCache.set(cacheKey, currentMeta);
+              saveMetadataCache(); // Save found icon
               if (instanceId)
                 getMainWindow()?.webContents.send(
                   "instance-mods-icons-updated",
                   instanceId,
                 );
-              return metadata;
+              return;
             }
-          }
-        }
 
-        // Mark checked (missing)
-        metadata.modrinthId = "checked_missing";
-        modMetadataCache.set(cacheKey, metadata);
-        saveMetadataCache(); // Save checked status
-      } catch (e) {
-        logger.error(`[Mods] Failed ensureModMetadata for ${filePath}:`, e);
+            // Slug Lookup (Fallback)
+            if (currentMeta.id) {
+              const slugIcons = await ModrinthAPI.resolveSlugs([
+                currentMeta.id,
+              ]);
+              if (slugIcons[currentMeta.id]) {
+                currentMeta.modrinthIcon = slugIcons[currentMeta.id];
+                currentMeta.icon = slugIcons[currentMeta.id];
+                currentMeta.modrinthId = "found";
+                modMetadataCache.set(cacheKey, currentMeta);
+                saveMetadataCache(); // Save found icon
+                if (instanceId)
+                  getMainWindow()?.webContents.send(
+                    "instance-mods-icons-updated",
+                    instanceId,
+                  );
+                return;
+              }
+            }
+
+            // 4. Fallback: Search by Filename
+            if (
+              !currentMeta.icon ||
+              currentMeta.modrinthId === "found_fuzzy" ||
+              currentMeta.modrinthId === "checked"
+            ) {
+              const searchName =
+                currentMeta.displayName || path.basename(filePath);
+
+              if (currentMeta.modrinthId !== "found") {
+                const foundData = await ModrinthAPI.searchByName(searchName);
+                if (foundData) {
+                  if (foundData.icon) currentMeta.icon = foundData.icon;
+                  if (foundData.title)
+                    currentMeta.displayName = foundData.title;
+                  if (foundData.author) currentMeta.author = foundData.author;
+                  if (foundData.description)
+                    currentMeta.description = foundData.description;
+
+                  currentMeta.modrinthId = "found_fuzzy";
+                  modMetadataCache.set(cacheKey, currentMeta);
+                  saveMetadataCache();
+                  if (instanceId)
+                    getMainWindow()?.webContents.send(
+                      "instance-mods-icons-updated",
+                      instanceId,
+                    );
+                  return;
+                }
+              }
+            }
+
+            // Mark checked (missing)
+            currentMeta.modrinthId = "checked_missing";
+            modMetadataCache.set(cacheKey, currentMeta);
+            saveMetadataCache(); // Save checked status
+          } catch (e) {
+            logger.error(
+              `[Mods] Failed async Modrinth lookup for ${filePath}:`,
+              e,
+            );
+          } finally {
+            pendingModrinthLookups.delete(cacheKey);
+          }
+        })();
       }
     }
 
@@ -1040,6 +1074,7 @@ export function registerInstanceHandlers(
 
     // Use minecraftUuid if available (for CatID linked with Microsoft)
     const gameUuid = session.minecraftUuid || session.uuid;
+    const telemetryUserId = await resolveTelemetryUserIdForSession(session);
 
     // Pass instanceId to launchGame (options cast to any in launcher.ts allows this)
     logger.info(
@@ -1079,6 +1114,7 @@ export function registerInstanceHandlers(
       username: session.username,
       uuid: gameUuid,
       accessToken: session.accessToken,
+      telemetryUserId,
       ramMB,
       javaPath: instance.javaPath || config.javaPath,
       gameDirectory: instance.gameDirectory,
@@ -1231,7 +1267,12 @@ export function registerInstanceHandlers(
             }
 
             // Ensure metadata is loaded (with concurrency control)
-            const metadata = await ensureModMetadata(filePath, instanceId);
+            const metadata = await ensureModMetadata(
+              filePath,
+              instanceId,
+              stats.size,
+              mtime,
+            );
 
             mods[idx] = {
               filename: file,
@@ -1240,6 +1281,7 @@ export function registerInstanceHandlers(
               author: metadata?.author || "",
               description: metadata?.description || "",
               icon: metadata?.icon || null,
+              version: metadata?.version || "",
               enabled,
               size: stats.size,
               modifiedAt: mtime,

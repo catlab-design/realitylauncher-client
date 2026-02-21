@@ -149,6 +149,17 @@ export function ServerMenu({
         };
     }, []);
 
+    // Discord RPC
+    useEffect(() => {
+        if (!config.discordRPCEnabled || !window.api) return;
+        (window.api as any).discordRPCUpdate?.("browsing_servers");
+
+        return () => {
+            // Revert back when unmounting (leaving the tab)
+            (window.api as any).discordRPCUpdate?.("idle");
+        };
+    }, [config.discordRPCEnabled]);
+
     // Sync status when instances load
     useEffect(() => {
         if (instances && (instances.owned.length > 0 || instances.member.length > 0)) {

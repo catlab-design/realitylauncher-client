@@ -16,6 +16,7 @@ import os from "os";
 import crypto from "crypto";
 import { createRequire } from "module";
 import { getMinecraftDir, getConfig } from "../config.js";
+import { trackGameLaunch, trackGameClose } from "../telemetry.js";
 
 const VERSION_MANIFEST_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const JAVA_DISCOVERY_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -642,6 +643,7 @@ interface PrepareResult {
  */
 export async function launchGameRust(options: LaunchOptions): Promise<LaunchResult> {
     const instanceId = options.instanceId || "default";
+    const telemetryInstanceId = options.instanceId?.trim();
     const native = getNative();
 
     setLaunching(instanceId, true);
@@ -651,6 +653,7 @@ export async function launchGameRust(options: LaunchOptions): Promise<LaunchResu
         version,
         username,
         uuid,
+        telemetryUserId,
         accessToken,
         ramMB = 4096,
         javaPath: customJavaPath,
@@ -1168,6 +1171,9 @@ export async function launchGameRust(options: LaunchOptions): Promise<LaunchResu
         native.saveRunningInstance(instanceId, child.pid, gameDir);
 
         setGameProcess(instanceId, child as any);
+        if (telemetryInstanceId) {
+            trackGameLaunch(telemetryInstanceId, version, loader?.type, telemetryUserId);
+        }
 
         // Send game-started event to renderer
         const windows = BrowserWindow.getAllWindows();
@@ -1182,6 +1188,9 @@ export async function launchGameRust(options: LaunchOptions): Promise<LaunchResu
         // Handle process close
         child.on("close", (code: number | null) => {
             console.log(`[RustLauncher] Game process closed with code: ${code}`);
+            if (telemetryInstanceId) {
+                trackGameClose(telemetryInstanceId, telemetryUserId);
+            }
             native.removeRunningInstance(instanceId);
             setGameProcess(instanceId, null as any);
 

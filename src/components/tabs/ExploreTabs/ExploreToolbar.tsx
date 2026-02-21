@@ -81,42 +81,62 @@ export function ExploreToolbar({
 
                 {/* Source buttons */}
                 <div className="flex items-center gap-1">
-                    <button
-                        onClick={() => { playClick(); onContentSourceChange(CONTENT_SOURCES.MODRINTH); }}
-                        className="px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all relative group"
-                        style={{
-                            color: contentSource === CONTENT_SOURCES.MODRINTH ? "#000" : colors.onSurfaceVariant,
-                        }}
-                    >
-                        {contentSource === CONTENT_SOURCES.MODRINTH && (
-                            <motion.div
-                                layoutId="explore-source-indicator"
-                                className="absolute inset-0 rounded-md shadow-sm"
-                                style={{ backgroundColor: "#1bd96a" }}
-                                transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                            />
-                        )}
-                        <img src={modrinthIcon.src} alt="" className="w-4 h-4 z-10 relative" />
-                        <span className="z-10 relative">Modrinth</span>
-                    </button>
-                    <button
-                        onClick={() => { playClick(); onContentSourceChange(CONTENT_SOURCES.CURSEFORGE); }}
-                        className="px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all relative group"
-                        style={{
-                            color: contentSource === CONTENT_SOURCES.CURSEFORGE ? "#fff" : colors.onSurfaceVariant,
-                        }}
-                    >
-                        {contentSource === CONTENT_SOURCES.CURSEFORGE && (
-                            <motion.div
-                                layoutId="explore-source-indicator"
-                                className="absolute inset-0 rounded-md shadow-sm"
-                                style={{ backgroundColor: "#f16436" }}
-                                transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                            />
-                        )}
-                        <img src={curseforgeIcon.src} alt="" className="w-4 h-4 z-10 relative" />
-                        <span className="z-10 relative">CurseForge</span>
-                    </button>
+                    {(() => {
+                        const isDark = colors.surface?.startsWith('#') && parseInt(colors.surface.slice(1, 3), 16) < 128;
+                        const isModrinthActive = contentSource === CONTENT_SOURCES.MODRINTH;
+                        const isCurseForgeActive = contentSource === CONTENT_SOURCES.CURSEFORGE;
+
+                        return (
+                            <>
+                                <button
+                                    onClick={() => { playClick(); onContentSourceChange(CONTENT_SOURCES.MODRINTH); }}
+                                    className="px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all relative group"
+                                    style={{
+                                        color: isModrinthActive ? "#000" : colors.onSurfaceVariant,
+                                    }}
+                                >
+                                    {isModrinthActive && (
+                                        <motion.div
+                                            layoutId="explore-source-indicator"
+                                            className="absolute inset-0 rounded-md shadow-sm"
+                                            style={{ backgroundColor: "#1bd96a" }}
+                                            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                                        />
+                                    )}
+                                    <img 
+                                        src={modrinthIcon.src} 
+                                        alt="" 
+                                        className={`w-4 h-4 z-10 relative transition-transform ${isModrinthActive ? '' : 'opacity-80'}`} 
+                                        style={{ filter: (!isModrinthActive && isDark) ? 'invert(1)' : 'none' }} 
+                                    />
+                                    <span className="z-10 relative">Modrinth</span>
+                                </button>
+                                <button
+                                    onClick={() => { playClick(); onContentSourceChange(CONTENT_SOURCES.CURSEFORGE); }}
+                                    className="px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all relative group"
+                                    style={{
+                                        color: isCurseForgeActive ? "#fff" : colors.onSurfaceVariant,
+                                    }}
+                                >
+                                    {isCurseForgeActive && (
+                                        <motion.div
+                                            layoutId="explore-source-indicator"
+                                            className="absolute inset-0 rounded-md shadow-sm"
+                                            style={{ backgroundColor: "#f16436" }}
+                                            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                                        />
+                                    )}
+                                    <img 
+                                        src={curseforgeIcon.src} 
+                                        alt="" 
+                                        className={`w-4 h-4 z-10 relative transition-transform ${isCurseForgeActive ? '' : 'opacity-80'}`} 
+                                        style={{ filter: (isCurseForgeActive || (!isCurseForgeActive && isDark)) ? 'invert(1)' : 'none' }} 
+                                    />
+                                    <span className="z-10 relative">CurseForge</span>
+                                </button>
+                            </>
+                        );
+                    })()}
                 </div>
             </div>
 
