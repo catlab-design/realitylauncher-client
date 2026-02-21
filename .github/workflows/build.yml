@@ -17,6 +17,10 @@ on:
   repository_dispatch:
     types: [trigger-release]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   R2_BUCKET: realitystorage
   CDN_URL: https://cdn.reality.catlabdesign.space
@@ -24,15 +28,23 @@ env:
 jobs:
   build:
     strategy:
-      max-parallel: 1
       matrix:
         include:
-          - os: [windows-latest]
+          - os: windows-latest
             platform: win
-          - os: [ubuntu-latest]
+            electron_cache_path: |
+              ~\AppData\Local\electron\Cache
+              ~\AppData\Local\electron-builder\Cache
+          - os: ubuntu-latest
             platform: linux
-          - os: [macos-latest]
+            electron_cache_path: |
+              ~/.cache/electron
+              ~/.cache/electron-builder
+          - os: macos-latest
             platform: mac
+            electron_cache_path: |
+              ~/Library/Caches/electron
+              ~/Library/Caches/electron-builder
 
     runs-on: ${{ matrix.os }}
     
@@ -51,8 +63,16 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache Bun package downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-cache-${{ hashFiles('bun.lock', 'native/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-cache-
+
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
@@ -61,14 +81,41 @@ jobs:
         with:
           workspaces: native
 
-      - name: Update package.json version
+      - name: Resolve build version
+        id: resolve_version
         shell: bash
         env:
           INPUT_VERSION: ${{ github.event.inputs.version }}
+          DISPATCH_VERSION: ${{ github.event.client_payload.version }}
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
         run: |
-          if [ -n "$INPUT_VERSION" ]; then
-            echo "Updating version to $INPUT_VERSION"
-            npm version "$INPUT_VERSION" --no-git-tag-version --allow-same-version
+          set -euo pipefail
+          VERSION=""
+          if [ -n "${INPUT_VERSION:-}" ]; then
+            VERSION="$INPUT_VERSION"
+          elif [ -n "${DISPATCH_VERSION:-}" ]; then
+            VERSION="$DISPATCH_VERSION"
+          elif [ "${REF_TYPE:-}" = "tag" ] && [[ "${REF_NAME:-}" == v* ]]; then
+            VERSION="${REF_NAME#v}"
+          else
+            VERSION="$(node -p "require('./package.json').version")"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved build version: $VERSION"
+
+      - name: Update package.json version
+        shell: bash
+        env:
+          RESOLVED_VERSION: ${{ steps.resolve_version.outputs.version }}
+        run: |
+          set -euo pipefail
+          CURRENT_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$CURRENT_VERSION" != "$RESOLVED_VERSION" ]; then
+            echo "Updating version from $CURRENT_VERSION to $RESOLVED_VERSION"
+            npm version "$RESOLVED_VERSION" --no-git-tag-version --allow-same-version
+          else
+            echo "package.json already at version $CURRENT_VERSION"
           fi
 
       - name: Build Rust native module
@@ -84,13 +131,10 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
-      - name: Cache Electron binaries (Windows)
-        if: matrix.platform == 'win'
+      - name: Cache Electron binaries
         uses: actions/cache@v4
         with:
-          path: |
-            ~\AppData\Local\electron\Cache
-            ~\AppData\Local\electron-builder\Cache
+          path: ${{ matrix.electron_cache_path }}
           key: ${{ runner.os }}-electron-cache-${{ hashFiles('package.json', 'package-lock.json', 'bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-electron-cache-
@@ -103,22 +147,22 @@ jobs:
           $maxAttempts = 3
 
           for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-            Write-Host "Running dist:win (attempt $attempt/$maxAttempts)"
-            bun run dist:win
+            Write-Host "Running electron-builder --win (attempt $attempt/$maxAttempts)"
+            bunx electron-builder --win --publish never
 
             if ($LASTEXITCODE -eq 0) {
-              Write-Host "dist:win succeeded on attempt $attempt"
+              Write-Host "electron-builder --win succeeded on attempt $attempt"
               exit 0
             }
 
             if ($attempt -lt $maxAttempts) {
               $waitSeconds = 20 * $attempt
-              Write-Host "dist:win failed with exit code $LASTEXITCODE. Retrying in $waitSeconds seconds..."
+              Write-Host "electron-builder --win failed with exit code $LASTEXITCODE. Retrying in $waitSeconds seconds..."
               Start-Sleep -Seconds $waitSeconds
             }
           }
 
-          throw "dist:win failed after $maxAttempts attempts."
+          throw "electron-builder --win failed after $maxAttempts attempts."
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
@@ -186,7 +230,7 @@ jobs:
 
       - name: Build Electron app (Linux)
         if: matrix.platform == 'linux'
-        run: bun run dist:linux
+        run: bunx electron-builder --linux --publish never
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
@@ -206,7 +250,7 @@ jobs:
 
       - name: Build Electron app (macOS)
         if: matrix.platform == 'mac'
-        run: bun run dist:mac
+        run: bunx electron-builder --mac --publish never
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
@@ -221,6 +265,7 @@ jobs:
             release-build/store-msix/*.msix
             release-build/store-msix/*.msixupload
             release-build/latest.yml
+          if-no-files-found: error
           retention-days: 30
 
       # macOS artifact upload disabled
@@ -246,6 +291,7 @@ jobs:
             release-build/*.rpm
             release-build/*.flatpak
             release-build/latest-linux.yml
+          if-no-files-found: error
           retention-days: 30
 
       - name: Upload macOS artifacts
@@ -257,6 +303,7 @@ jobs:
             release-build/*.dmg
             release-build/*.dmg.blockmap
             release-build/latest-mac.yml
+          if-no-files-found: error
           retention-days: 30
 
   release:
@@ -273,13 +320,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Get version
+      - name: Resolve release version
         id: version
         env:
           INPUT_VERSION: ${{ github.event.inputs.version }}
+          DISPATCH_VERSION: ${{ github.event.client_payload.version }}
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
         run: |
-          if [ -n "$INPUT_VERSION" ]; then
-            VERSION="$INPUT_VERSION"
+          set -euo pipefail
+          if [ -n "${INPUT_VERSION:-}" ]; then
+            VERSION="${INPUT_VERSION}"
+          elif [ -n "${DISPATCH_VERSION:-}" ]; then
+            VERSION="${DISPATCH_VERSION}"
+          elif [ "${REF_TYPE:-}" = "tag" ] && [[ "${REF_NAME:-}" == v* ]]; then
+            VERSION="${REF_NAME#v}"
           else
             VERSION=$(node -p "require('./package.json').version")
           fi
@@ -378,7 +433,7 @@ jobs:
           LATEST_YML=$(find artifacts/reality-launcher-windows -name latest.yml | head -n 1)
           if [ -n "$LATEST_YML" ]; then
             echo "Patching $LATEST_YML with version prefix..."
-            sed -i "s|url: |url: $VERSION/|g" "$LATEST_YML"
+            sed -i -E "s|^([[:space:]]*-[[:space:]]+url:[[:space:]]+)|\1$VERSION/|; s|^([[:space:]]*path:[[:space:]]+)|\1$VERSION/|" "$LATEST_YML"
             cat "$LATEST_YML"
             echo "Uploading latest.yml..."
             wrangler r2 object put --remote "$R2_BUCKET/client/latest.yml" --file="$LATEST_YML" --content-type="text/yaml"
@@ -419,7 +474,7 @@ jobs:
           LATEST_MAC_YML=$(find artifacts/reality-launcher-macos -name latest-mac.yml | head -n 1)
           if [ -n "$LATEST_MAC_YML" ]; then
             echo "Patching $LATEST_MAC_YML with version prefix..."
-            sed -i "s|url: |url: $VERSION/|g" "$LATEST_MAC_YML"
+            sed -i -E "s|^([[:space:]]*-[[:space:]]+url:[[:space:]]+)|\1$VERSION/|; s|^([[:space:]]*path:[[:space:]]+)|\1$VERSION/|" "$LATEST_MAC_YML"
             cat "$LATEST_MAC_YML"
             echo "Uploading latest-mac.yml..."
             wrangler r2 object put --remote "$R2_BUCKET/client/latest-mac.yml" --file="$LATEST_MAC_YML" --content-type="text/yaml"
@@ -447,7 +502,7 @@ jobs:
           LATEST_LINUX_YML=$(find artifacts/reality-launcher-linux -name latest-linux.yml | head -n 1)
           if [ -n "$LATEST_LINUX_YML" ]; then
             echo "Patching $LATEST_LINUX_YML with version prefix..."
-            sed -i "s|url: |url: $VERSION/|g" "$LATEST_LINUX_YML"
+            sed -i -E "s|^([[:space:]]*-[[:space:]]+url:[[:space:]]+)|\1$VERSION/|; s|^([[:space:]]*path:[[:space:]]+)|\1$VERSION/|" "$LATEST_LINUX_YML"
             cat "$LATEST_LINUX_YML"
             echo "Uploading latest-linux.yml..."
             wrangler r2 object put --remote "$R2_BUCKET/client/latest-linux.yml" --file="$LATEST_LINUX_YML" --content-type="text/yaml"
@@ -470,6 +525,12 @@ jobs:
           MAC_PATH=$(find artifacts/reality-launcher-macos -name "*.dmg" | head -n 1)
           LINUX_PATH=$(find artifacts/reality-launcher-linux -name "*.AppImage" | head -n 1)
           FLATPAK_PATH=$(find artifacts/reality-launcher-linux -name "*.flatpak" | head -n 1 || true)
+
+          if [ -z "$WIN_PATH" ] || [ -z "$MAC_PATH" ] || [ -z "$LINUX_PATH" ]; then
+            echo "ERROR: Missing one or more required artifacts (win/mac/linux)."
+            find artifacts -maxdepth 3 -type f | sort
+            exit 1
+          fi
           
           WIN_FILE=$(basename "$WIN_PATH")
           MAC_FILE=$(basename "$MAC_PATH")
