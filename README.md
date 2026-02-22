@@ -6,14 +6,14 @@ The desktop client for Reality Launcher. Built with Electron, Astro, React, and 
 
 *   **Frontend**: [Astro](https://astro.build/) + React
 *   **Shell**: [Electron](https://www.electronjs.org/)
-*   **Core Logic**: Rust (ml-launcher-core)
+*   **Core Logic**: Rust (native)
 *   **Styling**: Tailwind CSS
 *   **Bundler**: Vite (via Astro)
 
 ## Prerequisites
 
 *   [Node.js](https://nodejs.org/) (v18+)
-*   [Rust](https://www.rust-lang.org/tools/install) (latest stable) - Required for building `ml-launcher-core`.
+*   [Rust](https://www.rust-lang.org/tools/install) (latest stable) - Required for building `native`.
 
 ## Setup
 
@@ -29,7 +29,7 @@ The desktop client for Reality Launcher. Built with Electron, Astro, React, and 
     ```bash
     npm run build:rust
     ```
-    *This compiles the code in `../ml-launcher-core`.*
+    *This compiles the code in `./native`.*
 
 ## Development
 
@@ -59,4 +59,4 @@ Output files will be in the `release` directory.
 
 *   `src/electron`: Main process code (IPC, Node.js APIs).
 *   `src/pages`, `src/components`: UI code (Astro/React).
-*   `../ml-launcher-core`: Rust implementation for game launching logic.
+*   `./native`: Rust implementation for game launching logic.
