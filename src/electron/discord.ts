@@ -29,6 +29,7 @@ interface RPCActivity {
   smallImageKey?: string;
   smallImageText?: string;
   startTimestamp?: number;
+  buttons?: Array<{ label: string; url: string }>;
 }
 
 const DEFAULT_LARGE_IMAGE_KEY = "logo";
@@ -93,6 +94,7 @@ let pendingActivity: {
     | "browsing_servers";
   serverName?: string;
   serverIcon?: string;
+  serverSocialUrl?: string;
 } | null = null;
 
 // Player info for small image
@@ -144,6 +146,7 @@ export async function initDiscordRPC(): Promise<boolean> {
             pendingActivity.status,
             pendingActivity.serverName,
             pendingActivity.serverIcon,
+            pendingActivity.serverSocialUrl,
           );
           pendingActivity = null;
         } else {
@@ -175,10 +178,11 @@ export async function updateRPC(
     | "browsing_servers",
   serverName?: string,
   serverIcon?: string,
+  serverSocialUrl?: string,
 ): Promise<void> {
   if (!rpcEnabled) return;
 
-  pendingActivity = { status, serverName, serverIcon };
+  pendingActivity = { status, serverName, serverIcon, serverSocialUrl };
 
   if (!rpcClient || !isReady) {
     void initDiscordRPC();
@@ -186,8 +190,34 @@ export async function updateRPC(
   }
 
   try {
+    const defaultButtons = [];
+    if (serverSocialUrl) {
+      let label = "Server Link";
+      if (
+        serverSocialUrl.includes("discord.gg") ||
+        serverSocialUrl.includes("discord.com")
+      ) {
+        label = "Discord";
+      } else if (
+        serverSocialUrl.includes("youtube.com") ||
+        serverSocialUrl.includes("youtu.be")
+      ) {
+        label = "YouTube";
+      } else if (serverSocialUrl.includes("facebook.com")) {
+        label = "Facebook";
+      } else {
+        label = "Website";
+      }
+      defaultButtons.push({ label, url: serverSocialUrl });
+    }
+    defaultButtons.push({
+      label: "Reality Launcher",
+      url: "https://reality.catlabdesign.space/",
+    });
+
     const activity: RPCActivity = {
       startTimestamp,
+      buttons: defaultButtons,
     };
 
     const resolvedIcon = resolveLargeImageKey(serverIcon);

@@ -4,7 +4,7 @@ use napi_derive::napi;
 use serde::{Deserialize, Serialize};
 use crate::get_client;
 
-const CF_API_BASE: &str = "https://api.reality.notpumpkins.com/curseforge";
+const CF_API_BASE: &str = "https://api.reality.catlabdesign.space/curseforge";
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]

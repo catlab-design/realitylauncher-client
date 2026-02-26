@@ -262,7 +262,7 @@ export function Home({
         }
 
         try {
-            const res = await fetch("https://api.reality.notpumpkins.com/newsletter/list");
+            const res = await fetch("https://api.reality.catlabdesign.space/newsletter/list");
             if (res.ok) {
                 const data = await res.json();
                 const list = data.newsletters || [];

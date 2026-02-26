@@ -455,6 +455,8 @@ export const translations = {
     // Explore search / mod labels
     search_placeholder: "ค้นหา {type}...",
     search_versions: "ค้นหาเวอร์ชัน...",
+    change_version: "เปลี่ยนเวอร์ชัน",
+    fetching_versions: "กำลังโหลดรายการเวอร์ชัน...",
     loading_versions: "กำลังโหลดเวอร์ชัน...",
     no_compatible_versions: "ไม่พบเวอร์ชันที่รองรับ {version}",
 
@@ -806,6 +808,25 @@ export const translations = {
     client_optional: "ไม่จำเป็นฝั่งไคลเอนต์",
     loaders_label: "Loaders",
     versions_label: "เวอร์ชัน",
+
+    // Project Detail Page
+    all_mc_versions: "เวอร์ชันทั้งหมด",
+    all_loaders: "Loader ทั้งหมด",
+
+    all: "ทั้งหมด",
+    no_versions_found: "ไม่พบเวอร์ชัน",
+    name: "ชื่อ",
+    game_version: "เวอร์ชันเกม",
+    platforms: "แพลตฟอร์ม",
+    published: "เผยแพร่",
+    downloads: "ดาวน์โหลด",
+    compatibility: "ความเข้ากันได้",
+    supported_environments: "สภาพแวดล้อมที่รองรับ",
+    links: "ลิงก์",
+    creators: "ผู้สร้าง",
+    license: "ลิขสิทธิ์",
+    created: "สร้างเมื่อ",
+    updated: "อัปเดตเมื่อ",
 
     // Instance Content Browser
     no_compatible_version_for: "ไม่พบเวอร์ชันที่รองรับสำหรับ {instance}",
@@ -1591,10 +1612,11 @@ export const translations = {
     click_card_left_to_view:
       "Click a card on the left to view more details, images, and versions",
 
-    install_as_new_instance: "Install as New Instance",
     add_to_instance: "Add to Instance",
     search_placeholder: "Search {type}...",
     search_versions: "Search versions...",
+    change_version: "Change Version",
+    fetching_versions: "Fetching available versions...",
     no_compatible_versions: "No compatible versions for {version}",
     select_instance: "Select Instance",
     add_project_to_instance: 'Add "{project}" to which Instance?',
@@ -1665,7 +1687,7 @@ export const translations = {
     installation: "Installation",
     icon: "Icon",
     minecraft_version_label: "Game Version",
-    loading_versions: "Loading versions...",
+
     saving: "Saving...",
     duplicate: "Duplicate",
 

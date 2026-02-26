@@ -19,3 +19,4 @@ export { ProjectList } from "./ProjectList";
 export { ProjectPreview } from "./ProjectPreview";
 export { ProjectCard } from "./ProjectCard";
 export { ImagePreviewModal } from "./ImagePreviewModal";
+export { ProjectDetailPage } from "./ProjectDetailPage";

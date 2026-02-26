@@ -1,8 +1,22 @@
 {
   "name": "reality-launcher",
+  "private": true,
   "type": "module",
-  "version": "2.2.0",
+  "version": "3.0.0",
+  "license": "GPL-3.0-only",
   "main": "dist-electron/main.cjs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/catlab-design/realitylauncher-client.git"
+  },
+  "bugs": {
+    "url": "https://github.com/catlab-design/realitylauncher-client/issues"
+  },
+  "homepage": "https://github.com/catlab-design/realitylauncher-client#readme",
+  "engines": {
+    "node": ">=20",
+    "bun": ">=1.1.0"
+  },
   "author": {
     "name": "Cat Lab_ Design",
     "email": "studiotne1@gmail.com"
@@ -22,7 +36,8 @@
     "dist:flatpak:fast": "electron-builder --linux flatpak --publish never",
     "dist:store": "node scripts/build-msixupload.cjs",
     "dist:store:fast": "SKIP_DIST_WIN=true node scripts/build-msixupload.cjs",
-    "build:rust": "cd ./native && cargo build --release"
+    "build:rust": "cd ./native && cargo build --release",
+    "ci:check": "bun run check:asar-writes && bun run build && cargo check --manifest-path native/Cargo.toml"
   },
   "build": {
     "appId": "net.catlab.reality-launcher",
@@ -133,6 +148,7 @@
     "react-dom": "^19.2.3",
     "react-hot-toast": "^2.6.0",
     "react-markdown": "^10.1.0",
+    "rehype-raw": "^7.0.0",
     "skinview3d": "^3.4.1",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3",

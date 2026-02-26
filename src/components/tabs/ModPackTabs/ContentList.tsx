@@ -1,3 +1,14 @@
+import React, { useState, useEffect, useRef } from "react";
+import { Icons } from "../../ui/Icons";
+import { Skeleton } from "../../ui/Skeleton";
+import { formatSize } from "./helpers";
+import type { ContentItem, DatapackItem } from "./types";
+import { playClick } from "../../../lib/sounds";
+import { useTranslation } from "../../../hooks/useTranslation";
+import { LazyContentItem } from "./LazyContentItem";
+
+import toast from "react-hot-toast";
+
 // ฟังก์ชันลบอักขระพิเศษ (เช่น §, $, |) ออกจากชื่อไฟล์ เพื่อให้แสดงผลอ่านง่าย
 function cleanName(name: string = ""): string {
     // ลบอักขระ Minecraft formatting (§...) และอักขระพิเศษทั่วไป
@@ -8,26 +19,12 @@ function cleanName(name: string = ""): string {
         .trim();
 }
 
-function currentNameForKey(item: { filename?: string; name?: string }) {
-    const n = (item.filename || item.name || '').toString();
-    return n.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
-}
-// ========================================
-// Generic Content List Component
-// (for resourcepacks, shaders, datapacks)
-// ========================================
-
-import React, { useState, useEffect, useRef } from "react";
-import { Icons } from "../../ui/Icons";
-import { Skeleton } from "../../ui/Skeleton";
-import { formatSize } from "./helpers";
-import type { ContentItem, DatapackItem } from "./types";
-import { playClick } from "../../../lib/sounds";
-import { useTranslation } from "../../../hooks/useTranslation";
-import { LazyContentItem } from "./LazyContentItem";
-
 interface ContentListProps {
     colors: any;
+    instanceId: string;
+    instanceName: string;
+    minecraftVersion: string;
+    loader: string;
     items: ContentItem[] | DatapackItem[];
     isLoading: boolean;
     contentType: "resourcepack" | "shader" | "datapack";
@@ -40,6 +37,10 @@ interface ContentListProps {
 
 export function ContentList({
     colors,
+    instanceId,
+    instanceName,
+    minecraftVersion,
+    loader,
     items,
     isLoading,
     contentType,
@@ -54,6 +55,8 @@ export function ContentList({
     const [page, setPage] = useState(1);
     const ITEMS_PER_PAGE = 20;
     const [selectedFilenames, setSelectedFilenames] = useState<Set<string>>(new Set());
+
+
 
     // Reset page when search changes
     useEffect(() => {
@@ -113,6 +116,8 @@ export function ContentList({
             setSelectedFilenames(new Set());
         }
     };
+
+
 
     return (
         <>
@@ -276,7 +281,7 @@ export function ContentList({
             ) : (
                 <div className="space-y-2">
                     {(isLoading ? Array.from({ length: 5 }) : paginatedItems).map((item, index) => {
-                        let key = `skeleton-${index}`;
+                        let key = item ? ((item as any).filename + index) : `skeleton-${index}`;
                         let content = null;
 
                         if (item) {
@@ -288,6 +293,7 @@ export function ContentList({
                                     colors={colors}
                                     onToggle={onToggle}
                                     onDelete={onDelete}
+
                                     index={index}
                                     isSelected={selectedFilenames.has((item as ContentItem).filename)}
                                     onToggleSelection={(filename: string) => {
@@ -356,6 +362,8 @@ export function ContentList({
                         </div>
                     </div>
             )}
+
+
         </>
     );
 }
@@ -401,5 +409,3 @@ function ContentListItemWrapper({
         </div>
     );
 }
-
-

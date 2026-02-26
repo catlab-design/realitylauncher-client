@@ -49,7 +49,7 @@ export function ContentTabs({
                     <button
                         key={tab.id}
                         onClick={() => { playClick(); onTabChange(tab.id); }}
-                        className="px-4 py-2 rounded-xl text-sm font-medium transition-all relative group flex items-center gap-2"
+                        className="px-3 py-1.5 rounded-xl text-sm font-medium transition-all relative group flex items-center gap-1.5"
                         style={{
                             color: active ? "#1a1a1a" : colors.onSurfaceVariant,
                         }}
@@ -63,7 +63,7 @@ export function ContentTabs({
                                 transition={{ duration: 0.15 }}
                             />
                         )}
-                        <TabIcon className="w-4 h-4 z-10 relative" />
+                        <TabIcon className="w-3.5 h-3.5 z-10 relative" />
                         <span className="z-10 relative">{tab.label}</span>
                         {(tab.id === "mods" || tab.count > 0) && (
                             <span

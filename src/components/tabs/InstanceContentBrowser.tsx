@@ -534,7 +534,7 @@ export function InstanceContentBrowser({
                             className="flex items-center gap-2 text-sm hover:opacity-80"
                             style={{ color: colors.onSurfaceVariant }}
                         >
-                            <i className="fa-solid fa-arrow-left"></i>
+                            <i className="fa-solid fa-arrow-left" style={{ color: colors.secondary }}></i>
                             {t('back')}
                         </button>
 
@@ -617,7 +617,7 @@ export function InstanceContentBrowser({
                                         onClick={() => { playClick(); setContentType(tab.type); setPage(1); }}
                                         className="px-3 py-1 rounded-md text-xs font-medium transition-all relative group flex items-center gap-2"
                                         style={{
-                                            color: active ? "#1a1a1a" : colors.onSurfaceVariant,
+                                            color: active ? "#000" : colors.onSurfaceVariant,
                                         }}
                                     >
                                         {active && (
@@ -943,7 +943,7 @@ export function InstanceContentBrowser({
                                                 className="w-full py-3 rounded-xl text-sm font-bold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
                                                 style={{
                                                     backgroundColor: colors.secondary,
-                                                    color: "#1a1a1a"
+                                                    color: "#000"
                                                 }}
                                             >
                                                 <i className="fa-solid fa-download"></i>
@@ -954,7 +954,8 @@ export function InstanceContentBrowser({
 
                                     {/* Description */}
                                     <div className="mb-6 flex-1">
-                                        <h4 className="text-xs font-bold uppercase tracking-wider mb-2 opacity-70" style={{ color: colors.onSurfaceVariant }}>
+                                        <h4 className="text-sm font-black uppercase tracking-[0.25em] mb-4 flex items-center gap-3" style={{ color: colors.onSurface }}>
+                                            <span className="w-1 h-4 rounded-full" style={{ backgroundColor: colors.secondary }} />
                                             {t('about')}
                                         </h4>
                                         <p className="text-xs leading-relaxed opacity-90 whitespace-pre-line" style={{ color: colors.onSurface }}>
@@ -965,7 +966,8 @@ export function InstanceContentBrowser({
                                     {/* Gallery Preview */}
                                     {previewProject.gallery && previewProject.gallery.length > 0 && (
                                         <div className="mb-4">
-                                            <h4 className="text-xs font-bold uppercase tracking-wider mb-2 opacity-70" style={{ color: colors.onSurfaceVariant }}>
+                                            <h4 className="text-sm font-black uppercase tracking-[0.25em] mb-4 flex items-center gap-3" style={{ color: colors.onSurface }}>
+                                                <span className="w-1 h-4 rounded-full" style={{ backgroundColor: colors.secondary }} />
                                                 {t('gallery')}
                                             </h4>
                                             <div className="grid grid-cols-2 gap-2">

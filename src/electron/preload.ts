@@ -109,7 +109,12 @@ const api = {
   discordRPCSetEnabled: (enabled: boolean) =>
     ipcRenderer.invoke("discord-rpc-set-enabled", enabled),
   discordRPCUpdate: (
-    status: "idle" | "playing" | "launching" | "browsing_modpacks" | "browsing_servers",
+    status:
+      | "idle"
+      | "playing"
+      | "launching"
+      | "browsing_modpacks"
+      | "browsing_servers",
     serverName?: string,
     serverIcon?: string,
   ) => ipcRenderer.invoke("discord-rpc-update", status, serverName, serverIcon),
@@ -265,6 +270,7 @@ const api = {
     limit?: number;
     offset?: number;
     sortBy?: string;
+    facets?: string;
   }) => ipcRenderer.invoke("modrinth-search", filters),
   modrinthGetProject: (idOrSlug: string) =>
     ipcRenderer.invoke("modrinth-get-project", idOrSlug),
@@ -318,9 +324,12 @@ const api = {
     sortBy?: string;
     pageSize?: number;
     index?: number;
+    modLoaderType?: string | number;
   }) => ipcRenderer.invoke("curseforge-search", filters),
   curseforgeGetProject: (projectId: number | string) =>
     ipcRenderer.invoke("curseforge-get-project", projectId),
+  curseforgeGetDescription: (projectId: number | string) =>
+    ipcRenderer.invoke("curseforge-get-description", projectId),
   curseforgeGetFiles: (projectId: number | string, gameVersion?: string) =>
     ipcRenderer.invoke("curseforge-get-files", projectId, gameVersion),
   curseforgeGetFile: (projectId: number | string, fileId: number | string) =>
@@ -763,5 +772,5 @@ const api = {
 contextBridge.exposeInMainWorld("api", api);
 contextBridge.exposeInMainWorld(
   "API_URL",
-  "https://api.reality.notpumpkins.com",
+  "https://api.reality.catlabdesign.space",
 );

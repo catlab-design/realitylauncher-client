@@ -756,6 +756,9 @@ export function InstanceDetail({
                     <ModsList
                         colors={colors}
                         instanceId={instance.id}
+                        instanceName={instance.name}
+                        minecraftVersion={instance.minecraftVersion}
+                        loader={instance.loader}
                         mods={mods}
                         isLoading={modsLoading}
                         onToggle={handleToggleMod}
@@ -776,10 +779,10 @@ export function InstanceDetail({
                                         onUpdate(instance.id, { lockedMods: result.lockedMods });
                                     }
                                 } else {
-                                    toast.error(t('save_lock_failed'));
+                                    toast.error(t('save_lock_failed' as any));
                                 }
                             } catch (e) {
-                                toast.error(t('error_occurred'));
+                                toast.error(t('error_occurred' as any));
                             }
                         } : undefined}
                     />
@@ -789,10 +792,14 @@ export function InstanceDetail({
                 {contentTab === "resourcepacks" && (
                     <ContentList
                         colors={colors}
+                        instanceId={instance.id}
+                        instanceName={instance.name}
+                        minecraftVersion={instance.minecraftVersion}
+                        loader={instance.loader}
                         items={resourcepacks}
                         isLoading={resourcepacksLoading}
                         contentType="resourcepack"
-                        emptyMessage={t('no_resourcepacks')}
+                        emptyMessage={t('no_resourcepacks' as any)}
                         onToggle={handleToggleResourcepack}
                         onDelete={handleDeleteResourcepack}
                         onAddContent={() => { setBrowserContentType("resourcepack"); setShowContentBrowser(true); }}
@@ -804,10 +811,14 @@ export function InstanceDetail({
                 {contentTab === "datapacks" && (
                     <ContentList
                         colors={colors}
+                        instanceId={instance.id}
+                        instanceName={instance.name}
+                        minecraftVersion={instance.minecraftVersion}
+                        loader={instance.loader}
                         items={datapacks}
                         isLoading={datapacksLoading}
                         contentType="datapack"
-                        emptyMessage={t('no_datapacks')}
+                        emptyMessage={t('no_datapacks' as any)}
                         onToggle={handleToggleDatapack}
                         onDelete={handleDeleteDatapack}
                         onAddContent={() => { setBrowserContentType("datapack"); setShowContentBrowser(true); }}
@@ -819,10 +830,14 @@ export function InstanceDetail({
                 {contentTab === "shaders" && (
                     <ContentList
                         colors={colors}
+                        instanceId={instance.id}
+                        instanceName={instance.name}
+                        minecraftVersion={instance.minecraftVersion}
+                        loader={instance.loader}
                         items={shaders}
                         isLoading={shadersLoading}
                         contentType="shader"
-                        emptyMessage={t('no_shaders')}
+                        emptyMessage={t('no_shaders' as any)}
                         onToggle={handleToggleShader}
                         onDelete={handleDeleteShader}
                         onAddContent={() => { setBrowserContentType("shader"); setShowContentBrowser(true); }}

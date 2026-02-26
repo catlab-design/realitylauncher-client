@@ -2579,100 +2579,101 @@ function LauncherAppContent() {
             />
 
             {/* Content Area */}
-          <main className="flex-1 overflow-auto pt-3 px-6 pb-6">
-            {activeTab === "home" && (
-              <Home
-                session={session}
-                news={news}
-                servers={servers}
-                selectedServer={selectedServer}
-                setSelectedServer={setSelectedServer}
-                setSelectedInstance={setSelectedInstance}
-                colors={colors}
-                setActiveTab={setActiveTab}
-                language={config.language}
-              />
-            )}
+          <main className="flex-1 overflow-auto pt-3 px-6 pb-6 relative">
+            {/* Seamless Tab Transition Wrapper */}
+            <div key={activeTab} className="h-full animate-fade-in">
+              {activeTab === "home" && (
+                <Home
+                  session={session}
+                  news={news}
+                  servers={servers}
+                  selectedServer={selectedServer}
+                  setSelectedServer={setSelectedServer}
+                  setSelectedInstance={setSelectedInstance}
+                  colors={colors}
+                  setActiveTab={setActiveTab}
+                  language={config.language}
+                />
+              )}
 
-            {activeTab === "servers" && (
-              <ServerMenu
-                colors={colors}
-                servers={servers}
-                selectedServer={selectedServer}
-                setSelectedServer={setSelectedServer}
-                session={session}
-                setActiveTab={setActiveTab}
-                refreshTrigger={serverRefreshTrigger}
-                language={config.language}
-                config={config}
-                updateConfig={updateConfig}
-                setSettingsTab={setSettingsTab}
-              />
-            )}
+              {activeTab === "servers" && (
+                <ServerMenu
+                  colors={colors}
+                  servers={servers}
+                  selectedServer={selectedServer}
+                  setSelectedServer={setSelectedServer}
+                  session={session}
+                  setActiveTab={setActiveTab}
+                  refreshTrigger={serverRefreshTrigger}
+                  language={config.language}
+                  config={config}
+                  updateConfig={updateConfig}
+                  setSettingsTab={setSettingsTab}
+                />
+              )}
 
+              {/* Modpack Tab - Always render to preserve game state */}
+              <div key="modpack-tab" className="h-full" style={{ display: activeTab === "modpack" ? "block" : "none" }}>
+                <ModPack
+                  colors={colors}
+                  config={config}
+                  setImportModpackOpen={setImportModpackOpen}
+                  setActiveTab={setActiveTab}
+                  setSettingsTab={setSettingsTab}
+                  onShowConfirm={handleShowConfirm}
+                  isActive={activeTab === "modpack"}
+                  selectedInstance={selectedInstance}
+                  setSelectedInstance={setSelectedInstance}
+                  selectedServer={selectedServer}
+                  session={session}
+                  updateConfig={updateConfig}
+                  language={config.language}
+                />
+              </div>
 
+              {/* Explore Tab */}
+              {activeTab === "explore" && (
+                <UIErrorBoundary>
+                  <Explore colors={colors} config={config} />
+                </UIErrorBoundary>
+              )}
 
-            {/* Modpack Tab - Always render to preserve game state */}
-            <div key="modpack-tab" className="h-full" style={{ display: activeTab === "modpack" ? "block" : "none" }}>
-              <ModPack
-                colors={colors}
-                config={config}
-                setImportModpackOpen={setImportModpackOpen}
-                setActiveTab={setActiveTab}
-                setSettingsTab={setSettingsTab}
-                onShowConfirm={handleShowConfirm}
-                isActive={activeTab === "modpack"}
-                selectedInstance={selectedInstance}
-                setSelectedInstance={setSelectedInstance}
-                selectedServer={selectedServer}
-                session={session}
-                updateConfig={updateConfig}
-                language={config.language}
-              />
+              {/* Settings Tab */}
+              {activeTab === "settings" && (
+                <Settings
+                  config={config}
+                  updateConfig={updateConfig}
+                  colors={colors}
+                  setSettingsTab={setSettingsTab}
+                  settingsTab={settingsTab}
+                  handleBrowseJava={handleBrowseJava}
+                  handleBrowseMinecraftDir={handleBrowseMinecraftDir}
+                  session={session}
+                  accounts={accounts}
+                  handleLogout={handleLogout}
+                  selectAccount={selectAccount}
+                  removeAccount={removeAccountFromList}
+                  setLoginDialogOpen={setLoginDialogOpen}
+                  handleUnlink={handleUnlink}
+                  setLinkCatIDOpen={setLinkCatIDOpen}
+                  onLinkMicrosoft={handleLinkMicrosoft}
+                />
+              )}
+
+              {/* Admin Panel Tab - Only for admins */}
+              {activeTab === "admin" && isAdmin && adminToken && (
+                <AdminPanel
+                  colors={colors}
+                  adminToken={adminToken}
+                  language={config.language}
+                />
+              )}
+
+              {/* About Tab - New Premium Component */}
+              {activeTab === "about" && <About colors={colors} config={config} />}
+              {/* Wardrobe Tab */}
+              {activeTab === "wardrobe" && <Wardrobe colors={colors} />}
             </div>
-
-            {/* Explore Tab */}
-            {activeTab === "explore" && (
-              <UIErrorBoundary>
-                <Explore colors={colors} config={config} />
-              </UIErrorBoundary>
-            )}
-
-            {/* Settings Tab */}
-            {activeTab === "settings" && (
-              <Settings
-                config={config}
-                updateConfig={updateConfig}
-                colors={colors}
-                setSettingsTab={setSettingsTab}
-                settingsTab={settingsTab}
-                handleBrowseJava={handleBrowseJava}
-                handleBrowseMinecraftDir={handleBrowseMinecraftDir}
-                session={session}
-                accounts={accounts}
-                handleLogout={handleLogout}
-                selectAccount={selectAccount}
-                removeAccount={removeAccountFromList}
-                setLoginDialogOpen={setLoginDialogOpen}
-                handleUnlink={handleUnlink}
-                setLinkCatIDOpen={setLinkCatIDOpen}
-                onLinkMicrosoft={handleLinkMicrosoft}
-              />
-            )}
-
-            {/* Admin Panel Tab - Only for admins */}
-            {activeTab === "admin" && isAdmin && adminToken && (
-              <AdminPanel
-                colors={colors}
-                adminToken={adminToken}
-                language={config.language}
-              />
-            )}
-
-            {/* About Tab - New Premium Component */}
-            {activeTab === "about" && <About colors={colors} config={config} />}
-            {/* Wardrobe Tab */}
-            {activeTab === "wardrobe" && <Wardrobe colors={colors} />}
           </main>
         </div>
       </div>

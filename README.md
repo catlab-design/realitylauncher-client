@@ -1,62 +1,70 @@
-# Reality Launcher (Client)
+# Reality Launcher Client
 
-The desktop client for Reality Launcher. Built with Electron, Astro, React, and a Rust core for high-performance process management.
+Desktop client for Reality Launcher, built with Electron + Astro/React and a Rust native module.
 
-## Tech Stack
+## Stack
+- Frontend: [Astro](https://astro.build/) + React
+- Desktop shell: [Electron](https://www.electronjs.org/)
+- Native module: Rust (`native/`, napi-rs)
+- Styling: Tailwind CSS
 
-*   **Frontend**: [Astro](https://astro.build/) + React
-*   **Shell**: [Electron](https://www.electronjs.org/)
-*   **Core Logic**: Rust (native)
-*   **Styling**: Tailwind CSS
-*   **Bundler**: Vite (via Astro)
+## Requirements
+- [Bun](https://bun.sh/) 1.x
+- [Node.js](https://nodejs.org/) 20+ (for tooling/scripts)
+- [Rust](https://www.rust-lang.org/tools/install) stable
 
-## Prerequisites
-
-*   [Node.js](https://nodejs.org/) (v18+)
-*   [Rust](https://www.rust-lang.org/tools/install) (latest stable) - Required for building `native`.
-
-## Setup
-
-1.  Install Node dependencies:
-    ```bash
-    npm install
-    # or
-    bun install
-    ```
-
-2.  Build the Rust Core:
-    The launcher relies on a Rust binary for heavy lifting (game launch, process monitoring).
-    ```bash
-    npm run build:rust
-    ```
-    *This compiles the code in `./native`.*
-
-## Development
-
-Run the app in development mode (hot-reload enabled):
-
+## Quick Start
 ```bash
-npm run dev
+bun install
+cd native && bun install && bun run build && cd ..
+bun run dev
 ```
 
-## Build & Distribute
-
-Build the production executable (calls `build:rust` internally if configured, otherwise ensure rust is built):
-
+## Common Commands
 ```bash
-# For current OS
-npm run dist
+# Build web + electron bundles
+bun run build
 
-# Specific platforms (requires appropriate build tools)
-npm run dist:win
-npm run dist:mac
-npm run dist:linux
+# Build native module only
+bun run build:rust
+
+# Package installers
+bun run dist
+bun run dist:win
+bun run dist:mac
+bun run dist:linux
 ```
 
-Output files will be in the `release` directory.
+Build artifacts are generated in `release-build/`.
 
-## Architecture
+## Environment
+Copy `.env.example` to `.env.local` and adjust only what you need.
 
-*   `src/electron`: Main process code (IPC, Node.js APIs).
-*   `src/pages`, `src/components`: UI code (Astro/React).
-*   `./native`: Rust implementation for game launching logic.
+Main optional runtime env vars:
+- `ML_API_URL`
+- `AUTH_URL`
+- `ML_CURSEFORGE_DOWNLOAD_CONCURRENCY`
+- `ML_MODPACK_DOWNLOAD_CONCURRENCY`
+
+Windows Store release helpers:
+- `MS_STORE_PRODUCT_ID`
+- `MS_STORE_MSIX_ARCH`
+- `MS_STORE_TENANT_ID`
+- `MS_STORE_SELLER_ID`
+- `MS_STORE_CLIENT_ID`
+- `MS_STORE_CLIENT_SECRET`
+- `MSSTORE_BIN`
+
+## CI And Release
+- Public CI for PRs runs on GitHub-hosted runners (`.github/workflows/ci.yml`).
+- Release pipeline uses self-hosted runners (`.github/workflows/build.yml`) and publish secrets.
+- macOS self-hosted release runner is opt-in via repo variable `ENABLE_MACOS_RUNNER=true`.
+
+## Contributing
+See [CONTRIBUTING.md](./CONTRIBUTING.md).
+
+## Security
+See [SECURITY.md](./SECURITY.md).
+
+## License
+GPL-3.0-only. See [LICENSE](./LICENSE).

@@ -8,4 +8,4 @@
  */
 
 /** Reality Launcher API base URL */
-export const API_URL = 'https://api.reality.notpumpkins.com';
+export const API_URL = 'https://api.reality.catlabdesign.space';

@@ -2,7 +2,6 @@ name: Build and Release
 
 on:
   push:
-    branches: [main]
     tags:
       - 'v*'
   workflow_dispatch:
@@ -28,25 +27,9 @@ env:
 jobs:
   build:
     strategy:
-      matrix:
-        include:
-          - os: windows-latest
-            platform: win
-            electron_cache_path: |
-              ~\AppData\Local\electron\Cache
-              ~\AppData\Local\electron-builder\Cache
-          - os: ubuntu-latest
-            platform: linux
-            electron_cache_path: |
-              ~/.cache/electron
-              ~/.cache/electron-builder
-          - os: macos-latest
-            platform: mac
-            electron_cache_path: |
-              ~/Library/Caches/electron
-              ~/Library/Caches/electron-builder
+      matrix: ${{ fromJson(vars.ENABLE_MACOS_RUNNER == 'true' && '{"include":[{"runs_on":"[\"self-hosted\",\"windows\"]","platform":"win"},{"runs_on":"[\"self-hosted\",\"linux\"]","platform":"linux"},{"runs_on":"[\"self-hosted\",\"macOS\"]","platform":"mac"}]}' || '{"include":[{"runs_on":"[\"self-hosted\",\"windows\"]","platform":"win"},{"runs_on":"[\"self-hosted\",\"linux\"]","platform":"linux"}]}') }}
 
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ fromJson(matrix.runs_on) }}
     
     permissions:
       contents: read
@@ -55,13 +38,70 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Bun
+      - name: Setup Bun (Windows)
+        if: matrix.platform == 'win'
         uses: oven-sh/setup-bun@v1
         with:
           bun-version: latest
 
-      - name: Setup Rust
+      - name: Setup Node.js (Windows)
+        if: matrix.platform == 'win'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Rust (Windows)
+        if: matrix.platform == 'win'
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Bootstrap Homebrew toolchain (Linux/macOS)
+        if: matrix.platform != 'win'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if command -v brew >/dev/null 2>&1; then
+            BREW_BIN="$(command -v brew)"
+          else
+            NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+            if [ -x /home/linuxbrew/.linuxbrew/bin/brew ]; then
+              BREW_BIN="/home/linuxbrew/.linuxbrew/bin/brew"
+            elif [ -x /opt/homebrew/bin/brew ]; then
+              BREW_BIN="/opt/homebrew/bin/brew"
+            elif [ -x /usr/local/bin/brew ]; then
+              BREW_BIN="/usr/local/bin/brew"
+            else
+              echo "ERROR: brew binary not found after Homebrew install."
+              exit 1
+            fi
+          fi
+
+          BREW_PREFIX="$("$BREW_BIN" --prefix)"
+          NODE20_BIN="$("$BREW_BIN" --prefix node@20 2>/dev/null || true)/bin"
+          export PATH="$BREW_PREFIX/bin:$BREW_PREFIX/sbin:$PATH"
+          echo "$BREW_PREFIX/bin" >> "$GITHUB_PATH"
+          echo "$BREW_PREFIX/sbin" >> "$GITHUB_PATH"
+
+          "$BREW_BIN" update
+          if ! "$BREW_BIN" list bun >/dev/null 2>&1; then
+            "$BREW_BIN" tap oven-sh/bun
+            "$BREW_BIN" install bun
+          fi
+          "$BREW_BIN" list node@20 >/dev/null 2>&1 || "$BREW_BIN" install node@20
+          "$BREW_BIN" list rustup >/dev/null 2>&1 || "$BREW_BIN" install rustup
+
+          NODE20_BIN="$("$BREW_BIN" --prefix node@20)/bin"
+          export PATH="$NODE20_BIN:$PATH"
+          echo "$NODE20_BIN" >> "$GITHUB_PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+          if ! command -v rustup >/dev/null 2>&1; then
+            echo "ERROR: rustup not found after Homebrew install."
+            exit 1
+          fi
+
+          rustup toolchain install stable --profile minimal
+          rustup default stable
 
       - name: Cache Bun package downloads
         uses: actions/cache@v4
@@ -131,10 +171,35 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
-      - name: Cache Electron binaries
+      - name: Cache Electron binaries (Windows)
+        if: matrix.platform == 'win'
         uses: actions/cache@v4
         with:
-          path: ${{ matrix.electron_cache_path }}
+          path: |
+            ~\AppData\Local\electron\Cache
+            ~\AppData\Local\electron-builder\Cache
+          key: ${{ runner.os }}-electron-cache-${{ hashFiles('package.json', 'package-lock.json', 'bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-cache-
+
+      - name: Cache Electron binaries (Linux)
+        if: matrix.platform == 'linux'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+          key: ${{ runner.os }}-electron-cache-${{ hashFiles('package.json', 'package-lock.json', 'bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-cache-
+
+      - name: Cache Electron binaries (macOS)
+        if: matrix.platform == 'mac'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
           key: ${{ runner.os }}-electron-cache-${{ hashFiles('package.json', 'package-lock.json', 'bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-electron-cache-
@@ -223,11 +288,6 @@ jobs:
 
           Write-Host "Generated Store package: $($package.FullName)"
 
-      # macOS build disabled
-      # - name: Build Electron app (macOS)
-      #   if: matrix.platform == 'mac'
-      #   run: npm run dist:mac
-
       - name: Build Electron app (Linux)
         if: matrix.platform == 'linux'
         run: bunx electron-builder --linux --publish never
@@ -268,18 +328,6 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # macOS artifact upload disabled
-      # - name: Upload macOS artifacts
-      #   if: matrix.platform == 'mac'
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: reality-launcher-macos
-      #     path: |
-      #       release/*.dmg
-      #       release/*.dmg.blockmap
-      #       release/latest-mac.yml
-      #     retention-days: 30
-
       - name: Upload Linux artifacts
         if: matrix.platform == 'linux'
         uses: actions/upload-artifact@v4
@@ -308,7 +356,7 @@ jobs:
 
   release:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux]
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch'
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -319,6 +367,44 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Bootstrap Homebrew toolchain (Linux)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if command -v brew >/dev/null 2>&1; then
+            BREW_BIN="$(command -v brew)"
+          else
+            NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+            if [ -x /home/linuxbrew/.linuxbrew/bin/brew ]; then
+              BREW_BIN="/home/linuxbrew/.linuxbrew/bin/brew"
+            elif [ -x /opt/homebrew/bin/brew ]; then
+              BREW_BIN="/opt/homebrew/bin/brew"
+            elif [ -x /usr/local/bin/brew ]; then
+              BREW_BIN="/usr/local/bin/brew"
+            else
+              echo "ERROR: brew binary not found after Homebrew install."
+              exit 1
+            fi
+          fi
+
+          BREW_PREFIX="$("$BREW_BIN" --prefix)"
+          export PATH="$BREW_PREFIX/bin:$BREW_PREFIX/sbin:$PATH"
+          echo "$BREW_PREFIX/bin" >> "$GITHUB_PATH"
+          echo "$BREW_PREFIX/sbin" >> "$GITHUB_PATH"
+
+          "$BREW_BIN" update
+          if ! "$BREW_BIN" list bun >/dev/null 2>&1; then
+            "$BREW_BIN" tap oven-sh/bun
+            "$BREW_BIN" install bun
+          fi
+          "$BREW_BIN" list node@20 >/dev/null 2>&1 || "$BREW_BIN" install node@20
+          "$BREW_BIN" list jq >/dev/null 2>&1 || "$BREW_BIN" install jq
+
+          NODE20_BIN="$("$BREW_BIN" --prefix node@20)/bin"
+          export PATH="$NODE20_BIN:$PATH"
+          echo "$NODE20_BIN" >> "$GITHUB_PATH"
 
       - name: Resolve release version
         id: version
@@ -351,19 +437,12 @@ jobs:
           echo "=== Downloaded artifacts ==="
           ls -R artifacts
 
-      - name: Setup Node.js for wrangler
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: latest
-
-
       - name: Install wrangler
-        run: bun install -g wrangler
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun install -g wrangler
+          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
 
       
       - name: Verify R2 credentials
@@ -445,6 +524,7 @@ jobs:
           fi
 
       - name: Upload macOS build to R2
+        if: ${{ hashFiles('artifacts/reality-launcher-macos/**') != '' }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -522,23 +602,26 @@ jobs:
           
           # Detect actual filenames (handle spaces correctly)
           WIN_PATH=$(find artifacts/reality-launcher-windows -name "*.exe" | head -n 1)
-          MAC_PATH=$(find artifacts/reality-launcher-macos -name "*.dmg" | head -n 1)
+          MAC_PATH=$(find artifacts/reality-launcher-macos -name "*.dmg" | head -n 1 || true)
           LINUX_PATH=$(find artifacts/reality-launcher-linux -name "*.AppImage" | head -n 1)
           FLATPAK_PATH=$(find artifacts/reality-launcher-linux -name "*.flatpak" | head -n 1 || true)
 
-          if [ -z "$WIN_PATH" ] || [ -z "$MAC_PATH" ] || [ -z "$LINUX_PATH" ]; then
-            echo "ERROR: Missing one or more required artifacts (win/mac/linux)."
+          if [ -z "$WIN_PATH" ] || [ -z "$LINUX_PATH" ]; then
+            echo "ERROR: Missing one or more required artifacts (win/linux)."
             find artifacts -maxdepth 3 -type f | sort
             exit 1
           fi
           
           WIN_FILE=$(basename "$WIN_PATH")
-          MAC_FILE=$(basename "$MAC_PATH")
           LINUX_FILE=$(basename "$LINUX_PATH")
 
           # URL Encode filenames (replace spaces with %20)
           WIN_URL="$CDN_URL/client/$VERSION/$(echo "$WIN_FILE" | sed 's/ /%20/g')"
-          MAC_URL="$CDN_URL/client/$VERSION/$(echo "$MAC_FILE" | sed 's/ /%20/g')"
+          MAC_URL=""
+          if [ -n "$MAC_PATH" ]; then
+            MAC_FILE=$(basename "$MAC_PATH")
+            MAC_URL="$CDN_URL/client/$VERSION/$(echo "$MAC_FILE" | sed 's/ /%20/g')"
+          fi
           LINUX_URL="$CDN_URL/client/$VERSION/$(echo "$LINUX_FILE" | sed 's/ /%20/g')"
           FLATPAK_URL=""
           if [ -n "$FLATPAK_PATH" ]; then
@@ -559,7 +642,8 @@ jobs:
               releaseDate: $releaseDate,
               changelog: $changelog,
               downloads: (
-                { windows: $windows, mac: $mac, linux: $linux } +
+                { windows: $windows, linux: $linux } +
+                (if $mac == "" then {} else { mac: $mac } end) +
                 (if $flatpak == "" then {} else { flatpak: $flatpak } end)
               )
             }' > latest.json
@@ -612,7 +696,7 @@ jobs:
 
   microsoft-store:
     needs: release
-    runs-on: windows-latest
+    runs-on: [self-hosted, windows]
     if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch') && vars.ENABLE_MS_STORE_RELEASE == 'true'
 
     steps:

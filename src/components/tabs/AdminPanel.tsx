@@ -181,7 +181,7 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
     return (
         <div className="p-6 space-y-6 overflow-y-auto max-h-full">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between animate-fade-in-up">
                 <div>
                     <h1 className="text-2xl font-bold flex items-center gap-2" style={{ color: colors.onSurface }}>
                         <Icons.Settings className="w-6 h-6" style={{ color: colors.secondary }} />
@@ -202,7 +202,7 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
             </div>
 
             {/* Microsoft OAuth Card */}
-            <div className="rounded-xl p-5" style={{ backgroundColor: colors.surfaceContainer }}>
+            <div className="rounded-xl p-5 animate-fade-in-up" style={{ backgroundColor: colors.surfaceContainer, animationDelay: '100ms' }}>
                 <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: colors.onSurface }}>
                     <Icons.Microsoft className="w-5 h-5" style={{ color: "#00a4ef" }} />
                     {t('microsoft_oauth')}
@@ -359,7 +359,7 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
             </div>
 
             {/* CurseForge API Card */}
-            <div className="rounded-xl p-5" style={{ backgroundColor: colors.surfaceContainer }}>
+            <div className="rounded-xl p-5 animate-fade-in-up" style={{ backgroundColor: colors.surfaceContainer, animationDelay: '200ms' }}>
                 <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: colors.onSurface }}>
                     <Icons.Box className="w-5 h-5" style={{ color: "#f16436" }} />
                     {t('curseforge_api')}
@@ -398,7 +398,7 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
             </div>
 
             {/* System Info Card */}
-            <div className="rounded-xl p-5" style={{ backgroundColor: colors.surfaceContainer }}>
+            <div className="rounded-xl p-5 animate-fade-in-up" style={{ backgroundColor: colors.surfaceContainer, animationDelay: '300ms' }}>
                 <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: colors.onSurface }}>
                     <Icons.Info className="w-5 h-5" style={{ color: colors.secondary }} />
                     {t('system_info')}
@@ -419,7 +419,9 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
             </div>
 
             {/* User Management Section */}
-            <UserManagement colors={colors} adminToken={adminToken} language={language} />
+            <div className="animate-fade-in-up" style={{ animationDelay: '400ms' }}>
+                <UserManagement colors={colors} adminToken={adminToken} language={language} />
+            </div>
 
             {/* Secret Modal */}
             {secretModalOpen && (

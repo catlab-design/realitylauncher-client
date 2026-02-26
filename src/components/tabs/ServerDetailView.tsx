@@ -231,7 +231,7 @@ export function ServerDetailView({
                                     if (lowerType === 'youtube' || lowerUrl.includes('youtu')) return '#FF0000';
                                     if (lowerType === 'facebook' || lowerUrl.includes('facebook')) return '#1877F2';
                                     if (lowerType === 'twitter' || lowerType === 'x' || lowerUrl.includes('twitter') || lowerUrl.includes('x.com')) return '#000000';
-                                    if (lowerType === 'instagram' || lowerUrl.includes('instagram')) return '#E4405F';
+                                    if (lowerType === 'instagram' || lowerUrl.includes('instagram')) return 'linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%)';
 
                                     return '#2b2d31'; // Default dark gray
                                 };
@@ -240,13 +240,13 @@ export function ServerDetailView({
                                     <>
                                         {socialLinks.map((link, index) => {
                                             const Icon = getSocialIcon(link.url, link.type);
-                                            const color = getSocialColor(link.url, link.type);
+                                            const bgValue = getSocialColor(link.url, link.type);
                                             return (
                                                 <button
                                                     key={index}
                                                     onClick={() => (window as any).api.openExternal(link.url)}
                                                     className="flex-1 min-w-12 h-10 rounded-xl flex items-center justify-center text-white font-bold transition-all hover:scale-[1.05] active:scale-95 shadow-lg hover:brightness-110"
-                                                    style={{ backgroundColor: color }}
+                                                    style={{ background: bgValue }}
                                                 >
                                                     <Icon className="w-5 h-5" />
                                                 </button>

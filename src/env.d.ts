@@ -205,7 +205,12 @@ declare global {
       // Discord RPC
       discordRPCSetEnabled: (enabled: boolean) => Promise<void>;
       discordRPCUpdate: (
-        status: "idle" | "playing" | "launching" | "browsing_modpacks" | "browsing_servers",
+        status:
+          | "idle"
+          | "playing"
+          | "launching"
+          | "browsing_modpacks"
+          | "browsing_servers",
         serverName?: string,
         serverIcon?: string,
       ) => Promise<void>;
@@ -395,6 +400,7 @@ declare global {
         limit?: number;
         offset?: number;
         sortBy?: string;
+        facets?: string;
       }) => Promise<any>;
       modrinthGetProject: (idOrSlug: string) => Promise<any>;
       modrinthGetVersions: (idOrSlug: string) => Promise<any>;
@@ -421,6 +427,7 @@ declare global {
         sortBy?: string;
         pageSize?: number;
         index?: number;
+        modLoaderType?: string | number;
       }) => Promise<{
         data: Array<{
           id: number;
@@ -452,6 +459,9 @@ declare global {
       curseforgeGetProject: (
         projectId: number | string,
       ) => Promise<{ data: any }>;
+      curseforgeGetDescription: (
+        projectId: number | string,
+      ) => Promise<{ data: string }>;
       curseforgeGetFiles: (
         projectId: number | string,
         gameVersion?: string,

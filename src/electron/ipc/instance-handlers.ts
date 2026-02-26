@@ -63,6 +63,7 @@ import {
   setProgressCallback,
   setGameLogCallback,
 } from "../launcher.js";
+import { downloadContentToInstance } from "../content.js";
 import { updateRPC } from "../discord.js";
 import { resolveTelemetryUserIdForSession } from "../telemetry.js";
 
@@ -75,6 +76,7 @@ const activeOperations = new Map<string, AbortController>();
 // Maximum cache sizes to prevent unbounded memory growth
 const MAX_MOD_METADATA_CACHE = 5000;
 const MAX_MODRINTH_PROJECT_CACHE = 2000;
+const MAX_ICON_CACHE = 3000;
 
 // Cache for mod metadata
 interface ModMetadataCache {
@@ -87,6 +89,8 @@ interface ModMetadataCache {
   modrinthId?: string; // "found" | "checked"
   id?: string; // The internal Mod ID (slug)
   version?: string;
+  modrinthProjectId?: string;
+  curseforgeProjectId?: string;
 }
 const modMetadataCache = new Map<string, ModMetadataCache>();
 // Persistent Cache Logic
@@ -144,16 +148,74 @@ function evictMapIfNeeded<K, V>(map: Map<K, V>, maxSize: number): void {
   }
 }
 
-// Cache for project ID -> icon URL to avoid re-fetching project info
-const modrinthProjectCache = new Map<string, string>();
+// Cache for project info (ID/Slug -> icon URL & project ID)
+const modrinthProjectCache = new Map<
+  string,
+  { icon: string | null; id: string }
+>();
 
 // Cache for content icon (shaders, resourcepacks) - name -> icon URL
-// Cache expires after 30 minutes to allow refresh
+// Cache expires after 24 hours to allow refresh while persisting across restarts
 const contentIconCache = new Map<
   string,
-  { url: string | null; timestamp: number }
+  {
+    url: string | null;
+    modrinthId?: string;
+    curseforgeId?: string;
+    timestamp: number;
+  }
 >();
-const ICON_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+const ICON_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours (persistent cache)
+
+// Persistent Icon Cache Logic
+const ICON_CACHE_FILE = "icon-cache.json";
+let iconCacheLoaded = false;
+let iconSaveTimeout: NodeJS.Timeout | null = null;
+
+function getIconCachePath() {
+  return path.join(getAppDataDir(), ICON_CACHE_FILE);
+}
+
+function loadIconCache() {
+  if (iconCacheLoaded) return;
+  try {
+    const cachePath = getIconCachePath();
+    if (existsSync(cachePath)) {
+      const data = readFileSync(cachePath, "utf-8");
+      const json = JSON.parse(data);
+      const now = Date.now();
+      for (const [key, value] of Object.entries(json)) {
+        const entry = value as { url: string | null; timestamp: number };
+        // Only load entries that haven't expired
+        if (now - entry.timestamp < ICON_CACHE_TTL) {
+          contentIconCache.set(key, entry);
+        }
+      }
+      logger.info(
+        `[IconCache] Loaded ${contentIconCache.size} cached icons from disk`,
+      );
+    }
+  } catch (e) {
+    logger.error("Failed to load icon cache", e as Error);
+  }
+  iconCacheLoaded = true;
+}
+
+function saveIconCache() {
+  if (iconSaveTimeout) clearTimeout(iconSaveTimeout);
+  iconSaveTimeout = setTimeout(() => {
+    try {
+      evictMapIfNeeded(contentIconCache, MAX_ICON_CACHE);
+      const cachePath = getIconCachePath();
+      const obj = Object.fromEntries(contentIconCache);
+      writeFileSync(cachePath, JSON.stringify(obj));
+    } catch (e) {
+      logger.error("Failed to save icon cache", e as Error);
+    }
+  }, 3000);
+}
+
+loadIconCache();
 
 // Periodically purge expired content icon cache entries
 setInterval(
@@ -165,21 +227,93 @@ setInterval(
       }
     }
   },
-  5 * 60 * 1000,
-); // Every 5 minutes
+  60 * 60 * 1000,
+); // Every 1 hour
 
-function getIconFromCache(key: string): string | null | undefined {
+function getIconFromCache(
+  key: string,
+):
+  | { url: string | null; modrinthId?: string; curseforgeId?: string }
+  | undefined {
   const cached = contentIconCache.get(key);
   if (!cached) return undefined; // Not in cache
   if (Date.now() - cached.timestamp > ICON_CACHE_TTL) {
     contentIconCache.delete(key);
     return undefined; // Expired
   }
-  return cached.url;
+  return {
+    url: cached.url,
+    modrinthId: cached.modrinthId,
+    curseforgeId: cached.curseforgeId,
+  };
 }
 
-function setIconCache(key: string, url: string | null): void {
-  contentIconCache.set(key, { url, timestamp: Date.now() });
+function setIconCache(
+  key: string,
+  url: string | null,
+  modrinthId?: string,
+  curseforgeId?: string,
+): void {
+  contentIconCache.set(key, {
+    url,
+    modrinthId,
+    curseforgeId,
+    timestamp: Date.now(),
+  });
+  saveIconCache(); // Persist to disk
+}
+
+// ========================================
+// Pack Format -> Minecraft Version Mapping
+// ========================================
+function packFormatToVersion(
+  format: number,
+  type: "resource" | "data" = "resource",
+): string {
+  if (type === "resource") {
+    const resourcePackFormats: Record<number, string> = {
+      1: "1.6.1 – 1.8.9",
+      2: "1.9 – 1.10.2",
+      3: "1.11 – 1.12.2",
+      4: "1.13 – 1.14.4",
+      5: "1.15 – 1.16.1",
+      6: "1.16.2 – 1.16.5",
+      7: "1.17 – 1.17.1",
+      8: "1.18 – 1.18.2",
+      9: "1.19 – 1.19.2",
+      12: "1.19.3",
+      13: "1.19.4",
+      15: "1.20 – 1.20.1",
+      18: "1.20.2",
+      22: "1.20.3 – 1.20.4",
+      32: "1.20.5 – 1.20.6",
+      34: "1.21 – 1.21.1",
+      42: "1.21.2 – 1.21.3",
+      46: "1.21.4",
+      48: "1.21.5",
+    };
+    return resourcePackFormats[format] || `Format ${format}`;
+  } else {
+    const dataPackFormats: Record<number, string> = {
+      4: "1.13 – 1.14.4",
+      5: "1.15 – 1.16.1",
+      6: "1.16.2 – 1.16.5",
+      7: "1.17 – 1.17.1",
+      8: "1.18 – 1.18.1",
+      9: "1.18.2",
+      10: "1.19 – 1.19.3",
+      12: "1.19.4",
+      15: "1.20 – 1.20.1",
+      18: "1.20.2",
+      26: "1.20.3 – 1.20.4",
+      41: "1.20.5 – 1.20.6",
+      48: "1.21 – 1.21.1",
+      57: "1.21.2 – 1.21.3",
+      61: "1.21.4",
+      71: "1.21.5",
+    };
+    return dataPackFormats[format] || `Format ${format}`;
+  }
 }
 
 /**
@@ -222,7 +356,7 @@ function stringSimilarity(s1: string, s2: string): number {
 async function fetchIconFromOnline(
   name: string,
   contentType: "shader" | "resourcepack",
-): Promise<string | null> {
+): Promise<{ url: string | null; modrinthId?: string; curseforgeId?: string }> {
   // Check cache first
   const cacheKey = `${contentType}:${name.toLowerCase()}`;
   const cached = getIconFromCache(cacheKey);
@@ -243,7 +377,7 @@ async function fetchIconFromOnline(
 
   if (!mainName || mainName.length < 3) {
     setIconCache(cacheKey, null);
-    return null;
+    return { url: null };
   }
 
   const projectType = contentType === "shader" ? "shader" : "resourcepack";
@@ -283,8 +417,8 @@ async function fetchIconFromOnline(
           logger.debug(
             `[IconFetch] Found Modrinth icon for "${name}" (score: ${bestScore.toFixed(2)}): ${bestMatch.icon_url}`,
           );
-          setIconCache(cacheKey, bestMatch.icon_url);
-          return bestMatch.icon_url;
+          setIconCache(cacheKey, bestMatch.icon_url, bestMatch.project_id);
+          return { url: bestMatch.icon_url, modrinthId: bestMatch.project_id };
         }
       }
     }
@@ -324,8 +458,16 @@ async function fetchIconFromOnline(
           logger.debug(
             `[IconFetch] Found CurseForge icon for "${name}" (score: ${bestScore.toFixed(2)}): ${bestMatch.logo.url}`,
           );
-          setIconCache(cacheKey, bestMatch.logo.url);
-          return bestMatch.logo.url;
+          setIconCache(
+            cacheKey,
+            bestMatch.logo.url,
+            undefined,
+            String(bestMatch.id),
+          );
+          return {
+            url: bestMatch.logo.url,
+            curseforgeId: String(bestMatch.id),
+          };
         }
       }
     }
@@ -338,7 +480,7 @@ async function fetchIconFromOnline(
   // Cache null to avoid re-fetching
   logger.debug(`[IconFetch] No match found for "${name}", using local icon`);
   setIconCache(cacheKey, null);
-  return null;
+  return { url: null };
 }
 
 function getModCacheKey(filepath: string, size: number, mtime: string): string {
@@ -463,10 +605,12 @@ async function extractModInfo(jarPath: string): Promise<ModMetadataCache> {
 // Modrinth API Helper
 // ========================================
 const ModrinthAPI = {
-  async resolveHashes(hashes: string[]): Promise<Record<string, string>> {
+  async resolveHashes(
+    hashes: string[],
+  ): Promise<Record<string, { icon: string; projectId: string }>> {
     if (hashes.length === 0) return {};
 
-    const results: Record<string, string> = {};
+    const results: Record<string, { icon: string; projectId: string }> = {};
     const chunks = [];
 
     // Chunk hashes to avoid body size limits (e.g. 50 at a time)
@@ -482,7 +626,7 @@ const ModrinthAPI = {
           headers: {
             "Content-Type": "application/json",
             "User-Agent":
-              "RealityLauncher/0.0.1 (help@reality.notpumpkins.com)",
+              "RealityLauncher/0.0.1 (help@reality.catlabdesign.space)",
           },
           body: JSON.stringify({ hashes: chunk, algorithm: "sha1" }),
         });
@@ -500,7 +644,8 @@ const ModrinthAPI = {
             if (!modrinthProjectCache.has(version.project_id)) {
               projectIdsToFetch.add(version.project_id);
             } else {
-              results[hash] = modrinthProjectCache.get(version.project_id)!;
+              const cached = modrinthProjectCache.get(version.project_id)!;
+              results[hash] = { icon: cached.icon!, projectId: cached.id };
             }
           }
         }
@@ -518,17 +663,19 @@ const ModrinthAPI = {
           if (projectResp.ok) {
             const projects = (await projectResp.json()) as any[];
             for (const proj of projects) {
-              if (proj.icon_url) {
-                modrinthProjectCache.set(proj.id, proj.icon_url);
-              }
+              modrinthProjectCache.set(proj.id, {
+                icon: proj.icon_url,
+                id: proj.id,
+              });
             }
           }
         }
 
         // 3. Assemble results
         for (const [hash, pid] of Object.entries(hashToProjectId)) {
-          if (modrinthProjectCache.has(pid)) {
-            results[hash] = modrinthProjectCache.get(pid)!;
+          const cached = modrinthProjectCache.get(pid);
+          if (cached && cached.icon) {
+            results[hash] = { icon: cached.icon, projectId: cached.id };
           }
         }
       } catch (err) {
@@ -538,9 +685,11 @@ const ModrinthAPI = {
     return results;
   },
 
-  async resolveSlugs(slugs: string[]): Promise<Record<string, string>> {
+  async resolveSlugs(
+    slugs: string[],
+  ): Promise<Record<string, { icon: string; projectId: string }>> {
     if (slugs.length === 0) return {};
-    const results: Record<string, string> = {};
+    const results: Record<string, { icon: string; projectId: string }> = {};
 
     // Chunk slugs (50 at a time)
     const chunks = [];
@@ -553,8 +702,9 @@ const ModrinthAPI = {
         // Check cache first
         const toFetch = chunk.filter((id) => !modrinthProjectCache.has(id));
         chunk.forEach((id) => {
-          if (modrinthProjectCache.has(id))
-            results[id] = modrinthProjectCache.get(id)!;
+          const cached = modrinthProjectCache.get(id);
+          if (cached && cached.icon)
+            results[id] = { icon: cached.icon, projectId: cached.id };
         });
 
         if (toFetch.length === 0) continue;
@@ -569,11 +719,12 @@ const ModrinthAPI = {
         if (resp.ok) {
           const projects = (await resp.json()) as any[];
           for (const proj of projects) {
-            if (proj.icon_url) {
-              modrinthProjectCache.set(proj.id, proj.icon_url); // ID
-              modrinthProjectCache.set(proj.slug, proj.icon_url); // Slug
-              results[proj.slug] = proj.icon_url;
-              results[proj.id] = proj.icon_url;
+            const data = { icon: proj.icon_url, id: proj.id };
+            modrinthProjectCache.set(proj.id, data); // ID
+            modrinthProjectCache.set(proj.slug, data); // Slug
+            if (data.icon) {
+              results[proj.slug] = { icon: data.icon, projectId: data.id };
+              results[proj.id] = { icon: data.icon, projectId: data.id };
             }
           }
         }
@@ -703,10 +854,11 @@ export function registerInstanceHandlers(
             modMetadataCache.set(cacheKey, currentMeta);
 
             // Hash Lookup
-            const modrinthIcons = await ModrinthAPI.resolveHashes([hash]);
-            if (modrinthIcons[hash]) {
-              currentMeta.modrinthIcon = modrinthIcons[hash];
-              currentMeta.icon = modrinthIcons[hash];
+            const modrinthResults = await ModrinthAPI.resolveHashes([hash]);
+            if (modrinthResults[hash]) {
+              currentMeta.modrinthIcon = modrinthResults[hash].icon;
+              currentMeta.icon = modrinthResults[hash].icon;
+              currentMeta.modrinthProjectId = modrinthResults[hash].projectId;
               currentMeta.modrinthId = "found";
               modMetadataCache.set(cacheKey, currentMeta);
               saveMetadataCache(); // Save found icon
@@ -720,12 +872,14 @@ export function registerInstanceHandlers(
 
             // Slug Lookup (Fallback)
             if (currentMeta.id) {
-              const slugIcons = await ModrinthAPI.resolveSlugs([
+              const slugResults = await ModrinthAPI.resolveSlugs([
                 currentMeta.id,
               ]);
-              if (slugIcons[currentMeta.id]) {
-                currentMeta.modrinthIcon = slugIcons[currentMeta.id];
-                currentMeta.icon = slugIcons[currentMeta.id];
+              if (slugResults[currentMeta.id]) {
+                currentMeta.modrinthIcon = slugResults[currentMeta.id].icon;
+                currentMeta.icon = slugResults[currentMeta.id].icon;
+                currentMeta.modrinthProjectId =
+                  slugResults[currentMeta.id].projectId;
                 currentMeta.modrinthId = "found";
                 modMetadataCache.set(cacheKey, currentMeta);
                 saveMetadataCache(); // Save found icon
@@ -1285,6 +1439,8 @@ export function registerInstanceHandlers(
               enabled,
               size: stats.size,
               modifiedAt: mtime,
+              modrinthProjectId: metadata?.modrinthProjectId,
+              curseforgeProjectId: metadata?.curseforgeProjectId,
             };
           } catch (e) {
             // skip failed files
@@ -1825,28 +1981,73 @@ export function registerInstanceHandlers(
               }
 
               const cacheKey = `resourcepack:${displayName.toLowerCase()}`;
-              const cachedIcon = getIconFromCache(cacheKey);
+              const cached = getIconFromCache(cacheKey);
 
-              // Try to read icon from pack.png if not in cache
-              let icon = cachedIcon || null;
-              if (!icon) {
+              // Try to read icon and pack.mcmeta from the pack
+              let icon: string | null = cached?.url || null;
+              let modrinthProjectId = cached?.modrinthId;
+              let curseforgeProjectId = cached?.curseforgeId;
+              let version: string | undefined;
+              if (file.endsWith(".zip") || file.endsWith(".zip.disabled")) {
                 try {
-                  if (file.endsWith(".zip") || file.endsWith(".zip.disabled")) {
-                    const buffer = await fs.promises.readFile(filePath);
-                    const zip = new AdmZip(buffer);
+                  const buffer = await fs.promises.readFile(filePath);
+                  const zip = new AdmZip(buffer);
+
+                  // Extract icon
+                  if (!icon) {
                     const packPng = zip.getEntry("pack.png");
                     if (packPng) {
-                      // Ensure packPng is valid
                       icon = `data:image/png;base64,${packPng.getData().toString("base64")}`;
                     }
-                  } else if (isDirectory) {
-                    const packPngPath = path.join(filePath, "pack.png");
-                    if (fs.existsSync(packPngPath)) {
-                      icon = `data:image/png;base64,${(await fs.promises.readFile(packPngPath)).toString("base64")}`;
+                  }
+
+                  // Extract version from pack.mcmeta
+                  const mcmeta = zip.getEntry("pack.mcmeta");
+                  if (mcmeta) {
+                    try {
+                      const mcmetaData = JSON.parse(
+                        mcmeta.getData().toString("utf-8"),
+                      );
+                      const packFormat = mcmetaData?.pack?.pack_format;
+                      if (typeof packFormat === "number") {
+                        version = packFormatToVersion(packFormat, "resource");
+                      }
+                    } catch {
+                      /* ignore parse errors */
                     }
                   }
                 } catch (e) {
-                  // Ignore errors reading icon
+                  // Ignore errors reading zip
+                }
+              } else if (isDirectory) {
+                // Directory-based resourcepack
+                if (!icon) {
+                  const packPngPath = path.join(filePath, "pack.png");
+                  if (fs.existsSync(packPngPath)) {
+                    try {
+                      icon = `data:image/png;base64,${(await fs.promises.readFile(packPngPath)).toString("base64")}`;
+                    } catch {
+                      /* ignore */
+                    }
+                  }
+                }
+                // Read pack.mcmeta from directory
+                const mcmetaPath = path.join(filePath, "pack.mcmeta");
+                if (fs.existsSync(mcmetaPath)) {
+                  try {
+                    const mcmetaData = JSON.parse(
+                      (await fs.promises.readFile(
+                        mcmetaPath,
+                        "utf-8",
+                      )) as string,
+                    );
+                    const packFormat = mcmetaData?.pack?.pack_format;
+                    if (typeof packFormat === "number") {
+                      version = packFormatToVersion(packFormat, "resource");
+                    }
+                  } catch {
+                    /* ignore parse errors */
+                  }
                 }
               }
 
@@ -1858,6 +2059,9 @@ export function registerInstanceHandlers(
                 modifiedAt: stats.mtime.toISOString(),
                 enabled,
                 icon,
+                version,
+                modrinthProjectId,
+                curseforgeProjectId,
               };
             } catch {
               return null;
@@ -2001,6 +2205,7 @@ export function registerInstanceHandlers(
           validItems.map(async (item) => {
             // 1. Try local ZIP/directory icon first (Fast & Accurate)
             let icon: string | null = null;
+            let version: string | undefined;
             try {
               if (
                 item.filename.endsWith(".zip") ||
@@ -2021,6 +2226,24 @@ export function registerInstanceHandlers(
                     break;
                   }
                 }
+
+                // Extract version from shaders.properties
+                const propsEntry =
+                  zip.getEntry("shaders/shaders.properties") ||
+                  zip.getEntry("shaders.properties");
+                if (propsEntry) {
+                  try {
+                    const propsText = propsEntry.getData().toString("utf-8");
+                    const versionMatch = propsText.match(
+                      /^version\s*[=:]\s*(.+)$/m,
+                    );
+                    if (versionMatch) {
+                      version = versionMatch[1].trim();
+                    }
+                  } catch {
+                    /* ignore */
+                  }
+                }
               } else if (item.isDirectory) {
                 const possiblePaths = [
                   path.join(item.filePath, "shaders", "logo.png"),
@@ -2034,12 +2257,57 @@ export function registerInstanceHandlers(
                     break;
                   }
                 }
+
+                // Extract version from shaders.properties (directory)
+                const propsPaths = [
+                  path.join(item.filePath, "shaders", "shaders.properties"),
+                  path.join(item.filePath, "shaders.properties"),
+                ];
+                for (const propsPath of propsPaths) {
+                  if (fs.existsSync(propsPath)) {
+                    try {
+                      const propsText = await fs.promises.readFile(
+                        propsPath,
+                        "utf-8",
+                      );
+                      const versionMatch = (propsText as string).match(
+                        /^version\s*[=:]\s*(.+)$/m,
+                      );
+                      if (versionMatch) {
+                        version = versionMatch[1].trim();
+                      }
+                    } catch {
+                      /* ignore */
+                    }
+                    break;
+                  }
+                }
               }
             } catch {}
 
+            let modrinthProjectId: string | undefined;
+            let curseforgeProjectId: string | undefined;
+
             // 2. Fallback to online icon if local not found (Slow / Heuristic)
             if (!icon) {
-              icon = await fetchIconFromOnline(item.name, "shader");
+              const onlineResult = await fetchIconFromOnline(
+                item.name,
+                "shader",
+              );
+              icon = onlineResult.url;
+              modrinthProjectId = onlineResult.modrinthId;
+              curseforgeProjectId = onlineResult.curseforgeId;
+            }
+
+            // 3. Fallback: extract version from filename (e.g. "ComplementaryReimagined_r5.7.1")
+            if (!version) {
+              // Match patterns like _r5.7.1, _v2.0, -v1.2.3, _1.0.0, v1.2.3
+              const nameMatch = item.name.match(
+                /[_\-\s]([rv]?\d+(?:\.\d+)+(?:[._\-]\w+)*)$/i,
+              );
+              if (nameMatch) {
+                version = nameMatch[1];
+              }
             }
 
             return {
@@ -2050,6 +2318,9 @@ export function registerInstanceHandlers(
               modifiedAt: item.modifiedAt,
               enabled: item.enabled,
               icon,
+              version,
+              modrinthProjectId,
+              curseforgeProjectId,
             };
           }),
         );
@@ -2174,6 +2445,7 @@ export function registerInstanceHandlers(
               }
 
               let icon: string | null = null;
+              let version: string | undefined;
               try {
                 if (
                   file.endsWith(".zip") ||
@@ -2183,11 +2455,29 @@ export function registerInstanceHandlers(
                 ) {
                   const zip = new AdmZip(filePath);
 
-                  // Try standard pack.png
-                  const packPng =
+                  // Try standard pack.png (root, assets/, or depth-1 subfolder)
+                  let packPng =
                     zip.getEntry("pack.png") || zip.getEntry("assets/pack.png");
-                  if (packPng)
-                    icon = `data:image/png;base64,${packPng.getData().toString("base64")}`;
+
+                  // Also check for pack.png inside a root subfolder (e.g. MyDataPack/pack.png)
+                  if (!packPng) {
+                    const entries = zip.getEntries();
+                    for (const e of entries) {
+                      if (
+                        !e.isDirectory &&
+                        /^[^/]+\/pack\.png$/i.test(e.entryName)
+                      ) {
+                        packPng = e;
+                        break;
+                      }
+                    }
+                  }
+
+                  if (packPng) {
+                    try {
+                      icon = `data:image/png;base64,${packPng.getData().toString("base64")}`;
+                    } catch {}
+                  }
 
                   // Fallback: find first png file in zip root or assets
                   if (!icon) {
@@ -2195,7 +2485,7 @@ export function registerInstanceHandlers(
                     for (const e of entries) {
                       if (
                         !e.isDirectory &&
-                        /(^|\/)\w+\.png$/i.test(e.entryName)
+                        /^[^/]*\/?[^/]+\.png$/i.test(e.entryName)
                       ) {
                         try {
                           const data = e.getData();
@@ -2207,22 +2497,54 @@ export function registerInstanceHandlers(
                       }
                     }
                   }
+
+                  // Extract version from pack.mcmeta
+                  let mcmeta = zip.getEntry("pack.mcmeta");
+                  if (!mcmeta) {
+                    // Check depth-1 subfolder
+                    const entries = zip.getEntries();
+                    for (const e of entries) {
+                      if (
+                        !e.isDirectory &&
+                        /^[^/]+\/pack\.mcmeta$/i.test(e.entryName)
+                      ) {
+                        mcmeta = e;
+                        break;
+                      }
+                    }
+                  }
+                  if (mcmeta) {
+                    try {
+                      const mcmetaData = JSON.parse(
+                        mcmeta.getData().toString("utf-8"),
+                      );
+                      const packFormat = mcmetaData?.pack?.pack_format;
+                      if (typeof packFormat === "number") {
+                        version = packFormatToVersion(packFormat, "data");
+                      }
+                    } catch {
+                      /* ignore parse errors */
+                    }
+                  }
                 } else if (isDir) {
                   const packPngPath = path.join(filePath, "pack.png");
                   if (fs.existsSync(packPngPath)) {
                     icon = `data:image/png;base64,${fs.readFileSync(packPngPath).toString("base64")}`;
                   } else {
-                    // Fallback: search for first png inside directory
+                    // Fallback: search for first png inside directory (max depth 2)
                     const allFiles = await (async function walk(
                       dirPath: string,
+                      depth = 0,
                     ) {
+                      if (depth > 2) return [];
                       const acc: string[] = [];
                       const list = await fs.promises.readdir(dirPath);
                       for (const f of list) {
                         const p = path.join(dirPath, f);
                         try {
                           const st = await fs.promises.stat(p);
-                          if (st.isDirectory()) acc.push(...(await walk(p)));
+                          if (st.isDirectory())
+                            acc.push(...(await walk(p, depth + 1)));
                           else if (/\.png$/i.test(f)) acc.push(p);
                         } catch {}
                       }
@@ -2232,6 +2554,21 @@ export function registerInstanceHandlers(
                       try {
                         icon = `data:image/png;base64,${fs.readFileSync(allFiles[0]).toString("base64")}`;
                       } catch {}
+                    }
+                  }
+                  // Read pack.mcmeta from directory
+                  const mcmetaPath = path.join(filePath, "pack.mcmeta");
+                  if (fs.existsSync(mcmetaPath)) {
+                    try {
+                      const mcmetaData = JSON.parse(
+                        fs.readFileSync(mcmetaPath, "utf-8") as string,
+                      );
+                      const packFormat = mcmetaData?.pack?.pack_format;
+                      if (typeof packFormat === "number") {
+                        version = packFormatToVersion(packFormat, "data");
+                      }
+                    } catch {
+                      /* ignore parse errors */
                     }
                   }
                 }
@@ -2246,6 +2583,7 @@ export function registerInstanceHandlers(
                 modifiedAt: stats.mtime.toISOString(),
                 enabled,
                 icon,
+                version,
               };
             } catch {
               return null;
@@ -2704,6 +3042,98 @@ export function registerInstanceHandlers(
       };
     }
   });
+
+  ipcMain.handle(
+    "instance-change-content-version",
+    async (
+      _event,
+      options: {
+        instanceId: string;
+        oldFilename: string;
+        projectId: string;
+        newVersionId: string;
+        contentType: string;
+        contentSource?: "modrinth" | "curseforge";
+      },
+    ) => {
+      const {
+        instanceId,
+        oldFilename,
+        projectId,
+        newVersionId,
+        contentType,
+        contentSource = "modrinth",
+      } = options;
+      logger.info(
+        `Changing version for ${contentType}: ${oldFilename} -> project ${projectId}, version ${newVersionId}`,
+      );
+
+      const instance = getInstance(instanceId);
+      if (!instance) return { ok: false, error: "Instance not found" };
+
+      // 1. Map content type to folder
+      const folderMap: Record<string, string> = {
+        mod: "mods",
+        mods: "mods",
+        resourcepack: "resourcepacks",
+        resourcepacks: "resourcepacks",
+        shader: "shaderpacks",
+        shaders: "shaderpacks",
+        datapack: "datapacks",
+        datapacks: "datapacks",
+      };
+
+      const folder = folderMap[contentType];
+      if (!folder) return { ok: false, error: "Invalid content type" };
+
+      // 2. Delete old file
+      const oldPath = path.join(instance.gameDirectory, folder, oldFilename);
+      try {
+        if (fs.existsSync(oldPath)) {
+          const stats = fs.statSync(oldPath);
+          if (stats.isDirectory()) {
+            fs.rmSync(oldPath, { recursive: true });
+          } else {
+            fs.rmSync(oldPath, { force: true });
+          }
+          logger.info(`Deleted old version: ${oldFilename}`);
+        }
+      } catch (err: any) {
+        logger.error(`Failed to delete old version ${oldFilename}:`, err);
+        return {
+          ok: false,
+          error: `Failed to remove old version: ${err.message}`,
+        };
+      }
+
+      // 3. Download new version
+      try {
+        const mainWindow = getMainWindow();
+        const result = await downloadContentToInstance(
+          {
+            projectId,
+            versionId: newVersionId,
+            instanceId,
+            contentType: (contentType.endsWith("s")
+              ? contentType.slice(0, -1)
+              : contentType) as any,
+            contentSource,
+          },
+          (progress) => {
+            mainWindow?.webContents.send("content-download-progress", progress);
+          },
+        );
+
+        if (result.ok) {
+          logger.info(`Successfully changed version to ${result.filename}`);
+        }
+        return result;
+      } catch (err: any) {
+        logger.error(`Failed to download new version:`, err);
+        return { ok: false, error: `Download failed: ${err.message}` };
+      }
+    },
+  );
 
   logger.info(" Instance handlers registered");
 }

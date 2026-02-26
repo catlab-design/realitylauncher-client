@@ -29,6 +29,7 @@ interface LazyContentItemProps {
     isLoading?: boolean;
     isSelected?: boolean;
     onToggleSelection?: (filename: string) => void;
+
 }
 
 export function LazyContentItem({
@@ -40,7 +41,8 @@ export function LazyContentItem({
     index = 0,
     isLoading = false,
     isSelected = false,
-    onToggleSelection
+    onToggleSelection,
+
 }: LazyContentItemProps) {
     const { t } = useTranslation();
     const [iconUrl, setIconUrl] = useState<string | null>(item.icon || null);
@@ -144,10 +146,11 @@ export function LazyContentItem({
                 </p>
             </div>
 
-            {/* Empty center spacing / fake version */}
+            {/* Version info from pack.mcmeta */}
             <div className="flex-1 min-w-0 pr-4 hidden md:flex flex-col justify-center">
-                <p className="text-xs font-medium truncate mb-0.5" style={{ color: colors.onSurface }}>
-                    Unknown Version
+                <p className="text-xs font-medium truncate mb-0.5 flex items-center gap-1.5" style={{ color: colors.onSurface }}>
+                    {currentItem.version || "Unknown Version"}
+
                 </p>
                 <p className="text-xs truncate opacity-60" style={{ color: colors.onSurfaceVariant }}>
                     {currentItem.filename}

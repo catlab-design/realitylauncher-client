@@ -22,6 +22,9 @@ interface ExploreToolbarProps {
     viewCount: number;
     page: number;
     totalPages: number;
+    // Filters
+    mcVersionFilter: string;
+    loaderFilter: string;
     // Handlers
     onContentSourceChange: (source: ContentSource) => void;
     onProjectTypeChange: (type: ProjectType) => void;
@@ -30,6 +33,8 @@ interface ExploreToolbarProps {
     onSortChange: (sort: string) => void;
     onViewCountChange: (count: number) => void;
     onPageChange: (page: number) => void;
+    onMcVersionFilterChange: (version: string) => void;
+    onLoaderFilterChange: (loader: string) => void;
 }
 
 export function ExploreToolbar({
@@ -41,6 +46,8 @@ export function ExploreToolbar({
     viewCount,
     page,
     totalPages,
+    mcVersionFilter,
+    loaderFilter,
     onContentSourceChange,
     onProjectTypeChange,
     onSearchChange,
@@ -48,6 +55,8 @@ export function ExploreToolbar({
     onSortChange,
     onViewCountChange,
     onPageChange,
+    onMcVersionFilterChange,
+    onLoaderFilterChange,
 }: ExploreToolbarProps) {
     const { t } = useTranslation();
     const currentTab = PROJECT_TABS.find((p) => p.id === projectType);
@@ -175,6 +184,42 @@ export function ExploreToolbar({
 
                 {/* Filters */}
                 <div className="flex items-center gap-2">
+                    {/* MC Version Filter */}
+                    <select
+                        value={mcVersionFilter}
+                        onChange={(e) => { playClick(); onMcVersionFilterChange(e.target.value); }}
+                        className="px-2 py-1 rounded-md text-xs"
+                        style={{
+                            backgroundColor: colors.surface,
+                            border: `1px solid ${mcVersionFilter ? colors.secondary : colors.outline + '40'}`,
+                            color: mcVersionFilter ? colors.secondary : colors.onSurface,
+                        }}
+                    >
+                        <option value="">{t('all_mc_versions' as TranslationKey) !== 'all_mc_versions' ? t('all_mc_versions' as TranslationKey) : 'All Versions'}</option>
+                        {['1.21.5', '1.21.4', '1.21.3', '1.21.2', '1.21.1', '1.21', '1.20.6', '1.20.4', '1.20.2', '1.20.1', '1.20', '1.19.4', '1.19.2', '1.18.2', '1.17.1', '1.16.5', '1.15.2', '1.14.4', '1.12.2', '1.8.9', '1.7.10'].map(v => (
+                            <option key={v} value={v}>{v}</option>
+                        ))}
+                    </select>
+
+                    {/* Loader Filter */}
+                    <select
+                        value={loaderFilter}
+                        onChange={(e) => { playClick(); onLoaderFilterChange(e.target.value); }}
+                        className="px-2 py-1 rounded-md text-xs"
+                        style={{
+                            backgroundColor: colors.surface,
+                            border: `1px solid ${loaderFilter ? colors.secondary : colors.outline + '40'}`,
+                            color: loaderFilter ? colors.secondary : colors.onSurface,
+                        }}
+                    >
+                        <option value="">{t('all_loaders' as TranslationKey) !== 'all_loaders' ? t('all_loaders' as TranslationKey) : 'All Loaders'}</option>
+                        <option value="fabric">Fabric</option>
+                        <option value="forge">Forge</option>
+                        <option value="neoforge">NeoForge</option>
+                        <option value="quilt">Quilt</option>
+                    </select>
+
+                    {/* Sort */}
                     <select
                         value={sortBy}
                         onChange={(e) => { playClick(); onSortChange(e.target.value); }}

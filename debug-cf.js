@@ -1,6 +1,6 @@
 const https = require('https');
 
-const url = "https://api.reality.notpumpkins.com/curseforge/search?query=Ender's%20Journey&projectType=modpack&pageSize=1";
+const url = "https://api.reality.catlabdesign.space/curseforge/search?query=Ender's%20Journey&projectType=modpack&pageSize=1";
 
 https.get(url, (res) => {
     let data = '';

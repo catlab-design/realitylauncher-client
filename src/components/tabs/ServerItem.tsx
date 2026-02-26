@@ -150,9 +150,12 @@ export function ServerItem({
                 <div className="absolute top-3 right-3 flex gap-2">
                     <span
                         className={cn(
-                            "w-3 h-3 rounded-full border border-white/20 shadow-sm",
+                            "w-3 h-3 rounded-full border border-white/20 shadow-sm animate-status-breath",
                             instance.status === "active" ? "bg-green-500" : "bg-red-500"
                         )}
+                        style={{ 
+                            "--status-color-rgb": instance.status === "active" ? "34, 197, 94" : "239, 68, 68" 
+                        } as React.CSSProperties}
                     />
                     {instance.isOwned && (
                         <span className="text-[10px] bg-yellow-500/80 text-black px-2 py-0.5 rounded-full font-bold backdrop-blur-sm">

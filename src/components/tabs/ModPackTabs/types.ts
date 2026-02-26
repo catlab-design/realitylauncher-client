@@ -15,6 +15,8 @@ export interface ModInfo {
   size: number;
   modifiedAt: string;
   version?: string;
+  modrinthProjectId?: string;
+  curseforgeProjectId?: string;
 }
 
 export interface ContentItem {
@@ -25,6 +27,7 @@ export interface ContentItem {
   modifiedAt: string;
   enabled: boolean;
   icon: string | null;
+  version?: string; // Parsed from pack.mcmeta pack_format
   modrinthProjectId?: string; // สำหรับ fallback icon Modrinth
   curseforgeProjectId?: string; // สำหรับ fallback icon CurseForge
 }

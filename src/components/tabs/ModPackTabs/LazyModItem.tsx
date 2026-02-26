@@ -18,6 +18,8 @@ export interface ModInfo {
     size: number;
     modifiedAt: string;
     version?: string;
+    modrinthProjectId?: string;
+    curseforgeProjectId?: string;
 }
 
 export interface LazyModItemProps {
@@ -33,6 +35,7 @@ export interface LazyModItemProps {
     index?: number;
     isSelected?: boolean;
     onToggleSelection?: (filename: string) => void;
+
 }
 
 export function LazyModItem({
@@ -47,7 +50,8 @@ export function LazyModItem({
     isServerManaged,
     index = 0,
     isSelected = false,
-    onToggleSelection
+    onToggleSelection,
+
 }: LazyModItemProps) {
     const { t } = useTranslation();
 
@@ -118,8 +122,9 @@ export function LazyModItem({
 
             {/* Updated / Filename Column */}
             <div className="flex-1 min-w-0 pr-4 hidden md:block">
-                <p className="text-xs font-medium truncate mb-0.5" style={{ color: colors.onSurface }}>
+                <p className="text-xs font-medium truncate mb-0.5 flex items-center gap-1.5" style={{ color: colors.onSurface }}>
                     {mod.version ? `v${mod.version}` : "Unknown Version"}
+
                 </p>
                 <p className="text-xs truncate opacity-60" style={{ color: colors.onSurfaceVariant }}>
                     {mod.filename}
