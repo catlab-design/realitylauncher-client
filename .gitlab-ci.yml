@@ -1,12 +1,14 @@
 workflow:
   rules:
     - if: "$CI_COMMIT_TAG"
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == "main"'
     - if: '$CI_PIPELINE_SOURCE == "web"'
     - if: '$CI_PIPELINE_SOURCE == "trigger"'
     - when: never
 
 stages:
+  - test
   - build
   - deploy
 
@@ -26,19 +28,37 @@ variables:
 default:
   interruptible: true
 
+.ci_rules:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_PIPELINE_SOURCE == "web" && $RUN_CI_ONLY == "true"'
+    - when: never
+
 .build_rules:
   rules:
     - if: "$CI_COMMIT_TAG"
-    - if: '$CI_COMMIT_BRANCH == "main"'
-    - if: '$CI_PIPELINE_SOURCE == "web"'
+    - if: '$CI_COMMIT_BRANCH == "main" && $DEPLOY_ON_MAIN == "true"'
+    - if: '$CI_PIPELINE_SOURCE == "web" && $MANUAL_RELEASE == "true"'
+    - if: '$CI_PIPELINE_SOURCE == "web" && $MANUAL_DEPLOY == "true"'
+    - if: '$CI_PIPELINE_SOURCE == "trigger"'
     - when: never
 
 .linux_base:
-  image: oven/bun:1.2.22
+  tags:
+    - linux
   before_script:
-    - apt-get update -y
-    - apt-get install -y --no-install-recommends ca-certificates curl git jq findutils sed
+    - set -eu
+    - command -v bun >/dev/null 2>&1 || { echo "bun not found on runner. Install bun first."; exit 1; }
+    - command -v rustc >/dev/null 2>&1 || { echo "rustc not found on runner. Install Rust toolchain first."; exit 1; }
+    - command -v cargo >/dev/null 2>&1 || { echo "cargo not found on runner. Install Rust toolchain first."; exit 1; }
+    - command -v jq >/dev/null 2>&1 || { echo "jq not found on runner. Install jq first."; exit 1; }
+    - command -v sed >/dev/null 2>&1 || { echo "sed not found on runner. Install sed first."; exit 1; }
+    - command -v find >/dev/null 2>&1 || { echo "find not found on runner. Install findutils first."; exit 1; }
     - mkdir -p "$CARGO_HOME" "$RUSTUP_HOME" "$BUN_INSTALL_CACHE_DIR" "$ELECTRON_CACHE" "$ELECTRON_BUILDER_CACHE"
+    - bun --version
+    - rustc --version
+    - cargo --version
   cache:
     key:
       files:
@@ -55,21 +75,21 @@ default:
       - native/target
     policy: pull-push
 
+ci:checks:
+  stage: test
+  extends:
+    - .ci_rules
+    - .linux_base
+  script:
+    - bun install --frozen-lockfile
+    - bun run ci:check
+
 build:linux:
   stage: build
   extends:
     - .build_rules
     - .linux_base
   script:
-    - apt-get install -y --no-install-recommends build-essential pkg-config libssl-dev python3 make g++ rpm fakeroot xz-utils
-    - |
-      if [ ! -x "$CARGO_HOME/bin/rustup" ]; then
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
-      fi
-    - export PATH="$CARGO_HOME/bin:$PATH"
-    - rustc --version
-    - cargo --version
-    - bun --version
     - bun install --frozen-lockfile
     - cd native
     - bun install --frozen-lockfile
@@ -78,9 +98,11 @@ build:linux:
     - bun run build
     - bunx electron-builder --linux --publish never
     - |
-      if [ "${ENABLE_FLATPAK_RELEASE:-false}" = "true" ] && { [ -n "${CI_COMMIT_TAG:-}" ] || [ "${CI_PIPELINE_SOURCE:-}" = "web" ]; }; then
-        apt-get install -y --no-install-recommends flatpak flatpak-builder elfutils
-        flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || true
+      if [ "${ENABLE_FLATPAK_RELEASE:-false}" = "true" ]; then
+        command -v flatpak >/dev/null 2>&1 || { echo "flatpak not found on runner."; exit 1; }
+        command -v flatpak-builder >/dev/null 2>&1 || { echo "flatpak-builder not found on runner."; exit 1; }
+        command -v eu-strip >/dev/null 2>&1 || { echo "elfutils (eu-strip) not found on runner."; exit 1; }
+        flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || true
         bunx electron-builder --linux flatpak --publish never
       fi
     - test -f release-build/latest-linux.yml
@@ -161,8 +183,10 @@ build:windows:
       - release-build/latest.yml
   rules:
     - if: '$ENABLE_WINDOWS_RELEASE == "true" && $CI_COMMIT_TAG'
-    - if: '$ENABLE_WINDOWS_RELEASE == "true" && $CI_COMMIT_BRANCH == "main"'
-    - if: '$ENABLE_WINDOWS_RELEASE == "true" && $CI_PIPELINE_SOURCE == "web"'
+    - if: '$ENABLE_WINDOWS_RELEASE == "true" && $CI_COMMIT_BRANCH == "main" && $DEPLOY_ON_MAIN == "true"'
+    - if: '$ENABLE_WINDOWS_RELEASE == "true" && $CI_PIPELINE_SOURCE == "web" && $MANUAL_RELEASE == "true"'
+    - if: '$ENABLE_WINDOWS_RELEASE == "true" && $CI_PIPELINE_SOURCE == "web" && $MANUAL_DEPLOY == "true"'
+    - if: '$ENABLE_WINDOWS_RELEASE == "true" && $CI_PIPELINE_SOURCE == "trigger"'
     - when: never
 
 build:macos:
@@ -211,8 +235,10 @@ build:macos:
       - release-build/latest-mac.yml
   rules:
     - if: '$ENABLE_MACOS_RELEASE == "true" && $CI_COMMIT_TAG'
-    - if: '$ENABLE_MACOS_RELEASE == "true" && $CI_COMMIT_BRANCH == "main"'
-    - if: '$ENABLE_MACOS_RELEASE == "true" && $CI_PIPELINE_SOURCE == "web"'
+    - if: '$ENABLE_MACOS_RELEASE == "true" && $CI_COMMIT_BRANCH == "main" && $DEPLOY_ON_MAIN == "true"'
+    - if: '$ENABLE_MACOS_RELEASE == "true" && $CI_PIPELINE_SOURCE == "web" && $MANUAL_RELEASE == "true"'
+    - if: '$ENABLE_MACOS_RELEASE == "true" && $CI_PIPELINE_SOURCE == "web" && $MANUAL_DEPLOY == "true"'
+    - if: '$ENABLE_MACOS_RELEASE == "true" && $CI_PIPELINE_SOURCE == "trigger"'
     - when: never
 
 deploy:r2:
@@ -345,4 +371,6 @@ deploy:r2:
     - if: "$CI_COMMIT_TAG =~ /^v.+$/"
     - if: '$CI_COMMIT_BRANCH == "main" && $DEPLOY_ON_MAIN == "true"'
     - if: '$CI_PIPELINE_SOURCE == "web" && $MANUAL_DEPLOY == "true"'
+    - if: '$CI_PIPELINE_SOURCE == "web" && $MANUAL_RELEASE == "true"'
+    - if: '$CI_PIPELINE_SOURCE == "trigger"'
     - when: never

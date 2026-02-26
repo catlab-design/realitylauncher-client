@@ -1,4 +1,4 @@
-# GitLab Auto Deploy Runbook (Linux + Windows + macOS)
+# GitLab CI/CD Runbook (CI + Auto Deploy)
 
 This runbook is for `ml-client/.gitlab-ci.yml`.
 
@@ -7,14 +7,23 @@ It covers:
 - GitLab external repository setup
 - Runner setup for each OS
 - CI/CD variable setup
+- CI behavior for merge requests and `main`
 - Tag/manual deploy flow
 - Verification and quick troubleshooting
 
 ## Pipeline Design
 
+CI job:
+
+- `ci:checks` runs for merge requests and `main`
+- validates:
+  - `check-no-app-asar-writes`
+  - app build
+  - Rust `cargo check`
+
 Build jobs:
 
-- `build:linux` runs by default
+- `build:linux` runs for release pipelines only
 - `build:windows` runs only when `ENABLE_WINDOWS_RELEASE=true`
 - `build:macos` runs only when `ENABLE_MACOS_RELEASE=true`
 
@@ -60,6 +69,8 @@ Optional:
 - `ENABLE_MACOS_RELEASE` set `true` to enable macOS build job
 - `DEPLOY_ON_MAIN` set `true` to deploy from `main` pushes
 - `MANUAL_DEPLOY` set `true` when starting deploy from UI
+- `MANUAL_RELEASE` alternative flag for manual release from UI
+- `RUN_CI_ONLY` set `true` to run CI checks from UI without release
 - `RELEASE_VERSION` force deploy version in manual runs
 - `CHANGELOG` string written into `latest.json`
 
@@ -70,9 +81,16 @@ Recommended:
 
 ## Step 3: Configure Runners
 
-Linux:
+Linux self-hosted:
 
-- GitLab shared runner is enough for `build:linux` and `deploy:r2`
+1. Install GitLab Runner
+2. Register runner with `shell` executor
+3. Assign tag `linux`
+4. Install tools on runner host:
+   - Bun
+   - Rust toolchain (`rustc`, `cargo`)
+   - `jq`, `sed`, `find`
+   - `flatpak`, `flatpak-builder`, `elfutils` (only if `ENABLE_FLATPAK_RELEASE=true`)
 
 Windows self-hosted:
 
@@ -105,6 +123,7 @@ gitlab-runner register \
 ```
 
 Use the same command for macOS runner with tag `macos`.
+Use the same command for Linux runner with tag `linux`.
 
 ## Step 4: Enable Platforms
 
@@ -128,11 +147,20 @@ Manual deploy from UI:
 
 1. `Build -> Pipelines -> Run pipeline`
 2. Branch: usually `main`
-3. Add variable `MANUAL_DEPLOY=true`
+3. Add one of:
+   - `MANUAL_DEPLOY=true`
+   - `MANUAL_RELEASE=true`
 4. Optional:
    - `RELEASE_VERSION=2.2.1`
    - `CHANGELOG=...`
 5. Run
+
+Run CI-only from UI:
+
+1. `Build -> Pipelines -> Run pipeline`
+2. Branch: `main` or feature branch
+3. Add variable `RUN_CI_ONLY=true`
+4. Run
 
 Main branch auto deploy:
 
@@ -150,6 +178,10 @@ After `deploy:r2` success, verify:
 
 ## Troubleshooting
 
+`ci:checks` or `build:linux` stuck pending:
+
+- check there is an online runner tagged `linux`
+
 `build:windows` stuck pending:
 
 - check there is an online runner tagged `windows`
@@ -165,3 +197,7 @@ After `deploy:r2` success, verify:
 `latest-linux.yml not found`:
 
 - check `build:linux` succeeded and artifact includes `release-build/latest-linux.yml`
+
+Linux job fails with `bun/rustc/cargo/jq/sed/find not found`:
+
+- install missing tools on the Linux host runner and rerun pipeline

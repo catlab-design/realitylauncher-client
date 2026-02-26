@@ -59,6 +59,10 @@ Windows Store release helpers:
 - Public CI for PRs runs on GitHub-hosted runners (`.github/workflows/ci.yml`).
 - Release pipeline uses self-hosted runners (`.github/workflows/build.yml`) and publish secrets.
 - macOS self-hosted release runner is opt-in via repo variable `ENABLE_MACOS_RUNNER=true`.
+- GitLab is also supported:
+  - CI checks on merge requests/main (`.gitlab-ci.yml` job `ci:checks`)
+  - release deploy flow (tag/manual/main with flags)
+  - runs on self-hosted shell runners (`linux`, `windows`, `macos` tags)
 
 ## Contributing
 See [CONTRIBUTING.md](./CONTRIBUTING.md).
