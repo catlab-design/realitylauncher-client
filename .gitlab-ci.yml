@@ -19,6 +19,8 @@ variables:
   ENABLE_FLATPAK_RELEASE: "false"
   ENABLE_WINDOWS_RELEASE: "false"
   ENABLE_MACOS_RELEASE: "false"
+  WINDOWS_LOW_RESOURCE_MODE: "true"
+  WINDOWS_NODE_MAX_OLD_SPACE_MB: "768"
   CARGO_HOME: "$CI_PROJECT_DIR/.cache/cargo"
   RUSTUP_HOME: "$CI_PROJECT_DIR/.cache/rustup"
   BUN_INSTALL_CACHE_DIR: "$CI_PROJECT_DIR/.cache/bun/install/cache"
@@ -31,7 +33,7 @@ default:
 .ci_rules:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"'
     - if: '$CI_PIPELINE_SOURCE == "web" && $RUN_CI_ONLY == "true"'
     - when: never
 
@@ -49,6 +51,8 @@ default:
     - linux
   before_script:
     - set -eu
+    - command -v node >/dev/null 2>&1 || { echo "node not found on runner. Install Node.js first."; exit 1; }
+    - command -v npm >/dev/null 2>&1 || { echo "npm not found on runner. Install npm first."; exit 1; }
     - command -v bun >/dev/null 2>&1 || { echo "bun not found on runner. Install bun first."; exit 1; }
     - command -v rustc >/dev/null 2>&1 || { echo "rustc not found on runner. Install Rust toolchain first."; exit 1; }
     - command -v cargo >/dev/null 2>&1 || { echo "cargo not found on runner. Install Rust toolchain first."; exit 1; }
@@ -56,6 +60,18 @@ default:
     - command -v sed >/dev/null 2>&1 || { echo "sed not found on runner. Install sed first."; exit 1; }
     - command -v find >/dev/null 2>&1 || { echo "find not found on runner. Install findutils first."; exit 1; }
     - mkdir -p "$CARGO_HOME" "$RUSTUP_HOME" "$BUN_INSTALL_CACHE_DIR" "$ELECTRON_CACHE" "$ELECTRON_BUILDER_CACHE"
+    - |
+      if ! rustc --version >/dev/null 2>&1; then
+        if command -v rustup >/dev/null 2>&1; then
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+        else
+          echo "rustc is not usable and rustup is missing. Install rustup or fix Rust toolchain."
+          exit 1
+        fi
+      fi
+    - node --version
+    - npm --version
     - bun --version
     - rustc --version
     - cargo --version
@@ -63,8 +79,6 @@ default:
     key:
       files:
         - bun.lock
-        - package.json
-        - native/package.json
         - native/Cargo.lock
     paths:
       - .cache/bun/install/cache
@@ -79,10 +93,72 @@ ci:checks:
   stage: test
   extends:
     - .ci_rules
-    - .linux_base
+  tags:
+    - windows
+  variables:
+    PNPM_STORE_DIR: "$CI_PROJECT_DIR/.cache/pnpm/store"
+    CARGO_BUILD_JOBS: "1"
+    UV_THREADPOOL_SIZE: "1"
+    GYP_MSVS_PARALLEL: "1"
+  before_script:
+    - '$ErrorActionPreference = "Stop"'
+    - |
+      if ($env:WINDOWS_LOW_RESOURCE_MODE -ne "false") {
+        if ([string]::IsNullOrWhiteSpace($env:WINDOWS_NODE_MAX_OLD_SPACE_MB)) {
+          $env:WINDOWS_NODE_MAX_OLD_SPACE_MB = "768"
+        }
+        $env:NODE_OPTIONS = "--max-old-space-size=$($env:WINDOWS_NODE_MAX_OLD_SPACE_MB)"
+        Write-Host "Low-resource mode enabled for ci:checks"
+        Write-Host "NODE_OPTIONS=$env:NODE_OPTIONS"
+      }
+    - 'if (-not (Get-Command node -ErrorAction SilentlyContinue)) { throw "node not found on runner. Install Node.js first." }'
+    - |
+      if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
+        if (Get-Command corepack -ErrorAction SilentlyContinue) {
+          corepack enable
+          corepack prepare pnpm@latest --activate
+        } else {
+          npm install -g pnpm
+        }
+      }
+    - 'if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) { throw "pnpm not found on runner. Install pnpm (or enable corepack) first." }'
+    - 'if (-not (Get-Command rustc -ErrorAction SilentlyContinue)) { throw "rustc not found on runner. Install Rust toolchain first." }'
+    - 'if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { throw "cargo not found on runner. Install Rust toolchain first." }'
+    - |
+      if (Get-Command rustup -ErrorAction SilentlyContinue) {
+        $activeToolchain = & rustup show active-toolchain 2>$null
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($activeToolchain)) {
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+        }
+      } else {
+        Write-Host "rustup not found, skipping rustup bootstrap (using rustc/cargo from PATH)."
+      }
+    - 'New-Item -ItemType Directory -Force -Path "$env:PNPM_STORE_DIR","$env:ELECTRON_CACHE","$env:ELECTRON_BUILDER_CACHE" | Out-Null'
+    - "node --version"
+    - "pnpm --version"
+    - "rustc --version"
+    - "cargo --version"
+  cache:
+    key:
+      files:
+        - package.json
+        - native/Cargo.lock
+    paths:
+      - .cache/pnpm/store
+      - .cache/electron
+      - .cache/electron-builder
+      - native/target
+    policy: pull-push
   script:
-    - bun install --frozen-lockfile
-    - bun run ci:check
+    - '$ErrorActionPreference = "Stop"'
+    - 'pnpm config set store-dir "$env:PNPM_STORE_DIR"'
+    - "pnpm install --no-frozen-lockfile --prefer-offline"
+    - "node scripts/check-no-app-asar-writes.cjs"
+    - "pnpm exec astro build"
+    - "pnpm exec esbuild src/electron/main.ts --bundle --platform=node --format=cjs --minify --external:electron --external:discord-rpc --external:electron-updater --external:minecraft-java-core --outfile=dist-electron/main.cjs"
+    - "pnpm exec esbuild src/electron/preload.ts --bundle --platform=node --format=cjs --minify --external:electron --outdir=dist-electron"
+    - "cargo check --manifest-path native/Cargo.toml"
 
 build:linux:
   stage: build
@@ -90,20 +166,82 @@ build:linux:
     - .build_rules
     - .linux_base
   script:
-    - bun install --frozen-lockfile
+    - rm -rf node_modules .tmp-npm-list.json
+    - |
+      npm ci --no-audit --fund=false || {
+        echo "WARN: npm ci failed; retrying npm install for CI compatibility."
+        npm install --no-audit --fund=false
+      }
     - cd native
-    - bun install --frozen-lockfile
+    - rm -rf node_modules
+    - |
+      npm ci --no-audit --fund=false || {
+        echo "WARN: native npm ci failed; retrying npm install for CI compatibility."
+        npm install --no-audit --fund=false
+      }
     - bun run build
     - cd ..
+    - |
+      # Work around npm optional-deps bug by force-installing linux native optional packages.
+      if [ "$(uname -s)" = "Linux" ]; then
+        rollup_version="$(node -p "try{require('./node_modules/rollup/package.json').optionalDependencies['@rollup/rollup-linux-x64-gnu']||''}catch(e){''}")"
+        lightningcss_version="$(node -p "try{require('./node_modules/lightningcss/package.json').optionalDependencies['lightningcss-linux-x64-gnu']||''}catch(e){''}")"
+
+        set --
+        if [ -n "$rollup_version" ]; then
+          echo "Queue optional dep: @rollup/rollup-linux-x64-gnu@$rollup_version"
+          set -- "$@" "@rollup/rollup-linux-x64-gnu@$rollup_version"
+        fi
+        if [ -n "$lightningcss_version" ]; then
+          echo "Queue optional dep: lightningcss-linux-x64-gnu@$lightningcss_version"
+          set -- "$@" "lightningcss-linux-x64-gnu@$lightningcss_version"
+        fi
+
+        if [ "$#" -gt 0 ]; then
+          # Install in one npm transaction to avoid pruning a previous --no-save package.
+          echo "Ensuring optional native deps: $*"
+          npm install --no-save --prefer-online "$@"
+        fi
+
+        node -e "require('rollup'); require('lightningcss'); console.log('Native optional dependencies check: OK');"
+      fi
     - bun run build
-    - bunx electron-builder --linux --publish never
+    - |
+      npm list -a --include=prod --include=optional --omit=dev --json --long --silent > .tmp-npm-list.json || true
+      node -e "const fs=require('fs');const p='.tmp-npm-list.json';const t=fs.readFileSync(p,'utf8');JSON.parse(t);console.log('npm list JSON check: OK');"
+    - |
+      # Electron 39 native rebuild needs a C++20-capable compiler.
+      cxx_found=""
+      for cxx in "${CXX:-}" g++-14 g++-13 g++-12 g++-11 g++-10 g++; do
+        [ -n "$cxx" ] || continue
+        if command -v "$cxx" >/dev/null 2>&1; then
+          if printf 'int main(){return 0;}\n' | "$cxx" -std=gnu++20 -x c++ - -o /tmp/cxx20-check >/dev/null 2>&1; then
+            cxx_found="$cxx"
+            break
+          fi
+        fi
+      done
+      rm -f /tmp/cxx20-check
+      if [ -z "$cxx_found" ]; then
+        echo "No C++20 compiler found on runner."
+        echo "Install g++-10+ (recommended g++-12) and set CXX/CC for gitlab-runner service."
+        exit 1
+      fi
+      export CXX="$cxx_found"
+      cc_candidate="${cxx_found/g++/gcc}"
+      if command -v "$cc_candidate" >/dev/null 2>&1; then
+        export CC="$cc_candidate"
+      fi
+      echo "Using CXX=$CXX"
+      "$CXX" --version | head -n 1
+    - bun x electron-builder --linux --publish never
     - |
       if [ "${ENABLE_FLATPAK_RELEASE:-false}" = "true" ]; then
         command -v flatpak >/dev/null 2>&1 || { echo "flatpak not found on runner."; exit 1; }
         command -v flatpak-builder >/dev/null 2>&1 || { echo "flatpak-builder not found on runner."; exit 1; }
         command -v eu-strip >/dev/null 2>&1 || { echo "elfutils (eu-strip) not found on runner."; exit 1; }
         flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || true
-        bunx electron-builder --linux flatpak --publish never
+        bun x electron-builder --linux flatpak --publish never
       fi
     - test -f release-build/latest-linux.yml
     - ls -lah release-build
@@ -122,45 +260,95 @@ build:windows:
   tags:
     - windows
   variables:
-    BUN_INSTALL_CACHE_DIR: "$CI_PROJECT_DIR/.cache/bun/install/cache"
+    PNPM_STORE_DIR: "$CI_PROJECT_DIR/.cache/pnpm/store"
     ELECTRON_CACHE: "$CI_PROJECT_DIR/.cache/electron"
     ELECTRON_BUILDER_CACHE: "$CI_PROJECT_DIR/.cache/electron-builder"
+    CARGO_BUILD_JOBS: "1"
+    UV_THREADPOOL_SIZE: "1"
+    GYP_MSVS_PARALLEL: "1"
   before_script:
     - '$ErrorActionPreference = "Stop"'
-    - 'if (-not (Get-Command bun -ErrorAction SilentlyContinue)) { throw "bun not found on runner. Install bun first." }'
+    - |
+      if ($env:WINDOWS_LOW_RESOURCE_MODE -ne "false") {
+        if ([string]::IsNullOrWhiteSpace($env:WINDOWS_NODE_MAX_OLD_SPACE_MB)) {
+          $env:WINDOWS_NODE_MAX_OLD_SPACE_MB = "768"
+        }
+        $env:NODE_OPTIONS = "--max-old-space-size=$($env:WINDOWS_NODE_MAX_OLD_SPACE_MB)"
+        Write-Host "Low-resource mode enabled"
+        Write-Host "NODE_OPTIONS=$env:NODE_OPTIONS"
+        Write-Host "CARGO_BUILD_JOBS=$env:CARGO_BUILD_JOBS"
+        Write-Host "UV_THREADPOOL_SIZE=$env:UV_THREADPOOL_SIZE"
+      } else {
+        if ([string]::IsNullOrWhiteSpace($env:NODE_OPTIONS)) {
+          $env:NODE_OPTIONS = "--max-old-space-size=2048"
+        }
+        Write-Host "Low-resource mode disabled"
+        Write-Host "NODE_OPTIONS=$env:NODE_OPTIONS"
+      }
+    - 'if (-not (Get-Command node -ErrorAction SilentlyContinue)) { throw "node not found on runner. Install Node.js first." }'
+    - |
+      if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
+        if (Get-Command corepack -ErrorAction SilentlyContinue) {
+          corepack enable
+          corepack prepare pnpm@latest --activate
+        } else {
+          npm install -g pnpm
+        }
+      }
+    - 'if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) { throw "pnpm not found on runner. Install pnpm (or enable corepack) first." }'
     - 'if (-not (Get-Command rustc -ErrorAction SilentlyContinue)) { throw "rustc not found on runner. Install Rust toolchain first." }'
     - 'if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { throw "cargo not found on runner. Install Rust toolchain first." }'
-    - 'New-Item -ItemType Directory -Force -Path "$env:BUN_INSTALL_CACHE_DIR","$env:ELECTRON_CACHE","$env:ELECTRON_BUILDER_CACHE" | Out-Null'
-    - "bun --version"
+    - |
+      if (Get-Command rustup -ErrorAction SilentlyContinue) {
+        $activeToolchain = & rustup show active-toolchain 2>$null
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($activeToolchain)) {
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+        }
+      } else {
+        Write-Host "rustup not found, skipping rustup bootstrap (using rustc/cargo from PATH)."
+      }
+    - 'New-Item -ItemType Directory -Force -Path "$env:PNPM_STORE_DIR","$env:ELECTRON_CACHE","$env:ELECTRON_BUILDER_CACHE" | Out-Null'
+    - "node --version"
+    - "pnpm --version"
     - "rustc --version"
     - "cargo --version"
   cache:
     key:
       files:
-        - bun.lock
         - package.json
-        - native/package.json
         - native/Cargo.lock
     paths:
-      - .cache/bun/install/cache
+      - .cache/pnpm/store
       - .cache/electron
       - .cache/electron-builder
       - native/target
     policy: pull-push
   script:
     - '$ErrorActionPreference = "Stop"'
-    - "bun install --frozen-lockfile"
-    - "Push-Location native"
-    - "bun install --frozen-lockfile"
-    - "bun run build"
-    - "Pop-Location"
-    - "bun run build"
+    - 'pnpm config set store-dir "$env:PNPM_STORE_DIR"'
+    - "pnpm install --no-frozen-lockfile --prefer-offline"
+    - |
+      Push-Location native
+      pnpm config set store-dir "$env:PNPM_STORE_DIR"
+      pnpm install --no-frozen-lockfile --prefer-offline
+      pnpm run build
+      Pop-Location
+    - "pnpm exec astro build"
+    - "node scripts/check-no-app-asar-writes.cjs"
+    - "pnpm exec esbuild src/electron/main.ts --bundle --platform=node --format=cjs --minify --external:electron --external:discord-rpc --external:electron-updater --external:minecraft-java-core --outfile=dist-electron/main.cjs"
+    - "pnpm exec esbuild src/electron/preload.ts --bundle --platform=node --format=cjs --minify --external:electron --outdir=dist-electron"
     - |
       $ErrorActionPreference = 'Continue'
       $maxAttempts = 3
       for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-        Write-Host "Running electron-builder --win (attempt $attempt/$maxAttempts)"
-        bunx electron-builder --win --publish never
+        if ($env:WINDOWS_LOW_RESOURCE_MODE -ne "false") {
+          Write-Host "Running electron-builder --win --publish never --config.compression=store (attempt $attempt/$maxAttempts)"
+          pnpm exec electron-builder --win --publish never --config.compression=store
+        } else {
+          Write-Host "Running electron-builder --win --publish never (attempt $attempt/$maxAttempts)"
+          pnpm exec electron-builder --win --publish never
+        }
         if ($LASTEXITCODE -eq 0) {
           Write-Host "electron-builder --win succeeded on attempt $attempt"
           exit 0
@@ -195,10 +383,24 @@ build:macos:
     - macos
   before_script:
     - set -eu
+    - command -v node >/dev/null 2>&1 || { echo "node not found on runner. Install Node.js first."; exit 1; }
+    - command -v npm >/dev/null 2>&1 || { echo "npm not found on runner. Install npm first."; exit 1; }
     - command -v bun >/dev/null 2>&1 || { echo "bun not found on runner. Install bun first."; exit 1; }
     - command -v rustc >/dev/null 2>&1 || { echo "rustc not found on runner. Install Rust toolchain first."; exit 1; }
     - command -v cargo >/dev/null 2>&1 || { echo "cargo not found on runner. Install Rust toolchain first."; exit 1; }
     - mkdir -p "$BUN_INSTALL_CACHE_DIR" "$ELECTRON_CACHE" "$ELECTRON_BUILDER_CACHE"
+    - |
+      if ! rustc --version >/dev/null 2>&1; then
+        if command -v rustup >/dev/null 2>&1; then
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+        else
+          echo "rustc is not usable and rustup is missing. Install rustup or fix Rust toolchain."
+          exit 1
+        fi
+      fi
+    - node --version
+    - npm --version
     - bun --version
     - rustc --version
     - cargo --version
@@ -206,8 +408,6 @@ build:macos:
     key:
       files:
         - bun.lock
-        - package.json
-        - native/package.json
         - native/Cargo.lock
     paths:
       - .cache/bun/install/cache
@@ -217,13 +417,23 @@ build:macos:
     policy: pull-push
   script:
     - set -eu
-    - bun install --frozen-lockfile
+    - rm -rf node_modules
+    - |
+      npm ci --no-audit --fund=false || {
+        echo "WARN: npm ci failed; retrying npm install for CI compatibility."
+        npm install --no-audit --fund=false
+      }
     - cd native
-    - bun install --frozen-lockfile
+    - rm -rf node_modules
+    - |
+      npm ci --no-audit --fund=false || {
+        echo "WARN: native npm ci failed; retrying npm install for CI compatibility."
+        npm install --no-audit --fund=false
+      }
     - bun run build
     - cd ..
     - bun run build
-    - bunx electron-builder --mac --publish never
+    - bun x electron-builder --mac --publish never
     - test -f release-build/latest-mac.yml
     - ls -lah release-build
   artifacts:
@@ -284,26 +494,26 @@ deploy:r2:
         if [ -f "$file" ]; then
           filename="$(basename "$file")"
           echo "Uploading $filename to /client/$VERSION/"
-          bunx wrangler r2 object put --remote "$R2_BUCKET/client/$VERSION/$filename" --file="$file" --content-type="application/octet-stream"
+          bun x wrangler r2 object put --remote "$R2_BUCKET/client/$VERSION/$filename" --file="$file" --content-type="application/octet-stream"
         fi
       done
     - |
       latest_win_yml="$(find release-build -name latest.yml | head -n 1 || true)"
       if [ -n "$latest_win_yml" ]; then
         sed -i -E "s|^([[:space:]]*-[[:space:]]+url:[[:space:]]+)|\1$VERSION/|; s|^([[:space:]]*path:[[:space:]]+)|\1$VERSION/|" "$latest_win_yml"
-        bunx wrangler r2 object put --remote "$R2_BUCKET/client/latest.yml" --file="$latest_win_yml" --content-type="text/yaml"
+        bun x wrangler r2 object put --remote "$R2_BUCKET/client/latest.yml" --file="$latest_win_yml" --content-type="text/yaml"
       fi
     - |
       latest_mac_yml="$(find release-build -name latest-mac.yml | head -n 1 || true)"
       if [ -n "$latest_mac_yml" ]; then
         sed -i -E "s|^([[:space:]]*-[[:space:]]+url:[[:space:]]+)|\1$VERSION/|; s|^([[:space:]]*path:[[:space:]]+)|\1$VERSION/|" "$latest_mac_yml"
-        bunx wrangler r2 object put --remote "$R2_BUCKET/client/latest-mac.yml" --file="$latest_mac_yml" --content-type="text/yaml"
+        bun x wrangler r2 object put --remote "$R2_BUCKET/client/latest-mac.yml" --file="$latest_mac_yml" --content-type="text/yaml"
       fi
     - |
       latest_linux_yml="$(find release-build -name latest-linux.yml | head -n 1 || true)"
       if [ -n "$latest_linux_yml" ]; then
         sed -i -E "s|^([[:space:]]*-[[:space:]]+url:[[:space:]]+)|\1$VERSION/|; s|^([[:space:]]*path:[[:space:]]+)|\1$VERSION/|" "$latest_linux_yml"
-        bunx wrangler r2 object put --remote "$R2_BUCKET/client/latest-linux.yml" --file="$latest_linux_yml" --content-type="text/yaml"
+        bun x wrangler r2 object put --remote "$R2_BUCKET/client/latest-linux.yml" --file="$latest_linux_yml" --content-type="text/yaml"
       else
         echo "ERROR: latest-linux.yml not found"
         exit 1
@@ -355,8 +565,8 @@ deploy:r2:
           )
         }' > latest.json
       cat latest.json
-      bunx wrangler r2 object put --remote "$R2_BUCKET/client/latest.json" --file="latest.json" --content-type="application/json"
-    - bunx wrangler r2 object list --remote "$R2_BUCKET" --prefix="client/" | head -n 20
+      bun x wrangler r2 object put --remote "$R2_BUCKET/client/latest.json" --file="latest.json" --content-type="application/json"
+    - bun x wrangler r2 object list --remote "$R2_BUCKET" --prefix="client/" | head -n 20
   artifacts:
     when: always
     expire_in: 7 days

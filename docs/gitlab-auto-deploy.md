@@ -15,7 +15,7 @@ It covers:
 
 CI job:
 
-- `ci:checks` runs for merge requests and `main`
+- `ci:checks` runs for merge requests and `main` (uses `windows` shell runner)
 - validates:
   - `check-no-app-asar-writes`
   - app build
@@ -67,6 +67,8 @@ Optional:
 - `ENABLE_FLATPAK_RELEASE` set `true` to publish flatpak
 - `ENABLE_WINDOWS_RELEASE` set `true` to enable Windows build job
 - `ENABLE_MACOS_RELEASE` set `true` to enable macOS build job
+- `WINDOWS_LOW_RESOURCE_MODE` default `true`, tune Windows build for low-RAM runners
+- `WINDOWS_NODE_MAX_OLD_SPACE_MB` default `768`, Node memory cap for Windows low-resource mode
 - `DEPLOY_ON_MAIN` set `true` to deploy from `main` pushes
 - `MANUAL_DEPLOY` set `true` when starting deploy from UI
 - `MANUAL_RELEASE` alternative flag for manual release from UI
@@ -87,8 +89,11 @@ Linux self-hosted:
 2. Register runner with `shell` executor
 3. Assign tag `linux`
 4. Install tools on runner host:
+   - Node.js + npm
    - Bun
    - Rust toolchain (`rustc`, `cargo`)
+   - Build toolchain: `make`, `gcc`, `g++`, `python3`
+   - `g++` must support C++20 (`-std=gnu++20`) for Electron native rebuild
    - `jq`, `sed`, `find`
    - `flatpak`, `flatpak-builder`, `elfutils` (only if `ENABLE_FLATPAK_RELEASE=true`)
 
@@ -98,8 +103,13 @@ Windows self-hosted:
 2. Register runner with `shell` executor
 3. Assign tag `windows`
 4. Install tools on runner host:
-   - Bun
+   - Git
+   - Node.js 20+ (with `corepack`) or preinstalled `pnpm`
+   - pnpm (pipeline will try `corepack` auto-setup)
    - Rust toolchain (`rustc`, `cargo`)
+5. For very small runners (e.g. 1 GB RAM), keep:
+   - `WINDOWS_LOW_RESOURCE_MODE=true`
+   - `WINDOWS_NODE_MAX_OLD_SPACE_MB=768` (adjust 512-1024 if needed)
 
 macOS self-hosted:
 
@@ -117,13 +127,27 @@ gitlab-runner register \
   --url "https://gitlab.com/" \
   --token "<PROJECT_RUNNER_TOKEN>" \
   --executor "shell" \
-  --description "windows-runner" \
-  --tag-list "windows" \
-  --run-untagged="false"
+  --shell "powershell" \
+  --description "windows-runner"
 ```
 
-Use the same command for macOS runner with tag `macos`.
-Use the same command for Linux runner with tag `linux`.
+Linux example:
+
+```bash
+gitlab-runner register \
+  --url "https://gitlab.com/" \
+  --token "<PROJECT_RUNNER_TOKEN>" \
+  --executor "shell" \
+  --shell "bash" \
+  --description "linux-runner"
+```
+
+After registration, set runner tags on GitLab UI:
+
+- `Project -> Settings -> CI/CD -> Runners -> Edit runner`
+- Set tag to `windows` or `linux` or `macos`
+- Set `Run untagged jobs` to `off`
+- Keep `Locked to current project` as needed
 
 ## Step 4: Enable Platforms
 
@@ -201,3 +225,66 @@ After `deploy:r2` success, verify:
 Linux job fails with `bun/rustc/cargo/jq/sed/find not found`:
 
 - install missing tools on the Linux host runner and rerun pipeline
+
+Linux fails early: `prepare environment: exit status 1`:
+
+- this is runner host shell/profile issue (fails before CI script starts)
+- check as runner user:
+  - `sudo -u gitlab-runner -H bash -lc 'echo PROFILE_OK'`
+- if command fails, fix `~gitlab-runner/.bashrc`, `~gitlab-runner/.profile`, `~gitlab-runner/.bash_profile`:
+  - remove `exit`, failing commands, or strict commands that break non-interactive shell
+  - keep interactive-only commands behind guard:
+    - `case $- in *i*) ;; *) return ;; esac`
+- restart runner service and retry pipeline
+
+Linux fails with `sh: 1: eval: Running on ...nrm: not found`:
+
+- this is a known Runner eval issue pattern with `sh`
+- set runner shell to `bash` and enable feature flag `FF_USE_NEW_BASH_EVAL_STRATEGY`
+- in `/etc/gitlab-runner/config.toml` under your `[[runners]]`:
+  - `shell = "bash"`
+  - add:
+    - `[runners.feature_flags]`
+    - `FF_USE_NEW_BASH_EVAL_STRATEGY = true`
+- restart runner:
+  - `sudo systemctl restart gitlab-runner`
+
+Windows fails with `git is not recognized`:
+
+- install Git on runner host and restart `gitlab-runner` service
+- if `winget` and `choco` are unavailable, download installer from `https://git-scm.com/download/win`
+- ensure `git.exe` is in system `PATH` for the service account
+
+Windows fails with `rustup not found`:
+
+- current pipeline no longer hard-fails if `rustup` is missing
+- but `rustc` and `cargo` still must exist on the runner
+- make sure tools are installed for the same account that runs `gitlab-runner` service
+- if using rustup-based install, set default toolchain once:
+  - `rustup default stable`
+  - `rustc --version`
+
+Linux fails in electron-builder with `JSON Parse error: Unexpected EOF`:
+
+- usually caused by inconsistent package manager state in `node_modules`
+- use `npm ci` (same lock manager as `package-lock.json`) before packaging
+- clear stale modules first:
+  - `rm -rf node_modules native/node_modules`
+- validate npm dependency tree JSON once:
+  - `npm list -a --include=prod --include=optional --omit=dev --json --long --silent > .tmp-npm-list.json || true`
+  - `node -e "JSON.parse(require('fs').readFileSync('.tmp-npm-list.json','utf8')); console.log('ok')"`
+
+Linux fails with `Cannot find module @rollup/rollup-linux-x64-gnu`:
+
+- this is npm optional dependency bug in some environments
+- ensure runner installs optional deps with clean install:
+  - `rm -rf node_modules native/node_modules`
+  - `npm ci --no-audit --fund=false --prefer-offline`
+- if still missing, install it explicitly (no lockfile change):
+  - `npm install --no-save @rollup/rollup-linux-x64-gnu`
+
+Linux fails with `Cannot find module '../lightningcss.linux-x64-gnu.node'`:
+
+- same root cause (missing optional native dependency)
+- install explicit fallback (no lockfile change):
+  - `npm install --no-save lightningcss-linux-x64-gnu`
