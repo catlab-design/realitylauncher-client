@@ -55,17 +55,18 @@ jobs:
           ENABLE_MACOS: ${{ vars.ENABLE_MACOS_RUNNER }}
         run: |
           PLATFORMS='[{"platform":"linux","runs_on":"ubuntu-latest"}]'
-
+      
           if [[ "$ENABLE_WINDOWS" == "true" || "$ENABLE_MS_STORE" == "true" || "$BUILD_WINDOWS" == "true" ]]; then
-            PLATFORMS=$(echo "$PLATFORMS" | jq '. + [{"platform":"win","runs_on":"windows-latest"}]')
+            PLATFORMS=$(echo "$PLATFORMS" | jq -c '. + [{"platform":"win","runs_on":"windows-latest"}]')
           fi
-
+      
           if [[ "$ENABLE_MACOS" == "true" || "$BUILD_MACOS" == "true" ]]; then
-            PLATFORMS=$(echo "$PLATFORMS" | jq '. + [{"platform":"mac","runs_on":"macos-latest"}]')
+            PLATFORMS=$(echo "$PLATFORMS" | jq -c '. + [{"platform":"mac","runs_on":"macos-latest"}]')
           fi
-
-          echo "matrix={\"include\":$PLATFORMS}" >> "$GITHUB_OUTPUT"
-          echo "Matrix: $PLATFORMS"
+      
+          MATRIX=$(jq -cn --argjson p "$PLATFORMS" '{"include":$p}')
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "Matrix: $MATRIX"
 
   build:
     needs: setup
