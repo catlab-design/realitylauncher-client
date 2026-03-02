@@ -40,32 +40,38 @@ env:
   CDN_URL: https://cdn.reality.catlabdesign.space
 
 jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Determine build matrix
+        id: set-matrix
+        env:
+          BUILD_WINDOWS: ${{ github.event.inputs.build_windows || github.event.client_payload.build_windows || 'false' }}
+          BUILD_MACOS: ${{ github.event.inputs.build_macos || github.event.client_payload.build_macos || 'false' }}
+          ENABLE_WINDOWS: ${{ vars.ENABLE_WINDOWS_RELEASE }}
+          ENABLE_MS_STORE: ${{ vars.ENABLE_MS_STORE_RELEASE }}
+          ENABLE_MACOS: ${{ vars.ENABLE_MACOS_RUNNER }}
+        run: |
+          PLATFORMS='[{"platform":"linux","runs_on":"ubuntu-latest"}]'
+
+          if [[ "$ENABLE_WINDOWS" == "true" || "$ENABLE_MS_STORE" == "true" || "$BUILD_WINDOWS" == "true" ]]; then
+            PLATFORMS=$(echo "$PLATFORMS" | jq '. + [{"platform":"win","runs_on":"windows-latest"}]')
+          fi
+
+          if [[ "$ENABLE_MACOS" == "true" || "$BUILD_MACOS" == "true" ]]; then
+            PLATFORMS=$(echo "$PLATFORMS" | jq '. + [{"platform":"mac","runs_on":"macos-latest"}]')
+          fi
+
+          echo "matrix={\"include\":$PLATFORMS}" >> "$GITHUB_OUTPUT"
+          echo "Matrix: $PLATFORMS"
+
   build:
+    needs: setup
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - platform: linux
-            runs_on: ubuntu-latest
-          - platform: win
-            runs_on: windows-latest
-          - platform: mac
-            runs_on: macos-latest
-
-    if: |
-      matrix.platform == 'linux' ||
-      (matrix.platform == 'win' && (
-        vars.ENABLE_WINDOWS_RELEASE == 'true' ||
-        vars.ENABLE_MS_STORE_RELEASE == 'true' ||
-        (github.event_name == 'workflow_dispatch' && github.event.inputs.build_windows == 'true') ||
-        (github.event_name == 'repository_dispatch' && (github.event.client_payload.build_windows == true || github.event.client_payload.build_windows == 'true'))
-      )) ||
-      (matrix.platform == 'mac' && (
-        vars.ENABLE_MACOS_RUNNER == 'true' ||
-        (github.event_name == 'workflow_dispatch' && github.event.inputs.build_macos == 'true') ||
-        (github.event_name == 'repository_dispatch' && (github.event.client_payload.build_macos == true || github.event.client_payload.build_macos == 'true'))
-      ))
-
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
     runs-on: ${{ matrix.runs_on }}
     
     permissions:
