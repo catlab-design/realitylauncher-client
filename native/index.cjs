@@ -310,7 +310,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { detectJavaInstallations, validateJavaPath, getRecommendedJavaVersion, findJavaForMinecraft, downloadFile, downloadFiles, verifyFileHash, calculateSha1, calculateSha256, LoaderType, getInstancePath, createInstanceDirectories, saveInstanceMeta, loadInstanceMeta, listInstances, deleteInstance, copyInstance, getDirectorySize, listInstanceMods, toggleMod, deleteMod, listInstanceResourcepacks, extractZip, extractFilesFromZip, listZipContents, readFileFromZip, parseModrinthManifest, parseCurseforgeManifest, extractModpackOverrides, modrinthSearch, modrinthGetProject, modrinthGetVersions, curseforgeSearch, curseforgeGetFiles, curseforgeGetDownloadUrl, fetchVersionManifest, fetchVersionDetail, prepareLaunch, launchGame, getAssetDownloads, ForgeLoaderType, installForge, installFabric, getFabricVersions, installQuilt, getQuiltVersions, isProcessAlive, killProcessTree, saveRunningInstance, removeRunningInstance, getRunningInstances, isInstanceRunning, getInstancePid } = nativeBinding
+const { detectJavaInstallations, validateJavaPath, getRecommendedJavaVersion, findJavaForMinecraft, downloadFile, downloadFiles, verifyFileHash, calculateSha1, calculateSha256, verifyMultipleFileHashes, planServerSyncDownloads, cleanupExtraMods, postInstallModpackFiles, detectModConflictsNative, inspectPackMetadata, LoaderType, getInstancePath, createInstanceDirectories, saveInstanceMeta, loadInstanceMeta, listInstances, deleteInstance, copyInstance, getDirectorySize, listInstanceMods, toggleMod, deleteMod, listInstanceResourcepacks, extractZip, extractFilesFromZip, listZipContents, readFileFromZip, parseModrinthManifest, parseCurseforgeManifest, extractModpackOverrides, modrinthSearch, modrinthGetProject, modrinthGetVersions, curseforgeSearch, curseforgeGetFiles, curseforgeGetDownloadUrl, fetchVersionManifest, fetchVersionDetail, prepareLaunch, launchGame, getAssetDownloads, analyzeCrashLog, ForgeLoaderType, installForge, installFabric, getFabricVersions, installQuilt, getQuiltVersions, isProcessAlive, killProcessTree, saveRunningInstance, removeRunningInstance, getRunningInstances, isInstanceRunning, getInstancePid } = nativeBinding
 
 module.exports.detectJavaInstallations = detectJavaInstallations
 module.exports.validateJavaPath = validateJavaPath
@@ -321,6 +321,12 @@ module.exports.downloadFiles = downloadFiles
 module.exports.verifyFileHash = verifyFileHash
 module.exports.calculateSha1 = calculateSha1
 module.exports.calculateSha256 = calculateSha256
+module.exports.verifyMultipleFileHashes = verifyMultipleFileHashes
+module.exports.planServerSyncDownloads = planServerSyncDownloads
+module.exports.cleanupExtraMods = cleanupExtraMods
+module.exports.postInstallModpackFiles = postInstallModpackFiles
+module.exports.detectModConflictsNative = detectModConflictsNative
+module.exports.inspectPackMetadata = inspectPackMetadata
 module.exports.LoaderType = LoaderType
 module.exports.getInstancePath = getInstancePath
 module.exports.createInstanceDirectories = createInstanceDirectories
@@ -352,6 +358,7 @@ module.exports.fetchVersionDetail = fetchVersionDetail
 module.exports.prepareLaunch = prepareLaunch
 module.exports.launchGame = launchGame
 module.exports.getAssetDownloads = getAssetDownloads
+module.exports.analyzeCrashLog = analyzeCrashLog
 module.exports.ForgeLoaderType = ForgeLoaderType
 module.exports.installForge = installForge
 module.exports.installFabric = installFabric

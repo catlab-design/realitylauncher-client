@@ -52,6 +52,9 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
     const [selectedFileName, setSelectedFileName] = useState<string>("");
     const [variant, setVariant] = useState<SkinVariant>("classic");
     const [isApplying, setIsApplying] = useState(false);
+    const [isInitialScreenLoading, setIsInitialScreenLoading] = useState(true);
+    const [isPreviewSkinLoading, setIsPreviewSkinLoading] = useState(true);
+    const initialLoadDoneRef = useRef(false);
 
     const fallbackSkinUrl = useMemo(() => {
         if (!session?.username) return null;
@@ -90,6 +93,12 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
     }, [isMicrosoftSession, t]);
 
     useEffect(() => { syncProfile(); }, [syncProfile]);
+
+    useEffect(() => {
+        if (!profileFetched || initialLoadDoneRef.current) return;
+        initialLoadDoneRef.current = true;
+        setIsInitialScreenLoading(false);
+    }, [profileFetched]);
 
     useEffect(() => {
         if (selectedSkinDataUrl || !profile) return;
@@ -140,6 +149,9 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
             setSelectedFileName("");
             setVariant(normalizeVariant(result.profile.variant || result.profile.activeSkin?.variant));
             toast.success(t("wardrobe_apply_success"));
+            
+            // Notify other components (like MCHead) to refresh the avatar cache
+            window.dispatchEvent(new CustomEvent("minecraft-skin-updated", { detail: { username: session?.username } }));
         } catch (error: any) {
             toast.error(error?.message || t("wardrobe_apply_failed"));
         } finally {
@@ -176,12 +188,61 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
     }
 
     // --- Main UI ---
+    if (isInitialScreenLoading) {
+        return (
+            <div className="h-full flex flex-col overflow-hidden">
+                <div className="flex flex-col pb-6 w-full max-w-screen-2xl mx-auto gap-6 px-8 pt-3">
+                    <div className="flex items-center justify-between gap-3">
+                        <div className="space-y-2">
+                            <div
+                                className="h-10 w-56 rounded-xl animate-skeleton-wave"
+                                style={{ backgroundColor: colors.surfaceContainer }}
+                            />
+                            <div
+                                className="h-4 w-72 rounded-md animate-skeleton-wave"
+                                style={{ backgroundColor: colors.surfaceContainerHighest }}
+                            />
+                        </div>
+                        <div
+                            className="h-9 w-28 rounded-lg animate-skeleton-wave"
+                            style={{ backgroundColor: colors.surfaceContainer }}
+                        />
+                    </div>
+
+                    <div className="flex flex-col md:flex-row gap-8">
+                        <div
+                            className="flex-1 h-[440px] md:h-[540px] rounded-3xl animate-skeleton-wave"
+                            style={{ backgroundColor: colors.surfaceContainer }}
+                        />
+                        <div className="w-full md:w-[340px] shrink-0 flex flex-col gap-4">
+                            <div
+                                className="rounded-3xl h-[140px] animate-skeleton-wave"
+                                style={{ backgroundColor: colors.surfaceContainer }}
+                            />
+                            <div
+                                className="rounded-3xl h-[170px] animate-skeleton-wave"
+                                style={{ backgroundColor: colors.surfaceContainer }}
+                            />
+                            <div
+                                className="h-[44px] rounded-xl animate-skeleton-wave"
+                                style={{ backgroundColor: colors.surfaceContainer }}
+                            />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
-        <div className="h-full flex flex-col overflow-hidden">
+        <div className="h-full flex flex-col overflow-hidden animate-fade-in">
             <div className="flex flex-col pb-6 w-full max-w-screen-2xl mx-auto gap-6 px-8 pt-3">
 
                 {/* Header Row */}
-                <div className="flex items-center justify-between gap-3">
+                <div
+                    className="flex items-center justify-between gap-3 animate-fade-in"
+                    style={{ animationDelay: "20ms", opacity: 0 }}
+                >
                     <div>
                         <h2 className="text-4xl font-black tracking-tight" style={{ color: colors.onSurface }}>
                             {t("wardrobe")}
@@ -210,15 +271,34 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
                 {/* Main Content: Preview + Controls side by side */}
                 <div className="flex flex-col md:flex-row gap-8">
                     {/* 3D Preview Card */}
-                    <div className="flex-1 h-[440px] md:h-[540px] rounded-3xl overflow-hidden relative"
+                    <div
+                        className="flex-1 h-[440px] md:h-[540px] rounded-3xl overflow-hidden relative animate-fade-in"
                         style={{
                             background: "radial-gradient(ellipse at 50% 35%, rgba(255,255,255,0.06), transparent 70%), linear-gradient(180deg, #18181b 0%, #0c0c0f 100%)",
+                            animationDelay: "80ms",
+                            opacity: 0,
                         }}>
                         <SkinPreview3D
                             skinUrl={previewSkin}
                             variant={variant}
                             onResetRotation={(fn) => (resetRotationRef.current = fn)}
+                            onSkinLoadStateChange={setIsPreviewSkinLoading}
                         />
+
+                        {(isLoadingProfile || isPreviewSkinLoading || !profileFetched) && (
+                            <div
+                                className="absolute inset-0 animate-skeleton-wave flex items-center justify-center"
+                                style={{ backgroundColor: "rgba(14, 14, 18, 0.72)" }}
+                            >
+                                <div
+                                    className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2"
+                                    style={{ backgroundColor: "rgba(255,255,255,0.10)", color: "rgba(255,255,255,0.75)" }}
+                                >
+                                    <Icons.Spinner className="w-3 h-3 animate-spin" />
+                                    {t("loading")}
+                                </div>
+                            </div>
+                        )}
 
                         {/* Preview label */}
                         <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider"
@@ -254,7 +334,14 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
                     <div className="w-full md:w-[340px] shrink-0 flex flex-col gap-4">
 
                         {/* Variant Selector */}
-                        <div className="rounded-3xl p-5 border" style={{ borderColor: `${colors.outline}22`, backgroundColor: colors.surfaceContainer }}>
+                        <div
+                            className="rounded-3xl p-5 border animate-fade-in"
+                            style={{
+                                borderColor: `${colors.outline}22`,
+                                backgroundColor: colors.surfaceContainer,
+                                animationDelay: "140ms",
+                                opacity: 0,
+                            }}>
                             <div className="text-xs font-bold uppercase tracking-wider opacity-40 mb-2.5" style={{ color: colors.onSurfaceVariant }}>
                                 {t("wardrobe_variant")}
                             </div>
@@ -283,7 +370,14 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
                         </div>
 
                         {/* File Upload */}
-                        <div className="rounded-3xl p-5 border" style={{ borderColor: `${colors.outline}22`, backgroundColor: colors.surfaceContainer }}>
+                        <div
+                            className="rounded-3xl p-5 border animate-fade-in"
+                            style={{
+                                borderColor: `${colors.outline}22`,
+                                backgroundColor: colors.surfaceContainer,
+                                animationDelay: "220ms",
+                                opacity: 0,
+                            }}>
                             <div className="text-xs font-bold uppercase tracking-wider opacity-40 mb-2.5" style={{ color: colors.onSurfaceVariant }}>
                                 {t("wardrobe_skin_control")}
                             </div>
@@ -337,10 +431,12 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
                         <button
                             onClick={onApplySkin}
                             disabled={isApplying || !selectedSkinDataUrl}
-                            className="w-full py-2.5 rounded-xl font-black text-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:scale-[1.01] active:scale-95 flex items-center justify-center gap-2"
+                            className="w-full py-2.5 rounded-xl font-black text-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:scale-[1.01] active:scale-95 flex items-center justify-center gap-2 animate-fade-in"
                             style={{
                                 backgroundColor: selectedSkinDataUrl ? colors.primary : colors.surfaceContainer,
                                 color: selectedSkinDataUrl ? colors.onPrimary : colors.onSurfaceVariant,
+                                animationDelay: "300ms",
+                                opacity: 0,
                             }}
                         >
                             {isApplying && <Icons.Spinner className="w-4 h-4 animate-spin" />}

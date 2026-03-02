@@ -67,7 +67,22 @@ export function ChangelogModal({
             );
         },
         p: ({ node, ...props }: any) => <p className="text-xs py-0.5" style={{ color: colors.onSurfaceVariant }} {...props} />,
-        a: ({ node, ...props }: any) => <a className="underline decoration-1 underline-offset-2" target="_blank" rel="noopener noreferrer" style={{ color: colors.primary }} {...props} />,
+        a: ({ node, href, children, ...props }: any) => (
+            <a 
+                className="underline decoration-1 underline-offset-2 cursor-pointer" 
+                href={href || "#"}
+                onClick={(e) => {
+                    e.preventDefault();
+                    if (href && (href.startsWith('http') || href.startsWith('https'))) {
+                        (window as any).api?.openExternal?.(href);
+                    }
+                }}
+                style={{ color: colors.primary }} 
+                {...props}
+            >
+                {children}
+            </a>
+        ),
         img: ({ node, ...props }: any) => (
             <img
                 className="max-w-full rounded-lg my-2 border shadow-sm"

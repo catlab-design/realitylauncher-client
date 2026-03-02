@@ -6,6 +6,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
+import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 import { useTranslation } from "../../../hooks/useTranslation";
 import type { ModrinthProject, ProjectVersion, ProjectType, InstallProgress } from "./types";
 import { formatNumber } from "./helpers";
@@ -158,10 +160,16 @@ export function ProjectDetailPage({
     }, [project.project_id]);
 
     // Helper to get URL from raw image item
-    const getImageUrl = (item: any) => {
+    const getImageUrl = (item: any, isThumbnail = true) => {
         if (!item) return null;
         if (typeof item === 'string') return item;
-        return item.rawUrl || item.raw_url || item.url || null;
+        
+        // Modrinth provides 'url' (compressed) and 'raw_url' (original high-res)
+        if (isThumbnail) {
+            return item.url || item.rawUrl || item.raw_url || null;
+        } else {
+            return item.raw_url || item.rawUrl || item.url || null;
+        }
     };
 
     const heroImage = (() => {
@@ -318,7 +326,7 @@ export function ProjectDetailPage({
             {selectedImageIndex !== null && project?.gallery && (
                 <ImagePreviewModal
                     colors={colors}
-                    imageUrl={getImageUrl(project.gallery[selectedImageIndex]) || ""}
+                    imageUrl={getImageUrl(project.gallery[selectedImageIndex], false) || ""}
                     onClose={() => setSelectedImageIndex(null)}
                     onNext={() => {
                         if (project.gallery && selectedImageIndex !== null && selectedImageIndex < project.gallery.length - 1) {
@@ -332,7 +340,10 @@ export function ProjectDetailPage({
                     }}
                     hasNext={project.gallery ? selectedImageIndex < project.gallery.length - 1 : false}
                     hasPrev={selectedImageIndex > 0}
-                    preloadUrls={[]}
+                    preloadUrls={[
+                        selectedImageIndex < project.gallery.length - 1 ? getImageUrl(project.gallery[selectedImageIndex + 1], false) : undefined,
+                        selectedImageIndex > 0 ? getImageUrl(project.gallery[selectedImageIndex - 1], false) : undefined
+                    ].filter(Boolean) as string[]}
                     imageIndex={selectedImageIndex}
                     totalImages={project.gallery ? project.gallery.length : 0}
                 />
@@ -437,7 +448,7 @@ export function ProjectDetailPage({
                         {currentProject.categories.map((cat) => (
                             <span key={cat}
                                 className="px-3 py-1.5 rounded-lg text-[11px] uppercase font-black tracking-widest shadow-sm"
-                                style={{ backgroundColor: `${accentColor}20`, color: accentColor, border: `1px solid ${accentColor}25` }}>
+                                style={{ backgroundColor: `${accentColor}20`, color: colors.onSurface, border: `1px solid ${accentColor}25` }}>
                                 {cat}
                             </span>
                         ))}
@@ -482,29 +493,93 @@ export function ProjectDetailPage({
                                     </div>
                                 ) : bodyHtml ? (
                                     <div
-                                        className="prose prose-invert prose-base max-w-none"
+                                        className="prose prose-invert prose-base max-w-4xl mx-auto markdown-body"
                                         style={{ color: colors.onSurface }}
                                     >
+                                        <style dangerouslySetInnerHTML={{ __html: `
+                                            .markdown-body img { 
+                                                display: inline-block !important; 
+                                                margin: 0 !important;
+                                                vertical-align: middle;
+                                                max-width: 100%;
+                                                height: auto;
+                                            }
+                                            .markdown-body center * {
+                                                text-align: center !important;
+                                            }
+                                            .markdown-body p:has(a img) {
+                                                display: flex;
+                                                flex-wrap: wrap;
+                                                justify-content: center;
+                                                align-items: center;
+                                                gap: 0.5rem;
+                                            }
+                                            .markdown-body p:has(a img) br {
+                                                display: none;
+                                            }
+                                        `}} />
                                         <ReactMarkdown
                                             rehypePlugins={[rehypeRaw]}
+                                            remarkPlugins={[remarkGfm, remarkBreaks]}
                                             components={{
-                                                h1: ({ node, ...props }: any) => <h1 className="text-3xl font-bold mb-6 mt-10 first:mt-0" style={{ color: colors.onSurface }} {...props} />,
-                                                h2: ({ node, ...props }: any) => <h2 className="text-2xl font-bold mb-4 mt-8" style={{ color: colors.onSurface }} {...props} />,
-                                                h3: ({ node, ...props }: any) => <h3 className="text-xl font-semibold mb-3 mt-6" style={{ color: colors.onSurface }} {...props} />,
-                                                p: ({ node, ...props }: any) => <p className="mb-4 leading-relaxed text-base" style={{ color: `${colors.onSurface}cc` }} {...props} />,
-                                                a: ({ node, ...props }: any) => <a className="underline decoration-2 underline-offset-4 hover:text-white transition-colors" target="_blank" rel="noopener noreferrer" style={{ color: colors.secondary }} {...props} />,
+                                                h1: ({ node, ...props }: any) => {
+                                                    const align = node?.properties?.align || props.align;
+                                                    return <h1 className={`text-3xl font-bold mb-6 mt-10 first:mt-0 ${align === 'center' ? 'w-full block text-center!' : ''}`} style={{ color: colors.onSurface, textAlign: align || 'inherit' }} {...props} />;
+                                                },
+                                                h2: ({ node, ...props }: any) => {
+                                                    const align = node?.properties?.align || props.align;
+                                                    return <h2 className={`text-2xl font-bold mb-4 mt-8 ${align === 'center' ? 'w-full block text-center!' : ''}`} style={{ color: colors.onSurface, textAlign: align || 'inherit' }} {...props} />;
+                                                },
+                                                h3: ({ node, ...props }: any) => {
+                                                    const align = node?.properties?.align || props.align;
+                                                    return <h3 className={`text-xl font-semibold mb-3 mt-6 ${align === 'center' ? 'w-full block text-center!' : ''}`} style={{ color: colors.onSurface, textAlign: align || 'inherit' }} {...props} />;
+                                                },
+                                                p: ({ node, ...props }: any) => {
+                                                    const align = node?.properties?.align || props.align;
+                                                    return <p className={`mb-4 leading-relaxed text-base ${align === 'center' ? 'w-full block text-center!' : ''}`} style={{ color: `${colors.onSurface}cc`, textAlign: align || 'inherit' }} {...props} />;
+                                                },
+                                                a: ({ node, href, children, ...props }: any) => (
+                                                    <a 
+                                                        className="underline decoration-2 underline-offset-4 hover:text-white transition-colors" 
+                                                        href={href || "#"} 
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            if (href && (href.startsWith('http') || href.startsWith('https'))) {
+                                                                (window as any).api?.openExternal?.(href);
+                                                            }
+                                                        }}
+                                                        style={{ color: colors.secondary, cursor: 'pointer' }} 
+                                                        {...props}
+                                                    >
+                                                        {children}
+                                                    </a>
+                                                ),
                                                 ul: ({ node, ...props }: any) => <ul className="list-disc pl-5 mb-4 space-y-2" style={{ color: `${colors.onSurface}cc` }} {...props} />,
                                                 ol: ({ node, ...props }: any) => <ol className="list-decimal pl-5 mb-4 space-y-2" style={{ color: `${colors.onSurface}cc` }} {...props} />,
                                                 li: ({ node, ...props }: any) => <li className="text-base leading-relaxed" style={{ color: `${colors.onSurface}cc` }} {...props} />,
                                                 img: ({ node, ...props }: any) => (
                                                     <img
-                                                        className="max-w-full rounded-2xl my-6 mx-auto shadow-2xl border border-white/5"
+                                                        className="max-w-full rounded-lg shadow-md border border-white/5"
                                                         alt={props.alt || ''}
+                                                        loading="lazy"
                                                         {...props}
                                                     />
                                                 ),
                                                 blockquote: ({ node, ...props }: any) => (
                                                     <blockquote className="border-l-4 pl-6 py-2 my-6 text-base italic rounded-r-md" style={{ backgroundColor: `${colors.surfaceContainerHighest}30`, borderColor: accentColor, color: `${colors.onSurface}99` }} {...props} />
+                                                ),
+                                                div: ({ node, ...props }: any) => {
+                                                    const align = node?.properties?.align || props.align;
+                                                    return <div className={align === 'center' ? 'w-full block text-center!' : ''} style={{ textAlign: align || 'inherit' }} {...props} />;
+                                                },
+                                                span: ({ node, ...props }: any) => <span {...props} />,
+                                                center: ({ node, ...props }: any) => <div className="w-full block text-center!" style={{ textAlign: 'center', width: '100%', display: 'block' }} {...props} />,
+                                                iframe: ({ node, width, height, ...props }: any) => (
+                                                    <iframe 
+                                                        className="w-full rounded-xl shadow-lg border border-white/10 my-6" 
+                                                        style={{ aspectRatio: '16/9', height: 'auto' }}
+                                                        {...props} 
+                                                    />
                                                 ),
                                                 code: ({ node, inline, className, children, ...props }: any) => (
                                                     <code
@@ -805,11 +880,11 @@ export function ProjectDetailPage({
                                                 
                                                 return (
                                                     <span key={l} className="px-4 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all hover:brightness-110 shadow-lg shadow-black/10"
-                                                        style={{ backgroundColor: `${color}15`, color: color, border: `1px solid ${color}30` }}>
+                                                        style={{ backgroundColor: `${color}15`, color: colors.onSurface, border: `1px solid ${color}30` }}>
                                                         {icon ? (
                                                             <img src={(icon as any).src || icon} className="w-3.5 h-3.5 object-contain" alt={l} />
                                                         ) : (
-                                                            <i className="fa-solid fa-box text-[10px]" />
+                                                            <i className="fa-solid fa-box text-[10px]" style={{ color }} />
                                                         )}
                                                         {l}
                                                     </span>
@@ -829,14 +904,14 @@ export function ProjectDetailPage({
                                             {currentProject.client_side && (
                                                 <span className="px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-2.5 shadow-sm border"
                                                     style={{ backgroundColor: `${colors.surfaceContainerHighest}`, color: colors.onSurface, borderColor: `${colors.outline}20` }}>
-                                                    <i className="fa-solid fa-desktop text-xs" style={{ color: accentColor }} />
+                                                    <i className="fa-solid fa-desktop text-xs" />
                                                     {currentProject.client_side === "required" ? "Client-side" : currentProject.client_side === "optional" ? "Client (optional)" : currentProject.client_side}
                                                 </span>
                                             )}
                                             {currentProject.server_side && (
                                                 <span className="px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-2.5 shadow-sm border"
                                                     style={{ backgroundColor: `${colors.surfaceContainerHighest}`, color: colors.onSurface, borderColor: `${colors.outline}20` }}>
-                                                    <i className="fa-solid fa-server text-xs" style={{ color: accentColor }} />
+                                                    <i className="fa-solid fa-server text-xs" />
                                                     {currentProject.server_side === "required" ? "Server-side" : currentProject.server_side === "optional" ? "Server (optional)" : currentProject.server_side}
                                                 </span>
                                             )}
@@ -943,12 +1018,12 @@ export function ProjectDetailPage({
                         {/* Project Info */}
                         <div className="pt-8 border-t space-y-4" style={{ borderColor: `${accentColor}15` }}>
                             <div className="flex items-center justify-between">
-                                <span className="text-[10px] font-black opacity-30 uppercase tracking-[0.25em]" style={{ color: accentColor }}>ID</span>
+                                <span className="text-[10px] font-black opacity-50 uppercase tracking-[0.25em]" style={{ color: colors.onSurface }}>ID</span>
                                 <span className="text-sm font-mono font-bold opacity-70" style={{ color: colors.onSurface }}>{currentProject.project_id}</span>
                             </div>
                             {currentProject.license && (
                                 <div className="flex items-center justify-between">
-                                    <span className="text-[10px] font-black opacity-30 uppercase tracking-[0.25em]" style={{ color: accentColor }}>
+                                    <span className="text-[10px] font-black opacity-50 uppercase tracking-[0.25em]" style={{ color: colors.onSurface }}>
                                         {t('license' as any) || "License"}
                                     </span>
                                     <span className="text-sm font-black" style={{ color: colors.onSurface }}>
@@ -958,7 +1033,7 @@ export function ProjectDetailPage({
                             )}
                             {currentProject.date_created && (
                                 <div className="flex items-center justify-between">
-                                    <span className="text-[10px] font-black opacity-30 uppercase tracking-[0.25em]" style={{ color: accentColor }}>
+                                    <span className="text-[10px] font-black opacity-50 uppercase tracking-[0.25em]" style={{ color: colors.onSurface }}>
                                         {t('created' as any) || "Created"}
                                     </span>
                                     <span className="text-sm font-bold opacity-70" style={{ color: colors.onSurface }}>
@@ -968,7 +1043,7 @@ export function ProjectDetailPage({
                             )}
                             {currentProject.date_modified && (
                                 <div className="flex items-center justify-between">
-                                    <span className="text-[10px] font-black opacity-30 uppercase tracking-[0.25em]" style={{ color: accentColor }}>
+                                    <span className="text-[10px] font-black opacity-50 uppercase tracking-[0.25em]" style={{ color: colors.onSurface }}>
                                         {t('updated' as any) || "Updated"}
                                     </span>
                                     <span className="text-sm font-bold opacity-70" style={{ color: colors.onSurface }}>

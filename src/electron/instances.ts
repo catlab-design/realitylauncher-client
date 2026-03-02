@@ -19,6 +19,7 @@ import { getMinecraftDir } from "./config.js";
 
 const customRequire = createRequire(__filename);
 let nativeModule: any = null;
+const DEBUG_INSTANCES = process.env.DEBUG_INSTANCES === "1";
 
 function getNative(): any {
   if (nativeModule) return nativeModule;
@@ -240,29 +241,22 @@ export async function loadInstances(
     // Update the current "view" variable
     instances = loadedInstances;
 
-    console.log(
-      `[Instances] Loaded ${instances.length} instances offset=${offset} limit=${limit} (Native Async). Cache size: ${instanceCache.size}`,
-    );
+    if (DEBUG_INSTANCES) {
+      console.log(
+        `[Instances] Loaded ${instances.length} instances offset=${offset} limit=${limit} (Native Async). Cache size: ${instanceCache.size}`,
+      );
+    }
   } catch (error) {
     console.error("[Instances] Failed to load instances:", error);
     instances = [];
   }
 
-  // Debug Logging (async - fire and forget to avoid blocking)
-  if (instances.length === 0) {
+  if (DEBUG_INSTANCES && instances.length === 0) {
     console.error(
       "[Debug] Loaded 0 instances! Native returned:",
       JSON.stringify(nativeInstances),
     );
   }
-  const logPath = path.join(app.getPath("userData"), "logs", "debug-instances.log");
-  const logData = `[${new Date().toISOString()}] Loaded ${instances.length} instances: ${instances.map((i) => i.id).join(", ")}\n`;
-  fs.promises
-    .mkdir(path.dirname(logPath), { recursive: true })
-    .then(() => fs.promises.appendFile(logPath, logData))
-    .catch((err) => {
-      console.warn("[Debug] Logging failed:", err);
-    });
 
   return instances;
 }
@@ -305,7 +299,9 @@ async function saveInstance(instance: GameInstance): Promise<void> {
     await fs.promises.rename(tmpPath, metaPath);
 
     lastSavedContent.set(instance.id, json);
-    console.log("[Instances] Saved instance:", instance.name);
+    if (DEBUG_INSTANCES) {
+      console.log("[Instances] Saved instance:", instance.name);
+    }
   } catch (error) {
     console.error("[Instances] Failed to save instance:", instance.id, error);
   }
@@ -316,7 +312,9 @@ async function saveInstance(instance: GameInstance): Promise<void> {
  */
 async function saveInstances(): Promise<void> {
   await Promise.all(instances.map((inst) => saveInstance(inst)));
-  console.log("[Instances] Saved all", instances.length, "instances");
+  if (DEBUG_INSTANCES) {
+    console.log("[Instances] Saved all", instances.length, "instances");
+  }
 }
 
 // ========================================
@@ -402,7 +400,9 @@ export async function createInstance(
   instanceCache.set(instance.id, instance);
   await saveInstance(instance);
 
-  console.log("[Instances] Created instance:", instance.name, instance.id);
+  if (DEBUG_INSTANCES) {
+    console.log("[Instances] Created instance:", instance.name, instance.id);
+  }
   return instance;
 }
 
@@ -419,7 +419,6 @@ export async function importCloudInstance(
 
   // Create instance directory if not exists via native
   const native = getNative();
-  console.log("[Instances] Native keys:", Object.keys(native));
   if (typeof native.createInstanceDirectories !== "function") {
     console.error(
       "[Instances] CRITICAL: createInstanceDirectories is NOT a function. Available:",
@@ -476,11 +475,13 @@ export async function importCloudInstance(
   instanceCache.set(finalInstance.id, finalInstance);
 
   await saveInstance(finalInstance);
-  console.log(
-    "[Instances] Imported cloud instance:",
-    finalInstance.name,
-    finalInstance.id,
-  );
+  if (DEBUG_INSTANCES) {
+    console.log(
+      "[Instances] Imported cloud instance:",
+      finalInstance.name,
+      finalInstance.id,
+    );
+  }
   return finalInstance;
 }
 
@@ -518,7 +519,9 @@ export async function updateInstance(
   // Persist (async, non-blocking)
   await saveInstance(updatedInstance);
 
-  console.log("[Instances] Updated instance:", id);
+  if (DEBUG_INSTANCES) {
+    console.log("[Instances] Updated instance:", id);
+  }
   return updatedInstance;
 }
 

@@ -67,7 +67,7 @@ export function ProjectList({
                             }}
                         >
                             {/* Icon skeleton with shimmer */}
-                            <div className="w-12 h-12 rounded-xl flex-shrink-0 overflow-hidden relative"
+                            <div className="w-12 h-12 rounded-xl shrink-0 overflow-hidden relative"
                                 style={{ backgroundColor: colors.surfaceContainerHighest }}>
                                 {/* Gradient removed */}
                             </div>

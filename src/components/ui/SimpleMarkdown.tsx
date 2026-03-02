@@ -58,7 +58,19 @@ function renderInline(text: string, keyPrefix: string) {
     }
     if (node.type === "link") {
       return (
-        <a key={key} href={node.href} target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:opacity-80">
+        <a 
+          key={key} 
+          href={node.href} 
+          target="_blank" 
+          rel="noreferrer" 
+          className="underline underline-offset-2 hover:opacity-80 cursor-pointer"
+          onClick={(e) => {
+            e.preventDefault();
+            if (node.href && (node.href.startsWith('http') || node.href.startsWith('https'))) {
+              (window as any).api?.openExternal?.(node.href);
+            }
+          }}
+        >
           {node.value}
         </a>
       );

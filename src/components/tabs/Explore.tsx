@@ -255,19 +255,14 @@ export function Explore({ colors, config }: ExploreProps) {
         setIsLoading(true);
         try {
             if (contentSource === CONTENT_SOURCES.MODRINTH) {
-                // Build Modrinth facets
-                const facets: string[][] = [];
-                facets.push([`project_type:${projectType}`]);
-                if (mcVersionFilter) facets.push([`versions:${mcVersionFilter}`]);
-                if (loaderFilter) facets.push([`categories:${loaderFilter}`]);
-
                 const result = await window.api?.modrinthSearch?.({
                     query: searchQuery,
                     projectType: projectType,
                     sortBy: sortBy,
                     limit: viewCount,
                     offset: (page - 1) * viewCount,
-                    facets: facets.length > 0 ? JSON.stringify(facets) : undefined,
+                    gameVersion: mcVersionFilter || undefined,
+                    loader: loaderFilter || undefined,
                 });
 
                 if (result?.hits) {
@@ -753,6 +748,17 @@ export function Explore({ colors, config }: ExploreProps) {
 
             if (result?.ok) {
                 toast.success(t('install_complete'));
+                
+                // Automatically lock the newly downloaded mod to prevent accidental deletion during sync
+                const actualContentType = projectType === "modpack" ? "mod" : projectType;
+                if (result.filename && (actualContentType === "mod" || actualContentType === "resourcepack")) {
+                    try {
+                        await window.api?.instanceLockMods?.(selectedInstanceForDownload.id, [result.filename], true);
+                    } catch (e) {
+                        console.error("[Explore] Auto-lock failed:", e);
+                    }
+                }
+
                 setSelectedProject(null);
                 setSelectedInstanceForDownload(null);
                 setInstanceCompatibility([]);

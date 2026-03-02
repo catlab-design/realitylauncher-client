@@ -17,13 +17,9 @@ import {
   type GameInstance,
   type LoaderType,
 } from "./instances.js";
-import {
-  downloadFile,
-  verifyFileHash,
-} from "./modrinth.js";
 import { installCurseForgeModpack } from "./curseforge.js";
-import AdmZip from "adm-zip";
 import { getConfig } from "./config.js";
+import { getNativeModule } from "./native.js";
 
 // ========================================
 // Types
@@ -87,7 +83,6 @@ export interface InstallResult {
 // ========================================
 
 type ProgressCallback = (progress: InstallProgress) => void;
-type ZipSource = string | AdmZip;
 
 const MIN_MODPACK_DOWNLOAD_CONCURRENCY = 3;
 const MAX_MODPACK_DOWNLOAD_CONCURRENCY = 12;
@@ -173,189 +168,101 @@ function sortDownloadUrlsByPriority(downloads: string[]): string[] {
   return unique.sort((a, b) => score(b) - score(a));
 }
 
-async function loadZip(zipPath: string): Promise<AdmZip> {
-  const buffer = await fs.promises.readFile(zipPath);
-  return new AdmZip(buffer);
-}
-
-async function getZip(zipSource: ZipSource): Promise<AdmZip> {
-  return typeof zipSource === "string" ? loadZip(zipSource) : zipSource;
-}
-
-// ========================================
-// ZIP Extraction (using adm-zip)
-// ========================================
-
-/**
- * Extract a single entry from ZIP file (async version to prevent UI blocking)
- */
-async function extractZipEntry(
-  zipSource: ZipSource,
-  entryPath: string,
-): Promise<Buffer | null> {
-  try {
-    console.log(
-      "[ModpackInstaller] Extracting entry:",
-      entryPath,
-      "from:",
-      typeof zipSource === "string" ? zipSource : "(cached zip)",
-    );
-
-    const zip = await getZip(zipSource);
-    const entry = zip.getEntry(entryPath);
-
-    if (!entry) {
-      console.error("[ModpackInstaller] Entry not found:", entryPath);
-      // List available entries for debugging
-      const entries = zip
-        .getEntries()
-        .map((e) => e.entryName)
-        .slice(0, 10);
-      console.log("[ModpackInstaller] Available entries (first 10):", entries);
-      return null;
-    }
-
-    const content = entry.getData();
-    console.log(
-      "[ModpackInstaller] Extracted entry size:",
-      content.length,
-      "bytes",
-    );
-    return content;
-  } catch (error) {
-    console.error("[ModpackInstaller] Extract entry error:", error);
-    return null;
+async function verifyFileHashNative(
+  filePath: string,
+  hashes?: { sha1?: string; sha512?: string },
+): Promise<boolean> {
+  if (!hashes?.sha1) {
+    return true;
   }
+  const native = getNativeModule();
+  return (await native.verifyFileHash(filePath, hashes.sha1, undefined)) as boolean;
 }
-
-const PRESERVED_FILES = [
-  "options.txt",
-  "servers.dat",
-  "optionsof.txt",
-  "optionsshaders.txt",
-  "usercache.json",
-];
-
-/**
- * Extract a subdirectory from ZIP to destination (async version)
- */
-async function extractZipToDirectory(
-  zipSource: ZipSource,
-  destDir: string,
-  subPath?: string,
-  onProgress?: (progress: InstallProgress) => void,
-): Promise<void> {
-  try {
-    console.log(
-      "[ModpackInstaller] Extracting to directory:",
-      destDir,
-      "subPath:",
-      subPath || "(none)",
-    );
-
-    const zip = await getZip(zipSource);
-
-    if (subPath) {
-      // Extract only entries under the subPath
-      const normalizedSubPath = subPath.endsWith("/") ? subPath : subPath + "/";
-
-      const entries = zip
-        .getEntries()
-        .filter(
-          (entry) =>
-            entry.entryName.startsWith(normalizedSubPath) && !entry.isDirectory,
-        );
-
-      const total = entries.length;
-      let current = 0;
-
-      for (const entry of entries) {
-        const relativePath = entry.entryName.substring(
-          normalizedSubPath.length,
-        );
-        if (relativePath) {
-          // Check if file should be preserved
-          const fileName = path.basename(relativePath);
-          const destPath = path.join(destDir, relativePath);
-
-          if (PRESERVED_FILES.includes(fileName) && fs.existsSync(destPath)) {
-            console.log(
-              `[ModpackInstaller] Skipping preserved file: ${relativePath}`,
-            );
-            current++;
-            continue;
-          }
-
-          const destDirPath = path.dirname(destPath);
-
-          if (!fs.existsSync(destDirPath)) {
-            await fs.promises.mkdir(destDirPath, { recursive: true });
-          }
-
-          await fs.promises.writeFile(destPath, entry.getData());
-          current++;
-
-          if (onProgress) {
-            onProgress({
-              stage: "copying",
-              message: `กำลังคัดลอก: ${fileName}`,
-              current,
-              total,
-              percent: Math.round((current / total) * 100),
-            });
-          }
-        }
-      }
-    } else {
-      // Extract entire ZIP
-      zip.extractAllTo(destDir, true);
-    }
-
-    console.log("[ModpackInstaller] Extraction complete");
-  } catch (error) {
-    console.error("[ModpackInstaller] Extract to directory error:", error);
-    throw error;
-  }
-}
-
-// ========================================
-// Parse Modpack Index
-// ========================================
 
 export async function parseModpackIndex(
   mrpackPath: string,
-  zipOverride?: AdmZip,
 ): Promise<ModpackIndex> {
   console.log("[ModpackInstaller] Parsing:", mrpackPath);
 
-  const content = await extractZipEntry(
-    zipOverride ?? mrpackPath,
-    "modrinth.index.json",
-  );
+  const native = getNativeModule();
+  const manifest = native.parseModrinthManifest(mrpackPath) as
+    | {
+        formatVersion: number;
+        game: string;
+        versionId: string;
+        name: string;
+        summary?: string;
+        files: Array<{
+          path: string;
+          downloads: string[];
+          fileSize: number;
+          hashes: { sha1: string; sha512?: string };
+          env?: {
+            client?: "required" | "optional" | "unsupported";
+            server?: "required" | "optional" | "unsupported";
+          };
+        }>;
+        minecraftVersion?: string;
+        loader?: string;
+        loaderVersion?: string;
+      }
+    | null;
 
-  if (!content) {
+  if (!manifest) {
     throw new Error("Could not find modrinth.index.json in modpack");
   }
 
-  // Clean the content - remove BOM and trim
-  const cleanContent = content
-    .toString("utf-8")
-    .replace(/^\uFEFF/, "")
-    .trim();
+  const dependencies: ModpackDependencies = {
+    minecraft: manifest.minecraftVersion || "*",
+  };
 
-  try {
-    const index = JSON.parse(cleanContent) as ModpackIndex;
-    console.log(
-      "[ModpackInstaller] Parsed modpack:",
-      index.name,
-      "version:",
-      index.versionId,
-    );
-    return index;
-  } catch (error) {
-    console.error("[ModpackInstaller] JSON parse error:", error);
-    throw new Error("Invalid modrinth.index.json format");
+  if (manifest.loader && manifest.loaderVersion) {
+    switch (manifest.loader) {
+      case "fabric":
+        dependencies["fabric-loader"] = manifest.loaderVersion;
+        break;
+      case "forge":
+        dependencies.forge = manifest.loaderVersion;
+        break;
+      case "neoforge":
+        dependencies.neoforge = manifest.loaderVersion;
+        break;
+      case "quilt":
+        dependencies["quilt-loader"] = manifest.loaderVersion;
+        break;
+      default:
+        break;
+    }
   }
+
+  const index: ModpackIndex = {
+    formatVersion: manifest.formatVersion,
+    game: manifest.game,
+    versionId: manifest.versionId,
+    name: manifest.name,
+    summary: manifest.summary,
+    files: Array.isArray(manifest.files)
+      ? manifest.files.map((f) => ({
+          path: f.path,
+          downloads: Array.isArray(f.downloads) ? f.downloads : [],
+          fileSize: Number(f.fileSize || 0),
+          hashes: {
+            sha1: f.hashes?.sha1,
+            sha512: f.hashes?.sha512,
+          },
+          env: f.env,
+        }))
+      : [],
+    dependencies,
+  };
+
+  console.log(
+    "[ModpackInstaller] Parsed modpack:",
+    index.name,
+    "version:",
+    index.versionId,
+  );
+  return index;
 }
 
 // ========================================
@@ -393,6 +300,7 @@ async function downloadModpackFiles(
   onProgress?: ProgressCallback,
   signal?: AbortSignal,
 ): Promise<void> {
+  const native = getNativeModule();
   const clientFiles = files.filter(
     (f) => !f.env || f.env.client !== "unsupported",
   );
@@ -446,7 +354,10 @@ async function downloadModpackFiles(
 
         if (existingSize > 0) {
           if (existingSize === file.fileSize) {
-            const isHashValid = await verifyFileHash(destPath, file.hashes);
+            const isHashValid = await verifyFileHashNative(
+              destPath,
+              file.hashes,
+            );
             if (isHashValid) {
               console.log(
                 `[ModpackInstaller] Skipping (exists & valid): ${file.path}`,
@@ -483,29 +394,25 @@ async function downloadModpackFiles(
         console.log(`[ModpackInstaller] Downloading: ${file.path}`);
         let attempts = 0;
         const maxAttempts = Math.max(3, urls.length);
-        const tmpPath = `${destPath}.tmp`;
 
         while (attempts < maxAttempts) {
           try {
             attempts++;
             const url = urls[(attempts - 1) % urls.length];
-            await downloadFile(url, tmpPath, undefined, signal);
-
-            const isHashValid = await verifyFileHash(tmpPath, file.hashes);
-            if (!isHashValid) {
-              await fs.promises.rm(tmpPath, { force: true });
-              throw new Error(`Hash verification failed for ${file.path}`);
+            const result = (await native.downloadFile(
+              url,
+              destPath,
+              file.hashes?.sha1 || undefined,
+              undefined,
+            )) as { success: boolean; error?: string };
+            if (!result?.success) {
+              throw new Error(
+                result?.error || `Failed to download ${path.basename(destPath)}`,
+              );
             }
-
-            await fs.promises.rm(destPath, { force: true });
-            await fs.promises.rename(tmpPath, destPath);
             completed++;
             break;
           } catch (error: any) {
-            try {
-              await fs.promises.rm(tmpPath, { force: true });
-            } catch {}
-
             if (
               error.message === "Download cancelled" ||
               error.message.includes("Cancelled") ||
@@ -697,26 +604,24 @@ async function extractOverrides(
   mrpackPath: string,
   destDir: string,
   onProgress?: ProgressCallback,
-  zipOverride?: AdmZip,
 ): Promise<void> {
   console.log("[ModpackInstaller] Extracting overrides to:", destDir);
+  const native = getNativeModule();
 
   if (onProgress) {
     onProgress({
       stage: "copying",
-      message: "กำลังคัดลอกไฟล์ config...",
+      message: "Copying override files...",
     });
   }
 
   try {
-    // Extract overrides folder
-    await extractZipToDirectory(
-      zipOverride ?? mrpackPath,
-      destDir,
-      "overrides",
-      onProgress,
-    );
-    console.log("[ModpackInstaller] Overrides extracted successfully");
+    const result = native.extractModpackOverrides(mrpackPath, destDir, "overrides");
+    if (result?.success) {
+      console.log(
+        `[ModpackInstaller] Overrides extracted successfully (${result.filesExtracted} files)`,
+      );
+    }
   } catch (error) {
     console.log(
       "[ModpackInstaller] No overrides folder or extraction error:",
@@ -725,15 +630,17 @@ async function extractOverrides(
   }
 
   try {
-    // Also check for client-overrides
-    await extractZipToDirectory(
-      zipOverride ?? mrpackPath,
+    const result = native.extractModpackOverrides(
+      mrpackPath,
       destDir,
       "client-overrides",
-      onProgress,
     );
-    console.log("[ModpackInstaller] Client overrides extracted successfully");
-  } catch (error) {
+    if (result?.success) {
+      console.log(
+        `[ModpackInstaller] Client overrides extracted successfully (${result.filesExtracted} files)`,
+      );
+    }
+  } catch {
     // client-overrides is optional
   }
 }
@@ -748,20 +655,17 @@ export async function installModpack(
   try {
     if (signal?.aborted) throw new Error("Installation cancelled");
 
-    // Show progress while reading ZIP (can be slow for large files)
     if (onProgress) {
       onProgress({
         stage: "extracting",
-        message: "กำลังอ่านไฟล์ modpack...",
+        message: "Reading modpack...",
       });
     }
 
-    // Check file exists first
     if (!fs.existsSync(mrpackPath)) {
-      throw new Error("ไม่พบไฟล์ modpack ที่ระบุ");
+      throw new Error("Modpack file not found");
     }
 
-    // Check file size to warn about large files
     const stats = fs.statSync(mrpackPath);
     const fileSizeMB = stats.size / (1024 * 1024);
     console.log(`[ModpackInstaller] File size: ${fileSizeMB.toFixed(2)} MB`);
@@ -772,41 +676,30 @@ export async function installModpack(
       );
     }
 
-    // Read ZIP asynchronously to prevent UI blocking
-    const zipBuffer = await fs.promises.readFile(mrpackPath);
-
-    if (signal?.aborted) throw new Error("Installation cancelled");
-
-    // Parse ZIP in a try-catch to handle corrupt files
-    let zip: AdmZip;
-    try {
-      zip = new AdmZip(zipBuffer);
-    } catch (zipError: any) {
-      console.error("[ModpackInstaller] Failed to parse ZIP:", zipError);
-      throw new Error("ไฟล์ modpack เสียหายหรือไม่ใช่ไฟล์ ZIP ที่ถูกต้อง");
+    const native = getNativeModule();
+    const isModrinth = !!native.parseModrinthManifest(mrpackPath);
+    if (isModrinth) {
+      return await installModrinthModpack(mrpackPath, onProgress, signal);
     }
 
-    if (zip.getEntry("modrinth.index.json")) {
-      // Modrinth Format
-      return await installModrinthModpack(mrpackPath, onProgress, signal, zip);
-    } else if (zip.getEntry("manifest.json")) {
-      // CurseForge Format
+    const isCurseForge = !!native.parseCurseforgeManifest(mrpackPath);
+    if (isCurseForge) {
       return await installCurseForgeModpack(mrpackPath, onProgress, signal);
-    } else {
-      throw new Error(
-        "ไม่รู้จักรูปแบบไฟล์ Modpack (ต้องมี modrinth.index.json หรือ manifest.json)",
-      );
     }
+
+    throw new Error(
+      "Unknown modpack format (expected modrinth.index.json or manifest.json)",
+    );
   } catch (error: any) {
     if (error.message === "Installation cancelled") {
       console.log("[ModpackInstaller] Installation cancelled by user");
-      return { ok: false, error: "ยกเลิกการติดตั้งแล้ว" };
+      return { ok: false, error: "Installation cancelled" };
     }
 
     console.error("[ModpackInstaller] Installation failed:", error);
     return {
       ok: false,
-      error: error.message || "การติดตั้งล้มเหลว",
+      error: error.message || "Installation failed",
     };
   }
 }
@@ -815,7 +708,6 @@ async function installModrinthModpack(
   mrpackPath: string,
   onProgress?: ProgressCallback,
   signal?: AbortSignal,
-  zipOverride?: AdmZip,
 ): Promise<InstallResult> {
   let createdInstance: GameInstance | null = null;
 
@@ -826,17 +718,17 @@ async function installModrinthModpack(
     if (onProgress) {
       onProgress({
         stage: "extracting",
-        message: "กำลังอ่านข้อมูล modpack...",
+        message: "Reading modpack metadata...",
       });
     }
 
-    const index = await parseModpackIndex(mrpackPath, zipOverride);
+    const index = await parseModpackIndex(mrpackPath);
 
     // Step 2: Create instance
     if (onProgress) {
       onProgress({
         stage: "creating",
-        message: `กำลังสร้าง instance: ${index.name}`,
+        message: `Creating instance: ${index.name}`,
       });
     }
 
@@ -871,20 +763,34 @@ async function installModrinthModpack(
       mrpackPath,
       instance.gameDirectory,
       onProgress,
-      zipOverride,
     );
 
-    // Step 5: Deduplicate mods (remove duplicates from downloaded + overrides)
+    // Step 5-6: Post-install file cleanup (prefer Rust background worker)
     const modsDir = path.join(instance.gameDirectory, "mods");
-    deduplicateMods(modsDir);
+    const postInstallNative = getNativeModule() as any;
+    let postInstallHandledByNative = false;
+    if (typeof postInstallNative.postInstallModpackFiles === "function") {
+      try {
+        await postInstallNative.postInstallModpackFiles(instance.gameDirectory);
+        postInstallHandledByNative = true;
+      } catch (nativeError) {
+        console.warn(
+          "[ModpackInstaller] Native post-install cleanup failed, fallback to JS:",
+          nativeError,
+        );
+      }
+    }
 
-    // Step 6: Move .zip files from mods to resourcepacks folder
-    moveResourcePacks(instance.gameDirectory);
+    if (!postInstallHandledByNative) {
+      // Fallback JS path
+      deduplicateMods(modsDir);
+      moveResourcePacks(instance.gameDirectory);
+    }
 
     if (onProgress) {
       onProgress({
         stage: "creating",
-        message: "ติดตั้งเสร็จสิ้น!",
+        message: "Installation complete!",
         percent: 100,
       });
     }
@@ -922,6 +828,34 @@ async function installModrinthModpack(
 // ========================================
 
 export function detectModConflicts(modsDir: string): ModConflict[] {
+  const native = getNativeModule() as any;
+  if (typeof native.detectModConflictsNative === "function") {
+    try {
+      const nativeConflicts = native.detectModConflictsNative(modsDir) as Array<{
+        conflictType?: string;
+        file1?: string;
+        file2?: string | null;
+        reason?: string;
+      }>;
+      if (Array.isArray(nativeConflicts)) {
+        return nativeConflicts.map((item) => ({
+          type:
+            item.conflictType === "library_conflict"
+              ? "library_conflict"
+              : "duplicate_mod",
+          file1: item.file1 || "",
+          file2: item.file2 || undefined,
+          reason: item.reason || "Unknown conflict",
+        }));
+      }
+    } catch (nativeError) {
+      console.warn(
+        "[ModpackInstaller] Native conflict detection failed, fallback to JS:",
+        nativeError,
+      );
+    }
+  }
+
   const conflicts: ModConflict[] = [];
 
   if (!fs.existsSync(modsDir)) {
@@ -952,7 +886,7 @@ export function detectModConflicts(modsDir: string): ModConflict[] {
         type: "duplicate_mod",
         file1: fileList[0],
         file2: fileList[1],
-        reason: `พบ mod "${name}" หลายเวอร์ชัน: ${fileList.join(", ")}`,
+        reason: `Found multiple versions of "${name}": ${fileList.join(", ")}`,
       });
     }
   }
@@ -971,10 +905,11 @@ export function detectModConflicts(modsDir: string): ModConflict[] {
         type: "library_conflict",
         file1: matches[0],
         file2: matches[1],
-        reason: `พบ library "${lib.name}" ซ้ำกัน อาจทำให้เกมขัดข้อง`,
+        reason: `Found duplicate "${lib.name}" libraries that may conflict.`,
       });
     }
   }
 
   return conflicts;
 }
+

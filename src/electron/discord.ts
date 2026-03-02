@@ -10,6 +10,7 @@
  */
 
 import { createRequire } from "module";
+import { isGameRunning } from "./MinecraftRun/gameProcess.js";
 
 // CJS-compatible require for discord-rpc (esbuild outputs CJS)
 const customRequire = createRequire(__filename);
@@ -31,6 +32,19 @@ interface RPCActivity {
   startTimestamp?: number;
   buttons?: Array<{ label: string; url: string }>;
 }
+
+export type DiscordRPCStatus =
+  | "idle"
+  | "playing"
+  | "launching"
+  | "browsing_home"
+  | "browsing_explore"
+  | "browsing_settings"
+  | "browsing_wardrobe"
+  | "browsing_about"
+  | "browsing_admin"
+  | "browsing_modpacks"
+  | "browsing_servers";
 
 const DEFAULT_LARGE_IMAGE_KEY = "logo";
 const DEFAULT_LARGE_IMAGE_TEXT = "Reality Launcher";
@@ -86,16 +100,64 @@ let startTimestamp = Date.now();
 let isReady = false;
 let isInitializing = false;
 let pendingActivity: {
-  status:
-    | "idle"
-    | "playing"
-    | "launching"
-    | "browsing_modpacks"
-    | "browsing_servers";
+  status: DiscordRPCStatus;
   serverName?: string;
   serverIcon?: string;
   serverSocialUrl?: string;
 } | null = null;
+let lastGameActivity: {
+  status: "launching" | "playing";
+  serverName?: string;
+  serverIcon?: string;
+  serverSocialUrl?: string;
+} | null = null;
+
+function isGameStatus(status: DiscordRPCStatus): status is "launching" | "playing" {
+  return status === "launching" || status === "playing";
+}
+
+function resolveEffectiveActivity(activity: {
+  status: DiscordRPCStatus;
+  serverName?: string;
+  serverIcon?: string;
+  serverSocialUrl?: string;
+}): {
+  status: DiscordRPCStatus;
+  serverName?: string;
+  serverIcon?: string;
+  serverSocialUrl?: string;
+} {
+  if (isGameStatus(activity.status)) {
+    lastGameActivity = {
+      status: activity.status,
+      serverName: activity.serverName,
+      serverIcon: activity.serverIcon,
+      serverSocialUrl: activity.serverSocialUrl,
+    };
+    return activity;
+  }
+
+  if (isGameRunning()) {
+    if (lastGameActivity) {
+      return {
+        status: "playing",
+        serverName: lastGameActivity.serverName,
+        serverIcon: lastGameActivity.serverIcon,
+        serverSocialUrl: lastGameActivity.serverSocialUrl,
+      };
+    }
+    return {
+      status: "playing",
+      serverName: "Minecraft",
+    };
+  }
+
+  if (activity.status === "idle") {
+    lastGameActivity = null;
+  }
+
+  return activity;
+}
 
 // Player info for small image
 let playerUuid: string | undefined;
@@ -142,13 +204,13 @@ export async function initDiscordRPC(): Promise<boolean> {
       // Add small delay to ensure socket is fully initialized
       setTimeout(() => {
         if (pendingActivity) {
+          const activityToRestore = pendingActivity;
           void updateRPC(
-            pendingActivity.status,
-            pendingActivity.serverName,
-            pendingActivity.serverIcon,
-            pendingActivity.serverSocialUrl,
+            activityToRestore.status,
+            activityToRestore.serverName,
+            activityToRestore.serverIcon,
+            activityToRestore.serverSocialUrl,
           );
-          pendingActivity = null;
         } else {
           void updateRPC("idle");
         }
@@ -170,12 +232,7 @@ export async function initDiscordRPC(): Promise<boolean> {
  * updateRPC - อัปเดตสถานะ Discord
  */
 export async function updateRPC(
-  status:
-    | "idle"
-    | "playing"
-    | "launching"
-    | "browsing_modpacks"
-    | "browsing_servers",
+  status: DiscordRPCStatus,
   serverName?: string,
   serverIcon?: string,
   serverSocialUrl?: string,
@@ -183,6 +240,7 @@ export async function updateRPC(
   if (!rpcEnabled) return;
 
   pendingActivity = { status, serverName, serverIcon, serverSocialUrl };
+  const effectiveActivity = resolveEffectiveActivity(pendingActivity);
 
   if (!rpcClient || !isReady) {
     void initDiscordRPC();
@@ -191,24 +249,24 @@ export async function updateRPC(
 
   try {
     const defaultButtons = [];
-    if (serverSocialUrl) {
+    if (effectiveActivity.serverSocialUrl) {
       let label = "Server Link";
       if (
-        serverSocialUrl.includes("discord.gg") ||
-        serverSocialUrl.includes("discord.com")
+        effectiveActivity.serverSocialUrl.includes("discord.gg") ||
+        effectiveActivity.serverSocialUrl.includes("discord.com")
       ) {
         label = "Discord";
       } else if (
-        serverSocialUrl.includes("youtube.com") ||
-        serverSocialUrl.includes("youtu.be")
+        effectiveActivity.serverSocialUrl.includes("youtube.com") ||
+        effectiveActivity.serverSocialUrl.includes("youtu.be")
       ) {
         label = "YouTube";
-      } else if (serverSocialUrl.includes("facebook.com")) {
+      } else if (effectiveActivity.serverSocialUrl.includes("facebook.com")) {
         label = "Facebook";
       } else {
         label = "Website";
       }
-      defaultButtons.push({ label, url: serverSocialUrl });
+      defaultButtons.push({ label, url: effectiveActivity.serverSocialUrl });
     }
     defaultButtons.push({
       label: "Reality Launcher",
@@ -220,10 +278,10 @@ export async function updateRPC(
       buttons: defaultButtons,
     };
 
-    const resolvedIcon = resolveLargeImageKey(serverIcon);
+    const resolvedIcon = resolveLargeImageKey(effectiveActivity.serverIcon);
     const headUrl = getPlayerHeadUrl(playerUuid);
 
-    switch (status) {
+    switch (effectiveActivity.status) {
       case "idle":
         // Idle: Large = Reality Launcher logo, Small = Player MC head
         activity.largeImageKey = DEFAULT_LARGE_IMAGE_KEY;
@@ -240,7 +298,7 @@ export async function updateRPC(
         // Launching: Large = instance icon or logo, Small = r_nobg
         if (resolvedIcon) {
           activity.largeImageKey = resolvedIcon;
-          activity.largeImageText = serverName || DEFAULT_LARGE_IMAGE_TEXT;
+          activity.largeImageText = effectiveActivity.serverName || DEFAULT_LARGE_IMAGE_TEXT;
         } else {
           activity.largeImageKey = DEFAULT_LARGE_IMAGE_KEY;
           activity.largeImageText = DEFAULT_LARGE_IMAGE_TEXT;
@@ -248,14 +306,14 @@ export async function updateRPC(
         activity.smallImageKey = INSTANCE_SMALL_IMAGE_KEY;
         activity.smallImageText = INSTANCE_SMALL_IMAGE_TEXT;
         activity.details = "Launching...";
-        activity.state = serverName || "Minecraft";
+        activity.state = effectiveActivity.serverName || "Minecraft";
         break;
 
       case "playing":
         // Playing: Large = instance icon or logo, Small = r_nobg
         if (resolvedIcon) {
           activity.largeImageKey = resolvedIcon;
-          activity.largeImageText = serverName || DEFAULT_LARGE_IMAGE_TEXT;
+          activity.largeImageText = effectiveActivity.serverName || DEFAULT_LARGE_IMAGE_TEXT;
         } else {
           activity.largeImageKey = DEFAULT_LARGE_IMAGE_KEY;
           activity.largeImageText = DEFAULT_LARGE_IMAGE_TEXT;
@@ -263,7 +321,49 @@ export async function updateRPC(
         activity.smallImageKey = INSTANCE_SMALL_IMAGE_KEY;
         activity.smallImageText = INSTANCE_SMALL_IMAGE_TEXT;
         activity.details = "Playing";
-        activity.state = serverName || "Minecraft";
+        activity.state = effectiveActivity.serverName || "Minecraft";
+        break;
+
+      case "browsing_home":
+        activity.largeImageKey = DEFAULT_LARGE_IMAGE_KEY;
+        activity.largeImageText = "Home";
+        activity.details = "Browsing Home";
+        activity.state = "Checking launcher dashboard";
+        break;
+
+      case "browsing_explore":
+        activity.largeImageKey = DEFAULT_LARGE_IMAGE_KEY;
+        activity.largeImageText = "Explore";
+        activity.details = "Browsing Explore";
+        activity.state = "Finding mods and modpacks";
+        break;
+
+      case "browsing_settings":
+        activity.largeImageKey = DEFAULT_LARGE_IMAGE_KEY;
+        activity.largeImageText = "Settings";
+        activity.details = "Adjusting Settings";
+        activity.state = "Tweaking launcher preferences";
+        break;
+
+      case "browsing_wardrobe":
+        activity.largeImageKey = DEFAULT_LARGE_IMAGE_KEY;
+        activity.largeImageText = "Wardrobe";
+        activity.details = "Customizing Skin";
+        activity.state = "Previewing player cosmetics";
+        break;
+
+      case "browsing_about":
+        activity.largeImageKey = DEFAULT_LARGE_IMAGE_KEY;
+        activity.largeImageText = "About";
+        activity.details = "Viewing About";
+        activity.state = "Reading launcher information";
+        break;
+
+      case "browsing_admin":
+        activity.largeImageKey = DEFAULT_LARGE_IMAGE_KEY;
+        activity.largeImageText = "Admin";
+        activity.details = "Admin Panel";
+        activity.state = "Managing launcher data";
         break;
 
       case "browsing_modpacks":
@@ -285,7 +385,11 @@ export async function updateRPC(
   } catch (error) {
     console.error("[Discord RPC] Failed to update:", error);
     isReady = false;
+    const activityToRestore = pendingActivity;
     await destroyRPC();
+    if (activityToRestore) {
+      pendingActivity = activityToRestore;
+    }
     void initDiscordRPC();
   }
 }

@@ -12,7 +12,7 @@ interface ProgressState {
   isInstalling: boolean;
   installProgress: InstallProgress | null;
   isInstallMinimized: boolean;
-  operationType: "install" | "repair" | null;
+  operationType: "install" | "repair" | "sync" | null;
   installingInstanceId: string | null;
 
   // Actions
@@ -24,7 +24,7 @@ interface ProgressState {
   setInstalling: (isInstalling: boolean) => void;
   setInstallProgress: (progress: InstallProgress | null) => void;
   setInstallMinimized: (isMinimized: boolean) => void;
-  setOperationType: (type: "install" | "repair" | null) => void;
+  setOperationType: (type: "install" | "repair" | "sync" | null) => void;
   setInstallingInstanceId: (id: string | null) => void;
 
   // Composite Actions

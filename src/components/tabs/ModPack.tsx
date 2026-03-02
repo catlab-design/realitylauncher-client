@@ -17,6 +17,11 @@ import {
 import { useProgressStore } from "../../store/progressStore";
 import { useAuthStore } from "../../store/authStore";
 import modpackIcon from "../../assets/modpack_icon.png";
+import {
+    getLaunchPolicyForInstance,
+    shouldShowLaunchSpinner,
+    shouldShowStopButton,
+} from "../../lib/launchPolicy";
 
 // ========================================
 // Types
@@ -195,7 +200,6 @@ function SmartBackground({ src, className, style, children, onClick, trigger }: 
     );
 }
 
-
 export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, setSettingsTab,
     onShowConfirm,
     isActive,
@@ -216,23 +220,6 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
     const [playingInstances, setPlayingInstances] = useState<Set<string>>(new Set());
     const hasLoadedRef = useRef(false);
 
-    // Discord RPC
-    useEffect(() => {
-        if (!config.discordRPCEnabled || !window.api) return;
-        if (isActive) {
-            window.api.discordRPCUpdate?.("browsing_modpacks");
-        } else {
-            // Revert back to idle when we leave the tab, only if we are connected and not launching/playing
-            // The main app usually handles reverting to "idle", but we can safely call it here
-            // because if a game is playing, `updateRPC` checks the game state internally?
-            // Actually, `discordRPCUpdate` just sets what we tell it. We'll set it to idle.
-            // If a game is playing, we shouldn't overwrite it with idle.
-            // Let's check if the launcher app re-evaluates Discord RPC state properly later.
-            // Usually, going back to idle is safe here if we just leave the tab.
-            window.api.discordRPCUpdate?.("idle");
-        }
-    }, [isActive, config.discordRPCEnabled]);
-
     const [showImportModal, setShowImportModal] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const [logViewerInstanceId, setLogViewerInstanceId] = useState<string | null>(null);
@@ -245,6 +232,80 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
         operationType, setOperationType,
         installingInstanceId, setInstallingInstanceId
     } = useProgressStore();
+
+    const isInstallingRef = useRef(isInstalling);
+    const operationTypeRef = useRef(operationType);
+    const lastInstallProgressRef = useRef<{ key: string; sentAt: number }>({
+        key: "",
+        sentAt: 0,
+    });
+
+    useEffect(() => {
+        isInstallingRef.current = isInstalling;
+    }, [isInstalling]);
+
+    useEffect(() => {
+        operationTypeRef.current = operationType;
+    }, [operationType]);
+
+    const setInstallingSafe = (next: boolean) => {
+        if (isInstallingRef.current === next) return;
+        isInstallingRef.current = next;
+        setInstalling(next);
+    };
+
+    const setOperationTypeSafe = (next: "install" | "repair" | "sync" | null) => {
+        if (operationTypeRef.current === next) return;
+        operationTypeRef.current = next;
+        setOperationType(next);
+    };
+
+    const setInstallProgressThrottled = (
+        next: InstallProgress,
+        force = false,
+    ) => {
+        const now = Date.now();
+        const percent =
+            typeof next.percent === "number" ? Math.round(next.percent) : undefined;
+        const current =
+            typeof next.current === "number" ? Math.round(next.current) : undefined;
+        const total =
+            typeof next.total === "number" ? Math.round(next.total) : undefined;
+        const key = [
+            next.type || "",
+            next.stage || "",
+            next.message || "",
+            next.filename || "",
+            percent ?? "",
+            current ?? "",
+            total ?? "",
+        ].join("|");
+        const critical =
+            next.type === "sync-start" ||
+            next.type === "sync-complete" ||
+            next.type === "sync-error" ||
+            next.type === "cancelled" ||
+            next.type === "error" ||
+            next.type === "complete" ||
+            next.stage === "error" ||
+            next.stage === "cancelled" ||
+            next.stage === "complete";
+        const due = now - lastInstallProgressRef.current.sentAt >= 120;
+        const milestone =
+            percent === undefined ||
+            percent === 0 ||
+            percent === 100 ||
+            percent % 5 === 0;
+
+        if (
+            force ||
+            critical ||
+            (due && (milestone || key !== lastInstallProgressRef.current.key))
+        ) {
+            lastInstallProgressRef.current = { key, sentAt: now };
+            setInstallProgress(next);
+        }
+    };
 
 
     // Export State (Global)
@@ -384,14 +445,6 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
         }
     }, [instances]);
 
-    // Listen for install progress
-    useEffect(() => {
-        const cleanup = window.api?.onModpackInstallProgress?.((progress) => {
-            setInstallProgress(progress);
-        });
-        return () => cleanup?.();
-    }, []);
-
     // Check game status for all instances on load
     useEffect(() => {
         const checkAllStatuses = async () => {
@@ -458,11 +511,6 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
     // For now, let's disable the global poller or make it check specific instances if needed.
     // Events should be sufficient if robust.
 
-    // Debug: Log state changes
-    useEffect(() => {
-        console.log("[ModPack STATE]", { launchingId, playingInstances: Array.from(playingInstances) });
-    }, [launchingId, playingInstances]);
-
     // Track if cancellation was requested to prevent race conditions with pending progress events
     const isCancellingRef = useRef(false);
 
@@ -474,9 +522,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                 return;
             }
 
-            console.log("[ModPack] Install Progress:", data);
-
-            setInstallProgress({
+            setInstallProgressThrottled({
                 stage: data.type,
                 message: data.task, // Fallback message
                 type: data.type,    // Key for translation
@@ -490,22 +536,26 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                 // Optional: Delay close?
                 setTimeout(() => {
                     if (!isCancellingRef.current) {
-                        setInstalling(false);
+                        setInstallingSafe(false);
                         setInstallProgress(null);
                         setInstallMinimized(false);
+                        setOperationTypeSafe(null);
+                        setInstallingInstanceId(null);
                         loadInstances(); // Reload list
                     }
                 }, 1000);
             } else if (data.type === "error" || data.type === "cancelled" || data.type === "sync-error") {
-                setInstalling(false);
+                setInstallingSafe(false);
                 setInstallProgress(null);
                 setInstallMinimized(false);
-                setOperationType(null);
+                setOperationTypeSafe(null);
+                setInstallingInstanceId(null);
             } else {
-                if (!isInstalling) {
-                    setOperationType("install");
+                if (!isInstallingRef.current) {
+                    setOperationTypeSafe("install");
+                    setInstallMinimized(false);
                 }
-                setInstalling(true);
+                setInstallingSafe(true);
             }
         });
 
@@ -513,10 +563,8 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
         const removeModpackListener = (window.api as any).onModpackInstallProgress((data: any) => {
             if (isCancellingRef.current) return;
 
-            console.log("[ModPack] Modpack Progress:", data);
-
             // Map modpack progress to InstallProgress format
-            setInstallProgress({
+            setInstallProgressThrottled({
                 stage: data.stage,
                 message: data.message,
                 current: data.current,
@@ -527,22 +575,26 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
             if (data.percent === 100 || data.stage === "complete") {
                 setTimeout(() => {
                     if (!isCancellingRef.current) {
-                        setInstalling(false);
+                        setInstallingSafe(false);
                         setInstallProgress(null);
                         setInstallMinimized(false);
+                        setOperationTypeSafe(null);
+                        setInstallingInstanceId(null);
                         loadInstances();
                     }
                 }, 1000);
             } else if (data.stage === "error" || data.stage === "cancelled") {
-                setInstalling(false);
+                setInstallingSafe(false);
                 setInstallProgress(null);
                 setInstallMinimized(false);
-                setOperationType(null);
+                setOperationTypeSafe(null);
+                setInstallingInstanceId(null);
             } else {
-                if (!isInstalling) {
-                    setOperationType("install");
+                if (!isInstallingRef.current) {
+                    setOperationTypeSafe("install");
+                    setInstallMinimized(false);
                 }
-                setInstalling(true);
+                setInstallingSafe(true);
             }
         });
 
@@ -747,7 +799,16 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
 
         try {
             const targetInstance = instances.find((item) => item.id === id);
-            const isServerInstance = !!targetInstance?.cloudId;
+            const launchPolicy = getLaunchPolicyForInstance(targetInstance);
+            const isServerInstance = launchPolicy.isServerBacked;
+
+            if (launchPolicy.suppressInstallProgressModal) {
+                setInstallingSafe(false);
+                setInstallProgress(null);
+                setInstallMinimized(false);
+                setOperationTypeSafe(null);
+                setInstallingInstanceId(null);
+            }
 
             if (isServerInstance && session?.type === "catid" && session.minecraftUuid) {
                 const linkedMsAccount = accounts.find(
@@ -783,7 +844,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
             }
 
             // Note: instancesLaunch logic in backend now checks isGameRunning(id)
-            const result = await window.api?.instancesLaunch?.(id);
+            const result = await window.api?.instancesLaunch?.(id, launchPolicy.launchOptions);
             console.log("[ModPack] instancesLaunch result:", result);
 
             if (launchCancelledRef.current) {
@@ -870,19 +931,26 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
 
     const handleStop = async (id: string) => {
         // If stopping the currently launching game
+        const wasLaunching = launchingId === id;
         if (launchingId === id) {
             launchCancelledRef.current = true;
+            setLaunchingId(null);
+            if (launchTimeoutRef.current) {
+                clearTimeout(launchTimeoutRef.current);
+                launchTimeoutRef.current = null;
+            }
         }
 
         try {
+            if (wasLaunching) {
+                await (window.api as any)?.instanceCancelAction?.(id);
+            }
             await window.api?.killGame?.(id);
             setPlayingInstances(prev => {
                 const newSet = new Set(prev);
                 newSet.delete(id);
                 return newSet;
             });
-
-            if (launchingId === id) setLaunchingId(null);
 
             toast.success(t('stop_command_sent'));
         } catch (error) {
@@ -935,6 +1003,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
     const handleInstallServerInstance = async (id?: string) => {
         setOperationType("install");
         setInstalling(true);
+        setInstallMinimized(false);
         isCancellingRef.current = false; // Ensure flag is reset
         // For Sync (no ID passed), we might fallback to checking selectedInstance or just handle specific Cloud Install (ID passed)
         // If id is undefined, it's global sync... which might be iterating multiple instances or checking updates.
@@ -1045,6 +1114,11 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
         return labels[loader] || loader;
     };
 
+    const stagedRevealStyle = (delayMs: number): React.CSSProperties => ({
+        animationDelay: `${delayMs}ms`,
+        opacity: 0,
+    });
+
 
     // If an instance is selected, show detail view
     return (
@@ -1083,11 +1157,14 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                     playingInstanceId={playingInstances.has(selectedInstance.id) ? selectedInstance.id : (playingInstances.size > 0 ? "OTHER" : null)}
                 />
             ) : (
-                <div className="space-y-6">
+                <div className="space-y-6 animate-fade-in">
 
 
                 {/* Header */}
-                <div className="flex items-center justify-between flex-wrap gap-4">
+                <div
+                    className="flex items-center justify-between flex-wrap gap-4 animate-fade-in-up"
+                    style={stagedRevealStyle(20)}
+                >
                     <h2 className="text-xl font-medium" style={{ color: colors.onSurface }}>{t('modpacks')}</h2>
                     <div className="flex gap-2">
                         <button
@@ -1113,7 +1190,10 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                 </div>
 
                 {/* Create Mod Pack Section */}
-                <div className="rounded-2xl p-4" style={{ backgroundColor: colors.surfaceContainer }}>
+                <div
+                    className="rounded-2xl p-4 animate-fade-in-up"
+                    style={{ ...stagedRevealStyle(80), backgroundColor: colors.surfaceContainer }}
+                >
                     <div className="flex items-center gap-4 mb-4">
                         <div
                             className="w-16 h-16 rounded-xl flex items-center justify-center overflow-hidden shrink-0"
@@ -1136,7 +1216,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                 </div>
 
                 {/* My Mod Packs Section */}
-                <div>
+                <div className="animate-fade-in" style={stagedRevealStyle(140)}>
 
 
 
@@ -1177,13 +1257,19 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                             ))}
                         </div>
                     ) : instances.filter(i => !i.cloudId).length === 0 ? (
-                        <div className="rounded-2xl p-8 text-center" style={{ backgroundColor: colors.surfaceContainer }}>
+                        <div
+                            className="rounded-2xl p-8 text-center animate-fade-in"
+                            style={{ ...stagedRevealStyle(180), backgroundColor: colors.surfaceContainer }}
+                        >
                             <Icons.Box className="w-12 h-12 mx-auto mb-3" style={{ color: colors.onSurfaceVariant, opacity: 0.5 }} />
                             <p className="font-medium mb-1" style={{ color: colors.onSurfaceVariant }}>{t('no_mod_packs')}</p>
                             <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>{t('create_mod_pack_first')}</p>
                         </div>
                     ) : (
-                        <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+                        <div
+                            className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 animate-fade-in"
+                            style={stagedRevealStyle(180)}
+                        >
                             {instances.filter(i => !i.cloudId).map((instance) => (
                                 <div
                                     key={instance.id}
@@ -1227,34 +1313,32 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                                             // Determine button state - combine launching and playing
                                             const isLaunching = launchingId === instance.id;
                                             const isPlaying = playingInstances.has(instance.id);
+                                            const showSpinner = shouldShowLaunchSpinner(isLaunching, isPlaying);
 
                                             // Show stop as long as this instance is either launching or playing
-                                            const showStop = isLaunching || isPlaying;
+                                            const showStop = shouldShowStopButton(isLaunching, isPlaying);
 
                                             if (showStop) {
-                                                // Show stop button - loading if launching, red if playing
+                                                // Show stop immediately (including launching state)
                                                 return (
                                                     <button
                                                         onClick={() => { playClick(); handleStop(instance.id); }}
                                                         className="flex-1 h-10 px-4 rounded-xl flex items-center justify-center gap-2 transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10 shadow-sm hover:shadow-md font-bold"
                                                         style={{
-                                                            backgroundColor: isLaunching ? colors.surfaceContainerHighest : "#ef4444",
-                                                            color: isLaunching ? colors.onSurface : "#ffffff"
+                                                            backgroundColor: "#ef4444",
+                                                            color: "#ffffff",
                                                         }}
                                                     >
-                                                        {isLaunching ? (
+                                                        {showSpinner ? (
                                                             <>
                                                                 <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                                                                {t('loading')}
                                                             </>
                                                         ) : (
-                                                            <>
-                                                                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                                                                    <rect x="6" y="6" width="12" height="12" />
-                                                                </svg>
-                                                                {t('stop')}
-                                                            </>
+                                                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                                                                <rect x="6" y="6" width="12" height="12" />
+                                                            </svg>
                                                         )}
+                                                        {t('stop')}
                                                     </button>
                                                 );
                                             }
@@ -1306,17 +1390,17 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                 </div>
 
                 {/* Server Mods Section */}
-                <div>
+                <div className="animate-fade-in" style={stagedRevealStyle(220)}>
                     <h3 className="text-lg font-medium mb-3" style={{ color: colors.onSurface }}>{t('server_mod_packs')}</h3>
 
 
                     {loadingServers ? (
-                        <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
+                        <div className="grid gap-4 grid-cols-1 md:grid-cols-2 animate-fade-in" style={stagedRevealStyle(260)}>
                             <Skeleton className="h-48 rounded-2xl" colors={colors} />
                             <Skeleton className="h-48 rounded-2xl" colors={colors} />
                         </div>
                     ) : joinedServers.length > 0 ? (
-                        <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+                        <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 animate-fade-in" style={stagedRevealStyle(260)}>
                             {joinedServers.map(server => {
                                 const serverInstance = instances.find(i => i.cloudId === server.id);
 
@@ -1393,7 +1477,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             playClick();
-                                                            if (playingInstances.has(serverInstance.id) || launchingId === serverInstance.id) {
+                                                            if (shouldShowStopButton(launchingId === serverInstance.id, playingInstances.has(serverInstance.id))) {
                                                                 handleStop(serverInstance.id);
                                                             } else {
                                                                 handlePlay(serverInstance.id);
@@ -1401,31 +1485,25 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                                                         }}
                                                         className="flex-1 h-10 px-4 rounded-xl flex items-center justify-center gap-2 transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10"
                                                         style={{
-                                                            backgroundColor: launchingId === serverInstance.id
-                                                                ? colors.surfaceContainerHighest
-                                                                : playingInstances.has(serverInstance.id)
-                                                                    ? "#ef4444"
-                                                                    : colors.secondary,
-                                                            color: launchingId === serverInstance.id
-                                                                ? colors.onSurface
-                                                                : playingInstances.has(serverInstance.id)
-                                                                    ? "#fff"
-                                                                    : "#1a1a1a"
+                                                            backgroundColor: shouldShowStopButton(launchingId === serverInstance.id, playingInstances.has(serverInstance.id))
+                                                                ? "#ef4444"
+                                                                : colors.secondary,
+                                                            color: shouldShowStopButton(launchingId === serverInstance.id, playingInstances.has(serverInstance.id))
+                                                                ? "#fff"
+                                                                : "#1a1a1a",
                                                         }}
                                                     >
-                                                        {launchingId === serverInstance.id ? (
+                                                        {shouldShowStopButton(launchingId === serverInstance.id, playingInstances.has(serverInstance.id)) ? (
                                                             <>
-                                                                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                                                                <span className="font-bold">{t('loading')}</span>
-                                                            </>
-                                                        ) : playingInstances.has(serverInstance.id) ? (
-                                                            <>
-                                                                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                                                                    <rect x="6" y="6" width="12" height="12" />
-                                                                </svg>
+                                                                {shouldShowLaunchSpinner(launchingId === serverInstance.id, playingInstances.has(serverInstance.id)) ? (
+                                                                    <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                                                ) : (
+                                                                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                                                                        <rect x="6" y="6" width="12" height="12" />
+                                                                    </svg>
+                                                                )}
                                                                 <span className="font-bold">{t('stop')}</span>
-                                                            </>
-                                                        ) : (
+                                                            </>) : (
                                                             <>
                                                                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                                                                     <path d="M8 5v14l11-7z" />
@@ -1524,7 +1602,10 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                             })}
                         </div>
                     ) : (
-                        <div className="rounded-2xl p-8 text-center" style={{ backgroundColor: colors.surfaceContainer }}>
+                        <div
+                            className="rounded-2xl p-8 text-center animate-fade-in-up"
+                            style={{ ...stagedRevealStyle(260), backgroundColor: colors.surfaceContainer }}
+                        >
                             <Icons.Box className="w-12 h-12 mx-auto mb-3" style={{ color: colors.onSurfaceVariant, opacity: 0.5 }} />
                             <p className="font-medium mb-1" style={{ color: colors.onSurfaceVariant }}>{t('not_joined_server')}</p>
                             <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>{t('join_server_to_play')}</p>

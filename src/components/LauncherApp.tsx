@@ -535,26 +535,75 @@ function LauncherAppContent() {
     return () => clearTimeout(timer);
   }, []);
 
+  const getRpcStatusFromTab = useCallback(
+    (
+      tab: string,
+    ):
+      | "idle"
+      | "playing"
+      | "launching"
+      | "browsing_home"
+      | "browsing_explore"
+      | "browsing_settings"
+      | "browsing_wardrobe"
+      | "browsing_about"
+      | "browsing_admin"
+      | "browsing_modpacks"
+      | "browsing_servers" => {
+      switch (tab) {
+        case "home":
+          return "browsing_home";
+        case "servers":
+          return "browsing_servers";
+        case "modpack":
+          return "browsing_modpacks";
+        case "explore":
+          return "browsing_explore";
+        case "settings":
+          return "browsing_settings";
+        case "wardrobe":
+          return "browsing_wardrobe";
+        case "about":
+          return "browsing_about";
+        case "admin":
+          return "browsing_admin";
+        default:
+          return "idle";
+      }
+    },
+    [],
+  );
+
   // Persistence is now handled by Zustand middleware
   // Removed explicit localStorage.setItem calls for accounts
 
   // Persistence is now handled by Zustand middleware
   // Removed explicit localStorage.setItem calls for session
 
-  // Update Discord RPC when toggle changes
+  // Sync Discord RPC with current tab activity
   useEffect(() => {
-    // รอให้ config โหลดเสร็จก่อน ไม่งั้นจะใช้ค่า default (true) แทนค่าที่บันทึกไว้
-    if (!isInitialized) return;
+    if (!isInitialized || !window.api) return;
 
     if (config.discordRPCEnabled) {
-      // เปิดใช้งาน RPC และแสดงสถานะ idle
-      window.api?.discordRPCSetEnabled?.(true);
-      window.api?.discordRPCUpdate?.("idle");
+      window.api.discordRPCSetEnabled?.(true);
+      window.api.discordRPCUpdate?.(getRpcStatusFromTab(activeTab));
     } else {
-      // ปิดใช้งาน RPC (disconnect จาก Discord)
-      window.api?.discordRPCSetEnabled?.(false);
+      window.api.discordRPCSetEnabled?.(false);
     }
-  }, [config.discordRPCEnabled, isInitialized]);
+  }, [activeTab, config.discordRPCEnabled, getRpcStatusFromTab, isInitialized]);
+
+  // When game exits, immediately restore RPC to the current tab context.
+  useEffect(() => {
+    if (!isInitialized || !window.api || !config.discordRPCEnabled) return;
+
+    const removeStoppedListener = window.api.onGameStopped?.(() => {
+      window.api?.discordRPCUpdate?.(getRpcStatusFromTab(activeTab));
+    });
+
+    return () => {
+      removeStoppedListener?.();
+    };
+  }, [activeTab, config.discordRPCEnabled, getRpcStatusFromTab, isInitialized]);
 
   // Fetch announcements on app load
   useEffect(() => {
@@ -595,10 +644,10 @@ function LauncherAppContent() {
       setNotificationsLoading(true);
       try {
         const syncData = await window.api?.notificationsSync?.();
-        const notificationsData = Array.isArray(syncData?.notifications)
+        const notificationsData = (syncData && Array.isArray(syncData.notifications))
           ? syncData.notifications
           : (await window.api?.notificationsFetchUser?.()) || [];
-        const invitationsData = Array.isArray(syncData?.invitations)
+        const invitationsData = (syncData && Array.isArray(syncData.invitations))
           ? syncData.invitations
           : (await window.api?.invitationsFetch?.()) || [];
 
@@ -1185,7 +1234,12 @@ function LauncherAppContent() {
 
   // Select account to use
   const selectAccount = async (account: AuthSession) => {
-    // Sync session with backend FIRST to ensure data consistency
+    // Optimistically update UI to prevent freezing
+    setSession(account);
+    setAccountManagerOpen(false);
+    toast.success(t('switched_to_account').replace('{username}', account.username));
+
+    // Sync session with backend in the background
     // The backend may auto-refresh the token if expired
     let finalSession: AuthSession = account;
 
@@ -1196,14 +1250,12 @@ function LauncherAppContent() {
         finalSession = refreshedSession as AuthSession;
         // Also update in accounts list
         updateAccount(refreshedSession);
+        // Ensure the active session is also updated if it refreshed
+        setSession(finalSession);
       }
     } catch (err) {
       console.error("[Auth] Failed to sync session with backend:", err);
     }
-
-    setSession(finalSession);
-    setAccountManagerOpen(false);
-    toast.success(t('switched_to_account').replace('{username}', finalSession.username));
 
     // Check admin status if switching to CatID account
     if (finalSession.type === "catid" && finalSession.accessToken) {
@@ -2671,8 +2723,10 @@ function LauncherAppContent() {
 
               {/* About Tab - New Premium Component */}
               {activeTab === "about" && <About colors={colors} config={config} />}
-              {/* Wardrobe Tab */}
-              {activeTab === "wardrobe" && <Wardrobe colors={colors} />}
+              {/* Wardrobe Tab - Always render to preserve 3D model state */}
+              <div key="wardrobe-tab" className="h-full" style={{ display: activeTab === "wardrobe" ? "block" : "none" }}>
+                <Wardrobe colors={colors} />
+              </div>
             </div>
           </main>
         </div>
@@ -2752,6 +2806,7 @@ function LauncherAppContent() {
               title={operationType === "repair" ? t('repairing_instance') : undefined}
               onCancel={handleCancelInstall}
               onMinimize={() => setInstallMinimized(true)}
+              disableBackdropClick={operationType === "sync" || operationType === "repair"}
               language={config.language}
           />
       )}
@@ -2792,7 +2847,7 @@ function LauncherAppContent() {
                   </div>
                   <div className="flex-1 min-w-0">
                       <h4 className="font-medium text-sm truncate" style={{ color: colors.onSurface }}>
-                          {operationType === "repair" ? t('repairing_instance') : t('installing')}
+                          {operationType === "repair" ? t('repairing_instance') : operationType === "sync" ? t('checking_data') : t('installing')}
                       </h4>
                       <p className="text-xs truncate" style={{ color: colors.onSurfaceVariant }}>
                           {installProgress.type ? t(installProgress.type as any, { filename: installProgress.filename, current: installProgress.current, total: installProgress.total } as any) : installProgress.message}
@@ -2822,4 +2877,5 @@ export default function LauncherApp() {
     </UIErrorBoundary>
   );
 }
+
 

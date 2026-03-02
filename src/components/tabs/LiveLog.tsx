@@ -165,6 +165,23 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
         }
     };
 
+    const formatLogMessage = (msg: string) => {
+        if (msg && msg.startsWith('t:')) {
+            const parts = msg.substring(2).split('^^');
+            const key = parts[0];
+            
+            if (key === 'crash_immediate') {
+                return (t(key as any) || "").replace('{seconds}', parts[1]).replace('{code}', parts[2]);
+            } else if (key === 'crash_reason') {
+                return (t(key as any) || "").replace('{reason}', parts[1]);
+            } else if (key === 'crash_log_saved') {
+                return (t(key as any) || "").replace('{path}', parts[1]);
+            }
+            return t(key as any) || msg;
+        }
+        return msg;
+    };
+
     if (!isOpen) return null;
 
     const filterLabels = {
@@ -320,7 +337,7 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
                                     [{log.level.toUpperCase()}]
                                 </span>
                                 <span style={{ color: colors.onSurface }} className="break-all">
-                                    {log.message}
+                                    {formatLogMessage(log.message)}
                                 </span>
                             </div>
                         ))

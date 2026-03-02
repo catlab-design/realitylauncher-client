@@ -22,10 +22,11 @@ export interface InstallProgressModalProps {
     isBytes?: boolean;
     onCancel?: () => void;
     onMinimize?: () => void;
+    disableBackdropClick?: boolean;
     language: "th" | "en";
 }
 
-export function InstallProgressModal({ colors, installProgress, title, isBytes, onCancel, onMinimize, language }: InstallProgressModalProps) {
+export function InstallProgressModal({ colors, installProgress, title, isBytes, onCancel, onMinimize, disableBackdropClick, language }: InstallProgressModalProps) {
     const { t } = useTranslation(language);
 
     const formatBytes = (bytes: number) => {
@@ -39,7 +40,14 @@ export function InstallProgressModal({ colors, installProgress, title, isBytes, 
     const currentDisplay = isBytes ? formatBytes(installProgress.current || 0) : (installProgress.current || 0).toString();
     const totalDisplay = isBytes ? formatBytes(installProgress.total || 0) : (installProgress.total || 0).toString();
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+        <div 
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+            onClick={(e) => {
+                if (e.target === e.currentTarget && onMinimize && !disableBackdropClick) {
+                    onMinimize();
+                }
+            }}
+        >
             <div className="w-[380px] rounded-2xl p-5 shadow-2xl relative" style={{ backgroundColor: colors.surface }}>
                 {/* Minimize Button */}
                 {onMinimize && (
@@ -65,7 +73,7 @@ export function InstallProgressModal({ colors, installProgress, title, isBytes, 
                     </div>
                     <div className="flex-1 min-w-0">
                         <h3 className="font-medium truncate" style={{ color: colors.onSurface }}>
-                            {title || t('installing_modpack')}
+                            {title || (installProgress.stage === "sync-start" || installProgress.stage === "sync-check" || installProgress.stage === "sync-download" || installProgress.stage === "sync-clean" || installProgress.stage === "sync-complete" ? t('checking_data') : t('installing_modpack'))}
                         </h3>
                         <p className="text-sm truncate" style={{ color: colors.onSurfaceVariant }} title={installProgress.message}>
                             {installProgress.type ? t(installProgress.type as any, { filename: installProgress.filename, current: installProgress.current, total: installProgress.total } as any) : installProgress.message}

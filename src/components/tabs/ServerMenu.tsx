@@ -10,6 +10,7 @@ import { Icons } from "../ui/Icons";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import toast from "react-hot-toast";
 import { useAuthStore } from "../../store/authStore";
+import { useProgressStore } from "../../store/progressStore";
 
 
 
@@ -45,6 +46,13 @@ export function ServerMenu({
 }: ServerMenuProps) {
     const { t } = useTranslation(language);
     const { accounts, setSession: setAuthSession, updateAccount } = useAuthStore();
+    const {
+        setInstalling,
+        setInstallProgress,
+        setInstallMinimized,
+        setOperationType,
+        setInstallingInstanceId,
+    } = useProgressStore();
     const [instances, setInstances] = useState<{ owned: Instance[]; member: Instance[] } | null>(null);
     const [loading, setLoading] = useState(true);
     const [apiError, setApiError] = useState<string | null>(null);
@@ -125,6 +133,11 @@ export function ServerMenu({
         return hash ? `${stamped}#${hash}` : stamped;
     };
 
+    const stagedRevealStyle = (delayMs: number): React.CSSProperties => ({
+        animationDelay: `${delayMs}ms`,
+        opacity: 0,
+    });
+
     // Event Listeners for Game Status
     useEffect(() => {
         const removeStartedListener = (window.api as any)?.onGameStarted((data: any) => {
@@ -148,17 +161,6 @@ export function ServerMenu({
             removeStoppedListener?.();
         };
     }, []);
-
-    // Discord RPC
-    useEffect(() => {
-        if (!config.discordRPCEnabled || !window.api) return;
-        (window.api as any).discordRPCUpdate?.("browsing_servers");
-
-        return () => {
-            // Revert back when unmounting (leaving the tab)
-            (window.api as any).discordRPCUpdate?.("idle");
-        };
-    }, [config.discordRPCEnabled]);
 
     // Sync status when instances load
     useEffect(() => {
@@ -500,6 +502,17 @@ export function ServerMenu({
         e.stopPropagation();
 
         try {
+            // Mark active install target so global cancel knows which operation to abort
+            setOperationType("install");
+            setInstalling(true);
+            setInstallMinimized(false);
+            setInstallingInstanceId(instance.id);
+            setInstallProgress({
+                stage: "sync-start",
+                type: "sync-start",
+                message: t('starting_install'),
+            });
+
             // 1. Select Server (so ModPack tab knows what to show)
             handleInstanceClick(instance);
 
@@ -528,6 +541,12 @@ export function ServerMenu({
         } catch (error: any) {
             console.error("[ServerMenu] Install exception:", error);
             toast.error(t('error_occurred') + ": " + error.message);
+        } finally {
+            setInstalling(false);
+            setInstallProgress(null);
+            setInstallMinimized(false);
+            setOperationType(null);
+            setInstallingInstanceId(null);
         }
     };
 
@@ -590,8 +609,11 @@ export function ServerMenu({
                     getWithTimestamp={getWithTimestamp}
                 />
             ) : (
-                <>
-                <div className="flex justify-between items-center mb-6 gap-4">
+                <div className="h-full flex flex-col animate-fade-in">
+                <div
+                    className="flex justify-between items-center mb-6 gap-4 animate-fade-in"
+                    style={stagedRevealStyle(20)}
+                >
                 <div className="flex-1">
                     <h2 className="text-2xl font-bold mb-1" style={{ color: colors.onSurface }}>
                         {isJoinMode ? t('enter_key') : (showPublic ? t('explore_servers') : t('server_list'))}
@@ -614,7 +636,8 @@ export function ServerMenu({
                             handleSearchSubmit(e);
                         }
                     }} 
-                    className="flex-1 max-w-sm relative group"
+                    className="flex-1 max-w-sm relative group animate-fade-in"
+                    style={stagedRevealStyle(80)}
                 >
                     <input
                         type="text"
@@ -659,7 +682,10 @@ export function ServerMenu({
                 </form>
 
                 {/* Actions */}
-                <div className="flex gap-2">
+                <div
+                    className="flex gap-2 animate-fade-in"
+                    style={stagedRevealStyle(120)}
+                >
                     {!isJoinMode && (
                         <button
                             onClick={() => {
@@ -719,7 +745,10 @@ export function ServerMenu({
             {/* Loading / List */}
             {/* Not logged in - Show login prompt */}
             {!session ? (
-                <div className="flex-1 flex flex-col items-center justify-center gap-6">
+                <div
+                    className="flex-1 flex flex-col items-center justify-center gap-6 animate-fade-in"
+                    style={stagedRevealStyle(160)}
+                >
                     <div className="w-24 h-24 rounded-3xl flex items-center justify-center" style={{ backgroundColor: colors.surfaceContainerHighest }}>
                         <Icons.Person className="w-12 h-12" style={{ color: colors.primary }} />
                     </div>
@@ -733,7 +762,10 @@ export function ServerMenu({
                     </div>
                 </div>
             ) : (session.type === "microsoft" && !session.apiToken) ? (
-                <div className="flex-1 flex flex-col items-center justify-center gap-6">
+                <div
+                    className="flex-1 flex flex-col items-center justify-center gap-6 animate-fade-in"
+                    style={stagedRevealStyle(160)}
+                >
                     <div className="w-24 h-24 rounded-3xl flex items-center justify-center" style={{ backgroundColor: colors.surfaceContainerHighest }}>
                         <svg className="w-12 h-12" style={{ color: colors.secondary }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
@@ -784,7 +816,10 @@ export function ServerMenu({
                     ))}
                 </div>
             ) : displayedInstances.length === 0 ? (
-                <div className="flex-1 flex flex-col items-center justify-center gap-6 opacity-60">
+                <div
+                    className="flex-1 flex flex-col items-center justify-center gap-6 opacity-60 animate-fade-in"
+                    style={stagedRevealStyle(180)}
+                >
                     <div className="w-24 h-24 rounded-3xl flex items-center justify-center bg-gray-500/10">
                         {apiError ? (
                             <svg className="w-12 h-12" style={{ color: colors.error || "#ef4444" }} viewBox="0 0 24 24" fill="currentColor">
@@ -828,7 +863,10 @@ export function ServerMenu({
                     </div>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-4 overflow-y-auto">
+                <div
+                    className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-4 overflow-y-auto animate-fade-in"
+                    style={stagedRevealStyle(180)}
+                >
                     {displayedInstances.map((instance: any, index: number) => {
                         const targetId = instance.storagePath || instance.id;
                         const isInstalled = localInstances.has(targetId);
@@ -879,7 +917,7 @@ export function ServerMenu({
                 cancelText={confirmDialog.cancelText}
                 colors={colors}
             />
-            </>
+            </div>
             )}
         </div >
     );

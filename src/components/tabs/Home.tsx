@@ -16,6 +16,7 @@ interface Newsletter {
     displayOrder: number;
     createdAt: string;
     sentAt: string | null;
+    tag?: string;
 }
 
 interface HomeProps {
@@ -29,6 +30,11 @@ interface HomeProps {
     setActiveTab?: (tab: string) => void;
     language: string;
 }
+
+const stagedRevealStyle = (delay: number) => ({
+    animationDelay: `${delay}ms`,
+    opacity: 0,
+});
 
 const HomeHeader = React.memo(({ session, colors, language }: { session: any, colors: any, language: string }) => {
     const { t } = useTranslation(language as any);
@@ -80,10 +86,11 @@ const HomeHeader = React.memo(({ session, colors, language }: { session: any, co
             )}
 
             <header
-                className="relative overflow-hidden rounded-3xl p-6 transition-all duration-300"
+                className="relative overflow-hidden rounded-3xl p-6 transition-all duration-300 animate-fade-in"
                 style={{
                     backgroundColor: colors.surfaceContainer,
                     border: `1px solid ${colors.outline}40`,
+                    ...stagedRevealStyle(20)
                 }}
             >
                 {/* Decorative Elements */}
@@ -329,7 +336,7 @@ export function Home({
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Main Column (News) */}
-                <div className="lg:col-span-2 space-y-6">
+                <div className="lg:col-span-2 space-y-6 animate-fade-in" style={stagedRevealStyle(80)}>
                     <div className="flex items-center justify-between">
                         <h3 className="text-xl font-bold flex items-center gap-3" style={{ color: colors.onSurface }}>
                             <div className="p-2 rounded-lg" style={{ backgroundColor: colors.primaryContainer }}>
@@ -347,7 +354,7 @@ export function Home({
                             <div className="w-full aspect-video max-h-[420px] rounded-3xl animate-pulse"
                                  style={{ backgroundColor: colors.surfaceContainerHighest }} />
                         ) : newsletters.length > 0 ? (
-                            <div className="relative w-full aspect-video max-h-[420px] rounded-3xl overflow-hidden shadow-lg transition-all hover:shadow-xl ring-1 ring-inset group/slider"
+                            <div className="relative w-full aspect-video max-h-[420px] rounded-3xl overflow-hidden transition-all ring-1 ring-inset group/slider"
                                  style={{ borderColor: colors.outline + '20' }}>
                                 
                                 {/* Slides */}
@@ -371,25 +378,36 @@ export function Home({
                                             }}
                                         />
                                         
-                                        {/* Gradient Overlay */}
-                                        <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/40 to-transparent" />
-                                        <div className="absolute inset-0 bg-linear-to-r from-black/80 via-black/20 to-transparent" />
+                                        {/* Soft Subtle Gradient Overlay */}
+                                        <div className="absolute inset-0 bg-linear-to-t from-black/60 via-transparent to-transparent" />
+                                        <div className="absolute inset-x-0 bottom-0 h-1/2 bg-linear-to-t from-black/50 to-transparent pointer-events-none" />
+                                        <div className="absolute inset-y-0 left-0 w-1/2 bg-linear-to-r from-black/40 to-transparent pointer-events-none" />
+
+                                        {/* Tag Badge */}
+                                        <div className="absolute top-4 right-4 z-20">
+                                            <span className="px-3 py-1.5 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-white text-xs font-bold tracking-wide shadow-lg">
+                                                {item.tag || "ข่าวสาร"}
+                                            </span>
+                                        </div>
 
                                         <div className="absolute bottom-0 left-0 max-w-[65%] p-8 text-white z-10 flex flex-col items-start">
-                                            <div className="flex items-center gap-3 mb-4 text-white/90 text-xs font-bold uppercase tracking-wider">
-                                                <span className="font-semibold shadow-black/50 drop-shadow-sm">
+                                            <div className="flex items-center gap-3 mb-4 text-white/90 text-xs font-bold uppercase tracking-wider"
+                                                 style={{ textShadow: '0 1px 4px rgba(0,0,0,0.6)' }}>
+                                                <span className="font-semibold">
                                                     {new Date(item.sentAt || item.createdAt).toLocaleDateString(language === "th" ? "th-TH" : "en-US", { dateStyle: 'medium' })}
                                                 </span>
                                             </div>
-                                            <h2 className="text-3xl font-extrabold mb-3 line-clamp-2 leading-tight drop-shadow-lg tracking-tight">
+                                            <h2 className="text-3xl font-extrabold mb-3 line-clamp-2 leading-tight tracking-tight"
+                                                style={{ textShadow: '0 2px 8px rgba(0,0,0,0.7)' }}>
                                                 {item.subject}
                                             </h2>
-                                            <p className="text-sm text-white/80 line-clamp-2 leading-relaxed mb-6 font-medium max-w-[90%] drop-shadow-md">
+                                            <p className="text-sm text-white/80 line-clamp-2 leading-relaxed mb-6 font-medium max-w-[90%]"
+                                               style={{ textShadow: '0 1px 6px rgba(0,0,0,0.7)' }}>
                                                 {stripMarkdown(item.content)}
                                             </p>
                                             <button 
                                                 onClick={() => setSelectedNews(item)}
-                                                className="px-5 py-2.5 rounded-2xl bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/10 transition-all font-semibold text-sm flex items-center gap-2 group/btn shadow-lg hover:shadow-white/5 active:scale-95">
+                                                className="px-5 py-2.5 rounded-2xl bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/10 transition-all font-semibold text-sm flex items-center gap-2 group/btn active:scale-95">
                                                 {t('read_more')}
                                                 <Icons.ChevronRight className="w-4 h-4 transition-transform group-hover/btn:translate-x-1" />
                                             </button>
@@ -408,7 +426,7 @@ export function Home({
                                                     key={idx}
                                                     onClick={() => setCurrentSlide(idx)}
                                                     className={cn(
-                                                        "h-1.5 rounded-full transition-all duration-300 shadow-sm",
+                                                        "h-1.5 rounded-full transition-all duration-300",
                                                         idx === currentSlide ? "w-6 bg-white" : "w-1.5 bg-white/30 hover:bg-white/50"
                                                     )}
                                                 />
@@ -419,14 +437,14 @@ export function Home({
                                         <div className="flex gap-2">
                                             <button
                                                 onClick={() => setCurrentSlide((prev) => (prev - 1 + newsletters.length) % newsletters.length)}
-                                                className="w-8 h-8 flex items-center justify-center rounded-full bg-black/20 backdrop-blur-md border border-white/5 text-white transition-all hover:bg-black/40 hover:scale-110 shadow-lg active:scale-95 group/nav"
+                                                className="w-8 h-8 flex items-center justify-center rounded-full bg-black/20 backdrop-blur-md border border-white/5 text-white transition-all hover:bg-black/40 hover:scale-110 active:scale-95 group/nav"
                                             >
                                                 <Icons.ChevronLeft className="w-4 h-4 group-hover/nav:-translate-x-0.5 transition-transform" />
                                             </button>
                                             
                                             <button
                                                 onClick={() => setCurrentSlide((prev) => (prev + 1) % newsletters.length)}
-                                                className="w-8 h-8 flex items-center justify-center rounded-full bg-black/20 backdrop-blur-md border border-white/5 text-white transition-all hover:bg-black/40 hover:scale-110 shadow-lg active:scale-95 group/nav"
+                                                className="w-8 h-8 flex items-center justify-center rounded-full bg-black/20 backdrop-blur-md border border-white/5 text-white transition-all hover:bg-black/40 hover:scale-110 active:scale-95 group/nav"
                                             >
                                                 <Icons.ChevronRight className="w-4 h-4 group-hover/nav:translate-x-0.5 transition-transform" />
                                             </button>
@@ -448,7 +466,7 @@ export function Home({
                 </div>
 
                 {/* Side Column (Recent) */}
-                <div className="space-y-6">
+                <div className="space-y-6 animate-fade-in" style={stagedRevealStyle(140)}>
                     <div className="flex items-center justify-between">
                         <h3 className="text-xl font-bold flex items-center gap-3" style={{ color: colors.onSurface }}>
                             <div className="p-2 rounded-lg" style={{ backgroundColor: colors.primaryContainer }}>

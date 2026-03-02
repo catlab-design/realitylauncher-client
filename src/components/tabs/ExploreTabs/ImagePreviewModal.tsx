@@ -48,7 +48,7 @@ export function ImagePreviewModal({ colors, imageUrl, onClose, onNext, onPrev, h
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+        <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in duration-200"
             onClick={handleBackdropClick}>
 
             {/* Image Counter / Pagination Toolbar - Only show when loaded */}
@@ -62,7 +62,7 @@ export function ImagePreviewModal({ colors, imageUrl, onClose, onNext, onPrev, h
                         <i className="fa-solid fa-chevron-left text-sm"></i>
                     </button>
 
-                    <span className="text-sm font-medium text-white/90 min-w-[3rem] text-center">
+                    <span className="text-sm font-medium text-white/90 min-w-12 text-center">
                         {(imageIndex !== undefined && totalImages) ? `${imageIndex + 1} / ${totalImages}` : ''}
                     </span>
 
@@ -92,7 +92,7 @@ export function ImagePreviewModal({ colors, imageUrl, onClose, onNext, onPrev, h
                 <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none">
                     {/* Skeleton Screen */}
                     <div className="w-[60vw] h-[60vh] bg-white/5 rounded-lg animate-pulse overflow-hidden relative">
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent skew-x-12 translate-x-[-100%] animate-[shimmer_1.5s_infinite]"></div>
+                        <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/5 to-transparent skew-x-12 -translate-x-full animate-[shimmer_1.5s_infinite]"></div>
                         {/* Skeleton Icon */}
                         <div className="absolute inset-0 flex items-center justify-center opacity-20">
                             <i className="fa-regular fa-image text-6xl text-white"></i>
@@ -101,14 +101,14 @@ export function ImagePreviewModal({ colors, imageUrl, onClose, onNext, onPrev, h
                 </div>
             )}
 
-            <div className="relative flex items-center justify-center max-w-[90vw] max-h-[80vh]" // Reduced max-h to make room for toolbar
+            <div className="relative flex items-center justify-center" 
                 onClick={e => e.stopPropagation()}>
 
                 <img
                     key={imageUrl} // Force re-render on URL change to restart animation/loading
                     src={imageUrl}
                     alt="Preview"
-                    className={`max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl duration-300 ${isLoading ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}
+                    className={`w-[95vw] h-[85vh] object-contain drop-shadow-2xl duration-300 ${isLoading ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}
                     onLoad={() => setIsLoading(false)}
                 />
 

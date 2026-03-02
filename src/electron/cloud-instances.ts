@@ -5,10 +5,14 @@
  * Including joining instances via Invite Key
  */
 
-import { BrowserWindow } from "electron";
-import { verifyFileHash, downloadFile } from "./modrinth.js";
+import {
+  downloadFile,
+  verifyFileHash as verifyFileHashJs,
+} from "./modrinth.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as os from "node:os";
+import { getNativeModule } from "./native.js";
 
 // Use production API URL (process.env doesn't work in bundled Electron)
 import { API_URL } from "./lib/constants.js";
@@ -20,50 +24,185 @@ import { getConfig } from "./config.js";
  * Verify that a JAR/ZIP file is valid (not corrupted)
  */
 function isValidZipFile(filePath: string): boolean {
-  let fd: number | null = null;
   try {
-    fd = fs.openSync(filePath, "r");
-    const buffer = Buffer.alloc(4);
-
-    // Check ZIP magic number at start (PK\x03\x04)
-    fs.readSync(fd, buffer, 0, 4, 0);
-    const hasValidHeader =
-      buffer[0] === 0x50 &&
-      buffer[1] === 0x4b &&
-      (buffer[2] === 0x03 || buffer[2] === 0x05) &&
-      (buffer[3] === 0x04 || buffer[3] === 0x06);
-
-    if (!hasValidHeader) {
-      return false;
-    }
-
-    // Check for END header (PK\x05\x06) - read last 22+ bytes
-    const stats = fs.statSync(filePath);
-    const endBuffer = Buffer.alloc(Math.min(256, stats.size));
-    const readPos = Math.max(0, stats.size - 256);
-    fs.readSync(fd, endBuffer, 0, endBuffer.length, readPos);
-
-    // Search for END signature
-    for (let i = endBuffer.length - 22; i >= 0; i--) {
-      if (
-        endBuffer[i] === 0x50 &&
-        endBuffer[i + 1] === 0x4b &&
-        endBuffer[i + 2] === 0x05 &&
-        endBuffer[i + 3] === 0x06
-      ) {
-        return true;
-      }
-    }
-    return false;
+    const native = getNativeModule();
+    const entries = native.listZipContents(filePath) as string[];
+    return Array.isArray(entries);
   } catch {
     return false;
-  } finally {
-    if (fd !== null) {
-      try {
-        fs.closeSync(fd);
-      } catch {}
-    }
   }
+}
+
+type NormalizedExpectedHash = {
+  algorithm: "sha1" | "sha256";
+  hex: string;
+};
+
+let batchSha256Support: boolean | null = null;
+
+function decodeHashBase64(value: string): Buffer | undefined {
+  const normalized = value.trim().replace(/-/g, "+").replace(/_/g, "/");
+  if (!normalized) return undefined;
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(normalized)) return undefined;
+
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  try {
+    const decoded = Buffer.from(padded, "base64");
+    if (decoded.length === 0) return undefined;
+    const roundTrip = decoded.toString("base64").replace(/=+$/, "");
+    const normalizedInput = padded.replace(/=+$/, "");
+    if (roundTrip !== normalizedInput) return undefined;
+    return decoded;
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeExpectedHash(
+  expectedHash?: string,
+): NormalizedExpectedHash | undefined {
+  if (!expectedHash) return undefined;
+  let value = expectedHash.trim();
+  if (!value) return undefined;
+
+  const lower = value.toLowerCase();
+  if (lower.startsWith("sha256:")) value = value.slice(7).trim();
+  else if (lower.startsWith("sha-256:")) value = value.slice(8).trim();
+  else if (lower.startsWith("sha1:")) value = value.slice(5).trim();
+  else if (lower.startsWith("sha-1:")) value = value.slice(6).trim();
+
+  if (value.startsWith("0x") || value.startsWith("0X")) {
+    value = value.slice(2).trim();
+  }
+
+  if (/^[a-fA-F0-9]+$/.test(value)) {
+    const hex = value.toLowerCase();
+    if (hex.length === 64) return { algorithm: "sha256", hex };
+    if (hex.length === 40) return { algorithm: "sha1", hex };
+    return undefined;
+  }
+
+  const decoded = decodeHashBase64(value);
+  if (!decoded) return undefined;
+  if (decoded.length === 32) {
+    return { algorithm: "sha256", hex: decoded.toString("hex") };
+  }
+  if (decoded.length === 20) {
+    return { algorithm: "sha1", hex: decoded.toString("hex") };
+  }
+  return undefined;
+}
+
+async function detectBatchSha256Support(
+  nativeModule: any,
+): Promise<boolean> {
+  if (batchSha256Support !== null) {
+    return batchSha256Support;
+  }
+
+  if (typeof nativeModule?.verifyMultipleFileHashes !== "function") {
+    batchSha256Support = false;
+    return false;
+  }
+
+  const probeDir = fs.mkdtempSync(path.join(os.tmpdir(), "ml-batch-probe-"));
+  const probeFile = path.join(probeDir, "sha256.txt");
+  try {
+    fs.writeFileSync(probeFile, "mlauncher-batch-sha256-probe");
+    const impossibleHash = "0".repeat(64);
+    const probeResults = (await nativeModule.verifyMultipleFileHashes([
+      {
+        filePath: probeFile,
+        expectedSha256: impossibleHash,
+      },
+    ])) as Array<{ filePath: string; isValid: boolean }> | undefined;
+
+    const probe = Array.isArray(probeResults)
+      ? probeResults.find((row) => row.filePath === probeFile)
+      : undefined;
+    batchSha256Support = probe?.isValid === false;
+  } catch (error) {
+    console.warn(
+      "[Cloud Sync] Failed to probe SHA-256 support in native batch verifier:",
+      error,
+    );
+    batchSha256Support = false;
+  } finally {
+    try {
+      fs.rmSync(probeDir, { recursive: true, force: true });
+    } catch {}
+  }
+
+  return batchSha256Support;
+}
+
+async function logHashMismatchDiagnostic(
+  filePath: string,
+  filename: string,
+  expectedHash?: string,
+): Promise<void> {
+  const normalized = normalizeExpectedHash(expectedHash);
+  const algorithm = normalized?.algorithm || "unknown";
+  const expected = normalized?.hex || expectedHash?.trim() || "n/a";
+  let actual = "n/a";
+
+  try {
+    const native = getNativeModule() as any;
+    if (algorithm === "sha256" && typeof native.calculateSha256 === "function") {
+      actual = String((await native.calculateSha256(filePath)) || "n/a");
+    } else if (
+      algorithm === "sha1" &&
+      typeof native.calculateSha1 === "function"
+    ) {
+      actual = String((await native.calculateSha1(filePath)) || "n/a");
+    }
+  } catch {
+    // Keep n/a if debug hash calculation fails.
+  }
+
+  let bytes = "n/a";
+  try {
+    const stat = await fs.promises.stat(filePath);
+    bytes = String(stat.size);
+  } catch {
+    // Ignore stat failures in debug logging path.
+  }
+
+  console.warn(
+    `[Cloud Sync][Hash Debug] file=${filename} algo=${algorithm} expected=${expected} actual=${actual} bytes=${bytes}`,
+  );
+}
+
+async function verifyFileHashNative(
+  filePath: string,
+  expectedHash?: string,
+): Promise<boolean> {
+  if (!expectedHash) return true;
+  const normalized = normalizeExpectedHash(expectedHash);
+  if (!normalized) {
+    return verifyFileHashJs(filePath, expectedHash);
+  }
+
+  try {
+    const native = getNativeModule();
+    if (normalized.algorithm === "sha256") {
+      return (await native.verifyFileHash(
+        filePath,
+        undefined,
+        normalized.hex,
+      )) as boolean;
+    }
+
+    return (await native.verifyFileHash(
+      filePath,
+      normalized.hex,
+      undefined,
+    )) as boolean;
+  } catch {
+    // Fall back to JS hash verification below.
+  }
+
+  return verifyFileHashJs(filePath, normalized.hex);
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
@@ -94,6 +233,10 @@ async function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
     }, ms);
     signal.addEventListener("abort", onAbort, { once: true });
   });
+}
+
+async function yieldToEventLoop(): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve));
 }
 
 async function runWithConcurrency<T>(
@@ -130,6 +273,97 @@ async function runWithConcurrency<T>(
   throwIfAborted(signal);
 }
 
+type ServerSyncMod = {
+  filename: string;
+  url?: string;
+  size?: number;
+  hash?: string;
+};
+
+type ServerContentPayload = {
+  manifestRevision?: string;
+  urlsIncluded?: boolean;
+  mods?: ServerSyncMod[];
+};
+
+const MANIFEST_CACHE_TTL_MS = 5 * 60 * 1000;
+const instanceManifestCache = new Map<
+  string,
+  {
+    revision: string;
+    cachedAt: number;
+    mods: ServerSyncMod[];
+  }
+>();
+const joinedServersInFlight = new Map<
+  string,
+  Promise<{ owned: any[]; member: any[] }>
+>();
+
+function normalizeServerMods(mods?: ServerSyncMod[]): ServerSyncMod[] {
+  if (!mods || !Array.isArray(mods)) return [];
+  const uniqueMods = new Map<string, ServerSyncMod>();
+  for (const mod of mods) {
+    if (!mod?.filename) continue;
+    const normalizedUrl =
+      typeof mod.url === "string" && mod.url.length > 0 ? mod.url : "";
+    const normalizedSize =
+      typeof mod.size === "number" && Number.isFinite(mod.size)
+        ? mod.size
+        : undefined;
+    const normalizedHash =
+      typeof mod.hash === "string" && mod.hash.trim().length > 0
+        ? mod.hash.trim()
+        : undefined;
+    uniqueMods.set(mod.filename, {
+      filename: mod.filename,
+      url: normalizedUrl,
+      size: normalizedSize,
+      hash: normalizedHash,
+    });
+  }
+  return Array.from(uniqueMods.values()).filter(
+    (m) => !m.filename.endsWith(".keep"),
+  );
+}
+
+async function fetchServerContentPayload(
+  cloudId: string,
+  authToken: string,
+  signal: AbortSignal | undefined,
+  options?: { manifestOnly?: boolean; ifNoneMatch?: string },
+): Promise<{ notModified: boolean; data: ServerContentPayload }> {
+  const manifestOnly = options?.manifestOnly === true;
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${authToken}`,
+  };
+  if (options?.ifNoneMatch) {
+    headers["If-None-Match"] = `"${options.ifNoneMatch}"`;
+  }
+
+  const endpoint = manifestOnly
+    ? `${API_URL}/instances/${cloudId}/content?manifest=1`
+    : `${API_URL}/instances/${cloudId}/content`;
+  const response = await fetch(endpoint, {
+    headers,
+    signal,
+  });
+
+  if (response.status === 304) {
+    return { notModified: true, data: {} };
+  }
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(
+      `Failed to fetch server content: ${response.statusText} (${response.status}) ${errText}`,
+    );
+  }
+
+  const data = (await response.json()) as ServerContentPayload;
+  return { notModified: false, data };
+}
+
 /**
  * Download file with soft hash check - warns on mismatch but doesn't fail
  * Used for cloud sync where hash in DB might be stale
@@ -163,7 +397,7 @@ async function downloadFileWithSoftHashCheck(
 
     // Verify hash but only warn on mismatch
     if (expectedHash) {
-      const isValid = await verifyFileHash(tmpPath, expectedHash);
+      const isValid = await verifyFileHashNative(tmpPath, expectedHash);
       throwIfAborted(signal);
       if (!isValid) {
         console.warn(
@@ -389,39 +623,58 @@ export async function leaveInstance(
  */
 export async function fetchJoinedServers(
   authToken: string,
+  signal?: AbortSignal,
 ): Promise<{ owned: any[]; member: any[] }> {
-  try {
-    console.log("[Cloud Instances] Fetching instances...");
-    console.log("[Cloud Instances] Auth token present:", !!authToken);
-    const response = await fetch(`${API_URL}/instances`, {
-      headers: {
-        Authorization: `Bearer ${authToken}`,
-      },
-    });
+  const fetchTask = async (): Promise<{ owned: any[]; member: any[] }> => {
+    try {
+      console.log("[Cloud Instances] Fetching instances...");
+      console.log("[Cloud Instances] Auth token present:", !!authToken);
+      const response = await fetch(`${API_URL}/instances`, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+        signal,
+      });
 
-    if (!response.ok) {
-      const errBody = await response.text();
-      console.error(
-        "[Cloud Instances] Failed to fetch:",
-        response.status,
-        response.statusText,
-        errBody,
-      );
-      if (response.status === 401) {
-        clearApiToken();
+      if (!response.ok) {
+        const errBody = await response.text();
+        console.error(
+          "[Cloud Instances] Failed to fetch:",
+          response.status,
+          response.statusText,
+          errBody,
+        );
+        if (response.status === 401) {
+          clearApiToken();
+        }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
 
-    const data: any = await response.json();
-    return {
-      owned: data.owned || [],
-      member: data.member || [],
-    };
-  } catch (error) {
-    console.error("[Cloud Instances] Fetch error:", error);
-    throw error;
+      const data: any = await response.json();
+      return {
+        owned: data.owned || [],
+        member: data.member || [],
+      };
+    } catch (error) {
+      console.error("[Cloud Instances] Fetch error:", error);
+      throw error;
+    }
+  };
+
+  if (signal) {
+    return fetchTask();
   }
+
+  const inFlight = joinedServersInFlight.get(authToken);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const task = fetchTask().finally(() => {
+    joinedServersInFlight.delete(authToken);
+  });
+  joinedServersInFlight.set(authToken, task);
+  return task;
 }
 
 /**
@@ -504,36 +757,78 @@ export async function syncServerMods(
   console.log(
     `[Cloud Sync] Syncing mods for ${instance.name} (${instance.id})...`,
   );
-  if (onProgress) onProgress({ type: "sync-start", task: "" });
+  let lastProgressSentAt = 0;
+  let lastProgressKey = "";
+  const emitProgress = (
+    data: {
+      type: string;
+      task: string;
+      current?: number;
+      total?: number;
+      percent?: number;
+      filename?: string;
+    },
+    force = false,
+  ) => {
+    if (!onProgress) return;
+    const now = Date.now();
+    const percent =
+      typeof data.percent === "number" ? Math.round(data.percent) : undefined;
+    const current =
+      typeof data.current === "number" ? Math.round(data.current) : undefined;
+    const total =
+      typeof data.total === "number" ? Math.round(data.total) : undefined;
+    const key = `${data.type}|${data.task}|${percent ?? ""}|${current ?? ""}|${total ?? ""}|${data.filename || ""}`;
+
+    const criticalType =
+      data.type === "sync-start" ||
+      data.type === "sync-complete" ||
+      data.type === "sync-error" ||
+      data.type === "cancelled";
+    const due = now - lastProgressSentAt >= 120;
+    const milestone =
+      percent === undefined ||
+      percent === 0 ||
+      percent === 100 ||
+      percent % 5 === 0;
+
+    if (
+      force ||
+      criticalType ||
+      (due && (milestone || key !== lastProgressKey))
+    ) {
+      lastProgressSentAt = now;
+      lastProgressKey = key;
+      onProgress(data);
+    }
+  };
+
+  emitProgress({ type: "sync-start", task: "" }, true);
 
   if (signal?.aborted) throw new Error("Cancelled");
 
   try {
-    // 1. Fetch Server Content (Mods list)
-    // Also fetch Instance Metadata to update local settings (loader, version, icon)
+    // 1. Fetch Server Content Manifest (without signed URLs)
+    // and metadata in parallel. This avoids heavy URL signing when no download is needed.
+    const manifestCacheKey = instance.cloudId;
+    const cachedManifest = instanceManifestCache.get(manifestCacheKey);
+    const manifestCacheValid =
+      !!cachedManifest &&
+      Date.now() - cachedManifest.cachedAt <= MANIFEST_CACHE_TTL_MS;
+    if (!manifestCacheValid && cachedManifest) {
+      instanceManifestCache.delete(manifestCacheKey);
+    }
 
-    // Parallel fetch for content and metadata
-    const [contentRes, metaRes] = await Promise.all([
-      fetch(`${API_URL}/instances/${instance.cloudId}/content`, {
-        headers: { Authorization: `Bearer ${authToken}` },
-        signal,
+    const [manifestRes, metaRes] = await Promise.all([
+      fetchServerContentPayload(instance.cloudId, authToken, signal, {
+        manifestOnly: true,
+        ifNoneMatch: manifestCacheValid ? cachedManifest?.revision : undefined,
       }),
       fetch(`${API_URL}/instances/${instance.cloudId}`, {
         headers: { Authorization: `Bearer ${authToken}` },
         signal,
       }),
     ]);
-
-    if (!contentRes.ok) {
-      const errText = await contentRes.text();
-      console.error(
-        `[Cloud Sync] Content fetch failed: ${contentRes.status} ${contentRes.statusText}`,
-        errText,
-      );
-      throw new Error(
-        `Failed to fetch server content: ${contentRes.statusText} (${contentRes.status})`,
-      );
-    }
 
     // Process Metadata if available
     if (metaRes.ok) {
@@ -552,40 +847,47 @@ export async function syncServerMods(
       }
     }
 
-    const data = await contentRes.json();
-    const serverMods = data.mods as Array<{
-      filename: string;
-      url: string;
-      size?: number;
-      hash?: string;
-    }>;
-
-    if (!serverMods || !Array.isArray(serverMods)) {
-      console.log("[Cloud Sync] No mods returned from server.");
-      return;
+    let manifestData: ServerContentPayload;
+    if (manifestRes.notModified && manifestCacheValid && cachedManifest) {
+      manifestData = {
+        manifestRevision: cachedManifest.revision,
+        urlsIncluded: false,
+        mods: cachedManifest.mods,
+      };
+    } else {
+      manifestData = manifestRes.data;
+      if (
+        manifestData?.manifestRevision &&
+        Array.isArray(manifestData?.mods)
+      ) {
+        instanceManifestCache.set(manifestCacheKey, {
+          revision: manifestData.manifestRevision,
+          cachedAt: Date.now(),
+          mods: normalizeServerMods(manifestData.mods),
+        });
+      }
     }
 
-    // Deduplicate mods by filename to prevent redundant downloads
-    const uniqueMods = new Map<
-      string,
-      { filename: string; url: string; size?: number; hash?: string }
-    >();
-    for (const mod of serverMods) {
-      uniqueMods.set(mod.filename, mod);
-    }
-
-    // Filter out .keep files (used for empty folders on server)
-    const validServerMods = Array.from(uniqueMods.values()).filter(
-      (m) => !m.filename.endsWith(".keep"),
+    const validServerMods = normalizeServerMods(manifestData.mods);
+    const plannerEligibleMods = validServerMods.filter(
+      (mod) => typeof mod.hash === "string" && mod.hash.length > 0,
     );
+    const plannerDeferredMods = validServerMods.filter(
+      (mod) => !(typeof mod.hash === "string" && mod.hash.length > 0),
+    );
+    if (plannerDeferredMods.length > 0) {
+      console.log(
+        `[Cloud Sync] Deferring ${plannerDeferredMods.length} files without hash to JS compatibility checks.`,
+      );
+    }
 
     // Limit cleanup to mods directory ONLY to prevent deleting saves/configs/options
     const modsDir = path.join(instance.gameDirectory, "mods");
     if (!fs.existsSync(modsDir)) {
-      fs.mkdirSync(modsDir, { recursive: true });
+      await fs.promises.mkdir(modsDir, { recursive: true });
     }
 
-    if (onProgress) onProgress({ type: "sync-check", task: "" });
+    emitProgress({ type: "sync-check", task: "" });
 
     // 2. Download missing/updated files (ANY file in the instance)
     // Path traversal protection: ensure all files stay within game directory
@@ -600,19 +902,82 @@ export async function syncServerMods(
       Math.min(16, configuredConcurrency),
     );
     const hashConcurrency = Math.max(1, Math.min(8, downloadConcurrency));
+    const nativeModule = getNativeModule() as any;
 
     const finalQueue: Array<{
       filename: string;
-      url: string;
+      url?: string;
       size?: number;
       hash?: string;
     }> = [];
     const hashCheckQueue: Array<{
-      mod: { filename: string; url: string; size?: number; hash?: string };
+      mod: { filename: string; url?: string; size?: number; hash?: string };
       filePath: string;
     }> = [];
 
-    for (const mod of validServerMods) {
+    let plannedByNative = false;
+    if (
+      typeof nativeModule.planServerSyncDownloads === "function" &&
+      plannerEligibleMods.length > 0
+    ) {
+      try {
+        emitProgress(
+          {
+            type: "sync-check",
+            task: "กำลังตรวจสอบไฟล์ทั้งหมด...",
+            current: 0,
+            total: plannerEligibleMods.length,
+            percent: 0,
+          },
+          true,
+        );
+
+        const planned = await nativeModule.planServerSyncDownloads(
+          instance.gameDirectory,
+          plannerEligibleMods,
+        );
+        if (planned?.downloadQueue && Array.isArray(planned.downloadQueue)) {
+          finalQueue.push(...planned.downloadQueue);
+          plannedByNative = true;
+          if (
+            typeof planned.inspected === "number" &&
+            planned.inspected > 0 &&
+            planned.downloadQueue.length === planned.inspected
+          ) {
+            console.warn(
+              `[Cloud Sync] Native planner queued all files (${planned.downloadQueue.length}/${planned.inspected}). Possible hash algorithm/format mismatch.`,
+            );
+          }
+          emitProgress(
+            {
+              type: "sync-check",
+              task: "ตรวจสอบเสร็จสิ้น",
+              current:
+                typeof planned.inspected === "number"
+                  ? planned.inspected
+                  : plannerEligibleMods.length,
+              total: plannerEligibleMods.length,
+              percent: 100,
+            },
+            true,
+          );
+        }
+      } catch (plannerError) {
+        console.warn(
+          "[Cloud Sync] Native sync planner failed, falling back to JS path:",
+          plannerError,
+        );
+      }
+    }
+
+    const jsScanMods = plannedByNative ? plannerDeferredMods : validServerMods;
+    if (jsScanMods.length > 0) {
+      let inspectedMods = 0;
+      for (const mod of jsScanMods) {
+      inspectedMods += 1;
+      if (inspectedMods % 25 === 0) {
+        await yieldToEventLoop();
+      }
       throwIfAborted(signal);
       const filePath = path.resolve(instance.gameDirectory, mod.filename);
 
@@ -627,9 +992,21 @@ export async function syncServerMods(
       }
 
       const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      try {
+        const dirExists = await fs.promises
+          .access(dir)
+          .then(() => true)
+          .catch(() => false);
+        if (!dirExists) await fs.promises.mkdir(dir, { recursive: true });
+      } catch (err) {
+        console.error(`[Cloud Sync] Failed to create directory ${dir}:`, err);
+      }
 
-      if (!fs.existsSync(filePath)) {
+      const fileExists = await fs.promises
+        .access(filePath)
+        .then(() => true)
+        .catch(() => false);
+      if (!fileExists) {
         finalQueue.push(mod);
         continue;
       }
@@ -639,15 +1016,21 @@ export async function syncServerMods(
           `[Cloud Sync] ${mod.filename} is corrupted, will re-download`,
         );
         try {
-          fs.unlinkSync(filePath);
+          await fs.promises.unlink(filePath);
         } catch {}
         finalQueue.push(mod);
         continue;
       }
 
       if (mod.size) {
-        const stats = fs.statSync(filePath);
-        if (stats.size !== mod.size) {
+        try {
+          const stats = await fs.promises.stat(filePath);
+          if (stats.size !== mod.size) {
+            finalQueue.push(mod);
+            continue;
+          }
+        } catch (err) {
+          console.error(`[Cloud Sync] Failed to stat ${filePath}:`, err);
           finalQueue.push(mod);
           continue;
         }
@@ -660,43 +1043,268 @@ export async function syncServerMods(
     }
 
     if (hashCheckQueue.length > 0) {
-      if (onProgress) {
-        onProgress({
+      let hashDebugLogged = 0;
+      emitProgress(
+        {
           type: "sync-check",
-          task: "",
+          task: "กำลังตรวจสอบไฟล์ทั้งหมด...",
           current: 0,
           total: hashCheckQueue.length,
           percent: 0,
-        });
-      }
+        },
+        true,
+      );
 
-      let hashChecked = 0;
-      await runWithConcurrency(
-        hashCheckQueue,
-        hashConcurrency,
-        async ({ mod, filePath }) => {
-          throwIfAborted(signal);
-          const isValid = await verifyFileHash(filePath, mod.hash);
-          throwIfAborted(signal);
-          hashChecked += 1;
-          if (!isValid) {
-            console.warn(
-              `[Cloud Sync] Hash mismatch for ${mod.filename}, re-downloading.`,
-            );
-            finalQueue.push(mod);
+      try {
+        const native = await import("./native.js");
+        const nativeModule = native.getNativeModule();
+        const hasSha256Tasks = hashCheckQueue.some(
+          (item) => normalizeExpectedHash(item.mod.hash)?.algorithm === "sha256",
+        );
+        if (hasSha256Tasks) {
+          const sha256Ready = await detectBatchSha256Support(nativeModule);
+          if (!sha256Ready) {
+            throw new Error("NATIVE_BATCH_SHA256_UNSUPPORTED");
           }
-          if (onProgress) {
-            onProgress({
+        }
+
+        // Chunk the hashing tasks to prevent blocking the event loop
+        const CHUNK_SIZE = 15;
+        let validCount = 0;
+        let invalidCount = 0;
+        let hashProcessedCount = 0;
+        const batchInvalidMods: Array<{
+          filename: string;
+          url?: string;
+          size?: number;
+          hash?: string;
+        }> = [];
+
+        for (let i = 0; i < hashCheckQueue.length; i += CHUNK_SIZE) {
+          throwIfAborted(signal);
+          const chunk = hashCheckQueue.slice(i, i + CHUNK_SIZE);
+          const tasks = chunk.map((item) => {
+            const normalized = normalizeExpectedHash(item.mod.hash);
+            if (normalized?.algorithm === "sha256") {
+              return {
+                filePath: item.filePath,
+                expectedSha256: normalized.hex,
+              };
+            }
+            if (normalized?.algorithm === "sha1") {
+              return {
+                filePath: item.filePath,
+                expectedSha1: normalized.hex,
+              };
+            }
+            return {
+              filePath: item.filePath,
+              expectedSha1: item.mod.hash,
+            };
+          });
+
+          const hashResults = await nativeModule.verifyMultipleFileHashes(
+            tasks,
+          ) as Array<{
+            filePath: string;
+            isValid: boolean;
+          }>;
+          const hashResultByPath = new Map(
+            hashResults.map((result) => [result.filePath, result]),
+          );
+
+          for (const item of chunk) {
+            const result = hashResultByPath.get(item.filePath);
+            if (result && !result.isValid) {
+              console.warn(
+                `[Cloud Sync] Hash mismatch for ${item.mod.filename}, re-downloading.`,
+              );
+              if (hashDebugLogged < 3) {
+                await logHashMismatchDiagnostic(
+                  item.filePath,
+                  item.mod.filename,
+                  item.mod.hash,
+                );
+                hashDebugLogged += 1;
+              }
+              batchInvalidMods.push(item.mod);
+              invalidCount++;
+            } else {
+              validCount++;
+            }
+          }
+
+          hashProcessedCount += chunk.length;
+          emitProgress(
+            {
+              type: "sync-check",
+              task: "กำลังตรวจสอบไฟล์ทั้งหมด...",
+              current: hashProcessedCount,
+              total: hashCheckQueue.length,
+              percent: Math.round(
+                (hashProcessedCount / hashCheckQueue.length) * 100,
+              ),
+            },
+            true,
+          );
+
+          // Give time for UI feedback and event loop processing
+          await yieldToEventLoop();
+        }
+
+        if (invalidCount === hashCheckQueue.length && hashCheckQueue.length > 0) {
+          const sample = hashCheckQueue.slice(0, Math.min(3, hashCheckQueue.length));
+          let sampleDirectValid = 0;
+          for (const sampleItem of sample) {
+            throwIfAborted(signal);
+            if (
+              await verifyFileHashNative(sampleItem.filePath, sampleItem.mod.hash)
+            ) {
+              sampleDirectValid += 1;
+            }
+          }
+
+          if (sampleDirectValid > 0) {
+            console.warn(
+              `[Cloud Sync] Batch hash looked inconsistent (${sampleDirectValid}/${sample.length} sample valid via direct check). Rechecking in compatibility mode...`,
+            );
+            batchInvalidMods.length = 0;
+            validCount = 0;
+            invalidCount = 0;
+
+            let compatibilityChecked = 0;
+            for (const item of hashCheckQueue) {
+              throwIfAborted(signal);
+              const isValid = await verifyFileHashNative(
+                item.filePath,
+                item.mod.hash,
+              );
+              compatibilityChecked += 1;
+              if (!isValid) {
+                batchInvalidMods.push(item.mod);
+                invalidCount += 1;
+                if (hashDebugLogged < 3) {
+                  await logHashMismatchDiagnostic(
+                    item.filePath,
+                    item.mod.filename,
+                    item.mod.hash,
+                  );
+                  hashDebugLogged += 1;
+                }
+              } else {
+                validCount += 1;
+              }
+
+              if (compatibilityChecked % 25 === 0) {
+                await yieldToEventLoop();
+              }
+            }
+          }
+        }
+
+        finalQueue.push(...batchInvalidMods);
+
+        console.log(
+          `[Cloud Sync] Batch hash complete. Checked: ${hashCheckQueue.length}, Valid: ${validCount}, Invalid: ${invalidCount}`,
+        );
+
+        emitProgress(
+          {
+            type: "sync-check",
+            task: "ตรวจสอบเสร็จสิ้น",
+            current: hashCheckQueue.length,
+            total: hashCheckQueue.length,
+            percent: 100,
+          },
+          true,
+          );
+      } catch (e) {
+        const message = String((e as any)?.message || e || "");
+        if (message.includes("NATIVE_BATCH_SHA256_UNSUPPORTED")) {
+          console.warn(
+            "[Cloud Sync] Native batch SHA-256 verifier is not reliable in this runtime. Using direct verifier for this sync.",
+          );
+        } else {
+          console.error(
+            "[Cloud Sync] Failed to use batch hasher, falling back to sequential:",
+            e,
+          );
+        }
+        // Fallback to sequential if the native batch fails
+        let hashChecked = 0;
+        await runWithConcurrency(
+          hashCheckQueue,
+          hashConcurrency,
+          async ({ mod, filePath }) => {
+            throwIfAborted(signal);
+            const isValid = await verifyFileHashNative(filePath, mod.hash);
+            throwIfAborted(signal);
+            hashChecked += 1;
+            if (!isValid) {
+              console.warn(
+                `[Cloud Sync] Hash mismatch for ${mod.filename}, re-downloading.`,
+              );
+              if (hashDebugLogged < 3) {
+                await logHashMismatchDiagnostic(filePath, mod.filename, mod.hash);
+                hashDebugLogged += 1;
+              }
+              finalQueue.push(mod);
+            }
+            emitProgress({
               type: "sync-check",
               task: "",
               current: hashChecked,
               total: hashCheckQueue.length,
               percent: Math.round((hashChecked / hashCheckQueue.length) * 100),
             });
-          }
-        },
+          },
+          signal,
+        );
+      }
+    }
+
+    }
+
+    if (finalQueue.length > 0 && finalQueue.some((m) => !m.url)) {
+      const fullContentRes = await fetchServerContentPayload(
+        instance.cloudId,
+        authToken,
         signal,
+        { manifestOnly: false },
       );
+      const fullContentMods = normalizeServerMods(fullContentRes.data?.mods);
+      if (
+        fullContentRes.data?.manifestRevision &&
+        fullContentMods.length > 0
+      ) {
+        instanceManifestCache.set(manifestCacheKey, {
+          revision: fullContentRes.data.manifestRevision,
+          cachedAt: Date.now(),
+          mods: fullContentMods,
+        });
+      }
+
+      const fullByFilename = new Map<string, ServerSyncMod>(
+        fullContentMods.map((mod) => [mod.filename, mod]),
+      );
+      const unresolved: string[] = [];
+      for (const queuedMod of finalQueue) {
+        if (queuedMod.url) continue;
+        const full = fullByFilename.get(queuedMod.filename);
+        if (!full?.url) {
+          unresolved.push(queuedMod.filename);
+          continue;
+        }
+        queuedMod.url = full.url;
+        if (queuedMod.size === undefined) queuedMod.size = full.size;
+        if (!queuedMod.hash && full.hash) queuedMod.hash = full.hash;
+      }
+
+      if (unresolved.length > 0) {
+        throw new Error(
+          `Missing download URLs for ${unresolved.length} files`,
+        );
+      }
     }
 
     console.log(
@@ -717,18 +1325,22 @@ export async function syncServerMods(
           throwIfAborted(signal);
           try {
             attempts++;
+            const downloadUrl = mod.url;
+            if (!downloadUrl) {
+              throw new Error(`Missing URL for ${mod.filename}`);
+            }
             await downloadFileWithSoftHashCheck(
-              mod.url,
+              downloadUrl,
               destPath,
               mod.hash,
               signal,
               (percent) => {
-                if (onProgress && finalQueue.length > 0) {
+                if (finalQueue.length > 0) {
                   const blended = Math.round(
                     ((completedCount + percent / 100) / finalQueue.length) *
                       100,
                   );
-                  onProgress({
+                  emitProgress({
                     type: "sync-download",
                     task: "",
                     filename: mod.filename,
@@ -741,20 +1353,18 @@ export async function syncServerMods(
             );
 
             completedCount++;
-            if (onProgress) {
-              const overallPercent =
-                finalQueue.length > 0
-                  ? Math.round((completedCount / finalQueue.length) * 100)
-                  : 100;
-              onProgress({
-                type: "sync-download",
-                task: "",
-                filename: mod.filename,
-                current: completedCount,
-                total: finalQueue.length,
-                percent: overallPercent,
-              });
-            }
+            const overallPercent =
+              finalQueue.length > 0
+                ? Math.round((completedCount / finalQueue.length) * 100)
+                : 100;
+            emitProgress({
+              type: "sync-download",
+              task: "",
+              filename: mod.filename,
+              current: completedCount,
+              total: finalQueue.length,
+              percent: overallPercent,
+            });
             return;
           } catch (err: any) {
             throwIfAborted(signal);
@@ -788,11 +1398,32 @@ export async function syncServerMods(
 
     // 3. Delete extra mods (Respect Locked Mods, ONLY in mods folder)
     throwIfAborted(signal);
-    if (onProgress)
-      onProgress({ type: "sync-clean", task: "กำลังลบไฟล์ส่วนเกิน..." });
+    emitProgress({ type: "sync-clean", task: "กำลังลบไฟล์ส่วนเกิน..." }, true);
 
-    // Only scan mods folder for cleanup
-    if (fs.existsSync(modsDir)) {
+    let cleanedByNative = false;
+    if (typeof nativeModule.cleanupExtraMods === "function") {
+      try {
+        const cleanupResult = await nativeModule.cleanupExtraMods(
+          instance.gameDirectory,
+          validServerMods.map((m) => m.filename),
+          instance.lockedMods || [],
+        );
+        cleanedByNative = true;
+        if (cleanupResult && typeof cleanupResult.deleted === "number") {
+          console.log(
+            `[Cloud Sync] Native cleanup complete. deleted=${cleanupResult.deleted}, keptLocked=${cleanupResult.keptLocked || 0}`,
+          );
+        }
+      } catch (cleanupError) {
+        console.warn(
+          "[Cloud Sync] Native cleanup failed, falling back to JS cleanup:",
+          cleanupError,
+        );
+      }
+    }
+
+    // Only scan mods folder for cleanup (fallback path)
+    if (!cleanedByNative && fs.existsSync(modsDir)) {
       const localFiles = fs
         .readdirSync(modsDir)
         .filter((f) => f.endsWith(".jar") || f.endsWith(".jar.disabled"));
@@ -804,7 +1435,12 @@ export async function syncServerMods(
       );
       const lockedMods = new Set(instance.lockedMods || []);
 
+      let cleanedCount = 0;
       for (const file of localFiles) {
+        cleanedCount += 1;
+        if (cleanedCount % 25 === 0) {
+          await yieldToEventLoop();
+        }
         throwIfAborted(signal);
         const relativePath = `mods/${file}`; // Path relative to instance root
         const realName = file.replace(".jar.disabled", ".jar");
@@ -837,12 +1473,14 @@ export async function syncServerMods(
       }
     }
     console.log("[Cloud Sync] Sync complete.");
-    if (onProgress)
-      onProgress({
+    emitProgress(
+      {
         type: "sync-complete",
         task: "ซิงค์ข้อมูลสำเร็จ",
         percent: 100,
-      });
+      },
+      true,
+    );
   } catch (error: any) {
     const message = String(error?.message || "");
     const cancelled =
@@ -850,13 +1488,14 @@ export async function syncServerMods(
       message.includes("Cancelled") ||
       message.includes("cancelled");
     if (cancelled) {
-      if (onProgress)
-        onProgress({ type: "cancelled", task: "ยกเลิกการดาวน์โหลดแล้ว" });
+      emitProgress({ type: "cancelled", task: "ยกเลิกการดาวน์โหลดแล้ว" }, true);
       throw new Error("Cancelled");
     }
     console.error("[Cloud Sync] Error:", error);
-    if (onProgress)
-      onProgress({ type: "sync-error", task: "เกิดข้อผิดพลาดในการซิงค์" });
+    emitProgress(
+      { type: "sync-error", task: "เกิดข้อผิดพลาดในการซิงค์" },
+      true,
+    );
     throw error;
   }
 }

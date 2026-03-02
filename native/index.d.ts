@@ -48,6 +48,54 @@ export declare function downloadFiles(tasks: Array<DownloadTask>, maxConcurrent?
 export declare function verifyFileHash(path: string, sha1?: string | undefined | null, sha256?: string | undefined | null): Promise<boolean>
 export declare function calculateSha1(path: string): Promise<string | null>
 export declare function calculateSha256(path: string): Promise<string | null>
+export interface HashCheckTask {
+  filePath: string
+  expectedSha1?: string | null | undefined
+  expectedSha256?: string | null | undefined
+  expectedSha512?: string | null | undefined
+}
+export interface HashCheckResult {
+  filePath: string
+  isValid: boolean
+}
+export declare function verifyMultipleFileHashes(tasks: Array<HashCheckTask>): Promise<Array<HashCheckResult>>
+export interface ServerModEntry {
+  filename: string
+  url: string
+  size?: number | null | undefined
+  hash?: string | null | undefined
+}
+export interface ServerSyncPlanResult {
+  downloadQueue: Array<ServerModEntry>
+  inspected: number
+  queued: number
+  skippedUnsafe: number
+}
+export interface CleanupExtraModsResult {
+  scanned: number
+  deleted: number
+  keptLocked: number
+}
+export interface PostInstallModpackFilesResult {
+  movedResourcepacks: number
+  removedDuplicates: number
+}
+export interface NativeModConflict {
+  conflictType: string
+  file1: string
+  file2?: string | null | undefined
+  reason: string
+}
+export interface PackMetadataResult {
+  iconBase64?: string | null | undefined
+  version?: string | null | undefined
+  packFormat?: number | null | undefined
+}
+export declare function planServerSyncDownloads(gameDir: string, mods: Array<ServerModEntry>): Promise<ServerSyncPlanResult>
+export declare function cleanupExtraMods(gameDir: string, serverFilenames: Array<string>, lockedMods?: Array<string> | undefined | null): Promise<CleanupExtraModsResult>
+export declare function postInstallModpackFiles(gameDir: string): Promise<PostInstallModpackFilesResult>
+export declare function detectModConflictsNative(modsDir: string): Array<NativeModConflict>
+export declare function inspectPackMetadata(packPath: string, packKind: string): Promise<PackMetadataResult>
 /** Instance loader type */
 export const enum LoaderType {
   Vanilla = 'Vanilla',
@@ -480,6 +528,7 @@ export declare function prepareLaunch(versionJson: string, options: LaunchOption
 export declare function launchGame(javaPath: string, jvmArgs: Array<string>, mainClass: string, gameArgs: Array<string>, gameDir: string): LaunchResult
 /** Get asset index and return download items for missing assets */
 export declare function getAssetDownloads(assetIndexUrl: string, assetsDir: string): Promise<Array<DownloadItem>>
+export declare function analyzeCrashLog(stderr: string): string | null
 export const enum ForgeLoaderType {
   Forge = 'Forge',
   NeoForge = 'NeoForge'

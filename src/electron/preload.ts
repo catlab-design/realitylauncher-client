@@ -113,6 +113,12 @@ const api = {
       | "idle"
       | "playing"
       | "launching"
+      | "browsing_home"
+      | "browsing_explore"
+      | "browsing_settings"
+      | "browsing_wardrobe"
+      | "browsing_about"
+      | "browsing_admin"
       | "browsing_modpacks"
       | "browsing_servers",
     serverName?: string,
@@ -340,6 +346,41 @@ const api = {
   ) => ipcRenderer.invoke("curseforge-get-download-url", projectId, fileId),
   curseforgePrefetch: () => ipcRenderer.invoke("curseforge-prefetch"),
   curseforgeClearCache: () => ipcRenderer.invoke("curseforge-clear-cache"),
+  launcherClearCache: async () => {
+    _instancesCacheKey = "";
+    _instancesCacheTs = 0;
+    _instancesCacheData = null;
+    _instancesCachePromise = null;
+
+    const [launcherRes, modrinthRes, curseforgeRes] = await Promise.allSettled([
+      ipcRenderer.invoke("launcher-clear-cache"),
+      ipcRenderer.invoke("modrinth-clear-cache"),
+      ipcRenderer.invoke("curseforge-clear-cache"),
+    ]);
+
+    const launcher =
+      launcherRes.status === "fulfilled"
+        ? launcherRes.value
+        : { ok: false, error: String(launcherRes.reason) };
+    const modrinth =
+      modrinthRes.status === "fulfilled"
+        ? modrinthRes.value
+        : { ok: false, error: String(modrinthRes.reason) };
+    const curseforge =
+      curseforgeRes.status === "fulfilled"
+        ? curseforgeRes.value
+        : { ok: false, error: String(curseforgeRes.reason) };
+
+    return {
+      ok:
+        launcher?.ok !== false &&
+        modrinth?.ok !== false &&
+        curseforge?.ok !== false,
+      launcher,
+      modrinth,
+      curseforge,
+    };
+  },
 
   // ----------------------------------------
   // Instance Management APIs
@@ -448,7 +489,10 @@ const api = {
     return () => ipcRenderer.removeListener("instances-updated", handler);
   },
 
-  instancesLaunch: (id: string) => ipcRenderer.invoke("instances-launch", id),
+  instancesLaunch: (
+    id: string,
+    options?: { skipServerModSync?: boolean },
+  ) => ipcRenderer.invoke("instances-launch", id, options),
   instanceJoin: (key: string) => ipcRenderer.invoke("instance-join", key),
   instanceJoinPublic: (id: string) =>
     ipcRenderer.invoke("instance-join-public", id),
@@ -541,6 +585,8 @@ const api = {
     ipcRenderer.invoke("instance-toggle-mod", instanceId, filename),
   instanceToggleLock: (instanceId: string, filename: string) =>
     ipcRenderer.invoke("instance-toggle-lock", instanceId, filename),
+  instanceLockMods: (instanceId: string, filenames: string[], lock: boolean) =>
+    ipcRenderer.invoke("instance-lock-mods", instanceId, filenames, lock),
   instanceCheckIntegrity: (instanceId: string) =>
     ipcRenderer.invoke("instance-check-integrity", instanceId),
   instanceDeleteMod: (instanceId: string, filename: string) =>

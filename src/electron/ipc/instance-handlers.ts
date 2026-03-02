@@ -10,7 +10,7 @@
  * - Log reading
  */
 
-import { ipcMain, dialog, shell, app, BrowserWindow } from "electron";
+import { ipcMain, dialog, shell, app, BrowserWindow, session } from "electron";
 import { join, basename, dirname } from "path";
 import * as path from "path";
 
@@ -47,13 +47,14 @@ import {
   updateInstance,
   deleteInstance,
   duplicateInstance,
+  getInstancesDir,
   getInstanceDir,
   setInstanceIcon,
   type GameInstance,
   type CreateInstanceOptions,
   type UpdateInstanceOptions,
 } from "../instances.js";
-import { getConfig, getAppDataDir } from "../config.js";
+import { getConfig, getAppDataDir, getMinecraftDir } from "../config.js";
 import { getSession, getApiToken } from "../auth.js";
 import { refreshMicrosoftTokenIfNeeded } from "../auth-refresh.js";
 import { API_URL } from "../lib/constants.js";
@@ -66,12 +67,98 @@ import {
 import { downloadContentToInstance } from "../content.js";
 import { updateRPC } from "../discord.js";
 import { resolveTelemetryUserIdForSession } from "../telemetry.js";
+import { getNativeModule } from "../native.js";
+import { getLaunchPolicyForInstance } from "../../lib/launchPolicy";
 
 // Map to track active exports for cancellation: instanceId -> { abort: () => void }
 const activeExports = new Map<string, { abort: () => void }>();
 
 // Map to track active operations (e.g. content download)
 const activeOperations = new Map<string, AbortController>();
+const launchInProgress = new Set<string>();
+
+function createThrottledProgressSender(
+  channel: string,
+  minIntervalMs = 120,
+): (payload: any, force?: boolean) => void {
+  let lastSentAt = 0;
+  let lastKey = "";
+  let lastType = "";
+
+  return (payload: any, force = false) => {
+    const win = getMainWindow();
+    if (!win || win.isDestroyed()) return;
+
+    const now = Date.now();
+    const percent =
+      typeof payload?.percent === "number"
+        ? Math.round(payload.percent)
+        : undefined;
+    const current =
+      typeof payload?.current === "number" ? payload.current : undefined;
+    const total = typeof payload?.total === "number" ? payload.total : undefined;
+    const type = String(payload?.type || "");
+    const task = String(payload?.task || "");
+    const file = String(payload?.filename || "");
+    const key = `${type}|${task}|${percent ?? ""}|${current ?? ""}|${total ?? ""}|${file}`;
+
+    const phaseChanged = !lastKey || type !== lastType;
+    const milestone =
+      percent === undefined ||
+      percent === 0 ||
+      percent === 100 ||
+      percent % 5 === 0;
+    const due = now - lastSentAt >= minIntervalMs;
+
+    if (force || phaseChanged || (milestone && due) || (due && key !== lastKey)) {
+      win.webContents.send(channel, payload);
+      lastSentAt = now;
+      lastKey = key;
+      lastType = type;
+    }
+  };
+}
+
+type NativePackKind = "resource" | "shader" | "datapack";
+
+async function inspectPackMetadataWithNative(
+  filePath: string,
+  kind: NativePackKind,
+): Promise<{
+  icon: string | null;
+  version?: string;
+  packFormat?: number;
+}> {
+  try {
+    const native = getNativeModule() as any;
+    if (typeof native.inspectPackMetadata !== "function") {
+      return { icon: null };
+    }
+
+    const result = (await native.inspectPackMetadata(
+      filePath,
+      kind,
+    )) as {
+      iconBase64?: string | null;
+      version?: string | null;
+      packFormat?: number | null;
+    };
+
+    return {
+      icon:
+        typeof result?.iconBase64 === "string" && result.iconBase64.length > 0
+          ? `data:image/png;base64,${result.iconBase64}`
+          : null,
+      version: result?.version || undefined,
+      packFormat:
+        typeof result?.packFormat === "number"
+          ? result.packFormat
+          : undefined,
+    };
+  } catch {
+    return { icon: null };
+  }
+}
 
 // Maximum cache sizes to prevent unbounded memory growth
 const MAX_MOD_METADATA_CACHE = 5000;
@@ -217,6 +304,80 @@ function saveIconCache() {
 
 loadIconCache();
 
+function clearLauncherCaches() {
+  const config = getConfig();
+  if (saveTimeout) {
+    clearTimeout(saveTimeout);
+    saveTimeout = null;
+  }
+  if (iconSaveTimeout) {
+    clearTimeout(iconSaveTimeout);
+    iconSaveTimeout = null;
+  }
+
+  modMetadataCache.clear();
+  modrinthProjectCache.clear();
+  contentIconCache.clear();
+  pendingModrinthLookups.clear();
+
+  const deletedFiles: string[] = [];
+  const cacheFiles = [getMetadataCachePath(), getIconCachePath()];
+  for (const cachePath of cacheFiles) {
+    try {
+      if (existsSync(cachePath)) {
+        rmSync(cachePath, { force: true });
+        deletedFiles.push(cachePath);
+      }
+    } catch (error) {
+      logger.warn(`[Cache] Failed to remove cache file: ${cachePath}`, {
+        message: String(error),
+      });
+    }
+  }
+
+  const cacheDirs = [
+    path.join(getAppDataDir(), "cache"),
+    path.join(getAppDataDir(), "webcache"),
+    path.join(getMinecraftDir(), "cache"),
+    path.join(app.getPath("userData"), "Cache"),
+    path.join(app.getPath("userData"), "Code Cache"),
+    path.join(app.getPath("userData"), "GPUCache"),
+    path.join(app.getPath("userData"), "DawnCache"),
+    path.join(app.getPath("userData"), "GrShaderCache"),
+    path.join(app.getPath("userData"), "GraphiteDawnCache"),
+    path.join(app.getPath("userData"), "Service Worker", "CacheStorage"),
+  ];
+  if (config.cacheDir) {
+    cacheDirs.push(config.cacheDir);
+  }
+
+  const protectedDirs = new Set(
+    [getAppDataDir(), getMinecraftDir(), app.getPath("userData")].map((dir) =>
+      path.resolve(dir),
+    ),
+  );
+
+  for (const cacheDir of cacheDirs) {
+    try {
+      const resolved = path.resolve(cacheDir);
+      if (protectedDirs.has(resolved)) {
+        logger.warn(`[Cache] Skip protected dir: ${resolved}`);
+        continue;
+      }
+      if (existsSync(resolved)) {
+        rmSync(resolved, { recursive: true, force: true });
+        deletedFiles.push(resolved);
+      }
+    } catch (error) {
+      logger.warn(`[Cache] Failed to remove cache dir: ${cacheDir}`, {
+        message: String(error),
+      });
+    }
+  }
+
+  return { deletedFiles };
+}
+
 // Periodically purge expired content icon cache entries
 setInterval(
   () => {
@@ -272,43 +433,43 @@ function packFormatToVersion(
 ): string {
   if (type === "resource") {
     const resourcePackFormats: Record<number, string> = {
-      1: "1.6.1 – 1.8.9",
-      2: "1.9 – 1.10.2",
-      3: "1.11 – 1.12.2",
-      4: "1.13 – 1.14.4",
-      5: "1.15 – 1.16.1",
-      6: "1.16.2 – 1.16.5",
-      7: "1.17 – 1.17.1",
-      8: "1.18 – 1.18.2",
-      9: "1.19 – 1.19.2",
+      1: "1.6.1 โ€“ 1.8.9",
+      2: "1.9 โ€“ 1.10.2",
+      3: "1.11 โ€“ 1.12.2",
+      4: "1.13 โ€“ 1.14.4",
+      5: "1.15 โ€“ 1.16.1",
+      6: "1.16.2 โ€“ 1.16.5",
+      7: "1.17 โ€“ 1.17.1",
+      8: "1.18 โ€“ 1.18.2",
+      9: "1.19 โ€“ 1.19.2",
       12: "1.19.3",
       13: "1.19.4",
-      15: "1.20 – 1.20.1",
+      15: "1.20 โ€“ 1.20.1",
       18: "1.20.2",
-      22: "1.20.3 – 1.20.4",
-      32: "1.20.5 – 1.20.6",
-      34: "1.21 – 1.21.1",
-      42: "1.21.2 – 1.21.3",
+      22: "1.20.3 โ€“ 1.20.4",
+      32: "1.20.5 โ€“ 1.20.6",
+      34: "1.21 โ€“ 1.21.1",
+      42: "1.21.2 โ€“ 1.21.3",
       46: "1.21.4",
       48: "1.21.5",
     };
     return resourcePackFormats[format] || `Format ${format}`;
   } else {
     const dataPackFormats: Record<number, string> = {
-      4: "1.13 – 1.14.4",
-      5: "1.15 – 1.16.1",
-      6: "1.16.2 – 1.16.5",
-      7: "1.17 – 1.17.1",
-      8: "1.18 – 1.18.1",
+      4: "1.13 โ€“ 1.14.4",
+      5: "1.15 โ€“ 1.16.1",
+      6: "1.16.2 โ€“ 1.16.5",
+      7: "1.17 โ€“ 1.17.1",
+      8: "1.18 โ€“ 1.18.1",
       9: "1.18.2",
-      10: "1.19 – 1.19.3",
+      10: "1.19 โ€“ 1.19.3",
       12: "1.19.4",
-      15: "1.20 – 1.20.1",
+      15: "1.20 โ€“ 1.20.1",
       18: "1.20.2",
-      26: "1.20.3 – 1.20.4",
-      41: "1.20.5 – 1.20.6",
-      48: "1.21 – 1.21.1",
-      57: "1.21.2 – 1.21.3",
+      26: "1.20.3 โ€“ 1.20.4",
+      41: "1.20.5 โ€“ 1.20.6",
+      48: "1.21 โ€“ 1.21.1",
+      57: "1.21.2 โ€“ 1.21.3",
       61: "1.21.4",
       71: "1.21.5",
     };
@@ -492,7 +653,14 @@ function getModCacheKey(filepath: string, size: number, mtime: string): string {
 }
 
 async function calculateSha1(filePath: string): Promise<string> {
-  // console.log(`[Hash] Hashing ${path.basename(filePath)}`);
+  try {
+    const native = getNativeModule();
+    const hash = (await native.calculateSha1(filePath)) as string | null;
+    if (hash) return hash;
+  } catch {
+    // Fallback to JS hashing below.
+  }
+
   return new Promise((resolve, reject) => {
     const stream = fs.createReadStream(filePath);
     const hash = crypto.createHash("sha1");
@@ -942,6 +1110,35 @@ export function registerInstanceHandlers(
 
     return metadata;
   }
+
+  ipcMain.handle("launcher-clear-cache", async () => {
+    try {
+      const { deletedFiles } = clearLauncherCaches();
+
+      try {
+        await session.defaultSession.clearCache();
+        await session.defaultSession.clearStorageData({
+          storages: ["shadercache", "serviceworkers", "cachestorage"],
+        });
+      } catch (error) {
+        logger.warn("[Cache] Failed to clear Electron session cache", {
+          message: String(error),
+        });
+      }
+
+      logger.info(
+        `[Cache] Launcher cache cleared (files removed: ${deletedFiles.length})`,
+      );
+      return { ok: true, deletedFiles };
+    } catch (error: any) {
+      logger.error("Failed to clear launcher cache", error);
+      return {
+        ok: false,
+        error: error?.message || "Failed to clear launcher cache",
+      };
+    }
+  });
+
   // ----------------------------------------
   // Instance CRUD
   // ----------------------------------------
@@ -1112,16 +1309,39 @@ export function registerInstanceHandlers(
     },
   );
 
-  ipcMain.handle("instances-launch", async (_event, id: string) => {
+  ipcMain.handle(
+    "instances-launch",
+    async (
+      _event,
+      id: string,
+      options?: { skipServerModSync?: boolean },
+    ) => {
+    if (launchInProgress.has(id)) {
+      return {
+        ok: false,
+        message: "Instance เธเธตเนเธเธณเธฅเธฑเธเน€เธ•เธฃเธตเธขเธกเน€เธเธดเธ”เธญเธขเธนเน เธเธฃเธธเธ“เธฒเธฃเธญเธชเธฑเธเธเธฃเธนเน",
+      };
+    }
+    if (activeOperations.has(id)) {
+      return {
+        ok: false,
+        message: "Instance เธเธตเนเธกเธตเธเธฒเธเธเธดเธเธเน/เธ•เธดเธ”เธ•เธฑเนเธเธเธณเธฅเธฑเธเธ—เธณเธเธฒเธเธญเธขเธนเน",
+      };
+    }
+
+    launchInProgress.add(id);
+    const sendLaunchProgress = createThrottledProgressSender("launch-progress");
+    try {
     const mainWindow = getMainWindow();
     let instance = getInstance(id);
     if (!instance) {
       logger.warn(` instances-launch: Instance not found (ID: ${id})`);
-      return { ok: false, message: "Instance ไม่พบ" };
+      return { ok: false, message: "Instance เนเธกเนเธเธ" };
     }
+    const launchPolicy = getLaunchPolicyForInstance(instance, options);
 
     let session = getSession();
-    if (!session) return { ok: false, message: "กรุณา login ก่อน" };
+    if (!session) return { ok: false, message: "เธเธฃเธธเธ“เธฒ login เธเนเธญเธ" };
 
     const refreshResult = await refreshMicrosoftTokenIfNeeded(logger);
     if (!refreshResult.ok) {
@@ -1134,22 +1354,47 @@ export function registerInstanceHandlers(
     }
     session = refreshResult.session || session;
 
+    // Warning for CatID users on server modpacks
+    if (
+      launchPolicy.isServerBacked &&
+      session?.type === "catid" &&
+      !session.accessToken
+    ) {
+      sendLaunchProgress({
+        type: "sync-warning",
+        task: "เธเธธเธ“เธฅเนเธญเธเธญเธดเธเธ”เนเธงเธข CatID เธซเธฒเธเน€เธเธดเธฃเนเธเน€เธงเธญเธฃเนเน€เธเธดเธ”เนเธ—เน (online-mode) เธเธธเธ“เธญเธฒเธเธ–เธนเธเน€เธ•เธฐเธญเธญเธ (Invalid session)",
+      }, true);
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+
     if (isGameRunning(id))
-      return { ok: false, message: "Instance นี้กำลังทำงานอยู่" };
+      return { ok: false, message: "Instance เธเธตเนเธเธณเธฅเธฑเธเธ—เธณเธเธฒเธเธญเธขเธนเน" };
 
     void updateRPC("launching", instance.name, instance.icon);
 
     const config = getConfig();
     const ramMB = instance.ramMB || config.ramMB || 4096;
-    const startTime = Date.now();
 
     // ----------------------------------------
     // Auto-Sync Server Mods
     // ----------------------------------------
-    if (instance.cloudId && instance.autoUpdate !== false) {
-      const syncSession = getSession();
-      // If user is offline/not logged in, we skip sync (or should we fail? Prefer skip for offline play)
-      if (syncSession && syncSession.apiToken) {
+    if (launchPolicy.shouldSyncServerMods) {
+      let syncSession = getSession();
+      let syncApiToken = syncSession?.apiToken;
+
+      // If apiToken is expired/missing, try refreshing before giving up
+      if (syncSession && !syncApiToken) {
+        logger.info(
+          "[Launch] apiToken expired/missing, attempting refresh before sync...",
+        );
+        const tokenRefresh = await refreshMicrosoftTokenIfNeeded(logger);
+        if (tokenRefresh.ok) {
+          syncSession = getSession();
+          syncApiToken = syncSession?.apiToken;
+        }
+      }
+
+      if (syncSession && syncApiToken) {
         try {
           const { syncServerMods } = await import("../cloud-instances.js");
 
@@ -1158,21 +1403,27 @@ export function registerInstanceHandlers(
           activeOperations.set(id, controller);
 
           // Initial Status
-          mainWindow?.webContents.send("launch-progress", {
+          sendLaunchProgress({
             type: "sync-start",
-            task: "กำลังตรวจสอบอัปเดต...",
-          });
+            task: "เธเธณเธฅเธฑเธเธ•เธฃเธงเธเธชเธญเธเธญเธฑเธเน€เธ”เธ•...",
+          }, true);
 
+          let syncTimeout: NodeJS.Timeout | null = null;
           try {
+            syncTimeout = setTimeout(
+              () => controller.abort(),
+              10 * 60 * 1000,
+            );
             await syncServerMods(
               id,
-              syncSession.apiToken,
+              syncApiToken,
               (progress) => {
-                mainWindow?.webContents.send("launch-progress", progress);
+                sendLaunchProgress(progress);
               },
               controller.signal,
             );
           } finally {
+            if (syncTimeout) clearTimeout(syncTimeout);
             activeOperations.delete(id);
           }
 
@@ -1190,22 +1441,32 @@ export function registerInstanceHandlers(
           mainWindow?.webContents.send("instances-updated");
         } catch (error: any) {
           if (error.message === "Cancelled") {
-            mainWindow?.webContents.send("launch-progress", {
+            sendLaunchProgress({
               type: "sync-error",
-              task: "ยกเลิกการเข้าเล่นแล้ว",
-            });
+              task: "เธขเธเน€เธฅเธดเธเธเธฒเธฃเน€เธเนเธฒเน€เธฅเนเธเนเธฅเนเธง",
+            }, true);
             return { ok: false, message: "Game launch cancelled" };
           }
           console.error("[Launch] Auto-sync failed:", error);
           // Decide strategy: Fail or Warn?
           // For now, let's log and continue (Offline mode support)
           // Optionally notify frontend of warning?
-          mainWindow?.webContents.send("launch-progress", {
+          sendLaunchProgress({
             type: "sync-warning",
-            task: "ไม่สามารถอัปเดตได้ (เล่นแบบ Offline)",
-          });
+            task: "เนเธกเนเธชเธฒเธกเธฒเธฃเธ–เธญเธฑเธเน€เธ”เธ•เนเธ”เน (เน€เธฅเนเธเนเธเธ Offline)",
+          }, true);
           await new Promise((r) => setTimeout(r, 1000)); // Show warning briefly
         }
+      } else if (syncSession && launchPolicy.isServerBacked) {
+        // apiToken still missing after refresh โ€” warn user
+        logger.warn(
+          "[Launch] Cannot sync mods: apiToken unavailable after refresh attempt",
+        );
+        sendLaunchProgress({
+          type: "sync-warning",
+          task: "เนเธกเนเธชเธฒเธกเธฒเธฃเธ–เธ•เธฃเธงเธเธชเธญเธเธญเธฑเธเน€เธ”เธ•เนเธ”เน (เธเธฃเธธเธ“เธฒ login เนเธซเธกเน)",
+        }, true);
+        await new Promise((r) => setTimeout(r, 2000));
       }
     }
 
@@ -1219,7 +1480,7 @@ export function registerInstanceHandlers(
     updateInstance(id, { lastPlayedAt: new Date().toISOString() });
 
     setProgressCallback((progress) => {
-      mainWindow?.webContents.send("launch-progress", progress);
+      sendLaunchProgress(progress);
     });
 
     setGameLogCallback((level, message) => {
@@ -1235,13 +1496,13 @@ export function registerInstanceHandlers(
       `[Launch] Preparing to launch instance: ${instance.name} (${id})`,
     );
     logger.info(
-      `[Launch] Type: ${instance.cloudId ? "Cloud/Server" : "Local"}`,
+      `[Launch] Type: ${launchPolicy.isServerBacked ? "Cloud/Server" : "Local"}`,
     );
     logger.info(
       `[Launch] Loader: ${instance.loader} Version: ${instance.loaderVersion}`,
     );
     logger.info(
-      `[Launch] Mods Sync: ${instance.cloudId && instance.autoUpdate !== false ? "Enabled" : "Disabled"}`,
+      `[Launch] Mods Sync: ${launchPolicy.shouldSyncServerMods ? "Enabled" : "Disabled"}`,
     );
 
     // Validate loaderVersion for Forge/NeoForge
@@ -1342,6 +1603,10 @@ export function registerInstanceHandlers(
     }
 
     return result;
+    } finally {
+      setProgressCallback(null);
+      launchInProgress.delete(id);
+    }
   });
 
   ipcMain.handle("instance-join", async (_event, key: string) => {
@@ -1351,12 +1616,12 @@ export function registerInstanceHandlers(
     const session = getSession();
 
     if (!session) {
-      return { ok: false, error: "กรุณา login ก่อน" };
+      return { ok: false, error: "เธเธฃเธธเธ“เธฒ login เธเนเธญเธ" };
     }
 
     const apiToken = getApiToken();
     if (!apiToken) {
-      return { ok: false, error: "ไม่มี API token - กรุณา login ใหม่" };
+      return { ok: false, error: "เนเธกเนเธกเธต API token - เธเธฃเธธเธ“เธฒ login เนเธซเธกเน" };
     }
 
     const result = await joinInstanceByKey(key, apiToken);
@@ -1390,26 +1655,38 @@ export function registerInstanceHandlers(
     }
 
     try {
-      const files = await fs.promises.readdir(modsDir);
-      const jarFiles = files.filter(
-        (f) => f.endsWith(".jar") || f.endsWith(".jar.disabled"),
-      );
+      // Keep the first pass lightweight: just list files.
+      // Metadata and icons are hydrated progressively from cache/background lookup.
+      const modEntries = (await fs.promises.readdir(modsDir))
+        .filter((f) => f.endsWith(".jar") || f.endsWith(".jar.disabled"))
+        .map((filename) => ({ filename }));
 
-      // Load metadata with concurrency limit (max 5 at a time)
-      // to avoid overwhelming Modrinth API and blocking main process
-      const CONCURRENCY = 5;
-      const mods: (any | null)[] = new Array(jarFiles.length).fill(null);
+      // Return quickly using cached/native metadata, then hydrate in background.
+      const CONCURRENCY = 8;
+      const LOOKUP_BATCH_PER_CALL = 10;
+      const mods: (any | null)[] = new Array(modEntries.length).fill(null);
       let cursor = 0;
+      let hasUncached = false;
+      let scheduledLookups = 0;
+      let cacheTouched = false;
+
+      const isMetadataResolved = (meta?: ModMetadataCache): boolean => {
+        if (!meta) return false;
+        return Boolean(meta.icon || meta.modrinthId);
+      };
 
       const worker = async () => {
         while (true) {
           const idx = cursor++;
-          if (idx >= jarFiles.length) break;
-          const file = jarFiles[idx];
+          if (idx >= modEntries.length) break;
+          const file = modEntries[idx]?.filename;
+          if (!file) continue;
           const filePath = path.join(modsDir, file);
           try {
             const stats = await fs.promises.stat(filePath);
             const mtime = stats.mtime.toISOString();
+            const cacheKey = getModCacheKey(filePath, stats.size, mtime);
+            const seeded = modMetadataCache.get(cacheKey) || {};
 
             let name = file;
             let enabled = true;
@@ -1420,13 +1697,27 @@ export function registerInstanceHandlers(
               name = file.replace(".jar", "");
             }
 
-            // Ensure metadata is loaded (with concurrency control)
-            const metadata = await ensureModMetadata(
-              filePath,
-              instanceId,
-              stats.size,
-              mtime,
-            );
+            const metadata = seeded;
+            const lookupPending = pendingModrinthLookups.has(cacheKey);
+            const needsLookup = !isMetadataResolved(metadata);
+            if (lookupPending || needsLookup) {
+              hasUncached = true;
+            }
+
+            // Batch background hydration to avoid UI stalls on large mod lists.
+            if (
+              needsLookup &&
+              !lookupPending &&
+              scheduledLookups < LOOKUP_BATCH_PER_CALL
+            ) {
+              scheduledLookups += 1;
+              void ensureModMetadata(filePath, instanceId, stats.size, mtime)
+                .catch((error) => {
+                  logger.warn(
+                    `[Mods] Background metadata lookup failed for ${filePath}: ${String(error)}`,
+                  );
+                });
+            }
 
             mods[idx] = {
               filename: file,
@@ -1450,7 +1741,7 @@ export function registerInstanceHandlers(
 
       // Run workers in parallel (limited concurrency)
       await Promise.all(
-        Array.from({ length: Math.min(CONCURRENCY, jarFiles.length) }, () =>
+        Array.from({ length: Math.min(CONCURRENCY, modEntries.length) }, () =>
           worker(),
         ),
       );
@@ -1460,7 +1751,10 @@ export function registerInstanceHandlers(
 
       // logical sort
       validMods.sort((a, b) => a.displayName.localeCompare(b.displayName));
-      return { ok: true, mods: validMods };
+      if (cacheTouched) {
+        saveMetadataCache();
+      }
+      return { ok: true, mods: validMods, hasUncached };
     } catch (error: any) {
       return { ok: false, error: error.message, mods: [] };
     }
@@ -1891,6 +2185,33 @@ export function registerInstanceHandlers(
   );
 
   ipcMain.handle(
+    "instance-lock-mods",
+    async (_event, instanceId: string, filenames: string[], lock: boolean) => {
+      const instance = getInstance(instanceId);
+      if (!instance) {
+        logger.warn(
+          ` instance-lock-mods: Instance not found (ID: ${instanceId})`,
+        );
+        return { ok: false, error: "Instance not found" };
+      }
+
+      const locked = new Set(instance.lockedMods || []);
+
+      filenames.forEach((filename) => {
+        if (lock) {
+          locked.add(filename);
+        } else {
+          locked.delete(filename);
+        }
+      });
+
+      const newLocked = Array.from(locked);
+      updateInstance(instanceId, { lockedMods: newLocked });
+      return { ok: true, lockedMods: newLocked };
+    },
+  );
+
+  ipcMain.handle(
     "instance-check-integrity",
     async (_event, instanceId: string) => {
       const instance = getInstance(instanceId);
@@ -1900,30 +2221,66 @@ export function registerInstanceHandlers(
         return { ok: true, message: "Local instance integrity check skipped" };
       }
 
+      if (activeOperations.has(instanceId)) {
+        return { ok: false, error: "Another operation is already running" };
+      }
+
+      const sendInstallProgress =
+        createThrottledProgressSender("install-progress");
+
       try {
         const { syncServerMods } = await import("../cloud-instances.js");
-        const session = getSession();
+        let session = getSession();
+        if (!session) {
+          return { ok: false, error: "Not logged in" };
+        }
+
+        let apiToken = session.apiToken;
+        if (!apiToken) {
+          const refreshed = await refreshMicrosoftTokenIfNeeded(logger);
+          if (refreshed.ok) {
+            session = getSession() || session;
+            apiToken = session.apiToken;
+          }
+        }
+        if (!apiToken) {
+          return { ok: false, error: "Not logged in or no API token" };
+        }
 
         // Create AbortController for cancellation support
         const abortController = new AbortController();
+        activeOperations.set(instanceId, abortController);
+        const syncTimeout = setTimeout(
+          () => abortController.abort(),
+          10 * 60 * 1000,
+        );
 
         // Send progress updates to frontend
-        await syncServerMods(
-          instanceId,
-          session?.apiToken || "",
-          (progress) => {
-            // Send progress event to renderer process
-            getMainWindow()?.webContents.send("install-progress", {
-              type: progress.type,
-              task: progress.task,
-              current: progress.current,
-              total: progress.total,
-              percent: progress.percent,
-              filename: progress.filename,
-            });
-          },
-          abortController.signal,
-        );
+        try {
+          await syncServerMods(
+            instanceId,
+            apiToken,
+            (progress) => {
+              sendInstallProgress(
+                {
+                  type: progress.type,
+                  task: progress.task,
+                  current: progress.current,
+                  total: progress.total,
+                  percent: progress.percent,
+                  filename: progress.filename,
+                },
+                progress?.type === "sync-complete" ||
+                  progress?.type === "sync-error" ||
+                  progress?.type === "cancelled",
+              );
+            },
+            abortController.signal,
+          );
+        } finally {
+          clearTimeout(syncTimeout);
+          activeOperations.delete(instanceId);
+        }
 
         // Notify frontend that instance data might have changed (loader, version)
         const wins = BrowserWindow.getAllWindows();
@@ -1933,6 +2290,12 @@ export function registerInstanceHandlers(
 
         return { ok: true, message: "Sync complete" };
       } catch (error: any) {
+        if (String(error?.message || "").includes("Cancelled")) {
+          sendInstallProgress(
+            { type: "cancelled", task: "Cancelled", percent: 0 },
+            true,
+          );
+        }
         return { ok: false, error: error.message };
       }
     },
@@ -1952,6 +2315,25 @@ export function registerInstanceHandlers(
       if (!fs.existsSync(dir)) return { ok: true, items: [] };
 
       try {
+        const native = getNativeModule();
+        const nativePacks = (() => {
+          try {
+            return (native.listInstanceResourcepacks(
+              getInstancesDir(),
+              instanceId,
+            ) || []) as Array<{
+              filename: string;
+              packFormat?: number;
+              size?: number;
+            }>;
+          } catch {
+            return [];
+          }
+        })();
+        const nativePackMap = new Map(
+          nativePacks.map((pack) => [pack.filename, pack]),
+        );
+
         const files = await fs.promises.readdir(dir);
 
         // Get basic info without icons (fast) - icons will be loaded lazily
@@ -1979,16 +2361,34 @@ export function registerInstanceHandlers(
               } else if (file.endsWith(".zip")) {
                 displayName = file.replace(".zip", "");
               }
+              const nativeInfo = nativePackMap.get(file);
+              const nativeMetadata = await inspectPackMetadataWithNative(
+                filePath,
+                "resource",
+              );
 
               const cacheKey = `resourcepack:${displayName.toLowerCase()}`;
               const cached = getIconFromCache(cacheKey);
 
-              // Try to read icon and pack.mcmeta from the pack
-              let icon: string | null = cached?.url || null;
+              // Try native metadata first (background worker), then fallback reads.
+              let icon: string | null =
+                cached?.url || nativeMetadata.icon || null;
               let modrinthProjectId = cached?.modrinthId;
               let curseforgeProjectId = cached?.curseforgeId;
-              let version: string | undefined;
-              if (file.endsWith(".zip") || file.endsWith(".zip.disabled")) {
+              let version: string | undefined =
+                nativeMetadata.version || undefined;
+              if (typeof nativeInfo?.packFormat === "number") {
+                version = packFormatToVersion(nativeInfo.packFormat, "resource");
+              } else if (typeof nativeMetadata.packFormat === "number") {
+                version = packFormatToVersion(
+                  nativeMetadata.packFormat,
+                  "resource",
+                );
+              }
+              if (
+                (!icon || !version) &&
+                (file.endsWith(".zip") || file.endsWith(".zip.disabled"))
+              ) {
                 try {
                   const buffer = await fs.promises.readFile(filePath);
                   const zip = new AdmZip(buffer);
@@ -2000,26 +2400,10 @@ export function registerInstanceHandlers(
                       icon = `data:image/png;base64,${packPng.getData().toString("base64")}`;
                     }
                   }
-
-                  // Extract version from pack.mcmeta
-                  const mcmeta = zip.getEntry("pack.mcmeta");
-                  if (mcmeta) {
-                    try {
-                      const mcmetaData = JSON.parse(
-                        mcmeta.getData().toString("utf-8"),
-                      );
-                      const packFormat = mcmetaData?.pack?.pack_format;
-                      if (typeof packFormat === "number") {
-                        version = packFormatToVersion(packFormat, "resource");
-                      }
-                    } catch {
-                      /* ignore parse errors */
-                    }
-                  }
                 } catch (e) {
                   // Ignore errors reading zip
                 }
-              } else if (isDirectory) {
+              } else if ((!icon || !version) && isDirectory) {
                 // Directory-based resourcepack
                 if (!icon) {
                   const packPngPath = path.join(filePath, "pack.png");
@@ -2031,31 +2415,16 @@ export function registerInstanceHandlers(
                     }
                   }
                 }
-                // Read pack.mcmeta from directory
-                const mcmetaPath = path.join(filePath, "pack.mcmeta");
-                if (fs.existsSync(mcmetaPath)) {
-                  try {
-                    const mcmetaData = JSON.parse(
-                      (await fs.promises.readFile(
-                        mcmetaPath,
-                        "utf-8",
-                      )) as string,
-                    );
-                    const packFormat = mcmetaData?.pack?.pack_format;
-                    if (typeof packFormat === "number") {
-                      version = packFormatToVersion(packFormat, "resource");
-                    }
-                  } catch {
-                    /* ignore parse errors */
-                  }
-                }
               }
 
               return {
                 filename: file,
                 name: displayName,
                 isDirectory,
-                size: stats.size,
+                size:
+                  typeof nativeInfo?.size === "number"
+                    ? nativeInfo.size
+                    : stats.size,
                 modifiedAt: stats.mtime.toISOString(),
                 enabled,
                 icon,
@@ -2204,73 +2573,43 @@ export function registerInstanceHandlers(
         const itemsWithIcons = await Promise.all(
           validItems.map(async (item) => {
             // 1. Try local ZIP/directory icon first (Fast & Accurate)
-            let icon: string | null = null;
-            let version: string | undefined;
-            try {
-              if (
-                item.filename.endsWith(".zip") ||
-                item.filename.endsWith(".zip.disabled")
-              ) {
-                const buffer = await fs.promises.readFile(item.filePath);
-                const zip = new AdmZip(buffer);
-                const possibleIcons = [
-                  "shaders/logo.png",
-                  "logo.png",
-                  "pack.png",
-                  "icon.png",
-                ];
-                for (const iconPath of possibleIcons) {
-                  const iconEntry = zip.getEntry(iconPath);
-                  if (iconEntry) {
-                    icon = `data:image/png;base64,${iconEntry.getData().toString("base64")}`;
-                    break;
-                  }
-                }
+            const nativeInfo = await inspectPackMetadataWithNative(
+              item.filePath,
+              "shader",
+            );
+            let icon: string | null = nativeInfo.icon;
+            let version: string | undefined = nativeInfo.version;
 
-                // Extract version from shaders.properties
-                const propsEntry =
-                  zip.getEntry("shaders/shaders.properties") ||
-                  zip.getEntry("shaders.properties");
-                if (propsEntry) {
-                  try {
-                    const propsText = propsEntry.getData().toString("utf-8");
-                    const versionMatch = propsText.match(
-                      /^version\s*[=:]\s*(.+)$/m,
-                    );
-                    if (versionMatch) {
-                      version = versionMatch[1].trim();
+            if (!icon || !version) {
+              try {
+                if (
+                  item.filename.endsWith(".zip") ||
+                  item.filename.endsWith(".zip.disabled")
+                ) {
+                  const buffer = await fs.promises.readFile(item.filePath);
+                  const zip = new AdmZip(buffer);
+                  const possibleIcons = [
+                    "shaders/logo.png",
+                    "logo.png",
+                    "pack.png",
+                    "icon.png",
+                  ];
+                  for (const iconPath of possibleIcons) {
+                    const iconEntry = zip.getEntry(iconPath);
+                    if (iconEntry) {
+                      icon = `data:image/png;base64,${iconEntry.getData().toString("base64")}`;
+                      break;
                     }
-                  } catch {
-                    /* ignore */
                   }
-                }
-              } else if (item.isDirectory) {
-                const possiblePaths = [
-                  path.join(item.filePath, "shaders", "logo.png"),
-                  path.join(item.filePath, "logo.png"),
-                  path.join(item.filePath, "pack.png"),
-                  path.join(item.filePath, "icon.png"),
-                ];
-                for (const iconPath of possiblePaths) {
-                  if (fs.existsSync(iconPath)) {
-                    icon = `data:image/png;base64,${(await fs.promises.readFile(iconPath)).toString("base64")}`;
-                    break;
-                  }
-                }
 
-                // Extract version from shaders.properties (directory)
-                const propsPaths = [
-                  path.join(item.filePath, "shaders", "shaders.properties"),
-                  path.join(item.filePath, "shaders.properties"),
-                ];
-                for (const propsPath of propsPaths) {
-                  if (fs.existsSync(propsPath)) {
+                  // Extract version from shaders.properties
+                  const propsEntry =
+                    zip.getEntry("shaders/shaders.properties") ||
+                    zip.getEntry("shaders.properties");
+                  if (propsEntry) {
                     try {
-                      const propsText = await fs.promises.readFile(
-                        propsPath,
-                        "utf-8",
-                      );
-                      const versionMatch = (propsText as string).match(
+                      const propsText = propsEntry.getData().toString("utf-8");
+                      const versionMatch = propsText.match(
                         /^version\s*[=:]\s*(.+)$/m,
                       );
                       if (versionMatch) {
@@ -2279,11 +2618,48 @@ export function registerInstanceHandlers(
                     } catch {
                       /* ignore */
                     }
-                    break;
+                  }
+                } else if (item.isDirectory) {
+                  const possiblePaths = [
+                    path.join(item.filePath, "shaders", "logo.png"),
+                    path.join(item.filePath, "logo.png"),
+                    path.join(item.filePath, "pack.png"),
+                    path.join(item.filePath, "icon.png"),
+                  ];
+                  for (const iconPath of possiblePaths) {
+                    if (fs.existsSync(iconPath)) {
+                      icon = `data:image/png;base64,${(await fs.promises.readFile(iconPath)).toString("base64")}`;
+                      break;
+                    }
+                  }
+
+                  // Extract version from shaders.properties (directory)
+                  const propsPaths = [
+                    path.join(item.filePath, "shaders", "shaders.properties"),
+                    path.join(item.filePath, "shaders.properties"),
+                  ];
+                  for (const propsPath of propsPaths) {
+                    if (fs.existsSync(propsPath)) {
+                      try {
+                        const propsText = await fs.promises.readFile(
+                          propsPath,
+                          "utf-8",
+                        );
+                        const versionMatch = (propsText as string).match(
+                          /^version\s*[=:]\s*(.+)$/m,
+                        );
+                        if (versionMatch) {
+                          version = versionMatch[1].trim();
+                        }
+                      } catch {
+                        /* ignore */
+                      }
+                      break;
+                    }
                   }
                 }
-              }
-            } catch {}
+              } catch {}
+            }
 
             let modrinthProjectId: string | undefined;
             let curseforgeProjectId: string | undefined;
@@ -2444,14 +2820,22 @@ export function registerInstanceHandlers(
                 displayName = file.replace(".jar", "");
               }
 
-              let icon: string | null = null;
-              let version: string | undefined;
+              const nativeInfo = await inspectPackMetadataWithNative(
+                filePath,
+                "datapack",
+              );
+              let icon: string | null = nativeInfo.icon;
+              let version: string | undefined = nativeInfo.version;
+              if (!version && typeof nativeInfo.packFormat === "number") {
+                version = packFormatToVersion(nativeInfo.packFormat, "data");
+              }
               try {
                 if (
-                  file.endsWith(".zip") ||
-                  file.endsWith(".zip.disabled") ||
-                  file.endsWith(".jar") ||
-                  file.endsWith(".jar.disabled")
+                  (!icon || !version) &&
+                  (file.endsWith(".zip") ||
+                    file.endsWith(".zip.disabled") ||
+                    file.endsWith(".jar") ||
+                    file.endsWith(".jar.disabled"))
                 ) {
                   const zip = new AdmZip(filePath);
 
@@ -2526,7 +2910,7 @@ export function registerInstanceHandlers(
                       /* ignore parse errors */
                     }
                   }
-                } else if (isDir) {
+                } else if ((!icon || !version) && isDir) {
                   const packPngPath = path.join(filePath, "pack.png");
                   if (fs.existsSync(packPngPath)) {
                     icon = `data:image/png;base64,${fs.readFileSync(packPngPath).toString("base64")}`;
@@ -2749,6 +3133,16 @@ export function registerInstanceHandlers(
 
   ipcMain.handle("instances-cloud-install", async (_event, id: string) => {
     let createdInstanceId: string | null = null;
+    let mappedCancelId: string | null = null;
+    const controller = new AbortController();
+    const throwIfCancelled = () => {
+      if (controller.signal.aborted) {
+        throw new Error("Installation cancelled");
+      }
+    };
+
+    // Register cancellable operation immediately to avoid early cancel race
+    activeOperations.set(id, controller);
 
     try {
       const session = getSession();
@@ -2764,20 +3158,24 @@ export function registerInstanceHandlers(
       console.log(`[Instances] Manually installing cloud instance: ${id}`);
       getMainWindow()?.webContents.send("install-progress", {
         type: "start",
-        task: "กำลังตรวจสอบข้อมูล...",
+        task: "เธเธณเธฅเธฑเธเธ•เธฃเธงเธเธชเธญเธเธเนเธญเธกเธนเธฅ...",
       });
+      throwIfCancelled();
 
       // 1. Fetch all joined servers
-      const data = await fetchJoinedServers(session.apiToken);
+      const data = await fetchJoinedServers(session.apiToken, controller.signal);
+      throwIfCancelled();
       const allInstances = [...data.owned, ...data.member];
 
       // 2. Find target
       const target = allInstances.find((i) => (i.storagePath || i.id) === id);
 
       if (target) {
+        throwIfCancelled();
         const instance = await importCloudInstance(target);
         createdInstanceId = instance.id;
         getMainWindow()?.webContents.send("instances-updated");
+        throwIfCancelled();
 
         // 3. Download Content
         // MUST match importCloudInstance logic: storagePath || id
@@ -2786,9 +3184,11 @@ export function registerInstanceHandlers(
           `[Instances] Downloading content for: ${target.name} (ID: ${targetId})`,
         );
 
-        // Create cancel controller
-        const controller = new AbortController();
-        activeOperations.set(id, controller); // map using the requested 'id' (CloudID)
+        // Map both requested ID and resolved local storage ID to the same controller
+        if (targetId !== id) {
+          mappedCancelId = targetId;
+          activeOperations.set(targetId, controller);
+        }
 
         try {
           await syncServerMods(
@@ -2805,20 +3205,19 @@ export function registerInstanceHandlers(
         } catch (syncError: any) {
           if (
             syncError.message === "Cancelled" ||
-            syncError.message === "Download cancelled"
+            syncError.message === "Download cancelled" ||
+            syncError.message === "Installation cancelled"
           ) {
             throw new Error("Installation cancelled");
           }
           console.error("[Instances] Sync Error:", syncError);
           throw new Error(`Sync Failed: ${syncError?.message}`);
-        } finally {
-          activeOperations.delete(id);
         }
 
         console.log(`[Instances] Installed successfully: ${target.name}`);
         getMainWindow()?.webContents.send("install-progress", {
           type: "complete",
-          task: "ติดตั้งเสร็จสิ้น",
+          task: "เธ•เธดเธ”เธ•เธฑเนเธเน€เธชเธฃเนเธเธชเธดเนเธ",
           percent: 100,
         });
         return { ok: true };
@@ -2845,10 +3244,30 @@ export function registerInstanceHandlers(
         }
       }
 
+      const cancelMsg = String(error?.message || "").toLowerCase();
+      if (
+        controller.signal.aborted ||
+        cancelMsg.includes("cancelled") ||
+        cancelMsg.includes("canceled")
+      ) {
+        getMainWindow()?.webContents.send("install-progress", {
+          type: "cancelled",
+          task: "ยกเลิกการดาวน์โหลดแล้ว",
+          percent: 0,
+        });
+        return { ok: false, error: "Installation cancelled" };
+      }
+
       console.error("[IPC] Cloud install failed:", error);
-      return { ok: false, error: error?.message || "การติดตั้งล้มเหลว" };
+      return { ok: false, error: error?.message || "เธเธฒเธฃเธ•เธดเธ”เธ•เธฑเนเธเธฅเนเธกเน€เธซเธฅเธง" };
+    } finally {
+      activeOperations.delete(id);
+      if (mappedCancelId && mappedCancelId !== id) {
+        activeOperations.delete(mappedCancelId);
+      }
     }
-  });
+  },
+  );
 
   ipcMain.handle("instances-get-joined", async () => {
     try {
@@ -2932,7 +3351,7 @@ export function registerInstanceHandlers(
       if (!allowed.includes(ext)) {
         return {
           ok: false,
-          error: `ไฟล์ ${ext} ไม่รองรับสำหรับ ${contentType}\nรองรับ: ${allowed.join(", ")}`,
+          error: `เนเธเธฅเน ${ext} เนเธกเนเธฃเธญเธเธฃเธฑเธเธชเธณเธซเธฃเธฑเธ ${contentType}\nเธฃเธญเธเธฃเธฑเธ: ${allowed.join(", ")}`,
         };
       }
 
@@ -2958,7 +3377,7 @@ export function registerInstanceHandlers(
 
         // Check if file already exists
         if (fs.existsSync(targetPath)) {
-          return { ok: false, error: `ไฟล์ ${fileName} มีอยู่แล้ว` };
+          return { ok: false, error: `เนเธเธฅเน ${fileName} เธกเธตเธญเธขเธนเนเนเธฅเนเธง` };
         }
 
         // Copy file

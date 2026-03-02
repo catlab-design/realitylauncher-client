@@ -10,6 +10,7 @@ import { ipcMain, BrowserWindow } from "electron";
 import { getConfig } from "../config.js";
 import { getSession } from "../auth.js";
 import { refreshMicrosoftTokenIfNeeded } from "../auth-refresh.js";
+import { getNativeModule } from "../native.js";
 import {
     launchGame,
     getInstalledVersions,
@@ -38,6 +39,13 @@ export function registerLauncherHandlers(getMainWindow: () => BrowserWindow | nu
         const { execSync } = await import("node:child_process");
         const fs = await import("node:fs");
         const path = await import("node:path");
+        const native = (() => {
+            try {
+                return getNativeModule();
+            } catch {
+                return null;
+            }
+        })();
 
         const minecraftDir = getMinecraftDir();
         const config = getConfig();
@@ -46,15 +54,72 @@ export function registerLauncherHandlers(getMainWindow: () => BrowserWindow | nu
         let javaOK = false;
 
         if (javaPath) {
-            javaOK = await validateJavaPath(javaPath);
+            if (native && typeof native.validateJavaPath === "function") {
+                try {
+                    javaOK = !!native.validateJavaPath(javaPath);
+                } catch {
+                    javaOK = validateJavaPath(javaPath);
+                }
+            } else {
+                javaOK = validateJavaPath(javaPath);
+            }
         }
 
         if (!javaOK) {
+            if (native && typeof native.findJavaForMinecraft === "function") {
+                try {
+                    const selectedVersion = config.selectedVersion || "1.20.1";
+                    const recommendedJava = native.findJavaForMinecraft(selectedVersion);
+                    if (recommendedJava?.path && fs.existsSync(recommendedJava.path)) {
+                        javaPath = recommendedJava.path;
+                        javaOK =
+                            typeof native.validateJavaPath === "function"
+                                ? !!native.validateJavaPath(javaPath)
+                                : true;
+                    }
+                } catch (error) {
+                    console.warn("[Launcher] Native findJavaForMinecraft failed:", error);
+                }
+            }
+
+            if (!javaOK && native && typeof native.detectJavaInstallations === "function") {
+                try {
+                    const detection = native.detectJavaInstallations();
+                    const candidates = [
+                        detection?.recommended?.path,
+                        ...(Array.isArray(detection?.installations)
+                            ? detection.installations.map((install: any) => install?.path)
+                            : []),
+                    ]
+                        .filter((candidate: any): candidate is string => !!candidate)
+                        .filter((candidate: string) => fs.existsSync(candidate));
+
+                    for (const candidate of candidates) {
+                        const isValid =
+                            typeof native.validateJavaPath === "function"
+                                ? !!native.validateJavaPath(candidate)
+                                : validateJavaPath(candidate);
+                        if (isValid) {
+                            javaPath = candidate;
+                            javaOK = true;
+                            break;
+                        }
+                    }
+                } catch (error) {
+                    console.warn("[Launcher] Native detectJavaInstallations failed:", error);
+                }
+            }
+
             try {
-                const result = execSync("where java", { encoding: "utf-8", timeout: 5000 });
-                const lines = result.trim().split("\n");
+                const command = process.platform === "win32" ? "where java" : "which java";
+                const result = execSync(command, { encoding: "utf-8", timeout: 5000 });
+                const lines = result
+                    .trim()
+                    .split(/\r?\n/)
+                    .map((line) => line.trim())
+                    .filter(Boolean);
                 if (lines.length > 0 && lines[0]) {
-                    const foundPath = lines[0].trim();
+                    const foundPath = lines[0];
                     if (fs.existsSync(foundPath)) {
                         javaPath = foundPath;
                         javaOK = true;
@@ -62,7 +127,7 @@ export function registerLauncherHandlers(getMainWindow: () => BrowserWindow | nu
                 }
             } catch { }
 
-            if (!javaOK) {
+            if (!javaOK && process.platform === "win32") {
                 const commonPaths = [
                     "C:\\Program Files\\Java",
                     "C:\\Program Files\\Eclipse Adoptium",

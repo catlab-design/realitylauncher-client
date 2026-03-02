@@ -11,7 +11,9 @@ import { Icons } from "../ui/Icons";
 import { InstanceContentBrowser } from "./InstanceContentBrowser";
 import type { GameInstance, LauncherConfig } from "../../types/launcher";
 import { playClick } from "../../lib/sounds";
+import { shouldShowLaunchSpinner, shouldShowStopButton } from "../../lib/launchPolicy";
 import { useTranslation } from "../../hooks/useTranslation";
+import type { DeleteResult } from "../../lib/bulkDelete";
 import bannerImage from "../../assets/banner.png";
 
 // Import from ModPackTabs
@@ -101,6 +103,14 @@ export function InstanceDetail({
     // Check if this instance is currently playing
     // Check playingInstanceId directly as fallback for when isGameRunning hasn't updated yet
     const isThisInstancePlaying = playingInstanceId === instance.id;
+    const isThisInstanceLaunching = launchingId === instance.id;
+    const showStopAction = shouldShowStopButton(isThisInstanceLaunching, isThisInstancePlaying);
+    const showLaunchSpinner = shouldShowLaunchSpinner(isThisInstanceLaunching, isThisInstancePlaying);
+    const disablePlayStopButton =
+        (launchingId !== null && !isThisInstanceLaunching) ||
+        ((isGameRunning || playingInstanceId !== null) &&
+            !isThisInstancePlaying &&
+            !isThisInstanceLaunching);
 
     // Track which tabs have been loaded
     const [loadedTabs, setLoadedTabs] = useState<Set<ContentCategory>>(new Set());
@@ -197,6 +207,21 @@ export function InstanceDetail({
 
             if (result?.ok) {
                 successCount++;
+                
+                // Auto-lock for cloud instances
+                if (instance.cloudId && result.filename) {
+                    try {
+                        const lockedMods = new Set(instance.lockedMods || []);
+                        if (!lockedMods.has(result.filename)) {
+                            const res = await (window.api as any)?.instanceToggleLock?.(instance.id, result.filename);
+                            if (res?.ok && res.lockedMods) {
+                                onUpdate(instance.id, { lockedMods: res.lockedMods });
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Failed to auto-lock dropped file:", e);
+                    }
+                }
             } else {
                 errorMessages.push(`${file.name}: ${result?.error || t('error_occurred')}`);
             }
@@ -222,34 +247,27 @@ export function InstanceDetail({
     // Effects
     // ========================================
 
-    // Load all content on mount - parallel loading for speed
+    // Reset tab/data state when switching instance
     useEffect(() => {
         modMetadataCancelRef.current = false;
-        const loadAll = async () => {
-            // Load all content in parallel (no artificial delays)
-            await Promise.all([
-                loadMods(),
-                loadResourcepacks(),
-                loadShaders(),
-                loadDatapacks()
-            ]);
-
-            setLoadedTabs(new Set(["mods", "resourcepacks", "shaders", "datapacks"]));
-        };
-        loadAll();
+        const defaultTab: ContentCategory =
+            instance.loader === "vanilla" ? "resourcepacks" : "mods";
+        setContentTab(defaultTab);
+        setLoadedTabs(new Set());
+        setMods([]);
+        setResourcepacks([]);
+        setShaders([]);
+        setDatapacks([]);
         return () => { modMetadataCancelRef.current = true; };
-    }, [instance.id]);
-
-    // Lazy load effect removed - we load everything upfront now
-
-
+    }, [instance.id, instance.loader]);
 
     // ========================================
     // Data Loading
     // ========================================
 
-    const loadMods = async () => {
-        setModsLoading(true);
+    const loadMods = async (options?: { silent?: boolean }) => {
+        const silent = options?.silent === true;
+        if (!silent) setModsLoading(true);
 
         try {
             const result = await (window.api as any)?.instanceListMods?.(instance.id);
@@ -257,16 +275,13 @@ export function InstanceDetail({
             if (result?.ok) {
                 // Show mods immediately with basic info
                 setMods(result.mods);
-                setModsLoading(false);
+                if (!silent) setModsLoading(false);
 
                 // Then progressively load metadata for uncached mods
                 if (result.hasUncached) {
                     let retryCount = 0;
-                    const MAX_RETRIES = 10; // Cap retries to prevent infinite polling
-                    // Wait a bit then refresh to get cached metadata
+                    const MAX_RETRIES = 40; // Large packs may need many refresh cycles
                     const refreshMetadata = async () => {
-                        if (modMetadataCancelRef.current) return;
-                        await new Promise(resolve => setTimeout(resolve, 800));
                         if (modMetadataCancelRef.current) return;
                         const refreshResult = await (window.api as any)?.instanceListMods?.(instance.id);
                         if (modMetadataCancelRef.current) return;
@@ -274,19 +289,19 @@ export function InstanceDetail({
                             setMods(refreshResult.mods);
                             // If still has uncached and under retry limit, try again
                             if (refreshResult.hasUncached && ++retryCount < MAX_RETRIES) {
-                                setTimeout(refreshMetadata, 1500);
+                                setTimeout(refreshMetadata, 600);
                             }
                         }
                     };
-                    refreshMetadata();
+                    setTimeout(refreshMetadata, 450);
                 }
             } else {
                 toast.error(result?.error || t('load_mods_failed'));
-                setModsLoading(false);
+                if (!silent) setModsLoading(false);
             }
         } catch (error) {
             console.error("[InstanceDetail] Failed to load mods:", error);
-            setModsLoading(false);
+            if (!silent) setModsLoading(false);
         }
     };
 
@@ -326,6 +341,42 @@ export function InstanceDetail({
         }
     };
 
+    // Lazy-load only the active content tab to avoid heavy first render stalls.
+    useEffect(() => {
+        if (loadedTabs.has(contentTab)) return;
+        let cancelled = false;
+
+        const loadTab = async () => {
+            switch (contentTab) {
+                case "mods":
+                    await loadMods();
+                    break;
+                case "resourcepacks":
+                    await loadResourcepacks();
+                    break;
+                case "shaders":
+                    await loadShaders();
+                    break;
+                case "datapacks":
+                    await loadDatapacks();
+                    break;
+            }
+
+            if (cancelled) return;
+            setLoadedTabs(prev => {
+                if (prev.has(contentTab)) return prev;
+                const next = new Set(prev);
+                next.add(contentTab);
+                return next;
+            });
+        };
+
+        void loadTab();
+        return () => {
+            cancelled = true;
+        };
+    }, [contentTab, instance.id, loadedTabs]);
+
     // ========================================
     // Handlers
     // ========================================
@@ -347,17 +398,21 @@ export function InstanceDetail({
         }
     };
 
-    const handleDeleteMod = async (filename: string) => {
+    type DeleteOptions = { silent?: boolean };
+
+    const handleDeleteMod = async (filename: string, _options?: DeleteOptions): Promise<DeleteResult> => {
         try {
             const result = await (window.api as any)?.instanceDeleteMod?.(instance.id, filename);
             if (result?.ok) {
                 setMods(prev => prev.filter(mod => mod.filename !== filename));
-                toast.success(t('mod_deleted_success'));
+                return { ok: true };
             } else {
-                toast.error(result?.error || t('mod_delete_failed'));
+                const errorMessage = result?.error || t('error_occurred');
+                return { ok: false, error: errorMessage };
             }
         } catch (error) {
-            toast.error(t('error_occurred'));
+            const errorMessage = t('error_occurred');
+            return { ok: false, error: errorMessage };
         }
     };
 
@@ -378,17 +433,19 @@ export function InstanceDetail({
         }
     };
 
-    const handleDeleteResourcepack = async (filename: string) => {
+    const handleDeleteResourcepack = async (filename: string, _options?: DeleteOptions): Promise<DeleteResult> => {
         try {
             const result = await (window.api as any)?.instanceDeleteResourcepack?.(instance.id, filename);
             if (result?.ok) {
                 setResourcepacks(prev => prev.filter(item => item.filename !== filename));
-                toast.success(t('resourcepack_deleted_success'));
+                return { ok: true };
             } else {
-                toast.error(result?.error || t('error_occurred'));
+                const errorMessage = result?.error || t('error_occurred');
+                return { ok: false, error: errorMessage };
             }
         } catch (error) {
-            toast.error(t('error_occurred'));
+            const errorMessage = t('error_occurred');
+            return { ok: false, error: errorMessage };
         }
     };
 
@@ -409,17 +466,19 @@ export function InstanceDetail({
         }
     };
 
-    const handleDeleteShader = async (filename: string) => {
+    const handleDeleteShader = async (filename: string, _options?: DeleteOptions): Promise<DeleteResult> => {
         try {
             const result = await (window.api as any)?.instanceDeleteShader?.(instance.id, filename);
             if (result?.ok) {
                 setShaders(prev => prev.filter(item => item.filename !== filename));
-                toast.success(t('shader_deleted_success'));
+                return { ok: true };
             } else {
-                toast.error(result?.error || t('error_occurred'));
+                const errorMessage = result?.error || t('error_occurred');
+                return { ok: false, error: errorMessage };
             }
         } catch (error) {
-            toast.error(t('error_occurred'));
+            const errorMessage = t('error_occurred');
+            return { ok: false, error: errorMessage };
         }
     };
 
@@ -441,23 +500,28 @@ export function InstanceDetail({
         }
     };
 
-    const handleDeleteDatapack = async (filename: string, worldName?: string) => {
-        if (!worldName) return;
+    const handleDeleteDatapack = async (filename: string, worldName?: string, _options?: DeleteOptions): Promise<DeleteResult> => {
+        if (!worldName) {
+            const errorMessage = t('error_occurred');
+            return { ok: false, error: errorMessage };
+        }
         try {
             const result = await (window.api as any)?.instanceDeleteDatapack?.(instance.id, worldName, filename);
             if (result?.ok) {
                 setDatapacks(prev => prev.filter(item => !(item.worldName === worldName && item.filename === filename)));
-                toast.success(t('datapack_deleted_success'));
+                return { ok: true };
             } else {
-                toast.error(result?.error || t('error_occurred'));
+                const errorMessage = result?.error || t('error_occurred');
+                return { ok: false, error: errorMessage };
             }
         } catch (error) {
-            toast.error(t('error_occurred'));
+            const errorMessage = t('error_occurred');
+            return { ok: false, error: errorMessage };
         }
     };
 
     const handlePlayStop = () => {
-        if (isThisInstancePlaying) {
+        if (showStopAction) {
             onStop();
         } else {
             onPlay(instance.id);
@@ -494,8 +558,8 @@ export function InstanceDetail({
                 </div>
             )}
 
-            {/* Conditional Header: Hero (if has banner) vs Compact (if no banner) */}
-            {instance.banner ? (
+            {/* Conditional Header: Hero (if has banner) vs Compact (if no banner) - hidden when content browser is open */}
+            {!showContentBrowser && (instance.banner ? (
                 /* Hero Header */
                 <div className="rounded-2xl overflow-hidden relative shadow-lg mb-6 border" style={{ borderColor: colors.outline + "30", backgroundColor: colors.surfaceContainer }}>
                     <div className="relative h-48 w-full bg-cover bg-center"
@@ -596,23 +660,22 @@ export function InstanceDetail({
                             {/* Play/Stop button */}
                             <button
                                 onClick={() => { playClick(); handlePlayStop(); }}
-                                disabled={launchingId !== null || ((isGameRunning || playingInstanceId !== null) && !isThisInstancePlaying)}
+                                disabled={disablePlayStopButton}
                                 className="h-12 px-8 rounded-xl font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50 flex items-center gap-2 shadow-lg hover:shadow-xl"
                                 style={{
-                                    backgroundColor: isThisInstancePlaying ? "#ef4444" : colors.secondary,
-                                    color: isThisInstancePlaying ? "#ffffff" : "#1a1a1a"
+                                    backgroundColor: showStopAction ? "#ef4444" : colors.secondary,
+                                    color: showStopAction ? "#ffffff" : "#1a1a1a"
                                 }}
                             >
-                                {launchingId === instance.id ? (
+                                {showStopAction ? (
                                     <>
-                                        <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                                        {t('launching')}
-                                    </>
-                                ) : isThisInstancePlaying ? (
-                                    <>
-                                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                                            <path d="M6 6h12v12H6z" />
-                                        </svg>
+                                        {showLaunchSpinner ? (
+                                            <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                        ) : (
+                                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                                                <path d="M6 6h12v12H6z" />
+                                            </svg>
+                                        )}
                                         {t('stop')}
                                     </>
                                 ) : (
@@ -703,23 +766,22 @@ export function InstanceDetail({
                         {/* Play/Stop button */}
                         <button
                             onClick={() => { playClick(); handlePlayStop(); }}
-                            disabled={launchingId !== null || ((isGameRunning || playingInstanceId !== null) && !isThisInstancePlaying)}
+                            disabled={disablePlayStopButton}
                             className="h-12 px-8 rounded-xl font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50 flex items-center gap-2 shadow-lg hover:shadow-xl"
                             style={{
-                                backgroundColor: isThisInstancePlaying ? "#ef4444" : colors.secondary,
-                                color: isThisInstancePlaying ? "#ffffff" : "#1a1a1a"
+                                backgroundColor: showStopAction ? "#ef4444" : colors.secondary,
+                                color: showStopAction ? "#ffffff" : "#1a1a1a"
                             }}
                         >
-                            {launchingId === instance.id ? (
+                            {showStopAction ? (
                                 <>
-                                    <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                                    {t('launching')}
-                                </>
-                            ) : isThisInstancePlaying ? (
-                                <>
-                                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                                        <path d="M6 6h12v12H6z" />
-                                    </svg>
+                                    {showLaunchSpinner ? (
+                                        <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                    ) : (
+                                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M6 6h12v12H6z" />
+                                        </svg>
+                                    )}
                                     {t('stop')}
                                 </>
                             ) : (
@@ -733,138 +795,153 @@ export function InstanceDetail({
                         </button>
                     </div>
                 </div>
-            )}
+            ))}
 
 
-            {/* Content Category Tabs */}
-            <ContentTabs
-                colors={colors}
-                activeTab={contentTab}
-                modsCount={mods.length}
-                modsLoading={modsLoading}
-                resourcepacksCount={resourcepacks.length}
-                datapacksCount={datapacks.length}
-                shadersCount={shaders.length}
-                onTabChange={setContentTab}
-                loader={instance.loader}
-            />
-
-            {/* Content Section */}
-            <div>
-                {/* Mods Tab */}
-                {contentTab === "mods" && (
-                    <ModsList
+            {/* Conditional: Content Browser (inline) or Content Tabs + Lists */}
+            {showContentBrowser ? (
+                <InstanceContentBrowser
+                    colors={colors}
+                    instance={instance}
+                    contentType={browserContentType}
+                    config={config}
+                    onClose={() => setShowContentBrowser(false)}
+                    onInstalled={() => {
+                        // Don't close - just refresh the relevant content
+                        switch (browserContentType) {
+                            case "mod": loadMods(); break;
+                            case "resourcepack": loadResourcepacks(); break;
+                            case "shader": loadShaders(); break;
+                            case "datapack": loadDatapacks(); break;
+                        }
+                    }}
+                    onUpdate={onUpdate}
+                />
+            ) : (
+                <>
+                    {/* Content Category Tabs */}
+                    <ContentTabs
                         colors={colors}
-                        instanceId={instance.id}
-                        instanceName={instance.name}
-                        minecraftVersion={instance.minecraftVersion}
+                        activeTab={contentTab}
+                        modsCount={mods.length}
+                        modsLoading={modsLoading}
+                        resourcepacksCount={resourcepacks.length}
+                        datapacksCount={datapacks.length}
+                        shadersCount={shaders.length}
+                        onTabChange={setContentTab}
                         loader={instance.loader}
-                        mods={mods}
-                        isLoading={modsLoading}
-                        onToggle={handleToggleMod}
-                        onDelete={handleDeleteMod}
-                        onRefresh={loadMods}
-                        onAddMod={() => { setBrowserContentType("mod"); setShowContentBrowser(true); }}
-                        // Only show lock UI for Cloud/Server instances
-                        lockedMods={new Set(instance.cloudId ? (instance.lockedMods || []) : [])}
-                        isServerManaged={!!instance.cloudId}
-                        onToggleLock={instance.cloudId ? async (filename) => {
-                            try {
-                                const result = await (window.api as any)?.instanceToggleLock?.(instance.id, filename);
-                                if (result?.ok) {
-                                    // Update local instance state via onUpdate (to reflect changes in lockedMods)
-                                    // But onUpdate takes Partial<GameInstance>.
-                                    // The result should contain the new lockedMods array.
-                                    if (result.lockedMods) {
-                                        onUpdate(instance.id, { lockedMods: result.lockedMods });
+                    />
+
+                    {/* Content Section */}
+                    <div>
+                        {/* Mods Tab */}
+                        {contentTab === "mods" && (
+                            <ModsList
+                                colors={colors}
+                                instanceId={instance.id}
+                                instanceName={instance.name}
+                                minecraftVersion={instance.minecraftVersion}
+                                loader={instance.loader}
+                                mods={mods}
+                                isLoading={modsLoading}
+                                onToggle={handleToggleMod}
+                                onDelete={handleDeleteMod}
+                                onRefresh={loadMods}
+                                onAddMod={() => { setBrowserContentType("mod"); setShowContentBrowser(true); }}
+                                // Only show lock UI for Cloud/Server instances
+                                lockedMods={new Set(instance.cloudId ? (instance.lockedMods || []) : [])}
+                                isServerManaged={!!instance.cloudId}
+                                onToggleLock={instance.cloudId ? async (filename) => {
+                                    try {
+                                        const result = await (window.api as any)?.instanceToggleLock?.(instance.id, filename);
+                                        if (result?.ok) {
+                                            if (result.lockedMods) {
+                                                onUpdate(instance.id, { lockedMods: result.lockedMods });
+                                            }
+                                        } else {
+                                            toast.error(t('save_lock_failed' as any));
+                                        }
+                                    } catch (e) {
+                                        toast.error(t('error_occurred' as any));
                                     }
-                                } else {
-                                    toast.error(t('save_lock_failed' as any));
-                                }
-                            } catch (e) {
-                                toast.error(t('error_occurred' as any));
-                            }
-                        } : undefined}
-                    />
-                )}
+                                } : undefined}
+                                onBulkLock={instance.cloudId ? async (filenames, lock) => {
+                                    try {
+                                        const result = await (window.api as any)?.instanceLockMods?.(instance.id, filenames, lock);
+                                        if (result?.ok) {
+                                            if (result.lockedMods) {
+                                                onUpdate(instance.id, { lockedMods: result.lockedMods });
+                                            }
+                                            toast.success(lock ? "Locked selected mods" : "Unlocked selected mods");
+                                        } else {
+                                            toast.error(t('save_lock_failed' as any));
+                                        }
+                                    } catch (e) {
+                                        toast.error(t('error_occurred' as any));
+                                    }
+                                } : undefined}
+                            />
+                        )}
 
-                {/* Resource Packs Tab */}
-                {contentTab === "resourcepacks" && (
-                    <ContentList
-                        colors={colors}
-                        instanceId={instance.id}
-                        instanceName={instance.name}
-                        minecraftVersion={instance.minecraftVersion}
-                        loader={instance.loader}
-                        items={resourcepacks}
-                        isLoading={resourcepacksLoading}
-                        contentType="resourcepack"
-                        emptyMessage={t('no_resourcepacks' as any)}
-                        onToggle={handleToggleResourcepack}
-                        onDelete={handleDeleteResourcepack}
-                        onAddContent={() => { setBrowserContentType("resourcepack"); setShowContentBrowser(true); }}
-                        onRefresh={loadResourcepacks}
-                    />
-                )}
+                        {/* Resource Packs Tab */}
+                        {contentTab === "resourcepacks" && (
+                            <ContentList
+                                colors={colors}
+                                instanceId={instance.id}
+                                instanceName={instance.name}
+                                minecraftVersion={instance.minecraftVersion}
+                                loader={instance.loader}
+                                items={resourcepacks}
+                                isLoading={resourcepacksLoading}
+                                contentType="resourcepack"
+                                emptyMessage={t('no_resourcepacks' as any)}
+                                onToggle={handleToggleResourcepack}
+                                onDelete={handleDeleteResourcepack}
+                                onAddContent={() => { setBrowserContentType("resourcepack"); setShowContentBrowser(true); }}
+                                onRefresh={loadResourcepacks}
+                            />
+                        )}
 
-                {/* Datapacks Tab */}
-                {contentTab === "datapacks" && (
-                    <ContentList
-                        colors={colors}
-                        instanceId={instance.id}
-                        instanceName={instance.name}
-                        minecraftVersion={instance.minecraftVersion}
-                        loader={instance.loader}
-                        items={datapacks}
-                        isLoading={datapacksLoading}
-                        contentType="datapack"
-                        emptyMessage={t('no_datapacks' as any)}
-                        onToggle={handleToggleDatapack}
-                        onDelete={handleDeleteDatapack}
-                        onAddContent={() => { setBrowserContentType("datapack"); setShowContentBrowser(true); }}
-                        onRefresh={loadDatapacks}
-                    />
-                )}
+                        {/* Datapacks Tab */}
+                        {contentTab === "datapacks" && (
+                            <ContentList
+                                colors={colors}
+                                instanceId={instance.id}
+                                instanceName={instance.name}
+                                minecraftVersion={instance.minecraftVersion}
+                                loader={instance.loader}
+                                items={datapacks}
+                                isLoading={datapacksLoading}
+                                contentType="datapack"
+                                emptyMessage={t('no_datapacks' as any)}
+                                onToggle={handleToggleDatapack}
+                                onDelete={handleDeleteDatapack}
+                                onAddContent={() => { setBrowserContentType("datapack"); setShowContentBrowser(true); }}
+                                onRefresh={loadDatapacks}
+                            />
+                        )}
 
-                {/* Shaders Tab */}
-                {contentTab === "shaders" && (
-                    <ContentList
-                        colors={colors}
-                        instanceId={instance.id}
-                        instanceName={instance.name}
-                        minecraftVersion={instance.minecraftVersion}
-                        loader={instance.loader}
-                        items={shaders}
-                        isLoading={shadersLoading}
-                        contentType="shader"
-                        emptyMessage={t('no_shaders' as any)}
-                        onToggle={handleToggleShader}
-                        onDelete={handleDeleteShader}
-                        onAddContent={() => { setBrowserContentType("shader"); setShowContentBrowser(true); }}
-                        onRefresh={loadShaders}
-                    />
-                )}
-            </div>
-
-            {
-                showContentBrowser && (
-                    <InstanceContentBrowser
-                        colors={colors}
-                        instance={instance}
-                        contentType={browserContentType}
-                        onClose={() => setShowContentBrowser(false)}
-                        onInstalled={() => {
-                            // Don't close - just refresh the relevant content
-                            switch (browserContentType) {
-                                case "mod": loadMods(); break;
-                                case "resourcepack": loadResourcepacks(); break;
-                                case "shader": loadShaders(); break;
-                                case "datapack": loadDatapacks(); break;
-                            }
-                        }}
-                    />
-                )
-            }
+                        {/* Shaders Tab */}
+                        {contentTab === "shaders" && (
+                            <ContentList
+                                colors={colors}
+                                instanceId={instance.id}
+                                instanceName={instance.name}
+                                minecraftVersion={instance.minecraftVersion}
+                                loader={instance.loader}
+                                items={shaders}
+                                isLoading={shadersLoading}
+                                contentType="shader"
+                                emptyMessage={t('no_shaders' as any)}
+                                onToggle={handleToggleShader}
+                                onDelete={handleDeleteShader}
+                                onAddContent={() => { setBrowserContentType("shader"); setShowContentBrowser(true); }}
+                                onRefresh={loadShaders}
+                            />
+                        )}
+                    </div>
+                </>
+            )}
 
             {/* Settings Modal */}
             {

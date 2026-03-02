@@ -892,3 +892,47 @@ fn should_use_arg(obj: &serde_json::Map<String, serde_json::Value>) -> bool {
     
     true
 }
+
+// ========================================
+// Crash Analysis
+// ========================================
+
+#[napi]
+pub fn analyze_crash_log(stderr: String) -> Option<String> {
+    // We use basic string searching for maximum performance and simplicity without compiling regexes
+    // since these are very stable signatures.
+    
+    // 1. Out of Memory
+    if stderr.contains("java.lang.OutOfMemoryError") {
+        return Some("OUT_OF_MEMORY: เกมพังเพราะ RAM ไม่พอ กรุณาเพิ่ม RAM ในการตั้งค่า".to_string());
+    }
+    
+    // 2. Unsupported Class Version (Wrong Java)
+    if stderr.contains("java.lang.UnsupportedClassVersionError") || stderr.contains("has been compiled by a more recent version of the Java Runtime") {
+        return Some("WRONG_JAVA_VERSION: เกมหรือม็อดต้องการ Java เวอร์ชันที่ใหม่กว่า (เช่น Java 17 หรือ 21) กรุณาตรวจสอบการตั้งค่า Java".to_string());
+    }
+    
+    // 3. Zip/Jar Corruption
+    if stderr.contains("java.util.zip.ZipException") || stderr.contains("zip END header not found") {
+        return Some("DETECTED_CORRUPTION: ตรวจพบไฟล์เกมหรือม็อดเสียหาย (ZipException) กรุณากด Verify Files เพื่อซ่อมแซม".to_string());
+    }
+    
+    // 4. Missing Class / Mod Dependency
+    if stderr.contains("java.lang.NoClassDefFoundError") || stderr.contains("java.lang.ClassNotFoundException") {
+        // Try to extract the class name for better context if possible, but keep it simple
+        return Some("MISSING_DEPENDENCY: เกมพังเพราะหาไฟล์คลาสไม่เจอ (ม็อดอาจขาด Dependency หรือโหลดไม่สมบูรณ์)".to_string());
+    }
+    
+    // 5. Mixin Conflicts (Very common in modded MC)
+    if stderr.contains("org.spongepowered.asm.mixin.throwables.MixinApplyError") || stderr.contains("Mixin transformation failed") {
+        return Some("MIXIN_ERROR: เกิดข้อผิดพลาดในการโหลดโค้ดของม็อดขัดแย้งกัน (Mixin Error) ลองตรวจสอบอัปเดตม็อดหรือลบม็อดที่เพิ่งลง".to_string());
+    }
+    
+    // 6. Generic Forge/Fabric Mod Loading Error
+    if stderr.contains("net.minecraftforge.fml.ModLoadingException") || stderr.contains("net.fabricmc.loader.impl.FormattedException") {
+        return Some("MOD_LOADING_ERROR: เกิดข้อผิดพลาดระหว่างโหลดม็อด กรุณาตรวจสอบว่าม็อดรองรับเวอร์ชันนี้หรือไม่".to_string());
+    }
+
+    // No known signature found
+    None
+}

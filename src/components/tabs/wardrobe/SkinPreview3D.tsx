@@ -7,6 +7,7 @@ interface SkinPreview3DProps {
     width?: string | number;
     height?: string | number;
     onResetRotation?: (resetFn: () => void) => void;
+    onSkinLoadStateChange?: (loading: boolean) => void;
 }
 
 const FALLBACK_ROTATION = 0;
@@ -16,7 +17,8 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
     variant, 
     width = "100%", 
     height = "100%",
-    onResetRotation
+    onResetRotation,
+    onSkinLoadStateChange
 }) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -93,23 +95,27 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
 
         if (!skinUrl) {
             viewer.loadSkin(null);
+            onSkinLoadStateChange?.(false);
             return;
         }
 
         // Hide player during load to prevent flash of wrong arm variant
         viewer.playerObject.visible = false;
+        onSkinLoadStateChange?.(true);
         viewer
             .loadSkin(skinUrl, {
                 model: variant === "slim" ? "slim" : "default",
             })
             .then(() => {
                 viewer.playerObject.visible = true;
+                onSkinLoadStateChange?.(false);
             })
             .catch((e) => {
                 console.error("Failed to load skin preview", e);
                 viewer.playerObject.visible = true;
+                onSkinLoadStateChange?.(false);
             });
-    }, [skinUrl, variant]);
+    }, [skinUrl, variant, onSkinLoadStateChange]);
 
     // Drag Logic
     const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {

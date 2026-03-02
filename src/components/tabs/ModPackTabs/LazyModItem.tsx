@@ -58,7 +58,7 @@ export function LazyModItem({
     // Safety check for undefined mod (can happen during loading skeleton states if rendered prematurely)
     if (!mod) return null;
 
-    // Use data directly from props - backend now loads all metadata before sending
+    // Data is cache-first from backend and may be enriched progressively.
     const displayName = mod.displayName || mod.name;
     const author = mod.author || "";
     const icon = mod.icon;
@@ -112,7 +112,10 @@ export function LazyModItem({
                         {displayName}
                     </p>
                     {isLocked && (
-                        Icons?.Lock && <Icons.Lock className="w-3 h-3" style={{ color: colors.secondary }} />
+                        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: `${colors.secondary}20`, color: colors.secondary }}>
+                            {Icons?.Lock && <Icons.Lock className="w-2.5 h-2.5" />}
+                            {t('locked_badge' as any) || 'LOCKED'}
+                        </div>
                     )}
                 </div>
                 <p className="text-xs truncate opacity-70 mt-0.5" style={{ color: colors.onSurfaceVariant }}>

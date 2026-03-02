@@ -6,8 +6,7 @@ import type { ContentItem, DatapackItem } from "./types";
 import { playClick } from "../../../lib/sounds";
 import { useTranslation } from "../../../hooks/useTranslation";
 import { LazyContentItem } from "./LazyContentItem";
-
-import toast from "react-hot-toast";
+import { runBulkDelete, type DeleteResult } from "../../../lib/bulkDelete";
 
 // ฟังก์ชันลบอักขระพิเศษ (เช่น §, $, |) ออกจากชื่อไฟล์ เพื่อให้แสดงผลอ่านง่าย
 function cleanName(name: string = ""): string {
@@ -30,7 +29,7 @@ interface ContentListProps {
     contentType: "resourcepack" | "shader" | "datapack";
     emptyMessage: string;
     onToggle: (filename: string, worldName?: string) => void;
-    onDelete: (filename: string, worldName?: string) => void;
+    onDelete: (filename: string, worldName?: string, options?: { silent?: boolean }) => Promise<DeleteResult>;
     onAddContent: () => void;
     onRefresh?: () => void;
 }
@@ -104,15 +103,21 @@ export function ContentList({
         setSelectedFilenames(new Set());
     };
 
-    const handleBulkDelete = () => {
-        playClick();
+    const handleBulkDelete = async () => {
         if (confirm(`Are you sure you want to delete ${selectedFilenames.size} selected items?`)) {
-            Array.from(selectedFilenames).forEach(filename => {
-                const item = items.find(i => i.filename === filename);
-                if (item) {
-                     onDelete(filename, isDatapack ? (item as DatapackItem).worldName : undefined);
-                }
+            playClick();
+            const selectedItems = Array.from(selectedFilenames)
+                .map((filename) => items.find((item) => item.filename === filename))
+                .filter((item): item is ContentItem | DatapackItem => Boolean(item));
+
+            await runBulkDelete(selectedItems, async (item, options) => {
+                return onDelete(
+                    item.filename,
+                    isDatapack ? (item as DatapackItem).worldName : undefined,
+                    options,
+                );
             });
+
             setSelectedFilenames(new Set());
         }
     };
@@ -252,7 +257,7 @@ export function ContentList({
 
                     <button
                         onClick={() => { playClick(); onAddContent(); }}
-                        className="px-3.5 lg:px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all hover:opacity-90 whitespace-nowrap shrink-0"
+                        className="px-3.5 lg:px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 transition-all hover:opacity-90 whitespace-nowrap shrink-0"
                         style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
                     >
                         <i className="fa-solid fa-plus text-xs"></i>

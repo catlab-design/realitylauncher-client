@@ -13,15 +13,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createInstance, type GameInstance } from "./instances.js";
-import { downloadFile } from "./modrinth.js";
 import {
   type InstallProgress,
   type InstallResult,
   deduplicateMods,
   moveResourcePacks,
 } from "./modpack-installer.js";
-import AdmZip from "adm-zip";
 import { getConfig } from "./config.js";
+import { getNativeModule } from "./native.js";
 
 // ========================================
 // Types
@@ -41,8 +40,8 @@ interface CurseForgeManifest {
   version: string;
   author: string;
   files: {
-    projectID: number;
-    fileID: number;
+    projectId: number;
+    fileId: number;
     required: boolean;
   }[];
   overrides: string;
@@ -174,18 +173,13 @@ export async function installCurseForgeModpack(
   try {
     if (signal?.aborted) throw new Error("Installation cancelled");
 
-    const zip = new AdmZip(zipPath);
-    const manifestEntry = zip.getEntry("manifest.json");
-
-    if (!manifestEntry) {
-      throw new Error(
-        "ไม่พบไฟล์ manifest.json ใน Modpack (ไม่ใช่รูปแบบ CurseForge ที่ถูกต้อง)",
-      );
+    const native = getNativeModule();
+    const manifest = native.parseCurseforgeManifest(zipPath) as
+      | CurseForgeManifest
+      | null;
+    if (!manifest) {
+      throw new Error("Could not find manifest.json in modpack");
     }
-
-    const manifest = JSON.parse(
-      manifestEntry.getData().toString("utf-8"),
-    ) as CurseForgeManifest;
     console.log(
       "[CurseForge] Parsed manifest:",
       manifest.name,
@@ -196,7 +190,7 @@ export async function installCurseForgeModpack(
     if (onProgress) {
       onProgress({
         stage: "creating",
-        message: `กำลังสร้าง instance: ${manifest.name}`,
+        message: `Creating instance: ${manifest.name}`,
       });
     }
 
@@ -263,20 +257,20 @@ export async function installCurseForgeModpack(
 
             let attempts = 0;
             const maxAttempts = 3;
-            let downloadedFilename = `file-${fileInfo.fileID}.jar`;
+            let downloadedFilename = `file-${fileInfo.fileId}.jar`;
 
             while (attempts < maxAttempts) {
               try {
                 attempts++;
 
                 const downloadUrl = await resolveFileUrl(
-                  fileInfo.projectID,
-                  fileInfo.fileID,
+                  fileInfo.projectId,
+                  fileInfo.fileId,
                 );
 
                 if (!downloadUrl) {
                   console.warn(
-                    `[CurseForge] Skipping file ${fileInfo.fileID} (no URL found)`,
+                    `[CurseForge] Skipping file ${fileInfo.fileId} (no URL found)`,
                   );
                   completed++;
                   break;
@@ -295,7 +289,17 @@ export async function installCurseForgeModpack(
                   recursive: true,
                 });
 
-                await downloadFile(downloadUrl, destPath, undefined, signal);
+                const result = (await native.downloadFile(
+                  downloadUrl,
+                  destPath,
+                  undefined,
+                  undefined,
+                )) as { success: boolean; error?: string };
+                if (!result?.success) {
+                  throw new Error(
+                    result?.error || `Failed to download ${downloadedFilename}`,
+                  );
+                }
                 completed++;
 
                 if (onProgress) {
@@ -320,13 +324,13 @@ export async function installCurseForgeModpack(
                 }
 
                 console.warn(
-                  `[CurseForge] Failed to process file ${fileInfo.fileID} (Attempt ${attempts}/${maxAttempts}):`,
+                  `[CurseForge] Failed to process file ${fileInfo.fileId} (Attempt ${attempts}/${maxAttempts}):`,
                   err,
                 );
 
                 if (attempts >= maxAttempts) {
                   console.error(
-                    `[CurseForge] Gave up on file ${fileInfo.fileID} after ${maxAttempts} attempts.`,
+                    `[CurseForge] Gave up on file ${fileInfo.fileId} after ${maxAttempts} attempts.`,
                   );
                   completed++;
                   break;
@@ -346,43 +350,20 @@ export async function installCurseForgeModpack(
 
     // Step 3: Extract Overrides
     const overridesDir = manifest.overrides || "overrides";
+    const extractResult = native.extractModpackOverrides(
+      zipPath,
+      instance.gameDirectory,
+      overridesDir,
+    ) as { success: boolean; filesExtracted: number };
 
-    const overrideEntries = zip
-      .getEntries()
-      .filter(
-        (entry) =>
-          entry.entryName.startsWith(overridesDir + "/") && !entry.isDirectory,
-      );
-
-    if (overrideEntries.length > 0) {
-      const totalOverrides = overrideEntries.length;
-      let completedOverrides = 0;
-
-      for (const entry of overrideEntries) {
-        if (signal?.aborted) throw new Error("Installation cancelled");
-
-        const relativePath = entry.entryName.substring(overridesDir.length + 1);
-        const destPath = path.join(instance.gameDirectory, relativePath);
-
-        // Create dir if needed
-        const destDir = path.dirname(destPath);
-        if (!fs.existsSync(destDir)) {
-          fs.mkdirSync(destDir, { recursive: true });
-        }
-
-        fs.writeFileSync(destPath, entry.getData());
-        completedOverrides++;
-
-        if (onProgress) {
-          onProgress({
-            stage: "copying",
-            message: `กำลังคัดลอก: ${path.basename(destPath)}`,
-            current: completedOverrides,
-            total: totalOverrides,
-            percent: Math.round((completedOverrides / totalOverrides) * 100),
-          });
-        }
-      }
+    if (extractResult?.success && onProgress) {
+      onProgress({
+        stage: "copying",
+        message: `Copying overrides: ${extractResult.filesExtracted} files`,
+        current: extractResult.filesExtracted,
+        total: extractResult.filesExtracted,
+        percent: 100,
+      });
     }
 
     // Step 4: Deduplicate mods (remove duplicates from downloaded + overrides)
@@ -395,7 +376,7 @@ export async function installCurseForgeModpack(
     if (onProgress) {
       onProgress({
         stage: "creating",
-        message: "ติดตั้งเสร็จสิ้น!",
+        message: "Installation complete!",
         percent: 100,
       });
     }
@@ -427,3 +408,4 @@ export async function installCurseForgeModpack(
     };
   }
 }
+

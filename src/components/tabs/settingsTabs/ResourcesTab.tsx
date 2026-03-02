@@ -1,3 +1,4 @@
+import { useState } from "react";
 import toast from "react-hot-toast";
 import type { LauncherConfig } from "../../../types/launcher";
 import type { SettingsTabProps } from "./AccountTab";
@@ -6,6 +7,30 @@ import { useTranslation } from "../../../hooks/useTranslation";
 export function ResourcesTab({ config, updateConfig, colors }: SettingsTabProps) {
     const windowApi = (window as any).api;
     const { t } = useTranslation(config.language);
+    const [isClearingCache, setIsClearingCache] = useState(false);
+
+    const handleClearCache = async () => {
+        if (isClearingCache) return;
+        setIsClearingCache(true);
+        try {
+            if (windowApi?.launcherClearCache) {
+                const result = await windowApi.launcherClearCache();
+                if (!result?.ok) {
+                    throw new Error(result?.launcher?.error || result?.modrinth?.error || result?.curseforge?.error || "Cache clear failed");
+                }
+            } else {
+                await Promise.all([
+                    windowApi?.modrinthClearCache?.(),
+                    windowApi?.curseforgeClearCache?.(),
+                ]);
+            }
+            toast.success(t('cache_cleared_successfully'));
+        } catch {
+            toast.error(t('error_occurred'));
+        } finally {
+            setIsClearingCache(false);
+        }
+    };
 
     return (
         <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
@@ -64,11 +89,15 @@ export function ResourcesTab({ config, updateConfig, colors }: SettingsTabProps)
                             <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t('launcher_cache_desc')}</p>
                         </div>
                         <button
-                            onClick={() => {
-                                toast.success(t('cache_cleared_successfully'));
-                            }}
+                            onClick={handleClearCache}
+                            disabled={isClearingCache}
                             className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all hover:scale-105"
-                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                            style={{
+                                backgroundColor: colors.surfaceContainerHighest,
+                                color: colors.onSurface,
+                                opacity: isClearingCache ? 0.6 : 1,
+                                cursor: isClearingCache ? "not-allowed" : "pointer",
+                            }}
                         >
                             <i className="fa-solid fa-trash"></i>
                             {t('clear_cache')}

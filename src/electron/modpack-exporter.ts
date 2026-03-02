@@ -3,6 +3,7 @@ import path from "node:path";
 import archiver from "archiver";
 import { dialog, BrowserWindow } from "electron";
 import { getInstance, getInstanceDir } from "./instances.js";
+import { getNativeModule } from "./native.js";
 
 // Options passed from frontend
 export interface ExportOptions {
@@ -26,6 +27,7 @@ const exportControllers = new Map<string, AbortController>();
  * Calculate total size of files to be exported
  */
 function calculateTotalSize(baseDir: string, relativePaths: string[]): number {
+  const native = getNativeModule();
   let total = 0;
 
   for (const relPath of relativePaths) {
@@ -34,10 +36,11 @@ function calculateTotalSize(baseDir: string, relativePaths: string[]): number {
       if (fs.existsSync(fullPath)) {
         const stats = fs.statSync(fullPath);
         if (stats.isDirectory()) {
-          // Recursive calculation for directories
-          const files = fs.readdirSync(fullPath);
-          const childPaths = files.map((f) => path.join(relPath, f));
-          total += calculateTotalSize(baseDir, childPaths);
+          // Native recursive walk is faster for large trees.
+          const info = native.getDirectorySize(fullPath) as {
+            totalBytes?: number;
+          };
+          total += Number(info?.totalBytes || 0);
         } else {
           total += stats.size;
         }

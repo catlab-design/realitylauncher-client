@@ -15,6 +15,7 @@ import path from "node:path";
 import { app } from "electron";
 import { getMinecraftDir } from "./config.js";
 import crypto from "node:crypto";
+import { getNativeModule } from "./native.js";
 
 // ========================================
 // Constants
@@ -716,6 +717,40 @@ export async function verifyFileHash(
 ): Promise<boolean> {
   if (!expectedHash) return true;
 
+  if (!fs.existsSync(filePath)) {
+    return false;
+  }
+
+  // Prefer native hashing when the requested algorithm is supported.
+  try {
+    const native = getNativeModule();
+    if (typeof expectedHash === "string") {
+      if (expectedHash.length === 40) {
+        return (await native.verifyFileHash(
+          filePath,
+          expectedHash,
+          undefined,
+        )) as boolean;
+      }
+      if (expectedHash.length === 64) {
+        return (await native.verifyFileHash(
+          filePath,
+          undefined,
+          expectedHash,
+        )) as boolean;
+      }
+      // SHA512 hashes fall back to JS implementation below.
+    } else if (expectedHash.sha1) {
+      return (await native.verifyFileHash(
+        filePath,
+        expectedHash.sha1,
+        undefined,
+      )) as boolean;
+    }
+  } catch {
+    // Fallback to JS hashing below.
+  }
+
   return new Promise((resolve) => {
     try {
       let hashType = "sha1";
@@ -738,11 +773,6 @@ export async function verifyFileHash(
         } else {
           return resolve(true);
         }
-      }
-
-      // Only try to read if file exists
-      if (!fs.existsSync(filePath)) {
-        return resolve(false);
       }
 
       const hash = crypto.createHash(hashType);

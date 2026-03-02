@@ -36,7 +36,8 @@
     "dist:flatpak:fast": "electron-builder --linux flatpak --publish never",
     "dist:store": "node scripts/build-msixupload.cjs",
     "dist:store:fast": "SKIP_DIST_WIN=true node scripts/build-msixupload.cjs",
-    "build:rust": "cd ./native && cargo build --release",
+    "build:rust": "cd ./native && bun run build",
+    "build:rust:cargo": "cd ./native && cargo build --release",
     "ci:check": "bun run check:asar-writes && bun run build && cargo check --manifest-path native/Cargo.toml"
   },
   "build": {
@@ -149,6 +150,7 @@
     "react-hot-toast": "^2.6.0",
     "react-markdown": "^10.1.0",
     "rehype-raw": "^7.0.0",
+    "remark-breaks": "^4.0.0",
     "skinview3d": "^3.4.1",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3",
@@ -156,6 +158,7 @@
     "zustand": "^5.0.10"
   },
   "devDependencies": {
+    "@types/archiver": "^7.0.0",
     "@types/iconv-lite": "^0.0.1",
     "concurrently": "^9.2.1",
     "electron": "^39.2.7",

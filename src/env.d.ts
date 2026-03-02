@@ -150,6 +150,15 @@ declare global {
         enabled?: boolean;
         error?: string;
       }>;
+      instanceLockMods: (
+        instanceId: string,
+        filenames: string[],
+        lock: boolean,
+      ) => Promise<{
+        ok: boolean;
+        lockedMods?: string[];
+        error?: string;
+      }>;
       instanceDeleteMod: (
         instanceId: string,
         filename: string,
@@ -209,6 +218,12 @@ declare global {
           | "idle"
           | "playing"
           | "launching"
+          | "browsing_home"
+          | "browsing_explore"
+          | "browsing_settings"
+          | "browsing_wardrobe"
+          | "browsing_about"
+          | "browsing_admin"
           | "browsing_modpacks"
           | "browsing_servers",
         serverName?: string,
@@ -419,6 +434,12 @@ declare global {
       ) => Promise<string[]>;
       modrinthGetInstalled: () => Promise<any[]>;
       modrinthDeleteModpack: (modpackPath: string) => Promise<boolean>;
+      launcherClearCache: () => Promise<{
+        ok: boolean;
+        launcher?: { ok: boolean; deletedFiles?: string[]; error?: string };
+        modrinth?: { ok: boolean; error?: string };
+        curseforge?: { ok: boolean; error?: string };
+      }>;
       // CurseForge APIs
       curseforgeSearch: (filters: {
         query?: string;
@@ -493,7 +514,10 @@ declare global {
       instancesDelete: (id: string) => Promise<boolean>;
       instancesDuplicate: (id: string) => Promise<GameInstance | null>;
       instancesOpenFolder: (id: string) => Promise<void>;
-      instancesLaunch: (id: string) => Promise<LaunchResult>;
+      instancesLaunch: (
+        id: string,
+        options?: { skipServerModSync?: boolean },
+      ) => Promise<LaunchResult>;
       instancesExport: (
         id: string,
         options: any,
@@ -533,7 +557,7 @@ declare global {
         instanceId: string;
         contentType: string;
         contentSource?: "modrinth" | "curseforge";
-      }) => Promise<{ ok: boolean; error?: string }>;
+      }) => Promise<{ ok: boolean; filename?: string; error?: string }>;
       onLaunchProgress: (
         callback: (data: {
           type: string;

@@ -10,6 +10,7 @@ import {
     destroyRPC,
     updateRPC,
     isRPCConnected,
+    type DiscordRPCStatus,
 } from "../discord.js";
 
 export function registerDiscordHandlers(): void {
@@ -31,7 +32,7 @@ export function registerDiscordHandlers(): void {
         "discord-rpc-update",
         async (
             _event,
-            status: "idle" | "playing" | "launching",
+            status: DiscordRPCStatus,
             serverName?: string,
             serverIcon?: string
         ): Promise<void> => {

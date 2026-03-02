@@ -8,7 +8,7 @@ import toast from "react-hot-toast";
 import type { GameInstance, LauncherConfig } from "../../types/launcher";
 import { playClick } from "../../lib/sounds";
 import { useTranslation } from "../../hooks/useTranslation";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import type { TranslationKey } from "../../i18n/translations";
 
 // Icons for content sources
@@ -25,11 +25,13 @@ import {
     ProjectCard,
     ImagePreviewModal,
     normalizeImageUrl,
+    ProjectDetailPage,
 } from "./ExploreTabs";
 import { Icons } from "../ui/Icons";
 import bannerImage from "../../assets/banner.png";
 
 type ContentType = "mod" | "resourcepack" | "shader" | "datapack";
+type DetailTab = "description" | "versions" | "gallery";
 
 interface InstanceContentBrowserProps {
     instance: GameInstance;
@@ -38,6 +40,7 @@ interface InstanceContentBrowserProps {
     config?: LauncherConfig;
     onClose: () => void;
     onInstalled: () => void;
+    onUpdate?: (id: string, updates: Partial<GameInstance>) => void;
 }
 
 // ========================================
@@ -79,11 +82,17 @@ export function InstanceContentBrowser({
     config,
     onClose,
     onInstalled,
+    onUpdate,
 }: InstanceContentBrowserProps) {
     const { t } = useTranslation(config?.language);
     // Content state
     const [contentType, setContentType] = useState<ContentType>(initialContentType);
     const [contentSource, setContentSource] = useState<ContentSource>(CONTENT_SOURCES.MODRINTH);
+
+    // Filter state (like Explore tab)
+    const [mcVersionFilter, setMcVersionFilter] = useState(instance.minecraftVersion || "");
+    const [loaderFilter, setLoaderFilter] = useState(instance.loader !== "vanilla" ? instance.loader : "");
+    const [showFilters, setShowFilters] = useState(false);
 
     // Search state
     const [searchQuery, setSearchQuery] = useState("");
@@ -104,6 +113,15 @@ export function InstanceContentBrowser({
     const [selectedProject, setSelectedProject] = useState<ModrinthProject | null>(null);
     const [installedIds, setInstalledIds] = useState<Set<string>>(new Set());
     const [installedNames, setInstalledNames] = useState<Set<string>>(new Set());
+    const [installedProjects, setInstalledProjects] = useState<ModrinthProject[]>([]);
+
+    // Detail Page State
+    const [detailProject, setDetailProject] = useState<ModrinthProject | null>(null);
+    const [isInstallingVersion, setIsInstallingVersion] = useState(false);
+    const [installVersionProgress, setInstallVersionProgress] = useState<{stage: string, message: string} | null>(null);
+
+    // Refs
+    const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
     // Lightbox state
     const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
@@ -118,9 +136,6 @@ export function InstanceContentBrowser({
         const candidate = item.rawUrl || item.raw_url || item.url || null;
         return normalizeImageUrl(candidate, 'modrinth');
     };
-
-    // Debounce
-    const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
     const totalPages = Math.ceil(totalHits / viewCount);
 
@@ -150,6 +165,7 @@ export function InstanceContentBrowser({
                     icon_url: rawProject.icon_url || project.icon_url, // Prefer full resolution
                 };
 
+                // Fetch full details in background to upgrade images
                 // Update preview if still selected (avoid race condition)
                 setPreviewProject(prev => {
                     if (prev && prev.project_id === project.project_id) {
@@ -242,10 +258,18 @@ export function InstanceContentBrowser({
         setIsLoading(true);
         try {
             if (contentSource === CONTENT_SOURCES.CURSEFORGE) {
+                const modLoaderMapping: Record<string, number> = {
+                    'forge': 1,
+                    'fabric': 4,
+                    'quilt': 5,
+                    'neoforge': 6
+                };
+
                 const result = await window.api?.curseforgeSearch?.({
                     query: searchQuery,
                     projectType: contentType,
-                    gameVersion: instance.minecraftVersion,
+                    gameVersion: mcVersionFilter || undefined,
+                    modLoaderType: loaderFilter ? modLoaderMapping[loaderFilter.toLowerCase()] : undefined,
                     sortBy: sortBy === "downloads" ? "downloads" : sortBy === "updated" ? "updated" : "relevance",
                     pageSize: viewCount,
                     index: (page - 1) * viewCount,
@@ -272,14 +296,19 @@ export function InstanceContentBrowser({
                     setTotalHits(result.pagination?.totalCount || mapped.length);
                 }
             } else {
+                // Build Modrinth facets (like Explore tab)
+                const facets: string[][] = [];
+                facets.push([`project_type:${contentType}`]);
+                if (mcVersionFilter) facets.push([`versions:${mcVersionFilter}`]);
+                if (loaderFilter) facets.push([`categories:${loaderFilter}`]);
+
                 const result = await window.api?.modrinthSearch?.({
                     query: searchQuery,
                     projectType: contentType,
-                    gameVersion: instance.minecraftVersion,
-                    loader: contentType === "mod" && instance.loader !== "vanilla" ? instance.loader : undefined,
                     sortBy: sortBy,
                     limit: viewCount,
                     offset: (page - 1) * viewCount,
+                    facets: facets.length > 0 ? JSON.stringify(facets) : undefined,
                 });
 
                 if (result?.hits) {
@@ -312,14 +341,14 @@ export function InstanceContentBrowser({
         } finally {
             setIsLoading(false);
         }
-    }, [searchQuery, contentSource, contentType, sortBy, page, viewCount, instance]);
+    }, [searchQuery, contentSource, contentType, sortBy, page, viewCount, mcVersionFilter, loaderFilter, instance]);
 
     // Fetch full project details for gallery
 
 
     useEffect(() => {
         loadProjects();
-    }, [contentSource, contentType, sortBy, page, viewCount]);
+    }, [contentSource, contentType, sortBy, page, viewCount, mcVersionFilter, loaderFilter]);
 
     // Update preview when results change
     useEffect(() => {
@@ -349,9 +378,122 @@ export function InstanceContentBrowser({
     }, [loadProjects]);
 
     const handleSelectProject = (project: ModrinthProject) => {
-        setPreviewProject(project);
-        // Fetch full details in background to upgrade images
-        fetchFullProjectDetails(project);
+        if (previewProject?.project_id === project.project_id) {
+            handleOpenDetail(project);
+        } else {
+            setPreviewProject(project);
+            // Fetch full details in background to upgrade images
+            fetchFullProjectDetails(project);
+        }
+    };
+
+    const handleOpenDetail = (project: ModrinthProject) => {
+        setDetailProject(project);
+        fetchFullProjectForDetail(project);
+    };
+
+    const fetchFullProjectForDetail = async (project: ModrinthProject) => {
+        try {
+            if (contentSource === "modrinth") {
+                const fullProject = await (window.api as any)?.modrinthGetProject?.(project.project_id);
+                if (fullProject) {
+                    const normalized: ModrinthProject = {
+                        ...project,
+                        body: fullProject.body || "",
+                        source_url: fullProject.source_url || fullProject.sourceUrl || undefined,
+                        wiki_url: fullProject.wiki_url || fullProject.wikiUrl || undefined,
+                        discord_url: fullProject.discord_url || fullProject.discordUrl || undefined,
+                        issues_url: fullProject.issues_url || fullProject.issuesUrl || undefined,
+                        license: fullProject.license || undefined,
+                        date_created: fullProject.published || fullProject.date_created || fullProject.dateCreated || undefined,
+                        date_modified: fullProject.updated || fullProject.date_modified || fullProject.dateModified || undefined,
+                    };
+                    
+                     try {
+                        const team = await (window.api as any)?.modrinthGetTeam?.(project.project_id);
+                        if (team && Array.isArray(team)) {
+                            normalized.team_members = team.map((m: any) => ({
+                                user: {
+                                    username: m.user?.username || m.user?.name || 'Unknown',
+                                    avatar_url: m.user?.avatar_url || m.user?.avatarUrl || undefined,
+                                },
+                                role: m.role || 'Member',
+                            }));
+                        }
+                    } catch (e) {}
+
+                    setDetailProject(normalized);
+                }
+            } else {
+                const result = await window.api?.curseforgeGetProject?.(project.project_id);
+                if (result?.data) {
+                    const cf = result.data;
+                    const descResult = await (window.api as any)?.curseforgeGetDescription?.(project.project_id);
+
+                    const normalized: ModrinthProject = {
+                        ...project,
+                        body: descResult?.data || "",
+                        source_url: cf.links?.sourceUrl || undefined,
+                        wiki_url: cf.links?.wikiUrl || undefined,
+                        issues_url: cf.links?.issuesUrl || undefined,
+                        date_created: cf.dateCreated || undefined,
+                        date_modified: cf.dateModified || undefined,
+                        team_members: cf.authors?.map((a: any) => ({
+                            user: { username: a.name, avatar_url: undefined },
+                            role: 'Author',
+                        })) || [],
+                    };
+                    setDetailProject(normalized);
+                }
+            }
+        } catch (error) {
+            console.error("[ContentBrowser] Failed to fetch full project for detail:", error);
+        }
+    };
+
+    const handleInstallVersionFromDetail = async (project: ModrinthProject, versionId: string) => {
+        setIsInstallingVersion(true);
+        setInstallVersionProgress({ stage: "downloading", message: "Downloading version..." });
+        
+        try {
+             const result = await window.api?.contentDownloadToInstance?.({
+                projectId: project.project_id,
+                versionId: versionId,
+                instanceId: instance.id,
+                contentType: contentType,
+                contentSource: contentSource,
+            });
+
+            if (result?.ok) {
+                toast.success(t("install_success_name").replace("{name}", project.title));
+                setInstalledIds(prev => new Set(prev).add(project.project_id));
+                
+                // Auto-lock for cloud instances
+                if (instance.cloudId && result.filename) {
+                    try {
+                        const lockedMods = new Set(instance.lockedMods || []);
+                        if (!lockedMods.has(result.filename)) {
+                            const lockRes = await (window.api as any)?.instanceToggleLock?.(instance.id, result.filename);
+                            if (lockRes?.ok && lockRes.lockedMods && onUpdate) {
+                                onUpdate(instance.id, { lockedMods: lockRes.lockedMods });
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Failed to auto-lock installed file:", e);
+                    }
+                }
+                
+                loadInstalledContent();
+                onInstalled();
+            } else {
+                toast.error(result?.error || t("install_failed"));
+            }
+        } catch (error: any) {
+             toast.error(error?.message || t("error_occurred"));
+        } finally {
+            setIsInstallingVersion(false);
+            setInstallVersionProgress(null);
+        }
     };
 
     // Find best compatible version for instance
@@ -463,6 +605,22 @@ export function InstanceContentBrowser({
                 toast.success(t("install_success_name").replace("{name}", project.title));
                 // Track installed project
                 setInstalledIds(prev => new Set(prev).add(project.project_id));
+                
+                // Auto-lock for cloud instances
+                if (instance.cloudId && result.filename) {
+                    try {
+                        const lockedMods = new Set(instance.lockedMods || []);
+                        if (!lockedMods.has(result.filename)) {
+                            const lockRes = await (window.api as any)?.instanceToggleLock?.(instance.id, result.filename);
+                            if (lockRes?.ok && lockRes.lockedMods && onUpdate) {
+                                onUpdate(instance.id, { lockedMods: lockRes.lockedMods });
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Failed to auto-lock installed file:", e);
+                    }
+                }
+                
                 // Refresh installed content list
                 loadInstalledContent();
                 // Notify parent but don't close
@@ -485,7 +643,7 @@ export function InstanceContentBrowser({
 
 
     return (
-        <div className="fixed top-16 bottom-0 left-20 right-0 z-40 overflow-auto" style={{ backgroundColor: colors.surface }}>
+        <div className="space-y-4">
             {selectedImageIndex !== null && previewProject && previewProject.gallery && (
                 <ImagePreviewModal
                     colors={colors}
@@ -523,8 +681,22 @@ export function InstanceContentBrowser({
                     totalImages={previewProject?.gallery ? previewProject.gallery.length : 0}
                 />
             )}
-            {/* Content wrapper with padding */}
-            <div className="p-6 space-y-4">
+
+            {detailProject ? (
+                <ProjectDetailPage
+                    colors={colors}
+                    project={detailProject}
+                    projectType={contentType as any}
+                    contentSource={contentSource}
+                    isInstallingModpack={isInstallingVersion}
+                    installProgress={installVersionProgress}
+                    onBack={() => setDetailProject(null)}
+                    onInstallModpack={(project) => {}}
+                    onAddToInstance={handleAddToInstance}
+                    onInstallVersion={handleInstallVersionFromDetail}
+                />
+            ) : (
+                <>
                 {/* Toolbar */}
                 <div className="rounded-lg" style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}30` }}>
                     {/* Top row: Back + Instance Info + Search + Source */}
@@ -605,7 +777,7 @@ export function InstanceContentBrowser({
                     </div>
 
                     {/* Bottom row: Tabs + Filters */}
-                    <div className="px-4 py-2 flex items-center gap-2">
+                    <div className="px-4 py-1.5 flex items-center gap-2 flex-wrap">
                         {/* Type tabs */}
                         <div className="flex items-center gap-1">
                             {getAvailableTabs(instance.loader).map((tab) => {
@@ -615,7 +787,7 @@ export function InstanceContentBrowser({
                                     <button
                                         key={tab.type}
                                         onClick={() => { playClick(); setContentType(tab.type); setPage(1); }}
-                                        className="px-3 py-1 rounded-md text-xs font-medium transition-all relative group flex items-center gap-2"
+                                        className="px-2.5 py-0.5 rounded-lg text-xs font-medium transition-all relative group flex items-center gap-2 whitespace-nowrap"
                                         style={{
                                             color: active ? "#000" : colors.onSurfaceVariant,
                                         }}
@@ -637,62 +809,146 @@ export function InstanceContentBrowser({
 
                         <div className="flex-1" />
 
-                        {/* Filters */}
                         <div className="flex items-center gap-2">
-                            <select
-                                value={sortBy}
-                                onChange={(e) => { playClick(); setSortBy(e.target.value); setPage(1); }}
-                                className="px-2 py-1 rounded-md text-xs"
-                                style={{
-                                    backgroundColor: colors.surface,
-                                    border: `1px solid ${colors.outline}40`,
-                                    color: colors.onSurface,
-                                }}
-                            >
-                                {SORT_OPTIONS.map((opt) => (
-                                    <option key={opt.value} value={opt.value}>{t(opt.labelKey as any)}</option>
-                                ))}
-                            </select>
+                             {/* View Count Select */}
+                             <select
+                                 value={viewCount}
+                                 onChange={(e) => { playClick(); setViewCount(Number(e.target.value)); setPage(1); }}
+                                 className="px-2 py-0.5 rounded-lg text-[11px] transition-all"
+                                 style={{
+                                     backgroundColor: colors.surface,
+                                     border: `1px solid #000`,
+                                     color: "#000",
+                                 }}
+                             >
+                                 {[10, 20, 50].map((n) => (
+                                     <option key={n} value={n}>{n}</option>
+                                 ))}
+                             </select>
 
-                            <select
-                                value={viewCount}
-                                onChange={(e) => { playClick(); setViewCount(Number(e.target.value)); setPage(1); }}
-                                className="px-2 py-1 rounded-md text-xs"
-                                style={{
-                                    backgroundColor: colors.surface,
-                                    border: `1px solid ${colors.outline}40`,
-                                    color: colors.onSurface,
-                                }}
-                            >
-                                {[10, 20, 50].map((n) => (
-                                    <option key={n} value={n}>{n}</option>
-                                ))}
-                            </select>
+                             {/* Filter toggle button with Popup */}
+                             <div className="relative">
+                                 {(() => {
+                                     const hasActiveFilter = !!(mcVersionFilter || loaderFilter);
+                                     return (
+                                         <>
+                                             <button
+                                                 onClick={() => { playClick(); setShowFilters(!showFilters); }}
+                                                 className="px-2.5 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5 transition-all relative hover:brightness-95 active:scale-95"
+                                                 style={{
+                                                     backgroundColor: (showFilters || hasActiveFilter) ? colors.secondary + '15' : colors.surfaceContainerLow,
+                                                     border: `1px solid #000`,
+                                                     color: "#000",
+                                                 }}
+                                             >
+                                                 <i className="fa-solid fa-sliders text-[10px] text-black"></i>
+                                                 <span>{t('filter' as any)}</span>
+                                                 {hasActiveFilter && (
+                                                     <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                                                 )}
+                                             </button>
 
-                            {/* Pagination */}
-                            {totalPages > 0 && (
-                                <div className="flex items-center gap-1 ml-2">
-                                    <button
-                                        onClick={() => { playClick(); setPage(Math.max(1, page - 1)); }}
-                                        disabled={page === 1}
-                                        className="w-6 h-6 rounded flex items-center justify-center disabled:opacity-40 text-xs"
-                                        style={{ backgroundColor: colors.surface, color: colors.onSurface }}
-                                    >
-                                        <i className="fa-solid fa-chevron-left text-[10px]"></i>
-                                    </button>
-                                    <span className="text-xs px-1.5" style={{ color: colors.onSurfaceVariant }}>
-                                        {page}/{totalPages}
-                                    </span>
-                                    <button
-                                        onClick={() => { playClick(); setPage(Math.min(totalPages, page + 1)); }}
-                                        disabled={page >= totalPages}
-                                        className="w-6 h-6 rounded flex items-center justify-center disabled:opacity-40 text-xs"
-                                        style={{ backgroundColor: colors.surface, color: colors.onSurface }}
-                                    >
-                                        <i className="fa-solid fa-chevron-right text-[10px]"></i>
-                                    </button>
-                                </div>
-                            )}
+                                             <AnimatePresence>
+                                                 {showFilters && (
+                                                     <motion.div 
+                                                         initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                                         animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                         exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                                         className="absolute right-0 mt-2 p-3 rounded-lg shadow-xl z-50 flex flex-col gap-3 min-w-[180px]"
+                                                         style={{ 
+                                                             backgroundColor: colors.surfaceContainerHigh, 
+                                                             border: `1px solid ${colors.outline}30`,
+                                                             backdropFilter: 'blur(8px)'
+                                                         }}
+                                                     >
+                                                         <div className="flex flex-col gap-1.5">
+                                                             <label className="text-[10px] font-bold uppercase opacity-50 px-1" style={{ color: colors.onSurface }}>{t('minecraft_version' as any)}</label>
+                                                             <select
+                                                                 value={mcVersionFilter}
+                                                                 onChange={(e) => { playClick(); setMcVersionFilter(e.target.value); setPage(1); }}
+                                                                 className="px-2 py-1.5 rounded-md text-xs w-full"
+                                                                 style={{
+                                                                     backgroundColor: colors.surface,
+                                                                     border: `1px solid #000`,
+                                                                     color: "#000",
+                                                                 }}
+                                                             >
+                                                                 <option value="">{t('all_mc_versions' as TranslationKey) !== 'all_mc_versions' ? t('all_mc_versions' as TranslationKey) : 'All Versions'}</option>
+                                                                 {['1.21.5', '1.21.4', '1.21.3', '1.21.2', '1.21.1', '1.21', '1.20.6', '1.20.4', '1.20.2', '1.20.1', '1.20', '1.19.4', '1.19.2', '1.18.2', '1.17.1', '1.16.5', '1.15.2', '1.14.4', '1.12.2', '1.8.9', '1.7.10'].map(v => (
+                                                                     <option key={v} value={v}>{v}</option>
+                                                                 ))}
+                                                             </select>
+                                                         </div>
+
+                                                         <div className="flex flex-col gap-1.5">
+                                                             <label className="text-[10px] font-bold uppercase opacity-50 px-1" style={{ color: colors.onSurface }}>{t('loader' as any)}</label>
+                                                             <select
+                                                                 value={loaderFilter}
+                                                                 onChange={(e) => { playClick(); setLoaderFilter(e.target.value); setPage(1); }}
+                                                                 className="px-2 py-1.5 rounded-md text-xs w-full"
+                                                                 style={{
+                                                                     backgroundColor: colors.surface,
+                                                                     border: `1px solid #000`,
+                                                                     color: "#000",
+                                                                 }}
+                                                             >
+                                                                 <option value="">{t('all_loaders' as TranslationKey) !== 'all_loaders' ? t('all_loaders' as TranslationKey) : 'All Loaders'}</option>
+                                                                 <option value="fabric">Fabric</option>
+                                                                 <option value="forge">Forge</option>
+                                                                 <option value="neoforge">NeoForge</option>
+                                                                 <option value="quilt">Quilt</option>
+                                                             </select>
+                                                         </div>
+
+                                                         <div className="flex flex-col gap-1.5">
+                                                             <label className="text-[10px] font-bold uppercase opacity-50 px-1" style={{ color: colors.onSurface }}>{t('sort_by' as any)}</label>
+                                                             <select
+                                                                 value={sortBy}
+                                                                 onChange={(e) => { playClick(); setSortBy(e.target.value); setPage(1); }}
+                                                                 className="px-2 py-1.5 rounded-md text-xs w-full"
+                                                                 style={{
+                                                                     backgroundColor: colors.surface,
+                                                                     border: `1px solid #000`,
+                                                                     color: "#000",
+                                                                 }}
+                                                             >
+                                                                 {SORT_OPTIONS.map((opt) => (
+                                                                     <option key={opt.value} value={opt.value}>{t(opt.labelKey as any)}</option>
+                                                                 ))}
+                                                             </select>
+                                                         </div>
+                                                     </motion.div>
+                                                 )}
+                                             </AnimatePresence>
+                                         </>
+                                     );
+                                 })()}
+                             </div>
+
+                             {/* Pagination */}
+                             {totalPages > 0 && (
+                                 <div className="flex items-center gap-1 ml-1">
+                                     <button
+                                         onClick={() => { playClick(); setPage(Math.max(1, page - 1)); }}
+                                         disabled={page === 1}
+                                         className="w-[26px] h-[26px] rounded-lg flex items-center justify-center disabled:opacity-40 text-xs transition-all"
+                                         style={{ backgroundColor: colors.surface, color: colors.onSurface, border: `1px solid ${colors.outline}20` }}
+                                     >
+                                         <i className="fa-solid fa-chevron-left text-[9px]"></i>
+                                     </button>
+                                     <span className="text-[11px] font-medium px-1.5" style={{ color: colors.onSurfaceVariant }}>
+                                         {page}/{totalPages}
+                                     </span>
+                                     <button
+                                         onClick={() => { playClick(); setPage(Math.min(totalPages, page + 1)); }}
+                                         disabled={page >= totalPages}
+                                         className="w-[26px] h-[26px] rounded-lg flex items-center justify-center disabled:opacity-40 text-xs transition-all"
+                                         style={{ backgroundColor: colors.surface, color: colors.onSurface, border: `1px solid ${colors.outline}20` }}
+                                     >
+                                         <i className="fa-solid fa-chevron-right text-[9px]"></i>
+                                     </button>
+                                 </div>
+                             )}
                         </div>
                     </div>
                 </div>
@@ -1021,7 +1277,8 @@ export function InstanceContentBrowser({
                         )}
                     </div>
                 </div>
-            </div>
+                </>
+            )}
         </div>
     );
 }
