@@ -25,6 +25,7 @@ export declare function validateJavaPath(path: string): JavaInstallation | null
 export declare function getRecommendedJavaVersion(minecraftVersion: string): number
 /** Find best Java for a Minecraft version from detected installations */
 export declare function findJavaForMinecraft(minecraftVersion: string): JavaInstallation | null
+export declare function installJavaRuntime(majorVersion: number, installRoot: string): Promise<string>
 export interface DownloadTask {
   url: string
   path: string
@@ -76,6 +77,16 @@ export interface CleanupExtraModsResult {
   deleted: number
   keptLocked: number
 }
+export interface FastModListSyncSnapshot {
+  manifestRevision: string
+  serverModsSignature: string
+  lockedModsSignature: string
+  localModsSignature: string
+}
+export interface FastModListSyncCheckResult {
+  canSkip: boolean
+  snapshot: FastModListSyncSnapshot
+}
 export interface PostInstallModpackFilesResult {
   movedResourcepacks: number
   removedDuplicates: number
@@ -93,9 +104,41 @@ export interface PackMetadataResult {
 }
 export declare function planServerSyncDownloads(gameDir: string, mods: Array<ServerModEntry>): Promise<ServerSyncPlanResult>
 export declare function cleanupExtraMods(gameDir: string, serverFilenames: Array<string>, lockedMods?: Array<string> | undefined | null): Promise<CleanupExtraModsResult>
+export declare function checkFastModListSync(gameDir: string, manifestRevision: string, serverFilenames: Array<string>, lockedMods?: Array<string> | undefined | null): Promise<FastModListSyncCheckResult>
+export declare function saveFastModListSyncSnapshot(gameDir: string, snapshot: FastModListSyncSnapshot): Promise<boolean>
 export declare function postInstallModpackFiles(gameDir: string): Promise<PostInstallModpackFilesResult>
 export declare function detectModConflictsNative(modsDir: string): Array<NativeModConflict>
 export declare function inspectPackMetadata(packPath: string, packKind: string): Promise<PackMetadataResult>
+export interface PackScanEntry {
+  filename: string
+  displayName: string
+  isDirectory: boolean
+  size: number
+  modifiedAt: string
+  enabled: boolean
+  iconBase64?: string | null | undefined
+  version?: string | null | undefined
+  packFormat?: number | null | undefined
+}
+export declare function scanPackDirectory(directory: string, packKind: string): Promise<Array<PackScanEntry>>
+export interface ModpackExportRequest {
+  instanceDir: string
+  outputPath: string
+  format: string
+  includedPaths: Array<string>
+  name: string
+  version: string
+  description?: string | null | undefined
+  minecraftVersion: string
+  loader: string
+  loaderVersion?: string | null | undefined
+}
+export interface ModpackExportResult {
+  success: boolean
+  filesWritten: number
+  totalBytes: number
+}
+export declare function exportModpackArchive(request: ModpackExportRequest): Promise<ModpackExportResult>
 /** Instance loader type */
 export const enum LoaderType {
   Vanilla = 'Vanilla',
@@ -134,6 +177,7 @@ export interface ModInfo {
   description?: string
   authors?: Array<string>
   modId?: string
+  iconBase64?: string | null | undefined
   enabled: boolean
   size: number
 }
@@ -175,6 +219,7 @@ export declare function toggleMod(baseDir: string, instanceId: string, filename:
 export declare function deleteMod(baseDir: string, instanceId: string, filename: string): boolean
 /** List resource packs in instance */
 export declare function listInstanceResourcepacks(baseDir: string, instanceId: string): Array<ResourcePackInfo>
+export declare function readLogTail(filePath: string, maxLines?: number | undefined | null, maxBytes?: number | undefined | null): string
 /** Extraction progress */
 export interface ExtractProgress {
   current: number
@@ -190,6 +235,7 @@ export interface ExtractResult {
 }
 /** Extract a ZIP file to a directory */
 export declare function extractZip(zipPath: string, destPath: string, stripPrefix?: string | undefined | null): ExtractResult
+export declare function extractZipAsync(zipPath: string, destPath: string, stripPrefix?: string | undefined | null): Promise<ExtractResult>
 /** Extract specific files from a ZIP */
 export declare function extractFilesFromZip(zipPath: string, destPath: string, files: Array<string>): ExtractResult
 /** List files in a ZIP archive */
@@ -540,6 +586,13 @@ export interface ForgeVersionInfo {
   installerUrl: string
   versionJsonPath: string
 }
+export interface ForgeInstallerRunResult {
+  success: boolean
+  timeout: boolean
+  exitCode?: number
+  error?: string
+}
+export declare function runForgeInstaller(javaPath: string, installerPath: string, minecraftDir: string, timeoutMs?: number | undefined | null): Promise<ForgeInstallerRunResult>
 /** Install Forge/NeoForge */
 export declare function installForge(mcVersion: string, loaderType: ForgeLoaderType, loaderVersion: string | undefined | null, gameDir: string, javaPath?: string | undefined | null): Promise<string>
 export interface FabricInstallResult {

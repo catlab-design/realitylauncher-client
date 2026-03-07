@@ -117,6 +117,70 @@ export async function exportModpack(
     // 3. Calculate Total Size for Progress
     const totalBytes = calculateTotalSize(instanceDir, options.includedPaths);
     console.log(`[Export] Total size to export: ${totalBytes} bytes`);
+    if (signal.aborted) {
+      exportControllers.delete(instanceId);
+      return { ok: false, error: "Export cancelled" };
+    }
+
+    const native = getNativeModule() as any;
+    if (typeof native.exportModpackArchive === "function") {
+      let cancelRequested = false;
+      const onAbort = () => {
+        cancelRequested = true;
+      };
+      signal.addEventListener("abort", onAbort);
+      try {
+        onProgress({
+          transferred: 0,
+          total: totalBytes,
+          percent: 0,
+        });
+
+        const nativeResult = (await native.exportModpackArchive({
+          instanceDir,
+          outputPath: filePath,
+          format: options.format,
+          includedPaths: options.includedPaths,
+          name: options.name,
+          version: options.version,
+          description: options.description ?? null,
+          minecraftVersion: instance.minecraftVersion,
+          loader: instance.loader || "vanilla",
+          loaderVersion: instance.loaderVersion ?? null,
+        })) as { success?: boolean; totalBytes?: number };
+
+        if (cancelRequested || signal.aborted) {
+          try {
+            if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+          } catch {}
+          exportControllers.delete(instanceId);
+          return { ok: false, error: "Export cancelled" };
+        }
+
+        if (nativeResult?.success === false) {
+          throw new Error("Native export returned unsuccessful result");
+        }
+
+        const writtenBytes =
+          typeof nativeResult?.totalBytes === "number"
+            ? nativeResult.totalBytes
+            : totalBytes;
+        onProgress({
+          transferred: writtenBytes,
+          total: totalBytes || writtenBytes,
+          percent: 100,
+        });
+
+        exportControllers.delete(instanceId);
+        return { ok: true, path: filePath };
+      } catch (nativeError) {
+        console.warn("[Export] Native export failed, falling back to archiver", {
+          message: String((nativeError as Error)?.message || nativeError),
+        });
+      } finally {
+        signal.removeEventListener("abort", onAbort);
+      }
+    }
 
     // 4. Create Archive
     const output = fs.createWriteStream(filePath);

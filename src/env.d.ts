@@ -440,6 +440,7 @@ declare global {
         modrinth?: { ok: boolean; error?: string };
         curseforge?: { ok: boolean; error?: string };
       }>;
+      invalidateInstancesListCache: () => Promise<boolean>;
       // CurseForge APIs
       curseforgeSearch: (filters: {
         query?: string;

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Icons } from "./Icons";
+import bannerImage from "../../assets/banner.png";
 
 interface CalendarWidgetProps {
     isOpen: boolean;
@@ -671,7 +672,7 @@ export function CalendarWidget({
                                         activeAgenda = dayAgendas[0];
                                     }
                                     
-                                    const bannerUrl = (activeAgenda?.instanceBannerUrl || dayAgendas.find(a => a.instanceBannerUrl)?.instanceBannerUrl || "/banner.png");
+                                    const bannerUrl = (activeAgenda?.instanceBannerUrl || dayAgendas.find(a => a.instanceBannerUrl)?.instanceBannerUrl || bannerImage.src);
                                     const iconUrl = activeAgenda?.instanceIconUrl || dayAgendas.find(a => a.instanceIconUrl)?.instanceIconUrl;
                                     const serverName = activeAgenda?.instanceName || dayAgendas.find(a => a.instanceName)?.instanceName || "REALITY LAUNCHER";
                                     

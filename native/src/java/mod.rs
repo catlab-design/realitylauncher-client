@@ -3,13 +3,17 @@
 //! Handles:
 //! - Auto-detection of installed Java versions
 //! - Java version validation
-//! - Adoptium/Temurin Java downloads
+//! - Azul Zulu Java downloads
 //! - Java path management
 
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Command;
+use serde_json::Value;
+use crate::download::download_file;
+use crate::extract::extract_zip;
+use crate::get_client;
 
 #[cfg(windows)]
 use winreg::enums::*;
@@ -372,4 +376,164 @@ pub fn find_java_for_minecraft(minecraft_version: String) -> Option<JavaInstalla
                 .next()
                 .cloned()
         })
+}
+
+fn map_azul_os() -> &'static str {
+    if cfg!(windows) {
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "macos"
+    } else {
+        "linux"
+    }
+}
+
+fn build_azul_package_api_url(major_version: u32) -> String {
+    format!(
+        "https://api.azul.com/metadata/v1/zulu/packages/?java_version={major_version}&os={}&arch=x64&archive_type=zip&java_package_type=jdk&javafx_bundled=false&release_status=ga&availability_types=CA&certifications=tck&java_package_features=headful&latest=true&page=1&page_size=100",
+        map_azul_os()
+    )
+}
+
+fn extract_zulu_package(payload: &Value) -> Option<(String, String)> {
+    let entries = payload.as_array()?;
+    let entry = entries
+        .iter()
+        .find(|item| item.get("latest").and_then(|v| v.as_bool()) == Some(true)
+            && item.get("download_url").and_then(|v| v.as_str()).is_some())
+        .or_else(|| {
+            entries
+                .iter()
+                .find(|item| item.get("download_url").and_then(|v| v.as_str()).is_some())
+        })?;
+
+    let download_url = entry.get("download_url")?.as_str()?.to_string();
+    let inferred_name = download_url
+        .split('/')
+        .last()
+        .map(|name| name.split('?').next().unwrap_or(name).to_string())
+        .unwrap_or_else(|| "java-runtime.zip".to_string());
+    let file_name = entry
+        .get("name")
+        .and_then(|v| v.as_str())
+        .map(|name| name.to_string())
+        .unwrap_or(inferred_name);
+
+    Some((download_url, file_name))
+}
+
+fn java_executable_name() -> &'static str {
+    if cfg!(windows) {
+        "java.exe"
+    } else {
+        "java"
+    }
+}
+
+#[napi]
+pub async fn install_java_runtime(major_version: u32, install_root: String) -> napi::Result<String> {
+    let install_root_path = PathBuf::from(&install_root);
+    std::fs::create_dir_all(&install_root_path)
+        .map_err(|e| napi::Error::from_reason(format!("Failed to create install root: {e}")))?;
+
+    let target_dir = install_root_path.join(format!("jdk-{major_version}"));
+    let java_path = target_dir.join("bin").join(java_executable_name());
+    if java_path.exists() {
+        return Ok(java_path.to_string_lossy().to_string());
+    }
+
+    let api_url = build_azul_package_api_url(major_version);
+
+    let client = get_client();
+    let response = client
+        .get(&api_url)
+        .send()
+        .await
+        .map_err(|e| napi::Error::from_reason(format!("Failed to fetch Java metadata: {e}")))?;
+
+    let payload: Value = response
+        .json()
+        .await
+        .map_err(|e| napi::Error::from_reason(format!("Invalid Java metadata response: {e}")))?;
+
+    let (download_url, file_name) = extract_zulu_package(&payload)
+        .ok_or_else(|| napi::Error::from_reason(format!(
+            "No Azul Zulu runtime found for version {major_version}"
+        )))?;
+
+    let zip_path = install_root_path.join(file_name);
+    let download_result = download_file(
+        download_url,
+        zip_path.to_string_lossy().to_string(),
+        None,
+        None,
+    )
+    .await?;
+
+    if !download_result.success {
+        return Err(napi::Error::from_reason(
+            download_result
+                .error
+                .unwrap_or_else(|| "Java download failed".to_string()),
+        ));
+    }
+
+    let extract_dir = install_root_path.join(format!("temp-{major_version}"));
+    if extract_dir.exists() {
+        let _ = std::fs::remove_dir_all(&extract_dir);
+    }
+
+    let extract_result = tokio::task::spawn_blocking({
+        let zip_path = zip_path.to_string_lossy().to_string();
+        let extract_dir = extract_dir.to_string_lossy().to_string();
+        move || extract_zip(zip_path, extract_dir, None)
+    })
+    .await
+    .map_err(|e| napi::Error::from_reason(format!("Java extract worker failed: {e}")))??;
+
+    if !extract_result.success {
+        return Err(napi::Error::from_reason(
+            extract_result
+                .error
+                .unwrap_or_else(|| "Java extraction failed".to_string()),
+        ));
+    }
+
+    let mut extracted_subdirs = std::fs::read_dir(&extract_dir)
+        .map_err(|e| napi::Error::from_reason(format!("Failed to read extraction output: {e}")))?
+        .flatten()
+        .filter_map(|entry| {
+            entry
+                .file_type()
+                .ok()
+                .filter(|kind| kind.is_dir())
+                .map(|_| entry.path())
+        })
+        .collect::<Vec<PathBuf>>();
+
+    extracted_subdirs.sort();
+
+    let source_dir = extracted_subdirs
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| extract_dir.clone());
+
+    if target_dir.exists() {
+        let _ = std::fs::remove_dir_all(&target_dir);
+    }
+
+    std::fs::rename(&source_dir, &target_dir)
+        .map_err(|e| napi::Error::from_reason(format!("Failed to finalize Java installation: {e}")))?;
+
+    if extract_dir.exists() {
+        let _ = std::fs::remove_dir_all(&extract_dir);
+    }
+    let _ = std::fs::remove_file(&zip_path);
+
+    let installed_java = target_dir.join("bin").join(java_executable_name());
+    if !installed_java.exists() {
+        return Err(napi::Error::from_reason("Installed Java executable not found"));
+    }
+
+    Ok(installed_java.to_string_lossy().to_string())
 }

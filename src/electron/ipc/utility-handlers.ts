@@ -546,6 +546,7 @@ export function registerUtilityHandlers(
     const https = await import("node:https");
     const { createWriteStream } = await import("node:fs");
     const { spawn } = await import("node:child_process");
+    const native = getNativeModule() as any;
 
     console.log(`[Java] Starting installation of Java ${majorVersion}`);
 
@@ -583,9 +584,53 @@ export function registerUtilityHandlers(
         return { ok: true, path: existingJava };
       }
 
+      if (typeof native.installJavaRuntime === "function") {
+        try {
+          sendProgress("fetch", 10, "Preparing Java installation...");
+          const installedPath = (await native.installJavaRuntime(
+            majorVersion,
+            javaBaseDir,
+          )) as string;
+          sendProgress("complete", 100, "Java installation complete");
+          return { ok: true, path: installedPath };
+        } catch (nativeInstallError: any) {
+          console.warn("[Java] Native installJavaRuntime failed, fallback to JS:", nativeInstallError?.message || nativeInstallError);
+        }
+      }
+
       sendProgress("fetch", 0, "กำลังดึงข้อมูล...");
-      console.log(`[Java] Fetching Adoptium API for Java ${featureVersion}...`);
-      const apiUrl = `https://api.adoptium.net/v3/assets/latest/${featureVersion}/hotspot?architecture=x64&image_type=jdk&os=windows&vendor=eclipse`;
+      console.log(
+        `[Java] Fetching Azul Zulu metadata for Java ${featureVersion}...`,
+      );
+
+      const azulOs =
+        process.platform === "win32"
+          ? "windows"
+          : process.platform === "darwin"
+            ? "macos"
+            : "linux";
+      const azulArch =
+        process.arch === "arm64"
+          ? "aarch64"
+          : process.arch === "ia32"
+            ? "x86"
+            : "x64";
+      const azulQuery = new URLSearchParams({
+        java_version: `${featureVersion}`,
+        os: azulOs,
+        arch: azulArch,
+        archive_type: "zip",
+        java_package_type: "jdk",
+        javafx_bundled: "false",
+        release_status: "ga",
+        availability_types: "CA",
+        certifications: "tck",
+        java_package_features: "headful",
+        latest: "true",
+        page: "1",
+        page_size: "100",
+      });
+      const apiUrl = `https://api.azul.com/metadata/v1/zulu/packages/?${azulQuery.toString()}`;
       const apiResponse = await new Promise<any>((resolve, reject) => {
         https
           .get(apiUrl, (res) => {
@@ -604,14 +649,31 @@ export function registerUtilityHandlers(
           .on("error", reject);
       });
 
-      if (!apiResponse?.[0]) {
-        console.log(`[Java] No Java ${majorVersion} found in Adoptium API`);
-        return { ok: false, error: `ไม่พบ Java ${majorVersion} จาก Adoptium` };
+      const zuluPackage = Array.isArray(apiResponse)
+        ? (apiResponse.find((entry: any) => entry?.latest && entry?.download_url) ??
+            apiResponse.find((entry: any) => entry?.download_url))
+        : null;
+      if (!zuluPackage) {
+        console.log(
+          `[Java] No Java ${majorVersion} found in Azul Zulu metadata`,
+        );
+        return {
+          ok: false,
+          error: `Java ${majorVersion} not found from Azul Zulu`,
+        };
       }
 
-      const downloadUrl = apiResponse[0].binary?.package?.link;
-      const fileName = apiResponse[0].binary?.package?.name;
-      const fileSize = apiResponse[0].binary?.package?.size || 0;
+      const downloadUrl = zuluPackage.download_url;
+      const fileName =
+        zuluPackage.name ||
+        (typeof downloadUrl === "string"
+          ? downloadUrl.split("/").pop()?.split("?")[0]
+          : undefined);
+      const fileSize =
+        zuluPackage.size ||
+        zuluPackage.download_size ||
+        zuluPackage.filesize ||
+        0;
       if (!downloadUrl || !fileName)
         return { ok: false, error: "ไม่พบ download URL" };
 
@@ -624,50 +686,64 @@ export function registerUtilityHandlers(
       console.log(`[Java] Downloading ${fileName} (${fileSizeMB}MB)...`);
       const zipPath = path.join(javaBaseDir, fileName);
 
-      await new Promise<void>((resolve, reject) => {
-        const download = (url: string) => {
-          https
-            .get(url, (res) => {
-              if (res.statusCode === 301 || res.statusCode === 302) {
-                if (res.headers.location) download(res.headers.location);
-                return;
-              }
-              if (res.statusCode !== 200) {
-                reject(new Error(`HTTP ${res.statusCode}`));
-                return;
-              }
-              const file = createWriteStream(zipPath);
-              let downloaded = 0;
-              const total =
-                parseInt(res.headers["content-length"] || "0", 10) || fileSize;
-
-              res.on("data", (chunk) => {
-                downloaded += chunk.length;
-                const percent =
-                  total > 0 ? Math.round((downloaded / total) * 100) : 0;
-                // Send progress every 5%
-                if (percent % 5 === 0 || downloaded === total) {
-                  const downloadedMB = Math.round(downloaded / 1024 / 1024);
-                  const totalMB = Math.round(total / 1024 / 1024);
-                  sendProgress(
-                    "download",
-                    percent,
-                    `ดาวน์โหลด ${downloadedMB}/${totalMB} MB (${percent}%)`,
-                  );
+      if (typeof native.downloadFile === "function") {
+        sendProgress("download", 25, "Downloading with native core...");
+        const nativeResult = (await native.downloadFile(
+          downloadUrl,
+          zipPath,
+          undefined,
+          undefined,
+        )) as { success?: boolean; error?: string };
+        if (!nativeResult?.success) {
+          throw new Error(nativeResult?.error || "Native Java download failed");
+        }
+        sendProgress("download", 100, "Download complete");
+      } else {
+        await new Promise<void>((resolve, reject) => {
+          const download = (url: string) => {
+            https
+              .get(url, (res) => {
+                if (res.statusCode === 301 || res.statusCode === 302) {
+                  if (res.headers.location) download(res.headers.location);
+                  return;
                 }
-              });
+                if (res.statusCode !== 200) {
+                  reject(new Error(`HTTP ${res.statusCode}`));
+                  return;
+                }
+                const file = createWriteStream(zipPath);
+                let downloaded = 0;
+                const total =
+                  parseInt(res.headers["content-length"] || "0", 10) ||
+                  fileSize;
 
-              res.pipe(file);
-              file.on("finish", () => {
-                file.close();
-                console.log(`[Java] Download complete: ${zipPath}`);
-                resolve();
-              });
-            })
-            .on("error", reject);
-        };
-        download(downloadUrl);
-      });
+                res.on("data", (chunk) => {
+                  downloaded += chunk.length;
+                  const percent =
+                    total > 0 ? Math.round((downloaded / total) * 100) : 0;
+                  if (percent % 5 === 0 || downloaded === total) {
+                    const downloadedMB = Math.round(downloaded / 1024 / 1024);
+                    const totalMB = Math.round(total / 1024 / 1024);
+                    sendProgress(
+                      "download",
+                      percent,
+                      `Downloading ${downloadedMB}/${totalMB} MB (${percent}%)`,
+                    );
+                  }
+                });
+
+                res.pipe(file);
+                file.on("finish", () => {
+                  file.close();
+                  console.log(`[Java] Download complete: ${zipPath}`);
+                  resolve();
+                });
+              })
+              .on("error", reject);
+          };
+          download(downloadUrl);
+        });
+      }
 
       const extractDir = path.join(javaBaseDir, `temp-${majorVersion}`);
       sendProgress("extract", 0, "กำลังแตกไฟล์...");
@@ -727,6 +803,27 @@ export function registerUtilityHandlers(
         });
       };
 
+      let extractedByNative = false;
+      if (typeof native.extractZipAsync === "function" || typeof native.extractZip === "function") {
+        try {
+          const nativeExtract =
+            typeof native.extractZipAsync === "function"
+              ? await native.extractZipAsync(zipPath, extractDir, undefined)
+              : await native.extractZip(zipPath, extractDir, undefined);
+          if (nativeExtract?.success === false) {
+            throw new Error(nativeExtract?.error || "Native extract returned unsuccessful result");
+          }
+          extractedByNative = true;
+          sendProgress("extract", 100, "Extraction complete");
+        } catch (nativeExtractError: any) {
+          console.warn("[Java] Native extract failed, fallback to shell tools:", nativeExtractError?.message || nativeExtractError);
+          if (fs.existsSync(extractDir))
+            fs.rmSync(extractDir, { recursive: true, force: true });
+          fs.mkdirSync(extractDir, { recursive: true });
+        }
+      }
+
+      if (!extractedByNative) {
       const psZipPath = zipPath.replace(/'/g, "''");
       const psExtractDir = extractDir.replace(/'/g, "''");
       const extractAttempts = [
@@ -799,6 +896,8 @@ export function registerUtilityHandlers(
         clearInterval(progressInterval);
       }
 
+
+      }
       fs.unlinkSync(zipPath);
 
       const extractedDirs = fs.readdirSync(extractDir);

@@ -516,12 +516,52 @@ type ProgressCallback = (progress: DownloadProgress) => void;
 /**
  * Download a file from URL to destination
  */
-export function downloadFile(
+export async function downloadFile(
   url: string,
   dest: string,
   onProgress?: ProgressCallback,
   signal?: AbortSignal,
 ): Promise<void> {
+  if (!signal) {
+    try {
+      const native = getNativeModule() as any;
+      if (typeof native.downloadFile === "function") {
+        const filename = path.basename(dest);
+        if (onProgress) {
+          onProgress({
+            filename,
+            downloaded: 0,
+            total: 0,
+            percent: 0,
+          });
+        }
+        const result = (await native.downloadFile(
+          url,
+          dest,
+          undefined,
+          undefined,
+        )) as { success?: boolean; error?: string };
+        if (!result?.success) {
+          throw new Error(result?.error || "Native download failed");
+        }
+        if (onProgress) {
+          onProgress({
+            filename,
+            downloaded: 1,
+            total: 1,
+            percent: 100,
+          });
+        }
+        return;
+      }
+    } catch (nativeError) {
+      console.warn("[Modrinth] Native download failed, fallback to JS", {
+        url,
+        message: String((nativeError as Error)?.message || nativeError),
+      });
+    }
+  }
+
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
       return reject(new Error("Download cancelled"));
@@ -708,6 +748,48 @@ export function downloadFile(
   });
 }
 
+function normalizeHashForNative(
+  hash?: string | null,
+): { sha1?: string; sha256?: string } | null {
+  if (!hash) return null;
+  let value = hash.trim().toLowerCase();
+  if (!value) return null;
+  if (value.startsWith("sha1:")) value = value.slice(5).trim();
+  else if (value.startsWith("sha-1:")) value = value.slice(6).trim();
+  else if (value.startsWith("sha256:")) value = value.slice(7).trim();
+  else if (value.startsWith("sha-256:")) value = value.slice(8).trim();
+
+  if (value.startsWith("0x")) value = value.slice(2).trim();
+  if (!/^[a-f0-9]+$/.test(value)) return null;
+
+  if (value.length === 40) return { sha1: value };
+  if (value.length === 64) return { sha256: value };
+  return null;
+}
+
+function toNativeDownloadHashArgs(
+  hashes?: string | { sha1?: string; sha512?: string },
+): { supported: boolean; sha1?: string; sha256?: string } {
+  if (!hashes) return { supported: true };
+  if (typeof hashes === "string") {
+    const normalized = normalizeHashForNative(hashes);
+    if (!normalized) return { supported: false };
+    return { supported: true, ...normalized };
+  }
+
+  if (hashes.sha1) {
+    const normalized = normalizeHashForNative(hashes.sha1);
+    if (!normalized?.sha1) return { supported: false };
+    return { supported: true, sha1: normalized.sha1 };
+  }
+
+  if (hashes.sha512) {
+    return { supported: false };
+  }
+
+  return { supported: true };
+}
+
 /**
  * Calculate file hash
  */
@@ -813,6 +895,35 @@ export async function downloadFileAtomic(
   onProgress?: ProgressCallback,
   signal?: AbortSignal,
 ): Promise<void> {
+  if (!onProgress && !signal) {
+    const nativeHashArgs = toNativeDownloadHashArgs(hashes);
+    if (nativeHashArgs.supported) {
+      try {
+        const native = getNativeModule() as any;
+        if (typeof native.downloadFile === "function") {
+          const result = (await native.downloadFile(
+            url,
+            destPath,
+            nativeHashArgs.sha1,
+            nativeHashArgs.sha256,
+          )) as { success?: boolean; error?: string };
+          if (!result?.success) {
+            throw new Error(result?.error || "Native atomic download failed");
+          }
+          return;
+        }
+      } catch (nativeError) {
+        console.warn(
+          "[Modrinth] Native atomic download failed, fallback to JS implementation",
+          {
+            url,
+            message: String((nativeError as Error)?.message || nativeError),
+          },
+        );
+      }
+    }
+  }
+
   const tmpPath = `${destPath}.tmp`;
   const destDir = path.dirname(destPath);
 

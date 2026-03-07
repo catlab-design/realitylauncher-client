@@ -310,12 +310,13 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { detectJavaInstallations, validateJavaPath, getRecommendedJavaVersion, findJavaForMinecraft, downloadFile, downloadFiles, verifyFileHash, calculateSha1, calculateSha256, verifyMultipleFileHashes, planServerSyncDownloads, cleanupExtraMods, postInstallModpackFiles, detectModConflictsNative, inspectPackMetadata, LoaderType, getInstancePath, createInstanceDirectories, saveInstanceMeta, loadInstanceMeta, listInstances, deleteInstance, copyInstance, getDirectorySize, listInstanceMods, toggleMod, deleteMod, listInstanceResourcepacks, extractZip, extractFilesFromZip, listZipContents, readFileFromZip, parseModrinthManifest, parseCurseforgeManifest, extractModpackOverrides, modrinthSearch, modrinthGetProject, modrinthGetVersions, curseforgeSearch, curseforgeGetFiles, curseforgeGetDownloadUrl, fetchVersionManifest, fetchVersionDetail, prepareLaunch, launchGame, getAssetDownloads, analyzeCrashLog, ForgeLoaderType, installForge, installFabric, getFabricVersions, installQuilt, getQuiltVersions, isProcessAlive, killProcessTree, saveRunningInstance, removeRunningInstance, getRunningInstances, isInstanceRunning, getInstancePid } = nativeBinding
+const { detectJavaInstallations, validateJavaPath, getRecommendedJavaVersion, findJavaForMinecraft, installJavaRuntime, downloadFile, downloadFiles, verifyFileHash, calculateSha1, calculateSha256, verifyMultipleFileHashes, planServerSyncDownloads, cleanupExtraMods, checkFastModListSync, saveFastModListSyncSnapshot, postInstallModpackFiles, detectModConflictsNative, inspectPackMetadata, scanPackDirectory, exportModpackArchive, LoaderType, getInstancePath, createInstanceDirectories, saveInstanceMeta, loadInstanceMeta, listInstances, deleteInstance, copyInstance, getDirectorySize, listInstanceMods, toggleMod, deleteMod, listInstanceResourcepacks, readLogTail, extractZip, extractZipAsync, extractFilesFromZip, listZipContents, readFileFromZip, parseModrinthManifest, parseCurseforgeManifest, extractModpackOverrides, modrinthSearch, modrinthGetProject, modrinthGetVersions, curseforgeSearch, curseforgeGetFiles, curseforgeGetDownloadUrl, fetchVersionManifest, fetchVersionDetail, prepareLaunch, launchGame, getAssetDownloads, analyzeCrashLog, ForgeLoaderType, runForgeInstaller, installForge, installFabric, getFabricVersions, installQuilt, getQuiltVersions, isProcessAlive, killProcessTree, saveRunningInstance, removeRunningInstance, getRunningInstances, isInstanceRunning, getInstancePid } = nativeBinding
 
 module.exports.detectJavaInstallations = detectJavaInstallations
 module.exports.validateJavaPath = validateJavaPath
 module.exports.getRecommendedJavaVersion = getRecommendedJavaVersion
 module.exports.findJavaForMinecraft = findJavaForMinecraft
+module.exports.installJavaRuntime = installJavaRuntime
 module.exports.downloadFile = downloadFile
 module.exports.downloadFiles = downloadFiles
 module.exports.verifyFileHash = verifyFileHash
@@ -324,9 +325,13 @@ module.exports.calculateSha256 = calculateSha256
 module.exports.verifyMultipleFileHashes = verifyMultipleFileHashes
 module.exports.planServerSyncDownloads = planServerSyncDownloads
 module.exports.cleanupExtraMods = cleanupExtraMods
+module.exports.checkFastModListSync = checkFastModListSync
+module.exports.saveFastModListSyncSnapshot = saveFastModListSyncSnapshot
 module.exports.postInstallModpackFiles = postInstallModpackFiles
 module.exports.detectModConflictsNative = detectModConflictsNative
 module.exports.inspectPackMetadata = inspectPackMetadata
+module.exports.scanPackDirectory = scanPackDirectory
+module.exports.exportModpackArchive = exportModpackArchive
 module.exports.LoaderType = LoaderType
 module.exports.getInstancePath = getInstancePath
 module.exports.createInstanceDirectories = createInstanceDirectories
@@ -340,7 +345,9 @@ module.exports.listInstanceMods = listInstanceMods
 module.exports.toggleMod = toggleMod
 module.exports.deleteMod = deleteMod
 module.exports.listInstanceResourcepacks = listInstanceResourcepacks
+module.exports.readLogTail = readLogTail
 module.exports.extractZip = extractZip
+module.exports.extractZipAsync = extractZipAsync
 module.exports.extractFilesFromZip = extractFilesFromZip
 module.exports.listZipContents = listZipContents
 module.exports.readFileFromZip = readFileFromZip
@@ -360,6 +367,7 @@ module.exports.launchGame = launchGame
 module.exports.getAssetDownloads = getAssetDownloads
 module.exports.analyzeCrashLog = analyzeCrashLog
 module.exports.ForgeLoaderType = ForgeLoaderType
+module.exports.runForgeInstaller = runForgeInstaller
 module.exports.installForge = installForge
 module.exports.installFabric = installFabric
 module.exports.getFabricVersions = getFabricVersions

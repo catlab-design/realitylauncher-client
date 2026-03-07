@@ -151,6 +151,19 @@ function getNativeTrackedPid(instanceId: string): number | null {
     }
 }
 
+function isNativeInstanceRunning(instanceId: string): boolean | null {
+    const native = getNativeProcessModule();
+    if (!native || typeof native.isInstanceRunning !== "function") {
+        return null;
+    }
+    try {
+        return !!native.isInstanceRunning(instanceId);
+    } catch (error) {
+        console.warn(`[GameProcess] Native isInstanceRunning failed for ${instanceId}:`, error);
+        return null;
+    }
+}
+
 // =========================================
 // Getters & Setters
 // =========================================
@@ -203,6 +216,11 @@ export function isGameRunning(instanceId?: string): boolean {
     if (instanceId) {
         const p = gameProcesses.get(instanceId);
         if (p && processIsActive(instanceId, p)) {
+            return true;
+        }
+
+        const nativeRunningFlag = isNativeInstanceRunning(instanceId);
+        if (nativeRunningFlag === true) {
             return true;
         }
 

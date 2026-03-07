@@ -33,7 +33,6 @@ import * as fs from "fs-extra";
 import crypto from "node:crypto";
 import { net } from "electron";
 import AdmZip from "adm-zip";
-import archiver from "archiver";
 import { createIpcLogger } from "../lib/logger.js";
 // ensureModMetadata is defined in this file, so no import needed.
 
@@ -69,9 +68,6 @@ import { updateRPC } from "../discord.js";
 import { resolveTelemetryUserIdForSession } from "../telemetry.js";
 import { getNativeModule } from "../native.js";
 import { getLaunchPolicyForInstance } from "../../lib/launchPolicy";
-
-// Map to track active exports for cancellation: instanceId -> { abort: () => void }
-const activeExports = new Map<string, { abort: () => void }>();
 
 // Map to track active operations (e.g. content download)
 const activeOperations = new Map<string, AbortController>();
@@ -117,6 +113,44 @@ function createThrottledProgressSender(
       lastType = type;
     }
   };
+}
+
+const LATEST_LOG_TAIL_MAX_BYTES = 1024 * 1024; // 1MB
+const LATEST_LOG_TAIL_MAX_LINES = 500;
+
+async function readUtf8LogTail(
+  filePath: string,
+  maxLines: number,
+  maxBytes: number,
+): Promise<string> {
+  const fileHandle = await fs.promises.open(filePath, "r");
+  try {
+    const stats = await fileHandle.stat();
+    if (stats.size <= 0) {
+      return "";
+    }
+
+    const bytesToRead = Math.min(Number(stats.size), maxBytes);
+    const start = Math.max(0, Number(stats.size) - bytesToRead);
+    const buffer = Buffer.alloc(bytesToRead);
+    await fileHandle.read(buffer, 0, bytesToRead, start);
+
+    let content = buffer.toString("utf-8");
+
+    // When reading a tail chunk, trim the first partial line.
+    if (start > 0) {
+      const firstBreak = content.indexOf("\n");
+      content = firstBreak >= 0 ? content.slice(firstBreak + 1) : "";
+    }
+
+    if (!content) {
+      return "";
+    }
+
+    return content.split(/\r?\n/).slice(-maxLines).join("\n");
+  } finally {
+    await fileHandle.close();
+  }
 }
 
 type NativePackKind = "resource" | "shader" | "datapack";
@@ -1657,9 +1691,74 @@ export function registerInstanceHandlers(
     try {
       // Keep the first pass lightweight: just list files.
       // Metadata and icons are hydrated progressively from cache/background lookup.
-      const modEntries = (await fs.promises.readdir(modsDir))
+      const jsModEntries = (await fs.promises.readdir(modsDir))
         .filter((f) => f.endsWith(".jar") || f.endsWith(".jar.disabled"))
         .map((filename) => ({ filename }));
+      const native = getNativeModule() as any;
+      const NATIVE_MOD_SCAN_MAX = 80;
+      const allowNativeSyncModScan = jsModEntries.length <= NATIVE_MOD_SCAN_MAX;
+      const nativeModMap = new Map<
+        string,
+        {
+          filename: string;
+          name?: string;
+          version?: string;
+          description?: string;
+          authors?: string[];
+          modId?: string;
+          iconBase64?: string | null;
+          enabled?: boolean;
+          size?: number;
+        }
+      >();
+      if (
+        allowNativeSyncModScan &&
+        typeof native.listInstanceMods === "function"
+      ) {
+        try {
+          const nativeMods = (native.listInstanceMods(
+            getInstancesDir(),
+            instanceId,
+          ) || []) as Array<{
+            filename: string;
+            name?: string;
+            version?: string;
+            description?: string;
+            authors?: string[];
+            modId?: string;
+            iconBase64?: string | null;
+            enabled?: boolean;
+            size?: number;
+          }>;
+
+          for (const item of nativeMods) {
+            if (!item?.filename) continue;
+            nativeModMap.set(item.filename, item);
+          }
+        } catch (nativeError) {
+          logger.warn("[Mods] Native listInstanceMods failed, fallback to JS", {
+            message: String((nativeError as Error)?.message || nativeError),
+          });
+        }
+      } else if (!allowNativeSyncModScan) {
+        logger.info(
+          `[Mods] Skip synchronous native listInstanceMods for large mod set (${jsModEntries.length} entries)`,
+        );
+      }
+
+      const nativeModsPrimary = nativeModMap.size > 0;
+      const modEntryByFilename = new Map<string, { filename: string }>();
+      if (nativeModsPrimary) {
+        for (const filename of nativeModMap.keys()) {
+          modEntryByFilename.set(filename, { filename });
+        }
+      }
+      for (const entry of jsModEntries) {
+        if (!modEntryByFilename.has(entry.filename)) {
+          modEntryByFilename.set(entry.filename, entry);
+        }
+      }
+      const modEntries = Array.from(modEntryByFilename.values());
 
       // Return quickly using cached/native metadata, then hydrate in background.
       const CONCURRENCY = 8;
@@ -1687,6 +1786,7 @@ export function registerInstanceHandlers(
             const mtime = stats.mtime.toISOString();
             const cacheKey = getModCacheKey(filePath, stats.size, mtime);
             const seeded = modMetadataCache.get(cacheKey) || {};
+            const nativeMeta = nativeModMap.get(file);
 
             let name = file;
             let enabled = true;
@@ -1697,9 +1797,43 @@ export function registerInstanceHandlers(
               name = file.replace(".jar", "");
             }
 
-            const metadata = seeded;
+            const metadata: ModMetadataCache = {
+              ...seeded,
+              id: seeded.id || nativeMeta?.modId,
+              displayName:
+                seeded.displayName ||
+                (typeof nativeMeta?.name === "string" ? nativeMeta.name : name),
+              author:
+                seeded.author ||
+                (Array.isArray(nativeMeta?.authors)
+                  ? nativeMeta?.authors.filter(Boolean).join(", ")
+                  : undefined),
+              description: seeded.description || nativeMeta?.description,
+              version: seeded.version || nativeMeta?.version,
+              icon:
+                seeded.icon ||
+                (typeof nativeMeta?.iconBase64 === "string" &&
+                nativeMeta.iconBase64.length > 0
+                  ? `data:image/png;base64,${nativeMeta.iconBase64}`
+                  : undefined),
+            };
+
+            if (!modMetadataCache.has(cacheKey)) {
+              modMetadataCache.set(cacheKey, metadata);
+              cacheTouched = true;
+            }
+
+            const hasUsefulLocalMetadata = Boolean(
+              metadata.icon ||
+                (metadata.displayName &&
+                  metadata.displayName.toLowerCase() !== name.toLowerCase()) ||
+                metadata.version ||
+                metadata.description ||
+                metadata.author,
+            );
             const lookupPending = pendingModrinthLookups.has(cacheKey);
-            const needsLookup = !isMetadataResolved(metadata);
+            const needsLookup =
+              !isMetadataResolved(metadata) && !hasUsefulLocalMetadata;
             if (lookupPending || needsLookup) {
               hasUncached = true;
             }
@@ -1777,321 +1911,6 @@ export function registerInstanceHandlers(
       } catch (error: any) {
         return { ok: false, error: error.message };
       }
-    },
-  );
-
-  ipcMain.handle(
-    "instances-export-cancel",
-    async (_event, instanceId: string) => {
-      const exportTask = activeExports.get(instanceId);
-      if (exportTask) {
-        exportTask.abort();
-        activeExports.delete(instanceId);
-        logger.info(`Export cancelled for instance ${instanceId}`);
-        return { ok: true };
-      }
-      return { ok: false, error: "No active export found" };
-    },
-  );
-
-  ipcMain.handle(
-    "instances-export",
-    async (event, id: string, options: any) => {
-      // Compatibility check: if options is string, treating it as format (old way)
-      // unlikely if frontend is updated, but good for safety
-      let format = "zip";
-      let exportOptions: any = {};
-
-      if (typeof options === "string") {
-        format = options as any;
-        exportOptions = {
-          format,
-          name: "",
-          version: "1.0.0",
-          includedPaths: ["mods", "config", "resourcepacks", "shaderpacks"],
-        };
-      } else {
-        exportOptions = options;
-        format = exportOptions.format;
-      }
-
-      const sender = event.sender;
-      const instance = getInstance(id);
-      if (!instance) {
-        return { ok: false, error: "Instance not found" };
-      }
-
-      const mainWindow = BrowserWindow.fromWebContents(sender);
-      if (!mainWindow) return { ok: false, error: "Window not found" };
-
-      // Helper to check if file should be included
-      const shouldInclude = (relativePath: string, isDir: boolean): boolean => {
-        // Normalize to forward slashes for consistent comparison
-        // (UI sends forward-slash paths, but path.relative() on Windows returns backslashes)
-        const normalizedPath = relativePath.replace(/\\/g, "/");
-
-        // Always exclude these
-        const excludedPrefixes = [
-          "session.lock",
-          "logs",
-          "cache",
-          "webcache",
-          "natives",
-          "assets",
-        ];
-        for (const prefix of excludedPrefixes) {
-          if (
-            normalizedPath === prefix ||
-            normalizedPath.startsWith(prefix + "/")
-          ) {
-            return false;
-          }
-        }
-
-        // If includedPaths is defined, filter by it
-        if (
-          exportOptions.includedPaths &&
-          exportOptions.includedPaths.length > 0
-        ) {
-          // includedPaths can contain EITHER:
-          //   - Folder names like "mods", "config" (when file tree hasn't loaded yet)
-          //   - Individual file paths like "mods/fabric-api.jar" (after file tree expansion)
-          //
-          // We need to handle both cases:
-          //   1. normalizedPath matches an entry exactly (file or folder selected)
-          //   2. normalizedPath starts with an entry + "/" (file is inside a selected folder)
-          //   3. An entry starts with normalizedPath + "/" (selected files are inside this dir)
-
-          const isIncluded = exportOptions.includedPaths.some((p: string) => {
-            // Exact match (works for both files and folders)
-            if (normalizedPath === p) return true;
-            // This path is inside a selected folder (e.g. path="mods/x.jar", p="mods")
-            if (normalizedPath.startsWith(p + "/")) return true;
-            // A selected file is inside this directory (e.g. path="mods", p="mods/x.jar")
-            if (p.startsWith(normalizedPath + "/")) return true;
-            return false;
-          });
-          return isIncluded;
-        }
-
-        return true; // Default include if no filter
-      };
-
-      const calculateDirSize = (dir: string): number => {
-        let size = 0;
-        if (!fs.existsSync(dir)) return 0;
-        try {
-          const files = fs.readdirSync(dir);
-          for (const file of files) {
-            const fullPath = path.join(dir, file);
-            const relPath = path.relative(getInstanceDir(id), fullPath);
-
-            // Check inclusion logic
-            if (!shouldInclude(relPath, fs.statSync(fullPath).isDirectory())) {
-              continue;
-            }
-
-            const stats = fs.statSync(fullPath);
-            if (stats.isDirectory()) {
-              size += calculateDirSize(fullPath);
-            } else {
-              size += stats.size;
-            }
-          }
-        } catch (err) {
-          logger.error("Error calculating directory size:", err);
-        }
-        return size;
-      };
-
-      const instanceDir = getInstanceDir(id);
-      let totalSize = calculateDirSize(instanceDir);
-
-      // User requested: .mrpack -> Modrinth, .zip -> CurseForge
-      const filters =
-        format === "mrpack"
-          ? [{ name: "Modrinth Modpack", extensions: ["mrpack"] }]
-          : [{ name: "CurseForge Modpack (Zip)", extensions: ["zip"] }];
-
-      const defaultName = exportOptions.name || instance.name;
-      const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
-        title: `Export ${defaultName}`,
-        defaultPath: `${defaultName}-${exportOptions.version || "1.0.0"}.${format}`,
-        filters: filters,
-      });
-
-      if (canceled || !filePath) {
-        return { ok: false, error: "Cancelled" };
-      }
-
-      // Check if already exporting
-      if (activeExports.has(id)) {
-        return { ok: false, error: "Export already in progress" };
-      }
-
-      return new Promise<{ ok: boolean; error?: string }>((resolve) => {
-        const output = fs.createWriteStream(filePath);
-        const archive = archiver("zip", {
-          zlib: { level: 9 }, // Sets the compression level.
-        });
-
-        let isCancelled = false;
-
-        // Register cancellation
-        activeExports.set(id, {
-          abort: () => {
-            isCancelled = true;
-            archive.abort();
-            output.destroy(); // Close file stream
-            try {
-              if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
-              }
-            } catch (err) {
-              logger.error("Failed to delete incomplete export file:", {
-                message: String(err),
-              });
-            }
-            resolve({ ok: false, error: "Cancelled" });
-          },
-        });
-
-        output.on("close", () => {
-          if (!isCancelled) {
-            activeExports.delete(id);
-            resolve({ ok: true });
-          }
-        });
-
-        output.on("end", () => {
-          // Data has been drained
-        });
-
-        archive.on("warning", (err) => {
-          if (err.code === "ENOENT") {
-            logger.warn("Archiver warning:", {
-              message: err.message,
-              code: err.code,
-              data: err.data,
-            });
-          } else {
-            activeExports.delete(id);
-            resolve({ ok: false, error: err.message });
-          }
-        });
-
-        archive.on("error", (err) => {
-          if (!isCancelled) {
-            logger.error("Archiver error:", {
-              message: err.message,
-              code: err.code,
-              data: err.data,
-            });
-            activeExports.delete(id);
-            resolve({ ok: false, error: err.message });
-          }
-        });
-
-        // Progress listener
-        archive.on("progress", (progress) => {
-          if (isCancelled) return;
-
-          const transferred = progress.fs.processedBytes;
-          const percent =
-            totalSize > 0
-              ? Math.min(Math.round((transferred / totalSize) * 100), 100)
-              : 0;
-
-          sender.send("instance-export-progress", id, {
-            transferred: transferred,
-            total: totalSize,
-            percent: percent,
-          });
-        });
-
-        archive.pipe(output);
-
-        try {
-          // Recursive file adder with filter
-          const addDirectory = (
-            dir: string,
-            base: string,
-            targetPrefix: string,
-          ) => {
-            const files = fs.readdirSync(dir);
-            for (const file of files) {
-              const fullPath = path.join(dir, file);
-              const relPath = path.relative(base, fullPath);
-              const stats = fs.statSync(fullPath);
-
-              if (!shouldInclude(relPath, stats.isDirectory())) continue;
-
-              if (stats.isDirectory()) {
-                addDirectory(fullPath, base, targetPrefix);
-              } else {
-                // Use forward slashes for ZIP entry names (cross-platform compat)
-                const entryName = path
-                  .join(targetPrefix, relPath)
-                  .replace(/\\/g, "/");
-                archive.file(fullPath, {
-                  name: entryName,
-                });
-              }
-            }
-          };
-
-          if (format === "zip") {
-            // Standard ZIP (Filtered)
-            // Just add files from instanceDir matching the filter
-            addDirectory(instanceDir, instanceDir, "");
-          } else {
-            // MRPACK Export
-            // 1. Create modrinth.index.json
-            const index = {
-              formatVersion: 1,
-              game: "minecraft",
-              versionId: instance.minecraftVersion,
-              name: exportOptions.name || instance.name,
-              summary:
-                exportOptions.description || `Exported from Reality Launcher`,
-              version: exportOptions.version || "1.0.0",
-              files: [], // Loose mode
-              dependencies: {
-                minecraft: instance.minecraftVersion,
-                ...(instance.loader && instance.loader !== "vanilla"
-                  ? {
-                      [(() => {
-                        const l = instance.loader?.toLowerCase().trim();
-                        if (l === "fabric") return "fabric-loader";
-                        if (l === "quilt") return "quilt-loader";
-                        if (l === "neo-forge") return "neoforge";
-                        if (l === "forge") return "forge";
-                        if (l === "neoforge") return "neoforge";
-                        return l || "fabric-loader";
-                      })()]: instance.loaderVersion || "*",
-                    }
-                  : {}),
-              },
-            };
-
-            logger.info("Generated Modrinth index.json:", index);
-
-            archive.append(JSON.stringify(index, null, 2), {
-              name: "modrinth.index.json",
-            });
-
-            // 2. Add files to overrides folder with filter
-            addDirectory(instanceDir, instanceDir, "overrides");
-          }
-
-          archive.finalize();
-        } catch (error: any) {
-          if (!isCancelled) {
-            activeExports.delete(id);
-            resolve({ ok: false, error: error.message });
-          }
-        }
-      });
     },
   );
 
@@ -2315,7 +2134,80 @@ export function registerInstanceHandlers(
       if (!fs.existsSync(dir)) return { ok: true, items: [] };
 
       try {
-        const native = getNativeModule();
+        const native = getNativeModule() as any;
+        if (typeof native.scanPackDirectory === "function") {
+          try {
+            const scanned = (await native.scanPackDirectory(
+              dir,
+              "resource",
+            )) as Array<{
+              filename?: string;
+              displayName?: string;
+              isDirectory?: boolean;
+              size?: number;
+              modifiedAt?: string;
+              enabled?: boolean;
+              iconBase64?: string | null;
+              version?: string | null;
+              packFormat?: number | null;
+            }>;
+
+            if (Array.isArray(scanned)) {
+              const nativeItems = scanned
+                .map((item) => {
+                  const filename = String(item?.filename || "");
+                  if (!filename) return null;
+
+                  const displayName = String(
+                    item?.displayName || filename,
+                  ).trim();
+                  const cacheKey = `resourcepack:${displayName.toLowerCase()}`;
+                  const cached = getIconFromCache(cacheKey);
+                  const nativeIcon =
+                    typeof item?.iconBase64 === "string" &&
+                    item.iconBase64.length > 0
+                      ? `data:image/png;base64,${item.iconBase64}`
+                      : null;
+
+                  let version =
+                    typeof item?.version === "string" && item.version.length > 0
+                      ? item.version
+                      : undefined;
+                  if (!version && typeof item?.packFormat === "number") {
+                    version = packFormatToVersion(item.packFormat, "resource");
+                  }
+
+                  return {
+                    filename,
+                    name: displayName,
+                    isDirectory: Boolean(item?.isDirectory),
+                    size:
+                      typeof item?.size === "number"
+                        ? item.size
+                        : 0,
+                    modifiedAt:
+                      typeof item?.modifiedAt === "string" &&
+                      item.modifiedAt.length > 0
+                        ? item.modifiedAt
+                        : new Date().toISOString(),
+                    enabled: item?.enabled !== false,
+                    icon: cached?.url || nativeIcon,
+                    version,
+                    modrinthProjectId: cached?.modrinthId,
+                    curseforgeProjectId: cached?.curseforgeId,
+                  };
+                })
+                .filter((item) => item !== null) as any[];
+
+              return { ok: true, items: dedupeResourcepacks(nativeItems) };
+            }
+          } catch (scanError) {
+            logger.warn("Native resourcepack scan failed, fallback to JS", {
+              message: String((scanError as Error)?.message || scanError),
+            });
+          }
+        }
+
         const nativePacks = (() => {
           try {
             return (native.listInstanceResourcepacks(
@@ -2523,6 +2415,109 @@ export function registerInstanceHandlers(
       if (!fs.existsSync(dir)) return { ok: true, items: [] };
 
       try {
+        const native = getNativeModule() as any;
+        if (typeof native.scanPackDirectory === "function") {
+          try {
+            const scanned = (await native.scanPackDirectory(
+              dir,
+              "shader",
+            )) as Array<{
+              filename?: string;
+              displayName?: string;
+              isDirectory?: boolean;
+              size?: number;
+              modifiedAt?: string;
+              enabled?: boolean;
+              iconBase64?: string | null;
+              version?: string | null;
+            }>;
+
+            if (Array.isArray(scanned)) {
+              const mapped = scanned
+                .map((item) => {
+                  const filename = String(item?.filename || "");
+                  if (!filename) return null;
+                  const name = String(item?.displayName || filename).trim();
+                  const icon =
+                    typeof item?.iconBase64 === "string" &&
+                    item.iconBase64.length > 0
+                      ? `data:image/png;base64,${item.iconBase64}`
+                      : null;
+                  const version =
+                    typeof item?.version === "string" && item.version.length > 0
+                      ? item.version
+                      : undefined;
+                  return {
+                    filename,
+                    name,
+                    isDirectory: Boolean(item?.isDirectory),
+                    size: typeof item?.size === "number" ? item.size : 0,
+                    modifiedAt:
+                      typeof item?.modifiedAt === "string" &&
+                      item.modifiedAt.length > 0
+                        ? item.modifiedAt
+                        : new Date().toISOString(),
+                    enabled: item?.enabled !== false,
+                    icon,
+                    version,
+                  };
+                })
+                .filter((item) => item !== null) as Array<{
+                filename: string;
+                name: string;
+                isDirectory: boolean;
+                size: number;
+                modifiedAt: string;
+                enabled: boolean;
+                icon: string | null;
+                version?: string;
+              }>;
+
+              const enriched = await Promise.all(
+                mapped.map(async (item) => {
+                  let icon = item.icon;
+                  let version = item.version;
+                  let modrinthProjectId: string | undefined;
+                  let curseforgeProjectId: string | undefined;
+
+                  if (!icon) {
+                    const onlineResult = await fetchIconFromOnline(
+                      item.name,
+                      "shader",
+                    );
+                    icon = onlineResult.url;
+                    modrinthProjectId = onlineResult.modrinthId;
+                    curseforgeProjectId = onlineResult.curseforgeId;
+                  }
+
+                  if (!version) {
+                    const nameMatch = item.name.match(
+                      /[_\-\s]([rv]?\d+(?:\.\d+)+(?:[._\-]\w+)*)$/i,
+                    );
+                    if (nameMatch) {
+                      version = nameMatch[1];
+                    }
+                  }
+
+                  return {
+                    ...item,
+                    icon,
+                    version,
+                    modrinthProjectId,
+                    curseforgeProjectId,
+                  };
+                }),
+              );
+
+              return { ok: true, items: dedupeShaders(enriched as any[]) };
+            }
+          } catch (scanError) {
+            logger.warn("Native shader scan failed, fallback to JS", {
+              message: String((scanError as Error)?.message || scanError),
+            });
+          }
+        }
+
         const files = await fs.promises.readdir(dir);
 
         // First pass: get basic info without icons (fast)
@@ -2784,6 +2779,71 @@ export function registerInstanceHandlers(
 
       const processDp = async (dpDir: string, worldName: string) => {
         if (!fs.existsSync(dpDir)) return;
+        const native = getNativeModule() as any;
+        if (typeof native.scanPackDirectory === "function") {
+          try {
+            const scanned = (await native.scanPackDirectory(
+              dpDir,
+              "datapack",
+            )) as Array<{
+              filename?: string;
+              displayName?: string;
+              isDirectory?: boolean;
+              size?: number;
+              modifiedAt?: string;
+              enabled?: boolean;
+              iconBase64?: string | null;
+              version?: string | null;
+              packFormat?: number | null;
+            }>;
+
+            if (Array.isArray(scanned)) {
+              const mapped = scanned
+                .map((item) => {
+                  const filename = String(item?.filename || "");
+                  if (!filename) return null;
+                  const name = String(item?.displayName || filename).trim();
+                  const icon =
+                    typeof item?.iconBase64 === "string" &&
+                    item.iconBase64.length > 0
+                      ? `data:image/png;base64,${item.iconBase64}`
+                      : null;
+                  let version =
+                    typeof item?.version === "string" && item.version.length > 0
+                      ? item.version
+                      : undefined;
+                  if (!version && typeof item?.packFormat === "number") {
+                    version = packFormatToVersion(item.packFormat, "data");
+                  }
+
+                  return {
+                    filename,
+                    name,
+                    worldName,
+                    isDirectory: Boolean(item?.isDirectory),
+                    size: typeof item?.size === "number" ? item.size : 0,
+                    modifiedAt:
+                      typeof item?.modifiedAt === "string" &&
+                      item.modifiedAt.length > 0
+                        ? item.modifiedAt
+                        : new Date().toISOString(),
+                    enabled: item?.enabled !== false,
+                    icon,
+                    version,
+                  };
+                })
+                .filter((item) => item !== null);
+
+              items.push(...mapped);
+              return;
+            }
+          } catch (scanError) {
+            logger.warn("Native datapack scan failed, fallback to JS", {
+              message: String((scanError as Error)?.message || scanError),
+            });
+          }
+        }
+
         const files = await fs.promises.readdir(dpDir);
 
         const dpItems = await Promise.all(
@@ -3098,9 +3158,35 @@ export function registerInstanceHandlers(
         if (!fs.existsSync(logPath)) {
           return { ok: true, content: "", message: "No log file" };
         }
-        const content = fs.readFileSync(logPath, "utf-8");
-        const lines = content.split("\n").slice(-500);
-        return { ok: true, content: lines.join("\n") };
+
+        const native = getNativeModule() as any;
+        if (typeof native.readLogTail === "function") {
+          try {
+            const nativeContent = native.readLogTail(
+              logPath,
+              LATEST_LOG_TAIL_MAX_LINES,
+              LATEST_LOG_TAIL_MAX_BYTES,
+            );
+            return {
+              ok: true,
+              content:
+                typeof nativeContent === "string"
+                  ? nativeContent
+                  : String(nativeContent || ""),
+            };
+          } catch (nativeError) {
+            logger.warn("[Logs] Native readLogTail failed, fallback to JS", {
+              message: String((nativeError as Error)?.message || nativeError),
+            });
+          }
+        }
+
+        const content = await readUtf8LogTail(
+          logPath,
+          LATEST_LOG_TAIL_MAX_LINES,
+          LATEST_LOG_TAIL_MAX_BYTES,
+        );
+        return { ok: true, content };
       } catch (error: any) {
         return { ok: false, error: error.message, content: "" };
       }

@@ -1922,64 +1922,90 @@ async function applyModLoader(
 
       // Run Forge installer in headless mode (async to prevent UI freeze)
       try {
-        const { spawn } = await import("child_process");
-        console.log(
-          `[${loaderType}] Install command: "${javaPath}" -jar "${installerPath}" --installClient "${minecraftDir}"`,
-        );
-
-        await new Promise<void>((resolve, reject) => {
-          const installerProcess = spawn(
+        if (typeof native.runForgeInstaller === "function") {
+          console.log(
+            `[${loaderType}] Native forge installer: "${javaPath}" -jar "${installerPath}" --installClient "${minecraftDir}"`,
+          );
+          const runResult = (await native.runForgeInstaller(
             javaPath,
-            ["-jar", installerPath, "--installClient", minecraftDir],
-            {
-              cwd: minecraftDir,
-              stdio: ["ignore", "pipe", "pipe"],
-              windowsHide: true,
-            },
+            installerPath,
+            minecraftDir,
+            600000,
+          )) as {
+            success?: boolean;
+            timeout?: boolean;
+            exitCode?: number | null;
+            error?: string | null;
+          };
+
+          if (!runResult?.success) {
+            if (runResult?.timeout) {
+              throw new Error("Installer timeout (10 minutes)");
+            }
+            throw new Error(
+              runResult?.error ||
+                `Installer exited with code ${runResult?.exitCode ?? "unknown"}`,
+            );
+          }
+          console.log(`[${loaderType}] Installer completed successfully`);
+        } else {
+          const { spawn } = await import("child_process");
+          console.log(
+            `[${loaderType}] Install command: "${javaPath}" -jar "${installerPath}" --installClient "${minecraftDir}"`,
           );
 
-          let stdout = "";
-          let stderr = "";
+          await new Promise<void>((resolve, reject) => {
+            const installerProcess = spawn(
+              javaPath,
+              ["-jar", installerPath, "--installClient", minecraftDir],
+              {
+                cwd: minecraftDir,
+                stdio: ["ignore", "pipe", "pipe"],
+                windowsHide: true,
+              },
+            );
 
-          installerProcess.stdout?.on("data", (data: Buffer) => {
-            const text = data.toString();
-            stdout += text;
-            // Log progress without flooding
-            const lines = text.split("\n").filter((l: string) => l.trim());
-            for (const line of lines) {
-              console.log(`[${loaderType}] ${line.trim()}`);
-            }
+            let stdout = "";
+            let stderr = "";
+
+            installerProcess.stdout?.on("data", (data: Buffer) => {
+              const text = data.toString();
+              stdout += text;
+              const lines = text.split("\n").filter((l: string) => l.trim());
+              for (const line of lines) {
+                console.log(`[${loaderType}] ${line.trim()}`);
+              }
+            });
+
+            installerProcess.stderr?.on("data", (data: Buffer) => {
+              stderr += data.toString();
+            });
+
+            installerProcess.on("close", (code) => {
+              if (code === 0) {
+                console.log(`[${loaderType}] Installer completed successfully`);
+                resolve();
+              } else {
+                console.error(
+                  `[${loaderType}] Installer Process Failed with code ${code}!`,
+                );
+                if (stdout) console.log(`[${loaderType}] stdout:\n${stdout}`);
+                if (stderr) console.error(`[${loaderType}] stderr:\n${stderr}`);
+                reject(new Error(`Installer exited with code ${code}`));
+              }
+            });
+
+            installerProcess.on("error", (err) => {
+              console.error(`[${loaderType}] Installer spawn error:`, err);
+              reject(err);
+            });
+
+            setTimeout(() => {
+              installerProcess.kill();
+              reject(new Error("Installer timeout (10 minutes)"));
+            }, 600000);
           });
-
-          installerProcess.stderr?.on("data", (data: Buffer) => {
-            stderr += data.toString();
-          });
-
-          installerProcess.on("close", (code) => {
-            if (code === 0) {
-              console.log(`[${loaderType}] Installer completed successfully`);
-              resolve();
-            } else {
-              console.error(
-                `[${loaderType}] Installer Process Failed with code ${code}!`,
-              );
-              if (stdout) console.log(`[${loaderType}] stdout:\n${stdout}`);
-              if (stderr) console.error(`[${loaderType}] stderr:\n${stderr}`);
-              reject(new Error(`Installer exited with code ${code}`));
-            }
-          });
-
-          installerProcess.on("error", (err) => {
-            console.error(`[${loaderType}] Installer spawn error:`, err);
-            reject(err);
-          });
-
-          // Timeout after 10 minutes
-          setTimeout(() => {
-            installerProcess.kill();
-            reject(new Error("Installer timeout (10 minutes)"));
-          }, 600000);
-        });
+        }
       } catch (installErr: any) {
         console.error(
           `[${loaderType}] Installer process encountered an error:`,

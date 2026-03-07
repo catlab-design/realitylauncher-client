@@ -238,7 +238,20 @@ app.on("child-process-gone", (_event, details) => {
 });
 
 // ปิด Hardware Acceleration เพื่อแก้ปัญหาเส้นประบน screen
-app.disableHardwareAcceleration();
+const hardwareAccelerationFlag = process.env.ML_DISABLE_HARDWARE_ACCELERATION;
+const shouldDisableHardwareAcceleration =
+  hardwareAccelerationFlag === "1" ||
+  (process.platform === "win32" && hardwareAccelerationFlag !== "0");
+if (shouldDisableHardwareAcceleration) {
+  app["disableHardwareAcceleration"]();
+  logger.warn("Hardware acceleration disabled", {
+    flag: "ML_DISABLE_HARDWARE_ACCELERATION",
+    mode:
+      hardwareAccelerationFlag === "1"
+        ? "env-force-disable"
+        : "win32-safe-default",
+  });
+}
 
 // ========================================
 // Import Modules

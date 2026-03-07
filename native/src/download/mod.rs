@@ -5,15 +5,18 @@ use futures::StreamExt;
 use napi_derive::napi;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sha1::{Digest as Sha1Digest, Sha1};
 use sha2::Sha256;
 use std::collections::{HashMap, HashSet};
-use std::io::{BufReader, Read};
+use std::io::{BufReader, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use std::time::UNIX_EPOCH;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::{RwLock, Semaphore};
+use walkdir::WalkDir;
+use zip::write::FileOptions;
 use zip::ZipArchive;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -495,6 +498,24 @@ pub struct CleanupExtraModsResult {
     pub kept_locked: u32,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(rename_all = "camelCase")]
+#[napi(object)]
+pub struct FastModListSyncSnapshot {
+    pub manifest_revision: String,
+    pub server_mods_signature: String,
+    pub locked_mods_signature: String,
+    pub local_mods_signature: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+#[napi(object)]
+pub struct FastModListSyncCheckResult {
+    pub can_skip: bool,
+    pub snapshot: FastModListSyncSnapshot,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[napi(object)]
 pub struct PostInstallModpackFilesResult {
@@ -575,6 +596,146 @@ fn save_sync_hash_cache(root: &Path, cache: &SyncHashCache) {
             let _ = std::fs::rename(&tmp_path, &cache_path);
         }
         let _ = std::fs::remove_file(&tmp_path);
+    }
+}
+
+fn fast_mod_list_snapshot_path(root: &Path) -> PathBuf {
+    root.join(".ml_fast_mod_list_sync_v1.json")
+}
+
+fn load_fast_mod_list_snapshot(root: &Path) -> Option<FastModListSyncSnapshot> {
+    let cache_path = fast_mod_list_snapshot_path(root);
+    let bytes = std::fs::read(&cache_path).ok()?;
+    serde_json::from_slice::<FastModListSyncSnapshot>(&bytes).ok()
+}
+
+fn save_fast_mod_list_snapshot(root: &Path, snapshot: &FastModListSyncSnapshot) -> bool {
+    let cache_path = fast_mod_list_snapshot_path(root);
+    if let Some(parent) = cache_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
+    let payload = match serde_json::to_vec(snapshot) {
+        Ok(payload) => payload,
+        Err(_) => return false,
+    };
+
+    let tmp_path = cache_path.with_extension("tmp");
+    if std::fs::write(&tmp_path, payload).is_ok() {
+        if std::fs::rename(&tmp_path, &cache_path).is_err() {
+            let _ = std::fs::remove_file(&cache_path);
+            let _ = std::fs::rename(&tmp_path, &cache_path);
+        }
+        let _ = std::fs::remove_file(&tmp_path);
+        return true;
+    }
+
+    false
+}
+
+fn normalize_server_mod_list_entry(value: &str) -> Option<String> {
+    let normalized = value.replace('\\', "/").trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return None;
+    }
+    if !is_safe_relative_path(&normalized) {
+        return None;
+    }
+    if !normalized.starts_with("mods/") {
+        return None;
+    }
+
+    let normalized = if normalized.ends_with(".jar.disabled") {
+        normalized[..normalized.len().saturating_sub(".disabled".len())].to_string()
+    } else {
+        normalized
+    };
+
+    if normalized.ends_with(".jar") {
+        Some(normalized)
+    } else {
+        None
+    }
+}
+
+fn normalize_locked_mod_list_entry(value: &str) -> Option<String> {
+    let normalized = value.replace('\\', "/").trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return None;
+    }
+    let normalized = normalized.trim_start_matches('/').to_string();
+    let normalized = if normalized.starts_with("mods/") {
+        normalized
+    } else {
+        format!("mods/{normalized}")
+    };
+
+    let normalized = if normalized.ends_with(".jar.disabled") {
+        normalized[..normalized.len().saturating_sub(".disabled".len())].to_string()
+    } else {
+        normalized
+    };
+
+    if normalized.ends_with(".jar") {
+        Some(normalized)
+    } else {
+        None
+    }
+}
+
+fn build_signature_from_entries(entries: Vec<String>) -> String {
+    let mut values: Vec<String> = entries;
+    values.sort();
+    values.dedup();
+    values.join("|")
+}
+
+fn build_server_mods_list_signature(server_filenames: Vec<String>) -> String {
+    build_signature_from_entries(
+        server_filenames
+            .into_iter()
+            .filter_map(|value| normalize_server_mod_list_entry(&value))
+            .collect(),
+    )
+}
+
+fn build_locked_mods_list_signature(locked_mods: Vec<String>) -> String {
+    build_signature_from_entries(
+        locked_mods
+            .into_iter()
+            .filter_map(|value| normalize_locked_mod_list_entry(&value))
+            .collect(),
+    )
+}
+
+fn build_local_mods_list_signature(game_dir: &Path) -> String {
+    let mods_dir = game_dir.join("mods");
+    if !mods_dir.exists() {
+        return String::new();
+    }
+
+    let entries = std::fs::read_dir(&mods_dir)
+        .ok()
+        .into_iter()
+        .flat_map(|iter| iter.flatten())
+        .filter_map(|entry| entry.file_name().to_str().map(|name| name.to_string()))
+        .filter_map(|file_name| normalize_locked_mod_list_entry(&file_name))
+        .collect::<Vec<String>>();
+
+    build_signature_from_entries(entries)
+}
+
+fn build_fast_mod_list_snapshot(
+    game_dir: &Path,
+    manifest_revision: String,
+    server_filenames: Vec<String>,
+    locked_mods: Vec<String>,
+) -> FastModListSyncSnapshot {
+    FastModListSyncSnapshot {
+        manifest_revision,
+        server_mods_signature: build_server_mods_list_signature(server_filenames),
+        locked_mods_signature: build_locked_mods_list_signature(locked_mods),
+        local_mods_signature: build_local_mods_list_signature(game_dir),
     }
 }
 
@@ -893,6 +1054,78 @@ pub async fn cleanup_extra_mods(
     tokio::task::spawn_blocking(move || cleanup_extra_mods_sync(game_dir, server_filenames, locked_mods))
         .await
         .map_err(|err| napi::Error::from_reason(format!("Cleanup worker failed: {err}")))
+}
+
+fn check_fast_mod_list_sync_sync(
+    game_dir: String,
+    manifest_revision: String,
+    server_filenames: Vec<String>,
+    locked_mods: Option<Vec<String>>,
+) -> FastModListSyncCheckResult {
+    let root = PathBuf::from(game_dir);
+    let snapshot = build_fast_mod_list_snapshot(
+        &root,
+        manifest_revision,
+        server_filenames,
+        locked_mods.unwrap_or_default(),
+    );
+
+    if snapshot.manifest_revision.is_empty() {
+        return FastModListSyncCheckResult {
+            can_skip: false,
+            snapshot,
+        };
+    }
+
+    let previous = load_fast_mod_list_snapshot(&root);
+    let can_skip = previous
+        .as_ref()
+        .map(|prev| {
+            prev.manifest_revision == snapshot.manifest_revision
+                && prev.server_mods_signature == snapshot.server_mods_signature
+                && prev.locked_mods_signature == snapshot.locked_mods_signature
+                && prev.local_mods_signature == snapshot.local_mods_signature
+        })
+        .unwrap_or(false);
+
+    FastModListSyncCheckResult { can_skip, snapshot }
+}
+
+#[napi]
+pub async fn check_fast_mod_list_sync(
+    game_dir: String,
+    manifest_revision: String,
+    server_filenames: Vec<String>,
+    locked_mods: Option<Vec<String>>,
+) -> napi::Result<FastModListSyncCheckResult> {
+    tokio::task::spawn_blocking(move || {
+        check_fast_mod_list_sync_sync(
+            game_dir,
+            manifest_revision,
+            server_filenames,
+            locked_mods,
+        )
+    })
+    .await
+    .map_err(|err| napi::Error::from_reason(format!("Fast list check worker failed: {err}")))
+}
+
+fn save_fast_mod_list_sync_snapshot_sync(
+    game_dir: String,
+    snapshot: FastModListSyncSnapshot,
+) -> bool {
+    let root = PathBuf::from(game_dir);
+    save_fast_mod_list_snapshot(&root, &snapshot)
+}
+
+#[napi]
+pub async fn save_fast_mod_list_sync_snapshot(
+    game_dir: String,
+    snapshot: FastModListSyncSnapshot,
+) -> napi::Result<bool> {
+    tokio::task::spawn_blocking(move || save_fast_mod_list_sync_snapshot_sync(game_dir, snapshot))
+        .await
+        .map_err(|err| napi::Error::from_reason(format!("Fast list save worker failed: {err}")))
 }
 
 fn post_install_modpack_files_sync(game_dir: String) -> PostInstallModpackFilesResult {
@@ -1277,5 +1510,544 @@ pub async fn inspect_pack_metadata(
     tokio::task::spawn_blocking(move || inspect_pack_metadata_sync(pack_path, pack_kind))
         .await
         .map_err(|err| napi::Error::from_reason(format!("Pack inspector worker failed: {err}")))
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+#[napi(object)]
+pub struct PackScanEntry {
+    pub filename: String,
+    pub display_name: String,
+    pub is_directory: bool,
+    pub size: i64,
+    pub modified_at: String,
+    pub enabled: bool,
+    #[napi(ts_type = "string | null | undefined")]
+    pub icon_base64: Option<String>,
+    #[napi(ts_type = "string | null | undefined")]
+    pub version: Option<String>,
+    #[napi(ts_type = "number | null | undefined")]
+    pub pack_format: Option<u32>,
+}
+
+fn strip_known_pack_suffix(file_name: &str, kind: &str) -> (String, bool) {
+    let lower = file_name.to_ascii_lowercase();
+    if lower.ends_with(".zip.disabled") {
+        let trimmed = file_name[..file_name.len().saturating_sub(".zip.disabled".len())].to_string();
+        return (trimmed, false);
+    }
+    if kind == "datapack" && lower.ends_with(".jar.disabled") {
+        let trimmed = file_name[..file_name.len().saturating_sub(".jar.disabled".len())].to_string();
+        return (trimmed, false);
+    }
+    if lower.ends_with(".zip") {
+        let trimmed = file_name[..file_name.len().saturating_sub(".zip".len())].to_string();
+        return (trimmed, true);
+    }
+    if kind == "datapack" && lower.ends_with(".jar") {
+        let trimmed = file_name[..file_name.len().saturating_sub(".jar".len())].to_string();
+        return (trimmed, true);
+    }
+    (file_name.to_string(), true)
+}
+
+fn pack_entry_is_supported(file_name: &str, is_directory: bool, kind: &str) -> bool {
+    if is_directory {
+        return true;
+    }
+
+    let lower = file_name.to_ascii_lowercase();
+    if lower.ends_with(".zip") || lower.ends_with(".zip.disabled") {
+        return true;
+    }
+
+    kind == "datapack" && (lower.ends_with(".jar") || lower.ends_with(".jar.disabled"))
+}
+
+fn to_rfc3339_or_default(meta: &std::fs::Metadata) -> String {
+    meta.modified()
+        .ok()
+        .map(|modified| chrono::DateTime::<chrono::Utc>::from(modified).to_rfc3339())
+        .unwrap_or_default()
+}
+
+fn directory_size_bytes(path: &Path) -> i64 {
+    let mut total = 0i64;
+    for entry in WalkDir::new(path).into_iter().flatten() {
+        if entry.file_type().is_file() {
+            if let Ok(meta) = entry.metadata() {
+                total += meta.len() as i64;
+            }
+        }
+    }
+    total
+}
+
+fn normalize_pack_kind(kind: &str) -> String {
+    match kind.to_ascii_lowercase().as_str() {
+        "resourcepack" | "resource" | "resourcepacks" => "resource".to_string(),
+        "shader" | "shaders" | "shaderpack" | "shaderpacks" => "shader".to_string(),
+        "datapack" | "datapacks" | "data" => "datapack".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn scan_pack_directory_sync(directory: String, pack_kind: String) -> Vec<PackScanEntry> {
+    let dir_path = PathBuf::from(directory);
+    if !dir_path.exists() {
+        return Vec::new();
+    }
+
+    let normalized_kind = normalize_pack_kind(&pack_kind);
+    let entries = match std::fs::read_dir(&dir_path) {
+        Ok(entries) => entries,
+        Err(_) => return Vec::new(),
+    };
+
+    let mut items = Vec::new();
+    for entry in entries.flatten() {
+        let file_name = entry.file_name().to_string_lossy().to_string();
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(_) => continue,
+        };
+        let is_directory = file_type.is_dir();
+        if !pack_entry_is_supported(&file_name, is_directory, &normalized_kind) {
+            continue;
+        }
+
+        let metadata = match entry.metadata() {
+            Ok(metadata) => metadata,
+            Err(_) => continue,
+        };
+
+        let entry_path = entry.path();
+        let size = if is_directory {
+            directory_size_bytes(&entry_path)
+        } else {
+            metadata.len() as i64
+        };
+        let modified_at = to_rfc3339_or_default(&metadata);
+        let (display_name, enabled) = if is_directory {
+            (file_name.clone(), true)
+        } else {
+            strip_known_pack_suffix(&file_name, &normalized_kind)
+        };
+
+        let metadata = inspect_pack_metadata_sync(
+            entry_path.to_string_lossy().to_string(),
+            normalized_kind.clone(),
+        );
+
+        items.push(PackScanEntry {
+            filename: file_name,
+            display_name,
+            is_directory,
+            size,
+            modified_at,
+            enabled,
+            icon_base64: metadata.icon_base64,
+            version: metadata.version,
+            pack_format: metadata.pack_format,
+        });
+    }
+
+    items.sort_by(|a, b| a.display_name.to_lowercase().cmp(&b.display_name.to_lowercase()));
+    items
+}
+
+#[napi]
+pub async fn scan_pack_directory(
+    directory: String,
+    pack_kind: String,
+) -> napi::Result<Vec<PackScanEntry>> {
+    tokio::task::spawn_blocking(move || scan_pack_directory_sync(directory, pack_kind))
+        .await
+        .map_err(|err| napi::Error::from_reason(format!("Pack scan worker failed: {err}")))
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+#[napi(object)]
+pub struct ModpackExportRequest {
+    pub instance_dir: String,
+    pub output_path: String,
+    pub format: String,
+    pub included_paths: Vec<String>,
+    pub name: String,
+    pub version: String,
+    #[napi(ts_type = "string | null | undefined")]
+    pub description: Option<String>,
+    pub minecraft_version: String,
+    pub loader: String,
+    #[napi(ts_type = "string | null | undefined")]
+    pub loader_version: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+#[napi(object)]
+pub struct ModpackExportResult {
+    pub success: bool,
+    pub files_written: u32,
+    pub total_bytes: i64,
+}
+
+fn normalize_export_rel_path(value: &str) -> String {
+    value
+        .trim()
+        .replace('\\', "/")
+        .trim_matches('/')
+        .to_string()
+}
+
+fn collect_export_files(
+    instance_dir: &Path,
+    included_paths: &[String],
+) -> Result<Vec<(PathBuf, String)>, String> {
+    let canonical_base = std::fs::canonicalize(instance_dir)
+        .map_err(|err| format!("Failed to resolve instance directory: {err}"))?;
+    let mut seen = HashSet::<String>::new();
+    let mut files = Vec::<(PathBuf, String)>::new();
+
+    for raw_path in included_paths {
+        let relative = normalize_export_rel_path(raw_path);
+        if relative.is_empty() || !is_safe_relative_path(&relative) {
+            continue;
+        }
+
+        let candidate = canonical_base.join(&relative);
+        if !candidate.exists() {
+            continue;
+        }
+
+        let canonical_candidate = match std::fs::canonicalize(&candidate) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        if !canonical_candidate.starts_with(&canonical_base) {
+            continue;
+        }
+
+        if canonical_candidate.is_dir() {
+            for entry in WalkDir::new(&canonical_candidate)
+                .into_iter()
+                .flatten()
+                .filter(|entry| entry.file_type().is_file())
+            {
+                let file_path = entry.path().to_path_buf();
+                if !file_path.starts_with(&canonical_base) {
+                    continue;
+                }
+                let rel = match file_path.strip_prefix(&canonical_base) {
+                    Ok(path) => normalize_export_rel_path(&path.to_string_lossy()),
+                    Err(_) => continue,
+                };
+                if rel.is_empty() || !seen.insert(rel.clone()) {
+                    continue;
+                }
+                files.push((file_path, rel));
+            }
+        } else {
+            let rel = match canonical_candidate.strip_prefix(&canonical_base) {
+                Ok(path) => normalize_export_rel_path(&path.to_string_lossy()),
+                Err(_) => continue,
+            };
+            if rel.is_empty() || !seen.insert(rel.clone()) {
+                continue;
+            }
+            files.push((canonical_candidate, rel));
+        }
+    }
+
+    files.sort_by(|a, b| a.1.cmp(&b.1));
+    Ok(files)
+}
+
+fn loader_key_for_modrinth(loader: &str) -> Option<&'static str> {
+    match loader.trim().to_ascii_lowercase().as_str() {
+        "fabric" => Some("fabric-loader"),
+        "quilt" => Some("quilt-loader"),
+        "forge" => Some("forge"),
+        "neoforge" | "neo-forge" => Some("neoforge"),
+        _ => None,
+    }
+}
+
+fn build_modrinth_index(request: &ModpackExportRequest) -> String {
+    let mut dependencies = serde_json::Map::new();
+    dependencies.insert("minecraft".to_string(), json!(request.minecraft_version));
+    if let Some(key) = loader_key_for_modrinth(&request.loader) {
+        dependencies.insert(
+            key.to_string(),
+            json!(request.loader_version.clone().unwrap_or_else(|| "*".to_string())),
+        );
+    }
+
+    let index = json!({
+        "formatVersion": 1,
+        "game": "minecraft",
+        "versionId": request.version,
+        "name": request.name,
+        "summary": request.description.clone().unwrap_or_else(|| "Exported from Reality Launcher".to_string()),
+        "version": request.version,
+        "files": [],
+        "dependencies": dependencies,
+    });
+
+    serde_json::to_string_pretty(&index).unwrap_or_else(|_| "{\"formatVersion\":1}".to_string())
+}
+
+fn export_modpack_archive_sync(request: ModpackExportRequest) -> Result<ModpackExportResult, String> {
+    let format = request.format.trim().to_ascii_lowercase();
+    if format != "zip" && format != "mrpack" {
+        return Err("Unsupported export format".to_string());
+    }
+
+    let instance_dir = PathBuf::from(&request.instance_dir);
+    if !instance_dir.exists() {
+        return Err("Instance directory not found".to_string());
+    }
+
+    let files = collect_export_files(&instance_dir, &request.included_paths)?;
+    let output_path = PathBuf::from(&request.output_path);
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|err| format!("Failed to create output directory: {err}"))?;
+    }
+
+    let tmp_path = PathBuf::from(format!("{}.tmp", output_path.to_string_lossy()));
+    let export_result = (|| -> Result<ModpackExportResult, String> {
+        let file = std::fs::File::create(&tmp_path)
+            .map_err(|err| format!("Failed to create archive: {err}"))?;
+        let mut zip = zip::ZipWriter::new(file);
+        let options = FileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .unix_permissions(0o644);
+
+        let mut files_written = 0u32;
+        let mut total_bytes = 0i64;
+
+        if format == "mrpack" {
+            let index = build_modrinth_index(&request);
+            zip.start_file("modrinth.index.json", options)
+                .map_err(|err| format!("Failed to add modrinth index: {err}"))?;
+            zip.write_all(index.as_bytes())
+                .map_err(|err| format!("Failed to write modrinth index: {err}"))?;
+            total_bytes += index.len() as i64;
+        }
+
+        for (source_path, relative_path) in files {
+            let zip_name = if format == "mrpack" {
+                format!("overrides/{relative_path}")
+            } else {
+                relative_path.clone()
+            };
+            zip.start_file(zip_name, options)
+                .map_err(|err| format!("Failed to start zip entry: {err}"))?;
+
+            let mut source = std::fs::File::open(&source_path)
+                .map_err(|err| format!("Failed to read source file {:?}: {err}", source_path))?;
+            let written = std::io::copy(&mut source, &mut zip)
+                .map_err(|err| format!("Failed to write zip entry {:?}: {err}", source_path))?;
+            files_written += 1;
+            total_bytes += written as i64;
+        }
+
+        zip.finish()
+            .map_err(|err| format!("Failed to finalize archive: {err}"))?;
+
+        if output_path.exists() {
+            let _ = std::fs::remove_file(&output_path);
+        }
+        std::fs::rename(&tmp_path, &output_path)
+            .map_err(|err| format!("Failed to move archive into place: {err}"))?;
+
+        Ok(ModpackExportResult {
+            success: true,
+            files_written,
+            total_bytes,
+        })
+    })();
+
+    if export_result.is_err() {
+        let _ = std::fs::remove_file(&tmp_path);
+    }
+    export_result
+}
+
+#[napi]
+pub async fn export_modpack_archive(
+    request: ModpackExportRequest,
+) -> napi::Result<ModpackExportResult> {
+    tokio::task::spawn_blocking(move || export_modpack_archive_sync(request))
+        .await
+        .map_err(|err| napi::Error::from_reason(format!("Modpack export worker failed: {err}")))?
+        .map_err(napi::Error::from_reason)
+}
+
+#[cfg(test)]
+mod native_migration_tests {
+    use super::*;
+    use std::io::Write;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use zip::write::FileOptions;
+    use zip::ZipWriter;
+
+    fn unique_temp_dir(prefix: &str) -> PathBuf {
+        let mut path = std::env::temp_dir();
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        path.push(format!("{prefix}_{nonce}"));
+        std::fs::create_dir_all(&path).expect("failed to create temp dir");
+        path
+    }
+
+    fn write_zip_file(path: &Path, files: &[(&str, &[u8])]) {
+        let file = std::fs::File::create(path).expect("failed to create zip");
+        let mut zip = ZipWriter::new(file);
+        let options = FileOptions::default();
+        for (name, data) in files {
+            zip.start_file(*name, options)
+                .expect("failed to start zip file entry");
+            zip.write_all(data).expect("failed to write zip entry");
+        }
+        zip.finish().expect("failed to finalize zip");
+    }
+
+    #[test]
+    fn scan_pack_directory_sync_reads_resourcepack_metadata() {
+        let root = unique_temp_dir("ml_scan_pack_test");
+        let pack_path = root.join("FancyPack.zip");
+        let pack_icon = [0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1A, b'\n'];
+        write_zip_file(
+            &pack_path,
+            &[
+                ("pack.png", &pack_icon),
+                (
+                    "pack.mcmeta",
+                    br#"{"pack":{"pack_format":15,"description":"Demo pack"}}"#,
+                ),
+            ],
+        );
+
+        let entries = scan_pack_directory_sync(
+            root.to_string_lossy().to_string(),
+            "resource".to_string(),
+        );
+
+        assert_eq!(entries.len(), 1);
+        let first = &entries[0];
+        assert_eq!(first.filename, "FancyPack.zip");
+        assert_eq!(first.display_name, "FancyPack");
+        assert!(first.enabled);
+        assert!(first.icon_base64.is_some());
+        assert_eq!(first.pack_format, Some(15));
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn export_modpack_archive_sync_writes_mrpack_overrides() {
+        let root = unique_temp_dir("ml_export_test");
+        let instance_dir = root.join("instance");
+        std::fs::create_dir_all(instance_dir.join("config")).expect("create config");
+        std::fs::create_dir_all(instance_dir.join("mods")).expect("create mods");
+        std::fs::write(instance_dir.join("config").join("demo.txt"), b"hello").expect("write cfg");
+        std::fs::write(instance_dir.join("mods").join("demo.jar"), b"jarbytes").expect("write mod");
+
+        let output_path = root.join("pack.mrpack");
+        let result = export_modpack_archive_sync(ModpackExportRequest {
+            instance_dir: instance_dir.to_string_lossy().to_string(),
+            output_path: output_path.to_string_lossy().to_string(),
+            format: "mrpack".to_string(),
+            included_paths: vec!["config".to_string(), "mods/demo.jar".to_string()],
+            name: "Test Pack".to_string(),
+            version: "1.0.0".to_string(),
+            description: Some("demo".to_string()),
+            minecraft_version: "1.20.1".to_string(),
+            loader: "fabric".to_string(),
+            loader_version: Some("0.15.0".to_string()),
+        })
+        .expect("export failed");
+
+        assert!(result.success);
+        assert!(output_path.exists());
+
+        let file = std::fs::File::open(&output_path).expect("open archive");
+        let mut archive = ZipArchive::new(file).expect("read archive");
+
+        assert!(archive.by_name("modrinth.index.json").is_ok());
+        assert!(archive.by_name("overrides/config/demo.txt").is_ok());
+        assert!(archive.by_name("overrides/mods/demo.jar").is_ok());
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn fast_mod_list_sync_check_can_skip_after_snapshot_saved() {
+        let root = unique_temp_dir("ml_fast_mod_sync_test");
+        let mods_dir = root.join("mods");
+        std::fs::create_dir_all(&mods_dir).expect("create mods dir");
+        std::fs::write(mods_dir.join("a.jar"), b"jar-a").expect("write a.jar");
+        std::fs::write(mods_dir.join("b.jar.disabled"), b"jar-b").expect("write b.jar.disabled");
+
+        let first = check_fast_mod_list_sync_sync(
+            root.to_string_lossy().to_string(),
+            "rev-1".to_string(),
+            vec!["mods/a.jar".to_string(), "mods/b.jar".to_string()],
+            Some(vec![]),
+        );
+        assert!(!first.can_skip);
+        assert!(!first.snapshot.local_mods_signature.is_empty());
+
+        assert!(save_fast_mod_list_sync_snapshot_sync(
+            root.to_string_lossy().to_string(),
+            first.snapshot.clone(),
+        ));
+
+        let second = check_fast_mod_list_sync_sync(
+            root.to_string_lossy().to_string(),
+            "rev-1".to_string(),
+            vec!["mods/a.jar".to_string(), "mods/b.jar".to_string()],
+            Some(vec![]),
+        );
+        assert!(second.can_skip);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn fast_mod_list_sync_check_detects_local_list_changes() {
+        let root = unique_temp_dir("ml_fast_mod_sync_change_test");
+        let mods_dir = root.join("mods");
+        std::fs::create_dir_all(&mods_dir).expect("create mods dir");
+        std::fs::write(mods_dir.join("a.jar"), b"jar-a").expect("write a.jar");
+
+        let initial = check_fast_mod_list_sync_sync(
+            root.to_string_lossy().to_string(),
+            "rev-1".to_string(),
+            vec!["mods/a.jar".to_string()],
+            Some(vec![]),
+        );
+        assert!(save_fast_mod_list_sync_snapshot_sync(
+            root.to_string_lossy().to_string(),
+            initial.snapshot.clone(),
+        ));
+
+        std::fs::write(mods_dir.join("c.jar"), b"jar-c").expect("write c.jar");
+
+        let changed = check_fast_mod_list_sync_sync(
+            root.to_string_lossy().to_string(),
+            "rev-1".to_string(),
+            vec!["mods/a.jar".to_string()],
+            Some(vec![]),
+        );
+        assert!(!changed.can_skip);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
 }
 

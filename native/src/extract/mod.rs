@@ -99,6 +99,17 @@ pub fn extract_zip(
     })
 }
 
+#[napi]
+pub async fn extract_zip_async(
+    zip_path: String,
+    dest_path: String,
+    strip_prefix: Option<String>,
+) -> napi::Result<ExtractResult> {
+    tokio::task::spawn_blocking(move || extract_zip(zip_path, dest_path, strip_prefix))
+        .await
+        .map_err(|err| napi::Error::from_reason(format!("Extract worker failed: {err}")))?
+}
+
 /// Extract specific files from a ZIP
 #[napi]
 pub fn extract_files_from_zip(

@@ -1208,7 +1208,7 @@ export function ModPack({ colors, config, setImportModpackOpen, setActiveTab, se
                     </div>
                     <button
                         onClick={() => { playClick(); setActiveTab("explore"); }}
-                        className="w-full py-3 rounded-xl border-2 border-dashed text-sm font-medium transition-all hover:opacity-80"
+                        className="w-full py-3 rounded-xl border-2 text-sm font-medium transition-all hover:opacity-80"
                         style={{ borderColor: colors.outline, color: colors.onSurfaceVariant }}
                     >
                         {t('add_new_mod_pack_btn')}

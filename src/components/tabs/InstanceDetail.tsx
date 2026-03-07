@@ -433,7 +433,7 @@ export function InstanceDetail({
         }
     };
 
-    const handleDeleteResourcepack = async (filename: string, _options?: DeleteOptions): Promise<DeleteResult> => {
+    const handleDeleteResourcepack = async (filename: string, _worldName?: string, _options?: DeleteOptions): Promise<DeleteResult> => {
         try {
             const result = await (window.api as any)?.instanceDeleteResourcepack?.(instance.id, filename);
             if (result?.ok) {
@@ -466,7 +466,7 @@ export function InstanceDetail({
         }
     };
 
-    const handleDeleteShader = async (filename: string, _options?: DeleteOptions): Promise<DeleteResult> => {
+    const handleDeleteShader = async (filename: string, _worldName?: string, _options?: DeleteOptions): Promise<DeleteResult> => {
         try {
             const result = await (window.api as any)?.instanceDeleteShader?.(instance.id, filename);
             if (result?.ok) {

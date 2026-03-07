@@ -6,6 +6,9 @@ use std::io::Read;
 use regex::Regex;
 use crate::get_client;
 use crate::download::download_file;
+use std::process::Stdio;
+use std::time::{Duration, Instant};
+use std::thread;
 
 #[derive(Serialize, Deserialize, Debug)]
 #[napi(string_enum)]
@@ -22,6 +25,112 @@ pub struct ForgeVersionInfo {
     pub loader_type: ForgeLoaderType,
     pub installer_url: String,
     pub version_json_path: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+#[napi(object)]
+pub struct ForgeInstallerRunResult {
+    pub success: bool,
+    pub timeout: bool,
+    pub exit_code: Option<i32>,
+    pub error: Option<String>,
+}
+
+fn run_forge_installer_sync(
+    java_path: String,
+    installer_path: String,
+    minecraft_dir: String,
+    timeout_ms: Option<u32>,
+) -> ForgeInstallerRunResult {
+    #[cfg(windows)]
+    use std::os::windows::process::CommandExt;
+
+    #[cfg(windows)]
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    let timeout = Duration::from_millis(timeout_ms.unwrap_or(600_000) as u64);
+
+    let mut command = std::process::Command::new(&java_path);
+    command
+        .arg("-jar")
+        .arg(&installer_path)
+        .arg("--installClient")
+        .arg(&minecraft_dir)
+        .current_dir(&minecraft_dir)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            return ForgeInstallerRunResult {
+                success: false,
+                timeout: false,
+                exit_code: None,
+                error: Some(format!("Failed to spawn installer: {error}")),
+            };
+        }
+    };
+
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                return ForgeInstallerRunResult {
+                    success: status.success(),
+                    timeout: false,
+                    exit_code: status.code(),
+                    error: if status.success() {
+                        None
+                    } else {
+                        Some(format!("Installer exited with code {}", status.code().unwrap_or(-1)))
+                    },
+                };
+            }
+            Ok(None) => {
+                if started.elapsed() >= timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return ForgeInstallerRunResult {
+                        success: false,
+                        timeout: true,
+                        exit_code: None,
+                        error: Some("Installer timeout".to_string()),
+                    };
+                }
+                thread::sleep(Duration::from_millis(200));
+            }
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return ForgeInstallerRunResult {
+                    success: false,
+                    timeout: false,
+                    exit_code: None,
+                    error: Some(format!("Installer wait failed: {error}")),
+                };
+            }
+        }
+    }
+}
+
+#[napi]
+pub async fn run_forge_installer(
+    java_path: String,
+    installer_path: String,
+    minecraft_dir: String,
+    timeout_ms: Option<u32>,
+) -> napi::Result<ForgeInstallerRunResult> {
+    tokio::task::spawn_blocking(move || {
+        run_forge_installer_sync(java_path, installer_path, minecraft_dir, timeout_ms)
+    })
+    .await
+    .map_err(|error| napi::Error::from_reason(format!("Forge installer worker failed: {error}")))
 }
 
 /// Install Forge/NeoForge

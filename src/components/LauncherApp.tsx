@@ -2664,8 +2664,7 @@ function LauncherAppContent() {
                 />
               )}
 
-              {/* Modpack Tab - Always render to preserve game state */}
-              <div key="modpack-tab" className="h-full" style={{ display: activeTab === "modpack" ? "block" : "none" }}>
+              {activeTab === "modpack" && (
                 <ModPack
                   colors={colors}
                   config={config}
@@ -2673,7 +2672,7 @@ function LauncherAppContent() {
                   setActiveTab={setActiveTab}
                   setSettingsTab={setSettingsTab}
                   onShowConfirm={handleShowConfirm}
-                  isActive={activeTab === "modpack"}
+                  isActive={true}
                   selectedInstance={selectedInstance}
                   setSelectedInstance={setSelectedInstance}
                   selectedServer={selectedServer}
@@ -2681,7 +2680,7 @@ function LauncherAppContent() {
                   updateConfig={updateConfig}
                   language={config.language}
                 />
-              </div>
+              )}
 
               {/* Explore Tab */}
               {activeTab === "explore" && (
@@ -2723,10 +2722,7 @@ function LauncherAppContent() {
 
               {/* About Tab - New Premium Component */}
               {activeTab === "about" && <About colors={colors} config={config} />}
-              {/* Wardrobe Tab - Always render to preserve 3D model state */}
-              <div key="wardrobe-tab" className="h-full" style={{ display: activeTab === "wardrobe" ? "block" : "none" }}>
-                <Wardrobe colors={colors} />
-              </div>
+              {activeTab === "wardrobe" && <Wardrobe colors={colors} />}
             </div>
           </main>
         </div>

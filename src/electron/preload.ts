@@ -14,7 +14,25 @@ let _instancesCacheKey: string = "";
 let _instancesCacheTs: number = 0;
 let _instancesCacheData: any[] | null = null;
 let _instancesCachePromise: Promise<any> | null = null;
-const INSTANCES_CACHE_MS = 500; // milliseconds
+const INSTANCES_CACHE_MS = 5_000; // milliseconds
+
+function invalidateInstancesListCache(): void {
+  _instancesCacheKey = "";
+  _instancesCacheTs = 0;
+  _instancesCacheData = null;
+  _instancesCachePromise = null;
+}
+
+async function invokeWithInstancesCacheInvalidation<T = unknown>(
+  channel: string,
+  ...args: unknown[]
+): Promise<T> {
+  try {
+    return (await ipcRenderer.invoke(channel, ...args)) as T;
+  } finally {
+    invalidateInstancesListCache();
+  }
+}
 
 // ========================================
 // API Definition
@@ -346,11 +364,12 @@ const api = {
   ) => ipcRenderer.invoke("curseforge-get-download-url", projectId, fileId),
   curseforgePrefetch: () => ipcRenderer.invoke("curseforge-prefetch"),
   curseforgeClearCache: () => ipcRenderer.invoke("curseforge-clear-cache"),
+  invalidateInstancesListCache: () => {
+    invalidateInstancesListCache();
+    return Promise.resolve(true);
+  },
   launcherClearCache: async () => {
-    _instancesCacheKey = "";
-    _instancesCacheTs = 0;
-    _instancesCacheData = null;
-    _instancesCachePromise = null;
+    invalidateInstancesListCache();
 
     const [launcherRes, modrinthRes, curseforgeRes] = await Promise.allSettled([
       ipcRenderer.invoke("launcher-clear-cache"),
@@ -427,8 +446,9 @@ const api = {
   fetchAllAgendas: () => ipcRenderer.invoke("fetch-all-agendas"),
   instancesGetJoinedServers: () => ipcRenderer.invoke("instances-get-joined"),
   instancesCloudInstall: (id: string) =>
-    ipcRenderer.invoke("instances-cloud-install", id),
-  instancesCloudSync: () => ipcRenderer.invoke("instances-cloud-sync"),
+    invokeWithInstancesCacheInvalidation("instances-cloud-install", id),
+  instancesCloudSync: () =>
+    invokeWithInstancesCacheInvalidation("instances-cloud-sync"),
   instancesCreate: (options: {
     name: string;
     minecraftVersion: string;
@@ -437,7 +457,7 @@ const api = {
     icon?: string;
     javaPath?: string;
     ramMB?: number;
-  }) => ipcRenderer.invoke("instances-create", options),
+  }) => invokeWithInstancesCacheInvalidation("instances-create", options),
   instancesGet: (id: string) => ipcRenderer.invoke("instances-get", id),
   instancesUpdate: (
     id: string,
@@ -451,12 +471,13 @@ const api = {
       javaArguments?: string;
       autoUpdate?: boolean;
     },
-  ) => ipcRenderer.invoke("instances-update", id, updates),
+  ) => invokeWithInstancesCacheInvalidation("instances-update", id, updates),
   instanceCancelAction: (id: string) =>
     ipcRenderer.invoke("instance-cancel-action", id),
-  instancesDelete: (id: string) => ipcRenderer.invoke("instances-delete", id),
+  instancesDelete: (id: string) =>
+    invokeWithInstancesCacheInvalidation("instances-delete", id),
   instancesDuplicate: (id: string) =>
-    ipcRenderer.invoke("instances-duplicate", id),
+    invokeWithInstancesCacheInvalidation("instances-duplicate", id),
   instancesOpenFolder: (id: string) =>
     ipcRenderer.invoke("instances-open-folder", id),
   instancesExport: (id: string, options: any) =>
@@ -484,7 +505,10 @@ const api = {
   // Instance Events
   // ----------------------------------------
   onInstancesUpdated: (callback: () => void) => {
-    const handler = () => callback();
+    const handler = () => {
+      invalidateInstancesListCache();
+      callback();
+    };
     ipcRenderer.on("instances-updated", handler);
     return () => ipcRenderer.removeListener("instances-updated", handler);
   },
@@ -493,10 +517,12 @@ const api = {
     id: string,
     options?: { skipServerModSync?: boolean },
   ) => ipcRenderer.invoke("instances-launch", id, options),
-  instanceJoin: (key: string) => ipcRenderer.invoke("instance-join", key),
+  instanceJoin: (key: string) =>
+    invokeWithInstancesCacheInvalidation("instance-join", key),
   instanceJoinPublic: (id: string) =>
-    ipcRenderer.invoke("instance-join-public", id),
-  instanceLeave: (id: string) => ipcRenderer.invoke("instance-leave", id),
+    invokeWithInstancesCacheInvalidation("instance-join-public", id),
+  instanceLeave: (id: string) =>
+    invokeWithInstancesCacheInvalidation("instance-leave", id),
   onLaunchProgress: (
     callback: (data: {
       type: string;
@@ -599,7 +625,11 @@ const api = {
 
   // Set instance icon (saves to icon.png file)
   instancesSetIcon: (instanceId: string, iconData: string) =>
-    ipcRenderer.invoke("instances-set-icon", instanceId, iconData),
+    invokeWithInstancesCacheInvalidation(
+      "instances-set-icon",
+      instanceId,
+      iconData,
+    ),
 
   // List resourcepacks and shaders
   instanceListResourcepacks: (instanceId: string) =>

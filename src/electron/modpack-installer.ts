@@ -179,6 +179,86 @@ async function verifyFileHashNative(
   return (await native.verifyFileHash(filePath, hashes.sha1, undefined)) as boolean;
 }
 
+async function downloadModpackFilesNativeBatch(
+  native: any,
+  files: ModpackFile[],
+  destDir: string,
+  concurrency: number,
+  onProgress?: ProgressCallback,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  if (!Array.isArray(files) || files.length === 0) {
+    return true;
+  }
+  if (typeof native?.downloadFiles !== "function") {
+    return false;
+  }
+
+  const chunkSize = Math.max(1, Math.min(files.length, Math.max(concurrency * 3, 18)));
+  let completed = 0;
+
+  if (onProgress) {
+    onProgress({
+      stage: "downloading",
+      message: "Preparing downloads...",
+      current: 0,
+      total: files.length,
+      percent: 0,
+    });
+  }
+
+  for (let i = 0; i < files.length; i += chunkSize) {
+    if (signal?.aborted) throw new Error("Installation cancelled");
+    const chunk = files.slice(i, i + chunkSize);
+
+    const tasks = chunk.map((file) => {
+      const prioritizedUrls = sortDownloadUrlsByPriority(file.downloads || []);
+      return {
+        url: prioritizedUrls[0] || "",
+        path: path.join(destDir, file.path),
+        sha1: file.hashes?.sha1 || undefined,
+        size:
+          typeof file.fileSize === "number" && Number.isFinite(file.fileSize)
+            ? Math.max(0, Math.floor(file.fileSize))
+            : undefined,
+      };
+    });
+
+    if (tasks.some((task) => !task.url)) {
+      return false;
+    }
+
+    const result = (await native.downloadFiles(tasks, concurrency)) as
+      | {
+          success?: boolean;
+          failed?: number;
+          errors?: string[];
+        }
+      | undefined;
+
+    if (!result?.success || Number(result.failed || 0) > 0) {
+      console.warn(
+        `[ModpackInstaller] Native batch download failed at chunk ${i / chunkSize + 1}:`,
+        result?.errors?.slice(0, 3) || result,
+      );
+      return false;
+    }
+
+    completed += chunk.length;
+    if (onProgress) {
+      onProgress({
+        stage: "downloading",
+        message: "Downloading mod files...",
+        current: completed,
+        total: files.length,
+        percent: Math.round((completed / files.length) * 100),
+      });
+    }
+  }
+
+  return true;
+}
+
 export async function parseModpackIndex(
   mrpackPath: string,
 ): Promise<ModpackIndex> {
@@ -313,6 +393,36 @@ async function downloadModpackFiles(
   console.log(
     `[ModpackInstaller] Download worker count: ${concurrency} (files=${total})`,
   );
+
+  if (total > 0) {
+    try {
+      const downloadedByNativeBatch = await downloadModpackFilesNativeBatch(
+        native,
+        clientFiles,
+        destDir,
+        concurrency,
+        onProgress,
+        signal,
+      );
+      if (downloadedByNativeBatch) {
+        console.log(
+          `[ModpackInstaller] Native batch download complete: ${total}/${total} files`,
+        );
+        return;
+      }
+    } catch (nativeBatchError: any) {
+      if (
+        nativeBatchError?.message === "Installation cancelled" ||
+        signal?.aborted
+      ) {
+        throw nativeBatchError;
+      }
+      console.warn(
+        "[ModpackInstaller] Native batch download path failed, fallback to per-file workers:",
+        nativeBatchError,
+      );
+    }
+  }
 
   const queue = [...clientFiles];
   const activeWorkers = Array(Math.min(concurrency, queue.length))

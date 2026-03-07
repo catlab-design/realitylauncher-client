@@ -280,10 +280,26 @@ type ServerSyncMod = {
   hash?: string;
 };
 
+type SyncProgressData = {
+  type: string;
+  task: string;
+  current?: number;
+  total?: number;
+  percent?: number;
+  filename?: string;
+};
+
 type ServerContentPayload = {
   manifestRevision?: string;
   urlsIncluded?: boolean;
   mods?: ServerSyncMod[];
+};
+
+type FastModListSnapshot = {
+  manifestRevision: string;
+  serverModsSignature: string;
+  lockedModsSignature: string;
+  localModsSignature: string;
 };
 
 const MANIFEST_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -299,6 +315,7 @@ const joinedServersInFlight = new Map<
   string,
   Promise<{ owned: any[]; member: any[] }>
 >();
+const fastModListSyncCache = new Map<string, FastModListSnapshot>();
 
 function normalizeServerMods(mods?: ServerSyncMod[]): ServerSyncMod[] {
   if (!mods || !Array.isArray(mods)) return [];
@@ -325,6 +342,158 @@ function normalizeServerMods(mods?: ServerSyncMod[]): ServerSyncMod[] {
   return Array.from(uniqueMods.values()).filter(
     (m) => !m.filename.endsWith(".keep"),
   );
+}
+
+function buildServerModsListSignature(mods: ServerSyncMod[]): string {
+  const normalized = mods
+    .map((mod) => mod.filename.replace(/\\/g, "/").trim().toLowerCase())
+    .filter((filename) => filename.startsWith("mods/"))
+    .map((filename) =>
+      filename.endsWith(".jar.disabled")
+        ? filename.slice(0, -".disabled".length)
+        : filename,
+    )
+    .filter((filename) => filename.endsWith(".jar"))
+    .sort();
+
+  return normalized.join("|");
+}
+
+function buildLockedModsListSignature(lockedMods: string[]): string {
+  return [...lockedMods]
+    .map((name) => name.replace(/\\/g, "/").trim().toLowerCase())
+    .map((name) => name.replace(/^mods\//, ""))
+    .map((name) =>
+      name.endsWith(".jar.disabled")
+        ? name.slice(0, -".disabled".length)
+        : name,
+    )
+    .sort()
+    .join("|");
+}
+
+async function buildLocalModsListSignature(modsDir: string): Promise<string> {
+  if (!fs.existsSync(modsDir)) {
+    return "";
+  }
+
+  const files = await fs.promises.readdir(modsDir).catch(() => []);
+  return files
+    .filter((file) => file.endsWith(".jar") || file.endsWith(".jar.disabled"))
+    .map((file) => file.replace(/\\/g, "/").trim().toLowerCase())
+    .map((file) =>
+      file.endsWith(".jar.disabled")
+        ? file.slice(0, -".disabled".length)
+        : file,
+    )
+    .map((file) => `mods/${file}`)
+    .sort()
+    .join("|");
+}
+
+async function tryDownloadQueueWithNativeBatch(
+  nativeModule: any,
+  gameDirectory: string,
+  queue: ServerSyncMod[],
+  downloadConcurrency: number,
+  signal: AbortSignal | undefined,
+  emitProgress: (data: SyncProgressData, force?: boolean) => void,
+): Promise<boolean> {
+  if (!Array.isArray(queue) || queue.length === 0) {
+    return true;
+  }
+  if (typeof nativeModule?.downloadFiles !== "function") {
+    return false;
+  }
+
+  const chunkSize = Math.max(
+    1,
+    Math.min(queue.length, Math.max(downloadConcurrency * 3, 18)),
+  );
+  let completedCount = 0;
+
+  emitProgress(
+    {
+      type: "sync-download",
+      task: "",
+      current: 0,
+      total: queue.length,
+      percent: 0,
+    },
+    true,
+  );
+
+  for (let index = 0; index < queue.length; index += chunkSize) {
+    throwIfAborted(signal);
+    const chunk = queue.slice(index, index + chunkSize);
+    const tasks = chunk.map((mod) => {
+      const resolvedHash = normalizeExpectedHash(mod.hash);
+      const task: {
+        url: string;
+        path: string;
+        sha1?: string;
+        sha256?: string;
+        size?: number;
+      } = {
+        url: String(mod.url || ""),
+        path: path.join(gameDirectory, mod.filename),
+      };
+      if (typeof mod.size === "number" && Number.isFinite(mod.size)) {
+        task.size = Math.max(0, Math.floor(mod.size));
+      }
+
+      if (resolvedHash?.algorithm === "sha256") {
+        task.sha256 = resolvedHash.hex;
+      } else if (resolvedHash?.algorithm === "sha1") {
+        task.sha1 = resolvedHash.hex;
+      } else if (mod.hash) {
+        task.sha1 = mod.hash;
+      }
+
+      return task;
+    });
+
+    if (tasks.some((task) => !task.url)) {
+      return false;
+    }
+
+    const result = (await nativeModule.downloadFiles(
+      tasks,
+      downloadConcurrency,
+    )) as
+      | {
+          success?: boolean;
+          failed?: number;
+          errors?: string[];
+        }
+      | undefined;
+
+    if (!result?.success || Number(result.failed || 0) > 0) {
+      console.warn(
+        `[Cloud Sync] Native batch download failed for chunk ${
+          index / chunkSize + 1
+        }:`,
+        result?.errors?.slice(0, 3) || result,
+      );
+      return false;
+    }
+
+    completedCount += chunk.length;
+    emitProgress(
+      {
+        type: "sync-download",
+        task: "",
+        current: completedCount,
+        total: queue.length,
+        percent: Math.round((completedCount / queue.length) * 100),
+      },
+      true,
+    );
+
+    await yieldToEventLoop();
+  }
+
+  return true;
 }
 
 async function fetchServerContentPayload(
@@ -869,22 +1038,122 @@ export async function syncServerMods(
     }
 
     const validServerMods = normalizeServerMods(manifestData.mods);
-    const plannerEligibleMods = validServerMods.filter(
-      (mod) => typeof mod.hash === "string" && mod.hash.length > 0,
-    );
-    const plannerDeferredMods = validServerMods.filter(
-      (mod) => !(typeof mod.hash === "string" && mod.hash.length > 0),
-    );
-    if (plannerDeferredMods.length > 0) {
-      console.log(
-        `[Cloud Sync] Deferring ${plannerDeferredMods.length} files without hash to JS compatibility checks.`,
-      );
-    }
+    const nativeModule = getNativeModule() as any;
+    const serverModFilenames = validServerMods.map((mod) => mod.filename);
 
     // Limit cleanup to mods directory ONLY to prevent deleting saves/configs/options
     const modsDir = path.join(instance.gameDirectory, "mods");
     if (!fs.existsSync(modsDir)) {
       await fs.promises.mkdir(modsDir, { recursive: true });
+    }
+    const serverModsSignature = buildServerModsListSignature(validServerMods);
+    const lockedModsSignature = buildLockedModsListSignature(
+      instance.lockedMods || [],
+    );
+    let fastCheck:
+      | {
+          canSkip?: boolean;
+          snapshot?: {
+            manifestRevision?: string;
+            serverModsSignature?: string;
+            lockedModsSignature?: string;
+            localModsSignature?: string;
+          };
+        }
+      | null = null;
+
+    if (
+      typeof nativeModule.checkFastModListSync === "function" &&
+      typeof manifestData?.manifestRevision === "string" &&
+      manifestData.manifestRevision.length > 0
+    ) {
+      try {
+        fastCheck = (await nativeModule.checkFastModListSync(
+          instance.gameDirectory,
+          manifestData.manifestRevision,
+          serverModFilenames,
+          instance.lockedMods || [],
+        )) as {
+          canSkip?: boolean;
+          snapshot?: {
+            manifestRevision?: string;
+            serverModsSignature?: string;
+            lockedModsSignature?: string;
+            localModsSignature?: string;
+          };
+        };
+      } catch (fastCheckError) {
+        console.warn(
+          "[Cloud Sync] Native fast mod list check failed, fallback to JS list compare:",
+          fastCheckError,
+        );
+      }
+    }
+
+    if (manifestRes.notModified && fastCheck && fastCheck.canSkip) {
+      console.log(
+        `[Cloud Sync] Fast list match for ${instance.id}; skip deep file verification.`,
+      );
+      emitProgress(
+        {
+          type: "sync-check",
+          task: "เธ•เธฃเธงเธเธชเธญเธเน€เธชเธฃเนเธเธชเธดเนเธ",
+          current: 1,
+          total: 1,
+          percent: 100,
+        },
+        true,
+      );
+      emitProgress(
+        {
+          type: "sync-complete",
+          task: "เธเธดเธเธเนเธเนเธญเธกเธนเธฅเธชเธณเน€เธฃเนเธ",
+          percent: 100,
+        },
+        true,
+      );
+      return;
+    }
+
+    if (
+      manifestRes.notModified &&
+      typeof manifestData?.manifestRevision === "string" &&
+      manifestData.manifestRevision.length > 0 &&
+      serverModsSignature.length > 0
+    ) {
+      const fastSnapshot = fastModListSyncCache.get(instance.id);
+      if (
+        fastSnapshot &&
+        fastSnapshot.manifestRevision === manifestData.manifestRevision &&
+        fastSnapshot.serverModsSignature === serverModsSignature &&
+        fastSnapshot.lockedModsSignature === lockedModsSignature
+      ) {
+        const localModsSignature = await buildLocalModsListSignature(modsDir);
+        if (localModsSignature === fastSnapshot.localModsSignature) {
+          console.log(
+            `[Cloud Sync] Fast list match for ${instance.id}; skip deep file verification.`,
+          );
+          emitProgress(
+            {
+              type: "sync-check",
+              task: "ตรวจสอบเสร็จสิ้น",
+              current: 1,
+              total: 1,
+              percent: 100,
+            },
+            true,
+          );
+          emitProgress(
+            {
+              type: "sync-complete",
+              task: "ซิงค์ข้อมูลสำเร็จ",
+              percent: 100,
+            },
+            true,
+          );
+          return;
+        }
+      }
     }
 
     emitProgress({ type: "sync-check", task: "" });
@@ -902,7 +1171,6 @@ export async function syncServerMods(
       Math.min(16, configuredConcurrency),
     );
     const hashConcurrency = Math.max(1, Math.min(8, downloadConcurrency));
-    const nativeModule = getNativeModule() as any;
 
     const finalQueue: Array<{
       filename: string;
@@ -918,7 +1186,7 @@ export async function syncServerMods(
     let plannedByNative = false;
     if (
       typeof nativeModule.planServerSyncDownloads === "function" &&
-      plannerEligibleMods.length > 0
+      validServerMods.length > 0
     ) {
       try {
         emitProgress(
@@ -926,7 +1194,7 @@ export async function syncServerMods(
             type: "sync-check",
             task: "กำลังตรวจสอบไฟล์ทั้งหมด...",
             current: 0,
-            total: plannerEligibleMods.length,
+            total: validServerMods.length,
             percent: 0,
           },
           true,
@@ -934,7 +1202,7 @@ export async function syncServerMods(
 
         const planned = await nativeModule.planServerSyncDownloads(
           instance.gameDirectory,
-          plannerEligibleMods,
+          validServerMods,
         );
         if (planned?.downloadQueue && Array.isArray(planned.downloadQueue)) {
           finalQueue.push(...planned.downloadQueue);
@@ -955,8 +1223,8 @@ export async function syncServerMods(
               current:
                 typeof planned.inspected === "number"
                   ? planned.inspected
-                  : plannerEligibleMods.length,
-              total: plannerEligibleMods.length,
+                  : validServerMods.length,
+              total: validServerMods.length,
               percent: 100,
             },
             true,
@@ -970,7 +1238,7 @@ export async function syncServerMods(
       }
     }
 
-    const jsScanMods = plannedByNative ? plannerDeferredMods : validServerMods;
+    const jsScanMods = plannedByNative ? [] : validServerMods;
     if (jsScanMods.length > 0) {
       let inspectedMods = 0;
       for (const mod of jsScanMods) {
@@ -1311,89 +1579,111 @@ export async function syncServerMods(
       `[Cloud Sync] Downloading ${finalQueue.length} files with concurrency=${downloadConcurrency}...`,
     );
 
-    let completedCount = 0;
-    await runWithConcurrency(
-      finalQueue,
-      downloadConcurrency,
-      async (mod) => {
-        throwIfAborted(signal);
-        const destPath = path.join(instance.gameDirectory, mod.filename);
-        let attempts = 0;
-        const maxAttempts = 3;
+    let downloadedByNative = false;
+    if (finalQueue.length > 0) {
+      try {
+        downloadedByNative = await tryDownloadQueueWithNativeBatch(
+          nativeModule,
+          instance.gameDirectory,
+          finalQueue,
+          downloadConcurrency,
+          signal,
+          emitProgress,
+        );
+      } catch (nativeDownloadError) {
+        console.warn(
+          "[Cloud Sync] Native batch downloader failed, fallback to JS downloads:",
+          nativeDownloadError,
+        );
+        downloadedByNative = false;
+      }
+    }
 
-        while (attempts < maxAttempts) {
+    if (!downloadedByNative) {
+      let completedCount = 0;
+      await runWithConcurrency(
+        finalQueue,
+        downloadConcurrency,
+        async (mod) => {
           throwIfAborted(signal);
-          try {
-            attempts++;
-            const downloadUrl = mod.url;
-            if (!downloadUrl) {
-              throw new Error(`Missing URL for ${mod.filename}`);
-            }
-            await downloadFileWithSoftHashCheck(
-              downloadUrl,
-              destPath,
-              mod.hash,
-              signal,
-              (percent) => {
-                if (finalQueue.length > 0) {
-                  const blended = Math.round(
-                    ((completedCount + percent / 100) / finalQueue.length) *
-                      100,
-                  );
-                  emitProgress({
-                    type: "sync-download",
-                    task: "",
-                    filename: mod.filename,
-                    current: completedCount,
-                    total: finalQueue.length,
-                    percent: blended,
-                  });
-                }
-              },
-            );
+          const destPath = path.join(instance.gameDirectory, mod.filename);
+          let attempts = 0;
+          const maxAttempts = 3;
 
-            completedCount++;
-            const overallPercent =
-              finalQueue.length > 0
-                ? Math.round((completedCount / finalQueue.length) * 100)
-                : 100;
-            emitProgress({
-              type: "sync-download",
-              task: "",
-              filename: mod.filename,
-              current: completedCount,
-              total: finalQueue.length,
-              percent: overallPercent,
-            });
-            return;
-          } catch (err: any) {
+          while (attempts < maxAttempts) {
             throwIfAborted(signal);
-
-            if (
-              typeof err?.message === "string" &&
-              err.message.includes("Cancelled")
-            ) {
-              throw err;
-            }
-
-            console.warn(
-              `[Cloud Sync] Download failed for ${mod.filename} (Attempt ${attempts}/${maxAttempts}): ${err?.message || err} | URL=${mod.url}`,
-            );
-
-            if (attempts >= maxAttempts) {
-              console.error(
-                `[Cloud Sync] Gave up on ${mod.filename} after ${maxAttempts} attempts.`,
+            try {
+              attempts++;
+              const downloadUrl = mod.url;
+              if (!downloadUrl) {
+                throw new Error(`Missing URL for ${mod.filename}`);
+              }
+              await downloadFileWithSoftHashCheck(
+                downloadUrl,
+                destPath,
+                mod.hash,
+                signal,
+                (percent) => {
+                  if (finalQueue.length > 0) {
+                    const blended = Math.round(
+                      ((completedCount + percent / 100) / finalQueue.length) *
+                        100,
+                    );
+                    emitProgress({
+                      type: "sync-download",
+                      task: "",
+                      filename: mod.filename,
+                      current: completedCount,
+                      total: finalQueue.length,
+                      percent: blended,
+                    });
+                  }
+                },
               );
-              throw err;
-            }
 
-            const delay = Math.random() * 1000 + attempts * 1000;
-            await sleepWithAbort(delay, signal);
+              completedCount++;
+              const overallPercent =
+                finalQueue.length > 0
+                  ? Math.round((completedCount / finalQueue.length) * 100)
+                  : 100;
+              emitProgress({
+                type: "sync-download",
+                task: "",
+                filename: mod.filename,
+                current: completedCount,
+                total: finalQueue.length,
+                percent: overallPercent,
+              });
+              return;
+            } catch (err: any) {
+              throwIfAborted(signal);
+
+              if (
+                typeof err?.message === "string" &&
+                err.message.includes("Cancelled")
+              ) {
+                throw err;
+              }
+
+              console.warn(
+                `[Cloud Sync] Download failed for ${mod.filename} (Attempt ${attempts}/${maxAttempts}): ${err?.message || err} | URL=${mod.url}`,
+              );
+
+              if (attempts >= maxAttempts) {
+                console.error(
+                  `[Cloud Sync] Gave up on ${mod.filename} after ${maxAttempts} attempts.`,
+                );
+                throw err;
+              }
+
+              const delay = Math.random() * 1000 + attempts * 1000;
+              await sleepWithAbort(delay, signal);
+            }
           }
-        }
-      },
-      signal,
-    );
+        },
+        signal,
+      );
+    }
     throwIfAborted(signal);
 
     // 3. Delete extra mods (Respect Locked Mods, ONLY in mods folder)
@@ -1472,6 +1762,42 @@ export async function syncServerMods(
         }
       }
     }
+
+    if (
+      typeof manifestData?.manifestRevision === "string" &&
+      manifestData.manifestRevision.length > 0 &&
+      serverModsSignature.length > 0
+    ) {
+      let savedByNative = false;
+      if (
+        typeof nativeModule.saveFastModListSyncSnapshot === "function" &&
+        fastCheck?.snapshot
+      ) {
+        try {
+          await nativeModule.saveFastModListSyncSnapshot(
+            instance.gameDirectory,
+            fastCheck.snapshot,
+          );
+          savedByNative = true;
+        } catch (fastSaveError) {
+          console.warn(
+            "[Cloud Sync] Failed to persist native fast list snapshot, fallback to JS cache:",
+            fastSaveError,
+          );
+        }
+      }
+
+      if (!savedByNative) {
+        const localModsSignature = await buildLocalModsListSignature(modsDir);
+        fastModListSyncCache.set(instance.id, {
+          manifestRevision: manifestData.manifestRevision,
+          serverModsSignature,
+          lockedModsSignature,
+          localModsSignature,
+        });
+      }
+    }
+
     console.log("[Cloud Sync] Sync complete.");
     emitProgress(
       {

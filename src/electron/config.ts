@@ -123,6 +123,9 @@ const DEFAULT_CONFIG: LauncherConfig = {
 
 let currentConfig: LauncherConfig = { ...DEFAULT_CONFIG };
 let configLoaded = false;
+const CONFIG_SAVE_DEBOUNCE_MS = 150;
+let saveConfigTimer: NodeJS.Timeout | null = null;
+let pendingConfigSnapshot: LauncherConfig | null = null;
 
 /**
  * Get the app data directory for storing config and instances
@@ -203,16 +206,33 @@ function loadConfig(): LauncherConfig {
  * Save config to disk
  */
 function saveConfig(): void {
-  try {
+  pendingConfigSnapshot = { ...currentConfig };
+
+  if (saveConfigTimer) {
+    clearTimeout(saveConfigTimer);
+  }
+
+  saveConfigTimer = setTimeout(() => {
+    saveConfigTimer = null;
+    const snapshot = pendingConfigSnapshot;
+    pendingConfigSnapshot = null;
+    if (!snapshot) return;
+
     const configPath = getConfigPath();
     const dir = path.dirname(configPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(configPath, JSON.stringify(currentConfig, null, 2));
-  } catch (error) {
-    console.error("[Config] Failed to save config:", error);
-  }
+    void fs.promises
+      .mkdir(dir, { recursive: true })
+      .then(() =>
+        fs.promises.writeFile(
+          configPath,
+          JSON.stringify(snapshot, null, 2),
+          "utf-8",
+        ),
+      )
+      .catch((error) => {
+        console.error("[Config] Failed to save config:", error);
+      });
+  }, CONFIG_SAVE_DEBOUNCE_MS);
 }
 
 /**

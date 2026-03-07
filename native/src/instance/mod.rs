@@ -8,9 +8,11 @@
 
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
+use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
 use walkdir::WalkDir;
 use chrono::Utc;
+use base64::{engine::general_purpose, Engine as _};
 
 /// Instance loader type
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -66,6 +68,8 @@ pub struct ModInfo {
     pub description: Option<String>,
     pub authors: Option<Vec<String>>,
     pub mod_id: Option<String>,
+    #[napi(ts_type = "string | null | undefined")]
+    pub icon_base64: Option<String>,
     pub enabled: bool,
     pub size: i64,
 }
@@ -197,16 +201,7 @@ pub async fn list_instances(base_dir: String, offset: Option<u32>, limit: Option
             if meta_path.exists() {
                 // println!("[Rust Core] Found instance.json for {}", instance_id);
                 if let Ok(content) = tokio::fs::read_to_string(&meta_path).await {
-                    if let Ok(mut meta) = serde_json::from_str::<InstanceMeta>(&content) {
-                        // Load icon if exists
-                        let icon_path = base.join(&instance_id).join("icon.png");
-                        if icon_path.exists() {
-                            if let Ok(data) = tokio::fs::read(icon_path).await {
-                                use base64::{Engine as _, engine::general_purpose};
-                                let b64 = general_purpose::STANDARD.encode(data);
-                                meta.icon = Some(format!("data:image/png;base64,{}", b64));
-                            }
-                        }
+                    if let Ok(meta) = serde_json::from_str::<InstanceMeta>(&content) {
                         found_instances.push(meta);
                     } else {
                         println!("[Rust Core] Failed to parse instance.json for {}", instance_id);
@@ -373,11 +368,12 @@ pub fn list_instance_mods(base_dir: String, instance_id: String) -> napi::Result
 
         mods.push(ModInfo {
             filename,
-            name: mod_info.0,
-            version: mod_info.1,
-            description: mod_info.2,
-            authors: mod_info.3,
-            mod_id: mod_info.4,
+            name: mod_info.name,
+            version: mod_info.version,
+            description: mod_info.description,
+            authors: mod_info.authors,
+            mod_id: mod_info.mod_id,
+            icon_base64: mod_info.icon_base64,
             enabled,
             size,
         });
@@ -393,21 +389,82 @@ pub fn list_instance_mods(base_dir: String, instance_id: String) -> napi::Result
     Ok(mods)
 }
 
+#[derive(Default)]
+struct ParsedModInfo {
+    name: Option<String>,
+    version: Option<String>,
+    description: Option<String>,
+    authors: Option<Vec<String>>,
+    mod_id: Option<String>,
+    icon_base64: Option<String>,
+}
+
+fn read_icon_from_archive(archive: &mut zip::ZipArchive<std::fs::File>, icon_path: &str) -> Option<String> {
+    let normalized = icon_path.replace('\\', "/");
+    if normalized.is_empty() {
+        return None;
+    }
+
+    let candidates = if normalized.starts_with('/') {
+        vec![normalized.trim_start_matches('/').to_string()]
+    } else {
+        vec![normalized.clone(), format!("/{normalized}")]
+    };
+
+    for candidate in candidates {
+        if let Ok(mut icon_file) = archive.by_name(&candidate) {
+            let mut bytes = Vec::new();
+            if std::io::Read::read_to_end(&mut icon_file, &mut bytes).is_ok() && !bytes.is_empty() {
+                return Some(general_purpose::STANDARD.encode(bytes));
+            }
+        }
+    }
+
+    None
+}
+
+fn pick_fabric_icon_path(json: &serde_json::Value) -> Option<String> {
+    if let Some(icon) = json.get("icon") {
+        if let Some(path) = icon.as_str() {
+            return Some(path.to_string());
+        }
+        if let Some(map) = icon.as_object() {
+            let best = map
+                .iter()
+                .filter_map(|(k, v)| {
+                    let size = k.parse::<u32>().ok()?;
+                    let value = v.as_str()?;
+                    Some((size, value.to_string()))
+                })
+                .max_by_key(|(size, _)| *size)
+                .map(|(_, path)| path);
+            if best.is_some() {
+                return best;
+            }
+        }
+    }
+    None
+}
+
 /// Read mod info from jar file
-fn read_mod_info(path: &PathBuf) -> Option<(Option<String>, Option<String>, Option<String>, Option<Vec<String>>, Option<String>)> {
+fn read_mod_info(path: &PathBuf) -> Option<ParsedModInfo> {
     let file = std::fs::File::open(path).ok()?;
     let mut archive = zip::ZipArchive::new(file).ok()?;
 
     // Try fabric.mod.json first
-    if let Ok(mut file) = archive.by_name("fabric.mod.json") {
+    if let Some(content) = (|| {
+        let mut file = archive.by_name("fabric.mod.json").ok()?;
         let mut content = String::new();
         std::io::Read::read_to_string(&mut file, &mut content).ok()?;
-        
+        Some(content)
+    })() {
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
             let name = json.get("name").and_then(|v| v.as_str()).map(String::from);
             let version = json.get("version").and_then(|v| v.as_str()).map(String::from);
             let description = json.get("description").and_then(|v| v.as_str()).map(String::from);
             let mod_id = json.get("id").and_then(|v| v.as_str()).map(String::from);
+            let icon_base64 = pick_fabric_icon_path(&json)
+                .and_then(|icon_path| read_icon_from_archive(&mut archive, &icon_path));
             
             let authors = json.get("authors").and_then(|v| {
                 v.as_array().map(|arr| {
@@ -420,32 +477,52 @@ fn read_mod_info(path: &PathBuf) -> Option<(Option<String>, Option<String>, Opti
                 })
             });
 
-            return Some((name, version, description, authors, mod_id));
+            return Some(ParsedModInfo {
+                name,
+                version,
+                description,
+                authors,
+                mod_id,
+                icon_base64,
+            });
         }
     }
 
     // Try mods.toml (Forge/NeoForge)
-    if let Ok(mut file) = archive.by_name("META-INF/mods.toml") {
+    if let Some(content) = (|| {
+        let mut file = archive.by_name("META-INF/mods.toml").ok()?;
         let mut content = String::new();
         std::io::Read::read_to_string(&mut file, &mut content).ok()?;
-        
+        Some(content)
+    })() {
         // Simple TOML parsing for common fields
         let name = extract_toml_value(&content, "displayName");
         let version = extract_toml_value(&content, "version");
         let description = extract_toml_value(&content, "description");
         let mod_id = extract_toml_value(&content, "modId");
         let authors = extract_toml_value(&content, "authors").map(|a| vec![a]);
+        let icon_base64 = extract_toml_value(&content, "logoFile")
+            .and_then(|logo_file| read_icon_from_archive(&mut archive, &logo_file));
 
         if name.is_some() || mod_id.is_some() {
-            return Some((name, version, description, authors, mod_id));
+            return Some(ParsedModInfo {
+                name,
+                version,
+                description,
+                authors,
+                mod_id,
+                icon_base64,
+            });
         }
     }
 
     // Try mcmod.info (old Forge)
-    if let Ok(mut file) = archive.by_name("mcmod.info") {
+    if let Some(content) = (|| {
+        let mut file = archive.by_name("mcmod.info").ok()?;
         let mut content = String::new();
         std::io::Read::read_to_string(&mut file, &mut content).ok()?;
-        
+        Some(content)
+    })() {
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
             let first = json.as_array().and_then(|arr| arr.first()).or(Some(&json));
             
@@ -454,13 +531,24 @@ fn read_mod_info(path: &PathBuf) -> Option<(Option<String>, Option<String>, Opti
                 let version = obj.get("version").and_then(|v| v.as_str()).map(String::from);
                 let description = obj.get("description").and_then(|v| v.as_str()).map(String::from);
                 let mod_id = obj.get("modid").and_then(|v| v.as_str()).map(String::from);
+                let icon_base64 = obj
+                    .get("logoFile")
+                    .and_then(|v| v.as_str())
+                    .and_then(|logo| read_icon_from_archive(&mut archive, logo));
                 let authors = obj.get("authorList").and_then(|v| {
                     v.as_array().map(|arr| {
                         arr.iter().filter_map(|a| a.as_str().map(String::from)).collect()
                     })
                 });
 
-                return Some((name, version, description, authors, mod_id));
+                return Some(ParsedModInfo {
+                    name,
+                    version,
+                    description,
+                    authors,
+                    mod_id,
+                    icon_base64,
+                });
             }
         }
     }
@@ -617,4 +705,100 @@ fn read_resourcepack_info(path: &PathBuf) -> (Option<String>, Option<String>, Op
     }
 
     (None, None, None)
+}
+
+fn read_log_tail_sync(
+    file_path: &str,
+    max_lines: usize,
+    max_bytes: usize,
+) -> Result<String, std::io::Error> {
+    if max_lines == 0 || max_bytes == 0 {
+        return Ok(String::new());
+    }
+
+    let mut file = std::fs::File::open(file_path)?;
+    let file_size = file.metadata()?.len();
+    if file_size == 0 {
+        return Ok(String::new());
+    }
+
+    let bytes_to_read = std::cmp::min(file_size, max_bytes as u64);
+    let start = file_size.saturating_sub(bytes_to_read);
+    file.seek(SeekFrom::Start(start))?;
+
+    let mut buffer = vec![0u8; bytes_to_read as usize];
+    file.read_exact(&mut buffer)?;
+
+    let mut content = String::from_utf8_lossy(&buffer).into_owned();
+    if start > 0 {
+        if let Some(first_break) = content.find('\n') {
+            content = content[(first_break + 1)..].to_string();
+        } else {
+            return Ok(String::new());
+        }
+    }
+
+    if content.is_empty() {
+        return Ok(String::new());
+    }
+
+    let lines: Vec<&str> = content.lines().collect();
+    if lines.len() <= max_lines {
+        return Ok(lines.join("\n"));
+    }
+
+    Ok(lines[lines.len() - max_lines..].join("\n"))
+}
+
+#[napi]
+pub fn read_log_tail(
+    file_path: String,
+    max_lines: Option<u32>,
+    max_bytes: Option<u32>,
+) -> napi::Result<String> {
+    let line_limit = max_lines.unwrap_or(500).max(1) as usize;
+    let byte_limit = max_bytes.unwrap_or(1024 * 1024).max(1024) as usize;
+
+    match read_log_tail_sync(&file_path, line_limit, byte_limit) {
+        Ok(content) => Ok(content),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(error) => Err(napi::Error::from_reason(format!(
+            "Failed to read log tail: {error}"
+        ))),
+    }
+}
+
+#[cfg(test)]
+mod log_tail_tests {
+    use super::read_log_tail_sync;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn write_temp_log(content: &str) -> std::path::PathBuf {
+        let mut path = std::env::temp_dir();
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        path.push(format!("mlauncher_log_tail_test_{nonce}.log"));
+        std::fs::write(&path, content).expect("failed to write temp log");
+        path
+    }
+
+    #[test]
+    fn read_log_tail_sync_returns_last_lines() {
+        let log_path = write_temp_log("line1\nline2\nline3\nline4\n");
+        let result = read_log_tail_sync(&log_path.to_string_lossy(), 2, 4096)
+            .expect("tail read should succeed");
+        assert_eq!(result, "line3\nline4");
+        let _ = std::fs::remove_file(log_path);
+    }
+
+    #[test]
+    fn read_log_tail_sync_trims_partial_first_line() {
+        let log_path = write_temp_log("first-line\nsecond-line\nthird-line\n");
+        let result = read_log_tail_sync(&log_path.to_string_lossy(), 10, 14)
+            .expect("tail read should succeed");
+        assert_eq!(result, "third-line");
+        let _ = std::fs::remove_file(log_path);
+    }
 }
