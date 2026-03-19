@@ -19,4 +19,10 @@ describe("cloud sync list-compare cache", () => {
     expect(cloudInstancesSource).toContain("Fast list match");
     expect(cloudInstancesSource).toContain("fastCheck.canSkip");
   });
+
+  it("skips deep local verification for a fresh first-time cloud install", () => {
+    expect(cloudInstancesSource).toContain("isFreshCloudInstanceSync");
+    expect(cloudInstancesSource).toContain("Skipping deep verification for fresh cloud instance");
+    expect(cloudInstancesSource).toContain("const isFreshCloudInstance = await isFreshCloudInstanceSync");
+  });
 });

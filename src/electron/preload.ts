@@ -282,6 +282,7 @@ const api = {
   windowMaximize: () => ipcRenderer.invoke("window-maximize"),
   windowClose: () => ipcRenderer.invoke("window-close"),
   windowIsMaximized: () => ipcRenderer.invoke("window-is-maximized"),
+  windowSetMainMode: () => ipcRenderer.invoke("window-set-main-mode"),
 
   // ----------------------------------------
   // Modrinth APIs

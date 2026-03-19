@@ -30,8 +30,39 @@ type MinecraftProfile = {
     variant?: string;
 };
 
+const WARDROBE_PROFILE_CACHE_TTL_MS = 60 * 1000;
+
+let cachedWardrobeProfile:
+    | {
+        username: string;
+        fetchedAt: number;
+        profile: MinecraftProfile;
+    }
+    | null = null;
+
 function normalizeVariant(input?: string | null): SkinVariant {
     return String(input || "").toLowerCase() === "slim" ? "slim" : "classic";
+}
+
+function getCachedWardrobeProfile(username?: string | null): MinecraftProfile | null {
+    if (!username || !cachedWardrobeProfile) return null;
+    if (cachedWardrobeProfile.username !== username) return null;
+    if (Date.now() - cachedWardrobeProfile.fetchedAt > WARDROBE_PROFILE_CACHE_TTL_MS) {
+        return null;
+    }
+    return cachedWardrobeProfile.profile;
+}
+
+function setCachedWardrobeProfile(
+    username: string | undefined,
+    profile: MinecraftProfile,
+): void {
+    if (!username) return;
+    cachedWardrobeProfile = {
+        username,
+        fetchedAt: Date.now(),
+        profile,
+    };
 }
 
 export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
@@ -52,9 +83,7 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
     const [selectedFileName, setSelectedFileName] = useState<string>("");
     const [variant, setVariant] = useState<SkinVariant>("classic");
     const [isApplying, setIsApplying] = useState(false);
-    const [isInitialScreenLoading, setIsInitialScreenLoading] = useState(true);
     const [isPreviewSkinLoading, setIsPreviewSkinLoading] = useState(true);
-    const initialLoadDoneRef = useRef(false);
 
     const fallbackSkinUrl = useMemo(() => {
         if (!session?.username) return null;
@@ -62,20 +91,33 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
     }, [session?.username]);
 
     const previewSkin = useMemo(
-        () => selectedSkinDataUrl || profile?.skinUrl || (profileFetched ? fallbackSkinUrl : null),
-        [selectedSkinDataUrl, profile?.skinUrl, fallbackSkinUrl, profileFetched],
+        () => selectedSkinDataUrl || profile?.skinUrl || fallbackSkinUrl,
+        [selectedSkinDataUrl, profile?.skinUrl, fallbackSkinUrl],
     );
 
-    const syncProfile = useCallback(async () => {
+    const syncProfile = useCallback(async (options?: { force?: boolean }) => {
         if (!isMicrosoftSession || !window.api?.minecraftGetProfile) {
             setProfile(null);
             setProfileError(null);
+            setProfileFetched(true);
             return;
         }
+
+        const cachedProfile = options?.force ? null : getCachedWardrobeProfile(session?.username);
+        if (cachedProfile) {
+            setProfile(cachedProfile);
+            setVariant(normalizeVariant(cachedProfile.variant || cachedProfile.activeSkin?.variant));
+            setProfileError(null);
+            setProfileFetched(true);
+            return;
+        }
+
         setIsLoadingProfile(true);
         setProfileError(null);
         try {
-            const result = await window.api.minecraftGetProfile();
+            const result = await window.api.minecraftGetProfile({
+                forceRefresh: !!options?.force,
+            });
             if (!result?.ok || !result.profile) {
                 setProfile(null);
                 setProfileError(result?.error || t("wardrobe_profile_load_failed"));
@@ -83,6 +125,7 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
             }
             setProfile(result.profile);
             setVariant(normalizeVariant(result.profile.variant || result.profile.activeSkin?.variant));
+            setCachedWardrobeProfile(session?.username, result.profile);
         } catch (error: any) {
             setProfile(null);
             setProfileError(error?.message || t("wardrobe_profile_load_failed"));
@@ -90,15 +133,9 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
             setIsLoadingProfile(false);
             setProfileFetched(true);
         }
-    }, [isMicrosoftSession, t]);
+    }, [isMicrosoftSession, session?.username, t]);
 
     useEffect(() => { syncProfile(); }, [syncProfile]);
-
-    useEffect(() => {
-        if (!profileFetched || initialLoadDoneRef.current) return;
-        initialLoadDoneRef.current = true;
-        setIsInitialScreenLoading(false);
-    }, [profileFetched]);
 
     useEffect(() => {
         if (selectedSkinDataUrl || !profile) return;
@@ -145,6 +182,7 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
             const result = await window.api.minecraftUploadSkin(selectedSkinDataUrl, variant, selectedFileName || undefined);
             if (!result?.ok || !result.profile) { toast.error(result?.error || t("wardrobe_apply_failed")); return; }
             setProfile(result.profile);
+            setCachedWardrobeProfile(session?.username, result.profile);
             setSelectedSkinDataUrl(null);
             setSelectedFileName("");
             setVariant(normalizeVariant(result.profile.variant || result.profile.activeSkin?.variant));
@@ -187,53 +225,6 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
         );
     }
 
-    // --- Main UI ---
-    if (isInitialScreenLoading) {
-        return (
-            <div className="h-full flex flex-col overflow-hidden">
-                <div className="flex flex-col pb-6 w-full max-w-screen-2xl mx-auto gap-6 px-8 pt-3">
-                    <div className="flex items-center justify-between gap-3">
-                        <div className="space-y-2">
-                            <div
-                                className="h-10 w-56 rounded-xl animate-skeleton-wave"
-                                style={{ backgroundColor: colors.surfaceContainer }}
-                            />
-                            <div
-                                className="h-4 w-72 rounded-md animate-skeleton-wave"
-                                style={{ backgroundColor: colors.surfaceContainerHighest }}
-                            />
-                        </div>
-                        <div
-                            className="h-9 w-28 rounded-lg animate-skeleton-wave"
-                            style={{ backgroundColor: colors.surfaceContainer }}
-                        />
-                    </div>
-
-                    <div className="flex flex-col md:flex-row gap-8">
-                        <div
-                            className="flex-1 h-[440px] md:h-[540px] rounded-3xl animate-skeleton-wave"
-                            style={{ backgroundColor: colors.surfaceContainer }}
-                        />
-                        <div className="w-full md:w-[340px] shrink-0 flex flex-col gap-4">
-                            <div
-                                className="rounded-3xl h-[140px] animate-skeleton-wave"
-                                style={{ backgroundColor: colors.surfaceContainer }}
-                            />
-                            <div
-                                className="rounded-3xl h-[170px] animate-skeleton-wave"
-                                style={{ backgroundColor: colors.surfaceContainer }}
-                            />
-                            <div
-                                className="h-[44px] rounded-xl animate-skeleton-wave"
-                                style={{ backgroundColor: colors.surfaceContainer }}
-                            />
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
     return (
         <div className="h-full flex flex-col overflow-hidden animate-fade-in">
             <div className="flex flex-col pb-6 w-full max-w-screen-2xl mx-auto gap-6 px-8 pt-3">
@@ -253,7 +244,7 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
                     </div>
                     <div className="flex items-center gap-2">
                         <button
-                            onClick={() => syncProfile()}
+                            onClick={() => syncProfile({ force: true })}
                             disabled={isLoadingProfile}
                             className="p-1.5 rounded-lg hover:opacity-70 transition-all disabled:opacity-40"
                             style={{ color: colors.onSurfaceVariant }}

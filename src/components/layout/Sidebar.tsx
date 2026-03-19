@@ -55,12 +55,11 @@ export function Sidebar({ colors, onTabSelect }: SidebarProps) {
                     animate={{ opacity: 1, x: 0, y: "-50%", scale: 1 }}
                     exit={{ opacity: 0, x: 5, y: "-50%", scale: 0.95 }}
                     transition={{ duration: 0.15, ease: "easeOut" }}
-                    className="absolute ml-3 px-3 py-1.5 rounded-lg whitespace-nowrap z-50 pointer-events-none select-none shadow-xl border border-white/10"
+                    className="absolute ml-3 px-3 py-1.5 rounded-lg whitespace-nowrap z-50 pointer-events-none select-none shadow-xl border border-white/10 will-change-transform"
                     style={{
-                        backgroundColor: "rgba(0, 0, 0, 0.9)",
+                        backgroundColor: "rgba(0, 0, 0, 0.95)",
                         color: "#fff",
                         fontSize: "0.75rem",
-                        backdropFilter: "blur(4px)",
                         left: "100%",
                         top: "50%",
                         // transform: "translateY(-50%)", // Removed to avoid conflict with framer-motion

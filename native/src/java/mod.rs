@@ -16,9 +16,21 @@ use crate::extract::extract_zip;
 use crate::get_client;
 
 #[cfg(windows)]
+use std::os::windows::process::CommandExt;
+#[cfg(windows)]
 use winreg::enums::*;
 #[cfg(windows)]
 use winreg::RegKey;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+fn apply_hidden_process_flags(command: &mut Command) {
+    #[cfg(windows)]
+    {
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+}
 
 /// Represents a detected Java installation
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -42,10 +54,10 @@ pub struct JavaDetectionResult {
 
 /// Get Java version info from executable
 fn get_java_info(java_path: &str) -> Option<JavaInstallation> {
-    let output = Command::new(java_path)
-        .arg("-version")
-        .output()
-        .ok()?;
+    let mut java_cmd = Command::new(java_path);
+    java_cmd.arg("-version");
+    apply_hidden_process_flags(&mut java_cmd);
+    let output = java_cmd.output().ok()?;
 
     // Java outputs version to stderr
     let version_output = String::from_utf8_lossy(&output.stderr);

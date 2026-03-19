@@ -36,7 +36,7 @@ export function registerLauncherHandlers(getMainWindow: () => BrowserWindow | nu
      */
     ipcMain.handle("get-launcher-info", async () => {
         const { getMinecraftDir, validateJavaPath } = await import("../config.js");
-        const { execSync } = await import("node:child_process");
+        const { spawnSync } = await import("node:child_process");
         const fs = await import("node:fs");
         const path = await import("node:path");
         const native = (() => {
@@ -111,18 +111,24 @@ export function registerLauncherHandlers(getMainWindow: () => BrowserWindow | nu
             }
 
             try {
-                const command = process.platform === "win32" ? "where java" : "which java";
-                const result = execSync(command, { encoding: "utf-8", timeout: 5000 });
-                const lines = result
-                    .trim()
-                    .split(/\r?\n/)
-                    .map((line) => line.trim())
-                    .filter(Boolean);
-                if (lines.length > 0 && lines[0]) {
-                    const foundPath = lines[0];
-                    if (fs.existsSync(foundPath)) {
-                        javaPath = foundPath;
-                        javaOK = true;
+                const command = process.platform === "win32" ? "where" : "which";
+                const result = spawnSync(command, ["java"], {
+                    encoding: "utf-8",
+                    timeout: 5000,
+                    windowsHide: true,
+                });
+                if (!result.error && result.status === 0) {
+                    const lines = (result.stdout || "")
+                        .trim()
+                        .split(/\r?\n/)
+                        .map((line) => line.trim())
+                        .filter(Boolean);
+                    if (lines.length > 0 && lines[0]) {
+                        const foundPath = lines[0];
+                        if (fs.existsSync(foundPath)) {
+                            javaPath = foundPath;
+                            javaOK = true;
+                        }
                     }
                 }
             } catch { }

@@ -237,20 +237,23 @@ app.on("child-process-gone", (_event, details) => {
   relaunchWithX11Fallback(`gpu-process-gone:${details.reason}`);
 });
 
-// ปิด Hardware Acceleration เพื่อแก้ปัญหาเส้นประบน screen
+// Hardware Acceleration - Enabled by default for performance (especially in fullscreen)
+// If visual artifacts (dotted lines) occur, we handle them via CSS fixes (translateZ/backface-visibility)
+// hardwareAccelerationFlag: 0 = Enable, 1 = Disable, default = Enable
 const hardwareAccelerationFlag = process.env.ML_DISABLE_HARDWARE_ACCELERATION;
-const shouldDisableHardwareAcceleration =
-  hardwareAccelerationFlag === "1" ||
-  (process.platform === "win32" && hardwareAccelerationFlag !== "0");
+const shouldDisableHardwareAcceleration = hardwareAccelerationFlag === "1"; 
+
 if (shouldDisableHardwareAcceleration) {
   app["disableHardwareAcceleration"]();
-  logger.warn("Hardware acceleration disabled", {
+  logger.warn("Hardware acceleration disabled by environment flag", {
     flag: "ML_DISABLE_HARDWARE_ACCELERATION",
-    mode:
-      hardwareAccelerationFlag === "1"
-        ? "env-force-disable"
-        : "win32-safe-default",
   });
+} else {
+  logger.info("Hardware acceleration enabled (default)", {
+    platform: process.platform,
+  });
+  // Force use of discrete/dedicated GPU (e.g. NVIDIA) if available
+  app.commandLine.appendSwitch("force_high_performance_gpu");
 }
 
 // ========================================
@@ -319,12 +322,11 @@ function createWindow(): BrowserWindow {
     : path.resolve(__dirname, "../dist/r.png");
 
   const win = new BrowserWindow({
-    width: 1100,
-    height: 680,
-    minWidth: 980,
-    minHeight: 620,
+    width: 360,
+    height: 380,
+    resizable: false,
     icon: iconPath,
-    backgroundColor: accentColor,
+    backgroundColor: '#09090b', // Zinc-950 dark background
     show: false,
     frame: false,
     webPreferences: {

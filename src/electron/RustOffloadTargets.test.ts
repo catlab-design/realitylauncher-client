@@ -6,8 +6,16 @@ const cloudInstancesSource = readFileSync(
   join(import.meta.dir, "cloud-instances.ts"),
   "utf8",
 );
-const instanceHandlersSource = readFileSync(
-  join(import.meta.dir, "ipc", "instance-handlers.ts"),
+const cloudSyncUtilsSource = readFileSync(
+  join(import.meta.dir, "cloud-sync-utils.ts"),
+  "utf8",
+);
+const instanceModHandlersSource = readFileSync(
+  join(import.meta.dir, "ipc", "instance-mod-handlers.ts"),
+  "utf8",
+);
+const instancePackHandlersSource = readFileSync(
+  join(import.meta.dir, "ipc", "instance-pack-handlers.ts"),
   "utf8",
 );
 const modpackInstallerSource = readFileSync(
@@ -22,14 +30,14 @@ const gameProcessSource = readFileSync(
 describe("rust offload targets", () => {
   it("uses native batch downloader in cloud sync path", () => {
     expect(cloudInstancesSource).toContain("tryDownloadQueueWithNativeBatch");
-    expect(cloudInstancesSource).toContain("nativeModule.downloadFiles");
+    expect(cloudSyncUtilsSource).toContain("nativeModule.downloadFiles");
   });
 
   it("uses native mod list as primary source before JS enrichment", () => {
-    expect(instanceHandlersSource).toContain("nativeModsPrimary");
-    expect(instanceHandlersSource).toContain("native.listInstanceMods");
-    expect(instanceHandlersSource).toContain("NATIVE_MOD_SCAN_MAX");
-    expect(instanceHandlersSource).toContain("allowNativeSyncModScan");
+    expect(instanceModHandlersSource).toContain("nativeModsPrimary");
+    expect(instanceModHandlersSource).toContain("native.listInstanceMods");
+    expect(instanceModHandlersSource).toContain("NATIVE_MOD_SCAN_MAX");
+    expect(instanceModHandlersSource).toContain("allowNativeSyncModScan");
   });
 
   it("uses native batch downloader in modpack installer path", () => {
@@ -44,6 +52,6 @@ describe("rust offload targets", () => {
   });
 
   it("reads latest.log through native tail reader first", () => {
-    expect(instanceHandlersSource).toContain("native.readLogTail");
+    expect(instancePackHandlersSource).toContain("native.readLogTail");
   });
 });

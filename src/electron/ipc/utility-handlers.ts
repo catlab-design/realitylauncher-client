@@ -9,7 +9,7 @@
 import { ipcMain, shell, dialog, BrowserWindow } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import { getMinecraftDir, getAppDataDir } from "../config.js";
+import { getMinecraftDir, getAppDataDir, getConfig, setConfig } from "../config.js";
 import { getSession } from "../auth.js";
 import { refreshMicrosoftTokenIfNeeded } from "../auth-refresh.js";
 import { getNativeModule } from "../native.js";
@@ -30,6 +30,14 @@ type NativeJavaDetectionResult = {
   recommended?: NativeJavaInstallation;
 };
 
+type MinecraftProfileCacheEntry = {
+  fetchedAt: number;
+  profile: any;
+};
+
+const MINECRAFT_PROFILE_CACHE_TTL_MS = 10 * 60 * 1000;
+const MINECRAFT_PROFILE_CACHE_FILE = "minecraft-profile-cache.json";
+
 function getNativeJavaModule(): any | null {
   try {
     return getNativeModule();
@@ -43,7 +51,7 @@ function normalizeJavaInstallations(
   result: NativeJavaDetectionResult | null | undefined,
 ): NativeJavaInstallation[] {
   const installs = Array.isArray(result?.installations)
-    ? result.installations
+    ? result!.installations
     : [];
   return installs.filter(
     (install): install is NativeJavaInstallation =>
@@ -61,6 +69,62 @@ function parsePngDataUrl(dataUrl: string): Buffer | null {
   } catch {
     return null;
   }
+}
+
+function getMinecraftProfileCachePath(): string {
+  return path.join(getAppDataDir(), MINECRAFT_PROFILE_CACHE_FILE);
+}
+
+function loadMinecraftProfileCache(): Record<string, MinecraftProfileCacheEntry> {
+  try {
+    const cachePath = getMinecraftProfileCachePath();
+    if (!fs.existsSync(cachePath)) return {};
+    const raw = fs.readFileSync(cachePath, "utf-8");
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveMinecraftProfileCache(
+  cache: Record<string, MinecraftProfileCacheEntry>,
+): void {
+  try {
+    const cachePath = getMinecraftProfileCachePath();
+    fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+    fs.writeFileSync(cachePath, JSON.stringify(cache));
+  } catch {}
+}
+
+function getMinecraftProfileCacheKey(session: {
+  type: string;
+  uuid: string;
+}): string {
+  return `${session.type}:${session.uuid}`;
+}
+
+function getCachedMinecraftProfile(
+  sessionKey: string,
+): MinecraftProfileCacheEntry | null {
+  const cache = loadMinecraftProfileCache();
+  const entry = cache[sessionKey];
+  if (!entry) return null;
+  if (Date.now() - entry.fetchedAt > MINECRAFT_PROFILE_CACHE_TTL_MS) {
+    delete cache[sessionKey];
+    saveMinecraftProfileCache(cache);
+    return null;
+  }
+  return entry;
+}
+
+function setCachedMinecraftProfile(sessionKey: string, profile: any): void {
+  const cache = loadMinecraftProfileCache();
+  cache[sessionKey] = {
+    fetchedAt: Date.now(),
+    profile,
+  };
+  saveMinecraftProfileCache(cache);
 }
 
 async function fetchMinecraftProfile(
@@ -238,7 +302,7 @@ export function registerUtilityHandlers(
       const modpackDir = path.join(instancesDir, name);
 
       if (!fs.existsSync(modpackDir)) {
-        fs.mkdirSync(modpackDir, { recursive: true });
+        await fs.promises.mkdir(modpackDir, { recursive: true });
       }
 
       const destPath = path.join(modpackDir, filename);
@@ -282,15 +346,19 @@ export function registerUtilityHandlers(
       }
     }
 
-    const { execSync } = await import("node:child_process");
-    const findCommand = process.platform === "win32" ? "where java" : "which java";
+    const { spawnSync } = await import("node:child_process");
+    const findCommand = process.platform === "win32" ? "where" : "which";
 
     try {
-      const result = execSync(findCommand, {
+      const result = spawnSync(findCommand, ["java"], {
         encoding: "utf-8",
         timeout: 5000,
+        windowsHide: true,
       });
-      const lines = result
+      if (result.error || result.status !== 0) {
+        throw result.error || new Error(`Find java failed with code ${result.status}`);
+      }
+      const lines = (result.stdout || "")
         .trim()
         .split(/\r?\n/)
         .map((line) => line.trim())
@@ -315,7 +383,7 @@ export function registerUtilityHandlers(
     for (const basePath of commonPaths) {
       if (!fs.existsSync(basePath)) continue;
       try {
-        const entries = fs.readdirSync(basePath);
+        const entries = await fs.promises.readdir(basePath);
         for (const entry of entries) {
           const javaExe = path.join(basePath, entry, "bin", "java.exe");
           if (fs.existsSync(javaExe)) return javaExe;
@@ -437,7 +505,7 @@ export function registerUtilityHandlers(
       }
 
       try {
-        const dirs = fs.readdirSync(basePath, { withFileTypes: true });
+        const dirs = await fs.promises.readdir(basePath, { withFileTypes: true });
         for (const dir of dirs) {
           if (!dir.isDirectory()) continue;
           const javaPath = path.join(basePath, dir.name, "bin", javaBinaryName);
@@ -500,7 +568,7 @@ export function registerUtilityHandlers(
     const native = getNativeJavaModule();
 
     if (!fs.existsSync(javaPath)) {
-      return { ok: false, error: "��辺��� Java" };
+      return { ok: false, error: "��辺��� Java" };
     }
 
     if (native && typeof native.validateJavaPath === "function") {
@@ -568,7 +636,7 @@ export function registerUtilityHandlers(
 
       const javaBaseDir = path.join(getAppDataDir(), "java");
       if (!fs.existsSync(javaBaseDir)) {
-        fs.mkdirSync(javaBaseDir, { recursive: true });
+        await fs.promises.mkdir(javaBaseDir, { recursive: true });
       }
 
       const existingJava = path.join(
@@ -623,9 +691,6 @@ export function registerUtilityHandlers(
         java_package_type: "jdk",
         javafx_bundled: "false",
         release_status: "ga",
-        availability_types: "CA",
-        certifications: "tck",
-        java_package_features: "headful",
         latest: "true",
         page: "1",
         page_size: "100",
@@ -748,8 +813,8 @@ export function registerUtilityHandlers(
       const extractDir = path.join(javaBaseDir, `temp-${majorVersion}`);
       sendProgress("extract", 0, "กำลังแตกไฟล์...");
       console.log(`[Java] Extracting to ${extractDir}...`);
-      if (fs.existsSync(extractDir)) fs.rmSync(extractDir, { recursive: true });
-      fs.mkdirSync(extractDir, { recursive: true });
+      if (fs.existsSync(extractDir)) await fs.promises.rm(extractDir, { recursive: true });
+      await fs.promises.mkdir(extractDir, { recursive: true });
 
       const toSignedExitCode = (code: number | null): number | null => {
         if (code === null) return null;
@@ -818,8 +883,8 @@ export function registerUtilityHandlers(
         } catch (nativeExtractError: any) {
           console.warn("[Java] Native extract failed, fallback to shell tools:", nativeExtractError?.message || nativeExtractError);
           if (fs.existsSync(extractDir))
-            fs.rmSync(extractDir, { recursive: true, force: true });
-          fs.mkdirSync(extractDir, { recursive: true });
+            await fs.promises.rm(extractDir, { recursive: true, force: true });
+          await fs.promises.mkdir(extractDir, { recursive: true });
         }
       }
 
@@ -882,8 +947,8 @@ export function registerUtilityHandlers(
               `[Java] ${attempt.label} failed: ${lastError.message}`,
             );
             if (fs.existsSync(extractDir))
-              fs.rmSync(extractDir, { recursive: true, force: true });
-            fs.mkdirSync(extractDir, { recursive: true });
+              await fs.promises.rm(extractDir, { recursive: true, force: true });
+            await fs.promises.mkdir(extractDir, { recursive: true });
           }
         }
 
@@ -898,9 +963,9 @@ export function registerUtilityHandlers(
 
 
       }
-      fs.unlinkSync(zipPath);
+      await fs.promises.unlink(zipPath);
 
-      const extractedDirs = fs.readdirSync(extractDir);
+      const extractedDirs = await fs.promises.readdir(extractDir);
       if (extractedDirs.length === 0) {
         console.log(`[Java] No directories found after extract`);
         return { ok: false, error: "Extract failed - no directories" };
@@ -910,13 +975,22 @@ export function registerUtilityHandlers(
       const sourcePath = path.join(extractDir, extractedDirs[0]);
       const targetPath = path.join(javaBaseDir, `jdk-${majorVersion}`);
 
-      if (fs.existsSync(targetPath)) fs.rmSync(targetPath, { recursive: true });
-      fs.renameSync(sourcePath, targetPath);
-      fs.rmSync(extractDir, { recursive: true });
+      if (fs.existsSync(targetPath)) await fs.promises.rm(targetPath, { recursive: true });
+      await fs.promises.rename(sourcePath, targetPath);
+      await fs.promises.rm(extractDir, { recursive: true });
 
       const javaExePath = path.join(targetPath, "bin", "java.exe");
       if (!fs.existsSync(javaExePath))
         return { ok: false, error: "ไม่พบ java.exe" };
+
+      const currentConfig = getConfig();
+      const updatedJavaPaths = { ...currentConfig.javaPaths };
+      if (majorVersion === 8) updatedJavaPaths.java8 = javaExePath;
+      else if (majorVersion >= 17 && majorVersion < 21) updatedJavaPaths.java17 = javaExePath;
+      else if (majorVersion >= 21 && majorVersion < 25) updatedJavaPaths.java21 = javaExePath;
+      else if (majorVersion >= 25) updatedJavaPaths.java25 = javaExePath;
+      
+      setConfig({ javaPaths: updatedJavaPaths });
 
       sendProgress("complete", 100, "ติดตั้งสำเร็จ!");
       return { ok: true, path: javaExePath };
@@ -938,44 +1012,72 @@ export function registerUtilityHandlers(
         return { ok: true, message: `ไม่พบ Java ${majorVersion}` };
       }
 
-      fs.rmSync(javaDir, { recursive: true, force: true });
+      await fs.promises.rm(javaDir, { recursive: true, force: true });
+      
+      const currentConfig = getConfig();
+      if (currentConfig.javaPaths) {
+         const updatedJavaPaths = { ...currentConfig.javaPaths };
+         let changed = false;
+         if (majorVersion === 8 && updatedJavaPaths.java8?.includes(`jdk-${majorVersion}`)) { delete updatedJavaPaths.java8; changed = true; }
+         else if (majorVersion >= 17 && majorVersion < 21 && updatedJavaPaths.java17?.includes(`jdk-${majorVersion}`)) { delete updatedJavaPaths.java17; changed = true; }
+         else if (majorVersion >= 21 && majorVersion < 25 && updatedJavaPaths.java21?.includes(`jdk-${majorVersion}`)) { delete updatedJavaPaths.java21; changed = true; }
+         else if (majorVersion >= 25 && updatedJavaPaths.java25?.includes(`jdk-${majorVersion}`)) { delete updatedJavaPaths.java25; changed = true; }
+         
+         if (changed) setConfig({ javaPaths: updatedJavaPaths });
+      }
+
       return { ok: true, message: `ลบ Java ${majorVersion} สำเร็จ` };
     } catch (error: any) {
       return { ok: false, error: error.message };
     }
   });
 
-  ipcMain.handle("minecraft-get-profile", async () => {
-    try {
-      const session = getSession();
-      if (!session || session.type !== "microsoft") {
-        return { ok: false, error: "Microsoft account is required." };
-      }
+  ipcMain.handle(
+    "minecraft-get-profile",
+    async (_event, options?: { forceRefresh?: boolean }) => {
+      try {
+        const session = getSession();
+        if (!session || session.type !== "microsoft") {
+          return { ok: false, error: "Microsoft account is required." };
+        }
 
-      const refreshResult = await refreshMicrosoftTokenIfNeeded();
-      if (!refreshResult.ok) {
+        const forceRefresh = !!options?.forceRefresh;
+        const sessionKey = getMinecraftProfileCacheKey(session);
+        if (!forceRefresh) {
+          const cachedProfile = getCachedMinecraftProfile(sessionKey);
+          if (cachedProfile) {
+            return { ok: true, profile: cachedProfile.profile };
+          }
+        }
+
+        const refreshResult = await refreshMicrosoftTokenIfNeeded();
+        if (!refreshResult.ok) {
+          return {
+            ok: false,
+            error: refreshResult.error || "Could not refresh Microsoft token.",
+            requiresRelogin: refreshResult.requiresRelogin || false,
+          };
+        }
+
+        const accessToken =
+          refreshResult.session?.accessToken || session.accessToken;
+        if (!accessToken) {
+          return { ok: false, error: "Microsoft access token not found." };
+        }
+
+        const profileResult = await fetchMinecraftProfile(accessToken);
+        if (profileResult.ok && profileResult.profile) {
+          setCachedMinecraftProfile(sessionKey, profileResult.profile);
+        }
+        return profileResult;
+      } catch (error: any) {
         return {
           ok: false,
-          error: refreshResult.error || "Could not refresh Microsoft token.",
-          requiresRelogin: refreshResult.requiresRelogin || false,
+          error: error?.message || "Failed to load Minecraft profile.",
         };
       }
-
-      const accessToken =
-        refreshResult.session?.accessToken || session.accessToken;
-      if (!accessToken) {
-        return { ok: false, error: "Microsoft access token not found." };
-      }
-
-      return await fetchMinecraftProfile(accessToken);
-    } catch (error: any) {
-      return {
-        ok: false,
-        error: error?.message || "Failed to load Minecraft profile.",
-      };
-    }
-  });
-
+    },
+  );
   ipcMain.handle(
     "minecraft-upload-skin",
     async (
@@ -1047,6 +1149,11 @@ export function registerUtilityHandlers(
         if (!profileResult.ok) {
           return profileResult;
         }
+
+        setCachedMinecraftProfile(
+          getMinecraftProfileCacheKey(session),
+          profileResult.profile,
+        );
 
         return {
           ok: true,

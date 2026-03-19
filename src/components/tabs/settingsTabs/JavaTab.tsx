@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import toast from "react-hot-toast";
 import { playClick } from "../../../lib/sounds";
 import type { LauncherConfig } from "../../../types/launcher";
@@ -18,6 +19,7 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
     const [installingJava, setInstallingJava] = useState<number | null>(null);
     const [deletingJava, setDeletingJava] = useState<number | null>(null);
     const [installProgress, setInstallProgress] = useState<JavaInstallProgress | null>(null);
+    const [detectedJavasForModal, setDetectedJavasForModal] = useState<{ targetKey: "java25" | "java21" | "java17" | "java8"; versionLabel: string; javas: any[] } | null>(null);
     const { t } = useTranslation(config.language);
 
     const windowApi = (window as any).api;
@@ -111,10 +113,9 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                             setIsDetectingJava(true);
                             try {
                                 const javas = await windowApi?.detectJavaInstallations?.();
-                                const java = javas?.find((j: any) => detectCondition(j.majorVersion));
-                                if (java) {
-                                    updateConfig({ javaPaths: { ...config.javaPaths, [pathKey]: java.path } });
-                                    toast.success(t('java_found_with_version').replace('{version}', label).replace('{path}', java.path));
+                                const filtered = javas?.filter((j: any) => detectCondition(j.majorVersion));
+                                if (filtered && filtered.length > 0) {
+                                    setDetectedJavasForModal({ targetKey: pathKey, versionLabel: label, javas: filtered });
                                 } else {
                                     toast.error(t('java_not_found_with_version').replace('{version}', label));
                                 }
@@ -211,6 +212,91 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                 {renderJavaSection(17, "17", "java17", (v) => v >= 17 && v < 21)}
                 {renderJavaSection(8, "8", "java8", (v) => v >= 8 && v < 17)}
             </div>
+
+            {/* Selection Modal */}
+            <AnimatePresence>
+                {detectedJavasForModal && (
+                    <div className="fixed inset-0 z-100 flex items-center justify-center p-4 backdrop-blur-sm" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            transition={{ duration: 0.15, ease: "easeOut" }}
+                            className="w-full max-w-4xl rounded-2xl flex flex-col overflow-hidden shadow-2xl"
+                            style={{ backgroundColor: colors.surface, border: `1px solid ${colors.outline}40` }}
+                        >
+                            <div className="px-5 py-4 flex items-center justify-between border-b" style={{ borderColor: `${colors.outline}40` }}>
+                                <h3 className="font-semibold text-lg" style={{ color: colors.onSurface }}>
+                                    Select Java Version
+                                </h3>
+                                <button
+                                    onClick={() => { if (config.clickSoundEnabled) playClick(); setDetectedJavasForModal(null); }}
+                                    className="opacity-70 hover:opacity-100 transition-opacity flex items-center justify-center w-8 h-8 rounded-full"
+                                    style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                >
+                                    <i className="fa-solid fa-xmark"></i>
+                                </button>
+                            </div>
+                            <div className="p-4 overflow-y-auto max-h-[50vh] custom-scrollbar">
+                                <table className="w-full text-left text-sm whitespace-nowrap">
+                                    <thead>
+                                        <tr style={{ color: colors.onSurfaceVariant }}>
+                                            <th className="font-medium pb-3 pr-4">Version</th>
+                                            <th className="font-medium pb-3 pr-4 w-full">Path</th>
+                                            <th className="font-medium pb-3 text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y" style={{ borderColor: `${colors.outline}20` }}>
+                                        {detectedJavasForModal.javas.map((java, idx) => {
+                                            const isSelected = config.javaPaths?.[detectedJavasForModal.targetKey] === java.path;
+                                            return (
+                                                <tr key={idx} style={{ color: colors.onSurface }}>
+                                                    <td className="py-3 pr-4 font-mono">{java.majorVersion}</td>
+                                                    <td className="py-3 pr-4">
+                                                        <div className="max-w-[400px] sm:max-w-[500px] md:max-w-[700px] truncate overflow-hidden text-ellipsis" title={java.path}>
+                                                            {java.path}
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-3 text-right">
+                                                        <button
+                                                            onClick={() => {
+                                                                if (config.clickSoundEnabled) playClick();
+                                                                updateConfig({ javaPaths: { ...config.javaPaths, [detectedJavasForModal.targetKey]: java.path } });
+                                                                toast.success(t('java_configured_successfully').replace('{version}', detectedJavasForModal.versionLabel));
+                                                                setDetectedJavasForModal(null);
+                                                            }}
+                                                            disabled={isSelected}
+                                                            className="px-4 py-1.5 rounded-lg font-medium text-xs transition-colors whitespace-nowrap flex items-center justify-center gap-2 ml-auto"
+                                                            style={{
+                                                                backgroundColor: isSelected ? "transparent" : colors.surfaceContainerHighest,
+                                                                color: isSelected ? colors.onSurfaceVariant : colors.onSurface,
+                                                                border: isSelected ? `1px solid ${colors.outline}40` : "1px solid transparent",
+                                                                opacity: isSelected ? 0.8 : 1
+                                                            }}
+                                                        >
+                                                            <i className={`fa-solid ${isSelected ? "fa-check" : "fa-plus"}`}></i>
+                                                            {isSelected ? "Selected" : "Select"}
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div className="px-5 py-4 flex justify-end" style={{ backgroundColor: colors.surfaceContainer, borderTop: `1px solid ${colors.outline}40` }}>
+                                <button
+                                    onClick={() => { if (config.clickSoundEnabled) playClick(); setDetectedJavasForModal(null); }}
+                                    className="px-5 py-2 rounded-xl text-sm font-medium transition-colors"
+                                    style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

@@ -5,7 +5,7 @@ interface UiState {
     activeTab: string;
     setActiveTab: (tab: string) => void;
 
-    settingsTab: "appearance" | "game" | "connections" | "launcher" | "resources" | "java" | "account" | "update";
+    settingsTab: "appearance" | "game" | "connections" | "language" | "launcher" | "resources" | "java" | "account" | "update";
     setSettingsTab: (tab: UiState['settingsTab']) => void;
 
     // Modals

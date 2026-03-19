@@ -70,6 +70,9 @@
   outline-offset: -2px;
   animation: rainbow-accent-cycle 5s linear infinite !important;
   will-change: outline-color;
+  /* Add backface-visibility for GPU acceleration */
+  backface-visibility: hidden;
+  transform: translateZ(0);
 }
 
 /* Reset & Base */
@@ -79,10 +82,17 @@
 
 html,
 body {
-  height: 100%;
   margin: 0;
   padding: 0;
+  width: 100vw;
+  height: 100vh;
   overflow: hidden;
+  user-select: none;
+  font-family: "Prompt", sans-serif;
+  color: var(--on-surface);
+  /* Global fix for visual artifacts (dotted lines) when Hardware Acceleration is enabled */
+  backface-visibility: hidden;
+  transform: translateZ(0);
 }
 
 html {
@@ -361,34 +371,28 @@ body {
 }
 
 /* RGB Glow animation (for toast notifications) */
+/* Apply RGB Glow to toasts - High performance version using single shadow */
 @keyframes rgbGlow {
-  0% {
-    box-shadow:
-      0 0 20px rgba(255, 0, 128, 0.5),
-      0 0 40px rgba(0, 255, 255, 0.3),
-      0 0 60px rgba(128, 0, 255, 0.2);
+  0%, 100% {
+    box-shadow: 0 4px 15px rgba(255, 0, 128, 0.3);
   }
-
   33% {
-    box-shadow:
-      0 0 20px rgba(0, 255, 255, 0.5),
-      0 0 40px rgba(128, 0, 255, 0.3),
-      0 0 60px rgba(255, 0, 128, 0.2);
+    box-shadow: 0 4px 15px rgba(0, 255, 255, 0.3);
   }
-
   66% {
-    box-shadow:
-      0 0 20px rgba(128, 0, 255, 0.5),
-      0 0 40px rgba(255, 0, 128, 0.3),
-      0 0 60px rgba(0, 255, 255, 0.2);
+    box-shadow: 0 4px 15px rgba(128, 0, 255, 0.3);
   }
+}
 
-  100% {
-    box-shadow:
-      0 0 20px rgba(255, 0, 128, 0.5),
-      0 0 40px rgba(0, 255, 255, 0.3),
-      0 0 60px rgba(128, 0, 255, 0.2);
-  }
+/* Ensure the main app shell has a GPU layer but doesn't interfere with fixed modals */
+.ml-app-shell {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* Base styles for common animated elements */
+.animate-in, .animate-fade-in, .animate-fade-in-up, .animate-float {
+  will-change: transform, opacity;
 }
 
 /* Apply RGB Glow to toasts */

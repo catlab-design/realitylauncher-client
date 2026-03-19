@@ -71,11 +71,11 @@ const HomeHeader = React.memo(({ session, colors, language }: { session: any, co
              {isHoveringClock && createPortal(
                 <div 
                     ref={tooltipRef}
-                    className="fixed top-0 left-0 z-50 pointer-events-none px-3 py-1.5 rounded-lg text-xs font-bold shadow-xl backdrop-blur-md border animate-in fade-in zoom-in duration-200 transition-none will-change-transform"
+                    className="fixed top-0 left-0 z-50 pointer-events-none px-3 py-1.5 rounded-lg text-xs font-bold shadow-xl border animate-in fade-in zoom-in duration-200 transition-none will-change-transform"
                     style={{ 
                         // Initial position
                         transform: `translate(${mousePos.current.x + 10}px, ${mousePos.current.y + 10}px)`,
-                        backgroundColor: colors.surfaceContainer + 'F2',
+                        backgroundColor: colors.surfaceContainer,
                         color: colors.onSurface,
                         borderColor: colors.outline + '40'
                     }}
@@ -371,10 +371,10 @@ export function Home({
                                             alt={item.subject}
                                             priority={index === 0 || index === currentSlide} // Always prioritize current slide
                                             loading={index === currentSlide || index === (currentSlide + 1) % newsletters.length ? "eager" : "lazy"} // Eager load current and next
-                                            className="absolute inset-0 w-full h-full"
+                                            className="absolute inset-0 w-full h-full will-change-transform"
                                             style={{
-                                                transform: index === currentSlide && isHovering ? 'scale(1.1)' : 'scale(1.0)',
-                                                transition: 'transform 20s linear'
+                                                transform: index === currentSlide && isHovering ? 'scale(1.08)' : 'scale(1.0)',
+                                                transition: 'transform 15s linear'
                                             }}
                                         />
                                         

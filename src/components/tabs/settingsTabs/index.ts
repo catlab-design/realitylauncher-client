@@ -3,6 +3,7 @@ export { AccountTab } from "./AccountTab";
 export { AppearanceTab } from "./AppearanceTab";
 export { GameTab } from "./GameTab";
 export { ConnectionsTab } from "./ConnectionsTab";
+export { LanguageTab } from "./LanguageTab";
 export { LauncherTab } from "./LauncherTab";
 export { UpdateTab } from "./UpdateTab";
 export { ResourcesTab } from "./ResourcesTab";

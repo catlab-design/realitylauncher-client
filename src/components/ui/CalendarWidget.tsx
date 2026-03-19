@@ -258,9 +258,7 @@ export function CalendarWidget({
         return hours + (minutes ? minutes / 60 : 0);
     };
 
-    // Days in current month
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    // First day of week (0 = Sunday)
     const firstDay = new Date(year, month, 1).getDay();
 
     const days = [];
@@ -271,6 +269,10 @@ export function CalendarWidget({
     // Days of current month
     for (let i = 1; i <= daysInMonth; i++) {
         days.push(i);
+    }
+    // Pad end with empty slots to ensure exactly 42 slots (6 weeks) for layout stability
+    while (days.length < 42) {
+        days.push(null);
     }
 
     const weekDays = language === "th" 
@@ -366,7 +368,7 @@ export function CalendarWidget({
             
             <div 
                 className={`
-                    ${isFull ? 'fixed inset-x-2 bottom-2 top-12 md:inset-x-6 md:bottom-6 md:top-14 xl:inset-x-10 xl:bottom-10 xl:top-16' : 'absolute top-full right-0 mt-3 w-[576px] max-w-[calc(100vw-1.5rem)] h-[290px]'}
+                    ${isFull ? 'fixed inset-x-2 bottom-2 top-12 md:inset-x-6 md:bottom-6 md:top-14 xl:inset-x-10 xl:bottom-10 xl:top-16' : 'absolute top-full right-0 mt-3 w-[576px] max-w-[calc(100vw-1.5rem)] h-[370px]'}
                     rounded-2xl shadow-2xl overflow-hidden z-100 transition-all animate-in fade-in zoom-in-95 select-none flex flex-col
                 `}
                 style={{
@@ -672,7 +674,12 @@ export function CalendarWidget({
                                         activeAgenda = dayAgendas[0];
                                     }
                                     
-                                    const bannerUrl = (activeAgenda?.instanceBannerUrl || dayAgendas.find(a => a.instanceBannerUrl)?.instanceBannerUrl || bannerImage.src);
+                                    // Support both Astro dev/prod URL resolutions
+                                    let defaultBanner = typeof bannerImage === 'string' ? bannerImage : (bannerImage as any)?.src;
+                                    // Fix absolute path for Electron file:// protocol
+                                    if (defaultBanner?.startsWith('/')) defaultBanner = '.' + defaultBanner;
+
+                                    const bannerUrl = (activeAgenda?.instanceBannerUrl || dayAgendas.find(a => a.instanceBannerUrl)?.instanceBannerUrl || defaultBanner);
                                     const iconUrl = activeAgenda?.instanceIconUrl || dayAgendas.find(a => a.instanceIconUrl)?.instanceIconUrl;
                                     const serverName = activeAgenda?.instanceName || dayAgendas.find(a => a.instanceName)?.instanceName || "REALITY LAUNCHER";
                                     

@@ -51,6 +51,7 @@ interface InstanceDetailProps {
     launchingId: string | null;
     isGameRunning: boolean;
     playingInstanceId: string | null;
+    isInstallLocked?: boolean;
 }
 
 // ========================================
@@ -74,6 +75,7 @@ export function InstanceDetail({
     isGameRunning,
     playingInstanceId,
     onRepair,
+    isInstallLocked = false,
 }: InstanceDetailProps) {
     const { t } = useTranslation(config.language);
     // Mods state
@@ -117,6 +119,8 @@ export function InstanceDetail({
 
     // Ref to cancel recursive metadata refresh on unmount/instance change
     const modMetadataCancelRef = useRef(false);
+    const modMetadataRefreshTokenRef = useRef(0);
+    const modMetadataRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Drag & drop state
     const [isDragging, setIsDragging] = useState(false);
@@ -250,6 +254,11 @@ export function InstanceDetail({
     // Reset tab/data state when switching instance
     useEffect(() => {
         modMetadataCancelRef.current = false;
+        modMetadataRefreshTokenRef.current += 1;
+        if (modMetadataRefreshTimerRef.current) {
+            clearTimeout(modMetadataRefreshTimerRef.current);
+            modMetadataRefreshTimerRef.current = null;
+        }
         const defaultTab: ContentCategory =
             instance.loader === "vanilla" ? "resourcepacks" : "mods";
         setContentTab(defaultTab);
@@ -258,7 +267,14 @@ export function InstanceDetail({
         setResourcepacks([]);
         setShaders([]);
         setDatapacks([]);
-        return () => { modMetadataCancelRef.current = true; };
+        return () => {
+            modMetadataCancelRef.current = true;
+            modMetadataRefreshTokenRef.current += 1;
+            if (modMetadataRefreshTimerRef.current) {
+                clearTimeout(modMetadataRefreshTimerRef.current);
+                modMetadataRefreshTimerRef.current = null;
+            }
+        };
     }, [instance.id, instance.loader]);
 
     // ========================================
@@ -268,6 +284,12 @@ export function InstanceDetail({
     const loadMods = async (options?: { silent?: boolean }) => {
         const silent = options?.silent === true;
         if (!silent) setModsLoading(true);
+        modMetadataRefreshTokenRef.current += 1;
+        const refreshToken = modMetadataRefreshTokenRef.current;
+        if (modMetadataRefreshTimerRef.current) {
+            clearTimeout(modMetadataRefreshTimerRef.current);
+            modMetadataRefreshTimerRef.current = null;
+        }
 
         try {
             const result = await (window.api as any)?.instanceListMods?.(instance.id);
@@ -280,20 +302,35 @@ export function InstanceDetail({
                 // Then progressively load metadata for uncached mods
                 if (result.hasUncached) {
                     let retryCount = 0;
-                    const MAX_RETRIES = 40; // Large packs may need many refresh cycles
+                    const MAX_RETRIES = result.mods.length > 120 ? 8 : 20;
+                    const retryDelay = result.mods.length > 120 ? 1800 : 600;
                     const refreshMetadata = async () => {
-                        if (modMetadataCancelRef.current) return;
+                        if (
+                            modMetadataCancelRef.current ||
+                            refreshToken !== modMetadataRefreshTokenRef.current
+                        ) return;
                         const refreshResult = await (window.api as any)?.instanceListMods?.(instance.id);
-                        if (modMetadataCancelRef.current) return;
+                        if (
+                            modMetadataCancelRef.current ||
+                            refreshToken !== modMetadataRefreshTokenRef.current
+                        ) return;
                         if (refreshResult?.ok) {
                             setMods(refreshResult.mods);
                             // If still has uncached and under retry limit, try again
                             if (refreshResult.hasUncached && ++retryCount < MAX_RETRIES) {
-                                setTimeout(refreshMetadata, 600);
+                                modMetadataRefreshTimerRef.current = setTimeout(
+                                    refreshMetadata,
+                                    retryDelay,
+                                );
+                            } else {
+                                modMetadataRefreshTimerRef.current = null;
                             }
                         }
                     };
-                    setTimeout(refreshMetadata, 450);
+                    modMetadataRefreshTimerRef.current = setTimeout(
+                        refreshMetadata,
+                        retryDelay,
+                    );
                 }
             } else {
                 toast.error(result?.error || t('load_mods_failed'));
@@ -660,14 +697,19 @@ export function InstanceDetail({
                             {/* Play/Stop button */}
                             <button
                                 onClick={() => { playClick(); handlePlayStop(); }}
-                                disabled={disablePlayStopButton}
+                                disabled={disablePlayStopButton || isInstallLocked}
                                 className="h-12 px-8 rounded-xl font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50 flex items-center gap-2 shadow-lg hover:shadow-xl"
                                 style={{
                                     backgroundColor: showStopAction ? "#ef4444" : colors.secondary,
                                     color: showStopAction ? "#ffffff" : "#1a1a1a"
                                 }}
                             >
-                                {showStopAction ? (
+                                {isInstallLocked ? (
+                                    <>
+                                        <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                        {t('installing')}
+                                    </>
+                                ) : showStopAction ? (
                                     <>
                                         {showLaunchSpinner ? (
                                             <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -766,14 +808,19 @@ export function InstanceDetail({
                         {/* Play/Stop button */}
                         <button
                             onClick={() => { playClick(); handlePlayStop(); }}
-                            disabled={disablePlayStopButton}
+                            disabled={disablePlayStopButton || isInstallLocked}
                             className="h-12 px-8 rounded-xl font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50 flex items-center gap-2 shadow-lg hover:shadow-xl"
                             style={{
                                 backgroundColor: showStopAction ? "#ef4444" : colors.secondary,
                                 color: showStopAction ? "#ffffff" : "#1a1a1a"
                             }}
                         >
-                            {showStopAction ? (
+                            {isInstallLocked ? (
+                                <>
+                                    <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                    {t('installing')}
+                                </>
+                            ) : showStopAction ? (
                                 <>
                                     {showLaunchSpinner ? (
                                         <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />

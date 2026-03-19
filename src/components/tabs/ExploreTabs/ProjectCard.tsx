@@ -40,7 +40,7 @@ export function ProjectCard({ colors, project, isActive, onClick, isInstalling, 
                 boxShadow: isHovered
                     ? `0 8px 20px -6px ${colors.shadow}40`
                     : "none",
-                backdropFilter: "blur(12px)",
+                willChange: "transform, box-shadow",
             }}
         >
             {/* Accent Glow on Hover */}
@@ -78,7 +78,7 @@ export function ProjectCard({ colors, project, isActive, onClick, isInstalling, 
             <div className="p-4 flex items-start gap-4 relative z-10">
                 {/* Icon */}
                 <div
-                    className="w-12 h-12 rounded-xl bg-cover bg-center flex-shrink-0 shadow-sm group-hover:shadow-md transition-shadow overflow-hidden"
+                    className="w-12 h-12 rounded-xl bg-cover bg-center shrink-0 shadow-sm group-hover:shadow-md transition-shadow overflow-hidden"
                     style={{
                         backgroundImage: project.icon_url ? `url('${project.icon_url}')` : undefined,
                         backgroundColor: colors.surfaceContainerHighest,

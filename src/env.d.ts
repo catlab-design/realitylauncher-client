@@ -344,7 +344,9 @@ declare global {
         requiresRelogin?: boolean;
         error?: string;
       }>;
-      minecraftGetProfile: () => Promise<{
+      minecraftGetProfile: (options?: {
+        forceRefresh?: boolean;
+      }) => Promise<{
         ok: boolean;
         profile?: {
           id: string;

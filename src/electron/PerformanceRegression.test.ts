@@ -14,12 +14,20 @@ const mainSource = readFileSync(
   join(import.meta.dir, "main.ts"),
   "utf8",
 );
-const instanceHandlersSource = readFileSync(
-  join(import.meta.dir, "ipc", "instance-handlers.ts"),
+const instanceModHandlersSource = readFileSync(
+  join(import.meta.dir, "ipc", "instance-mod-handlers.ts"),
+  "utf8",
+);
+const instancePackHandlersSource = readFileSync(
+  join(import.meta.dir, "ipc", "instance-pack-handlers.ts"),
   "utf8",
 );
 const launcherAppSource = readFileSync(
   join(import.meta.dir, "..", "components", "LauncherApp.tsx"),
+  "utf8",
+);
+const instanceDetailSource = readFileSync(
+  join(import.meta.dir, "..", "components", "tabs", "InstanceDetail.tsx"),
   "utf8",
 );
 const nativeInstanceSource = readFileSync(
@@ -38,7 +46,7 @@ describe("performance regressions", () => {
   });
 
   it("does not synchronously read latest.log for tail reads", () => {
-    expect(instanceHandlersSource).not.toContain(
+    expect(instancePackHandlersSource).not.toContain(
       "const content = fs.readFileSync(logPath, \"utf-8\")",
     );
   });
@@ -60,6 +68,18 @@ describe("performance regressions", () => {
   it("does not base64-encode every instance icon while listing instances", () => {
     expect(nativeInstanceSource).not.toContain(
       "general_purpose::STANDARD.encode(data)",
+    );
+  });
+
+  it("throttles mod metadata hydration for large mod lists", () => {
+    expect(instanceModHandlersSource).toContain(
+      "const LOOKUP_BATCH_PER_CALL = modEntries.length > 120 ? 4 : 10",
+    );
+    expect(instanceDetailSource).toContain(
+      "const MAX_RETRIES = result.mods.length > 120 ? 8 : 20",
+    );
+    expect(instanceDetailSource).toContain(
+      "const retryDelay = result.mods.length > 120 ? 1800 : 600",
     );
   });
 });

@@ -55,5 +55,18 @@ export function registerWindowHandlers(getMainWindow: () => BrowserWindow | null
         return mainWindow ? mainWindow.isMaximized() : false;
     });
 
+    /**
+     * window-set-main-mode - ขยายหน้าต่างจาก Loading (Splash) เป็น Full App Size
+     */
+    ipcMain.handle("window-set-main-mode", async (): Promise<void> => {
+        const mainWindow = getMainWindow();
+        if (mainWindow) {
+            mainWindow.setResizable(true);
+            mainWindow.setMinimumSize(980, 620);
+            mainWindow.setSize(1100, 680);
+            mainWindow.center();
+        }
+    });
+
     console.log("[IPC] Window handlers registered");
 }

@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from "react";
-import { IdleAnimation, SkinViewer } from "skinview3d";
 
 interface SkinPreview3DProps {
     skinUrl: string | null;
@@ -12,6 +11,15 @@ interface SkinPreview3DProps {
 
 const FALLBACK_ROTATION = 0;
 
+let skinViewerModulePromise: Promise<any> | null = null;
+
+function loadSkinViewerModule() {
+    if (!skinViewerModulePromise) {
+        skinViewerModulePromise = import("skinview3d");
+    }
+    return skinViewerModulePromise;
+}
+
 export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({ 
     skinUrl, 
     variant, 
@@ -22,7 +30,7 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
 }) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
-    const viewerRef = useRef<SkinViewer | null>(null);
+    const viewerRef = useRef<any | null>(null);
     const dragRef = useRef({
         active: false,
         startX: 0,
@@ -30,7 +38,7 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
     });
 
     const [rotationY, setRotationY] = useState(FALLBACK_ROTATION);
-
+    const [viewerReady, setViewerReady] = useState(false);
 
     // Expose reset rotation capability
     useEffect(() => {
@@ -44,43 +52,61 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
 
     // Initialize Viewer
     useEffect(() => {
-        if (!canvasRef.current || !containerRef.current) return;
+        let cancelled = false;
+        let resizeObserver: ResizeObserver | null = null;
 
-        const cw = containerRef.current.clientWidth;
-        const ch = containerRef.current.clientHeight;
+        const initViewer = async () => {
+            if (!canvasRef.current || !containerRef.current) return;
 
-        const viewer = new SkinViewer({
-            canvas: canvasRef.current,
-            width: cw,
-            height: ch,
-            zoom: calcZoom(ch),
-            fov: 60,
-            enableControls: false,
-            animation: new IdleAnimation(),
-            background: "transparent",
-        });
+            try {
+                const { IdleAnimation, SkinViewer } = await loadSkinViewerModule();
+                if (cancelled || !canvasRef.current || !containerRef.current) return;
 
-        viewer.controls.enabled = false;
-        viewer.autoRotate = false;
-        viewer.playerObject.rotation.y = rotationY;
-        viewerRef.current = viewer;
+                const cw = containerRef.current.clientWidth;
+                const ch = containerRef.current.clientHeight;
 
-        const resizeObserver = new ResizeObserver(() => {
-            const container = containerRef.current;
-            if (!container || !viewerRef.current) return;
-            const w = container.clientWidth;
-            const h = container.clientHeight;
-            viewerRef.current.setSize(w, h);
-            viewerRef.current.zoom = calcZoom(h);
-        });
-        resizeObserver.observe(containerRef.current);
+                const viewer = new SkinViewer({
+                    canvas: canvasRef.current,
+                    width: cw,
+                    height: ch,
+                    zoom: calcZoom(ch),
+                    fov: 60,
+                    enableControls: false,
+                    animation: new IdleAnimation(),
+                    background: "transparent",
+                });
+
+                viewer.controls.enabled = false;
+                viewer.autoRotate = false;
+                viewer.playerObject.rotation.y = rotationY;
+                viewerRef.current = viewer;
+                setViewerReady(true);
+
+                resizeObserver = new ResizeObserver(() => {
+                    const container = containerRef.current;
+                    if (!container || !viewerRef.current) return;
+                    const w = container.clientWidth;
+                    const h = container.clientHeight;
+                    viewerRef.current.setSize(w, h);
+                    viewerRef.current.zoom = calcZoom(h);
+                });
+                resizeObserver.observe(containerRef.current);
+            } catch (error) {
+                console.error("Failed to initialize skin viewer", error);
+                onSkinLoadStateChange?.(false);
+            }
+        };
+
+        void initViewer();
 
         return () => {
-            resizeObserver.disconnect();
-            viewer.dispose();
+            cancelled = true;
+            resizeObserver?.disconnect();
+            const viewer = viewerRef.current;
             viewerRef.current = null;
+            viewer?.dispose?.();
         };
-    }, []);
+    }, [onSkinLoadStateChange]);
 
     // Sync Rotation
     useEffect(() => {
@@ -91,7 +117,7 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
     // Sync Skin & Variant
     useEffect(() => {
         const viewer = viewerRef.current;
-        if (!viewer) return;
+        if (!viewer || !viewerReady) return;
 
         if (!skinUrl) {
             viewer.loadSkin(null);
@@ -110,12 +136,12 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
                 viewer.playerObject.visible = true;
                 onSkinLoadStateChange?.(false);
             })
-            .catch((e) => {
-                console.error("Failed to load skin preview", e);
+            .catch((error: unknown) => {
+                console.error("Failed to load skin preview", error);
                 viewer.playerObject.visible = true;
                 onSkinLoadStateChange?.(false);
             });
-    }, [skinUrl, variant, onSkinLoadStateChange]);
+    }, [skinUrl, variant, viewerReady, onSkinLoadStateChange]);
 
     // Drag Logic
     const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {

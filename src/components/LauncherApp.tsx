@@ -14,62 +14,25 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import gsap from "gsap";
-import { Toaster, toast } from "react-hot-toast";
+import { toast } from "react-hot-toast";
 
-import { Icons } from "./ui/Icons";
-import { MCHead } from "./ui/MCHead";
-import { translations } from "../i18n/translations";
-import { ChangelogModal } from "./ui/ChangelogModal";
-import { NotificationInbox } from "./ui/NotificationInbox";
-import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { LoadingScreen } from "./ui/LoadingScreen";
-import { OfflineLoginModal } from "./auth/OfflineLoginModal";
-import { CatIDLoginModal } from "./auth/CatIDLoginModal";
-import { LoginModal } from "./auth/LoginModal";
-import { MicrosoftVerificationModal } from "./auth/MicrosoftVerificationModal";
-import { AppVersionBadge } from "./ui/AppVersionBadge";
-import microsoftIcon from "../assets/microsoft_icon.svg";
-import rIcon from "../assets/r.svg";
-import { Sidebar } from "./layout/Sidebar";
 import { ErrorBoundary as UIErrorBoundary } from "./ui/ErrorBoundary";
+import { LauncherAppOverlays } from "./LauncherAppOverlays";
+import { LauncherAppShell } from "./LauncherAppShell";
+import { getColors } from "./launcherTheme";
 
-import { Home, Settings, ServerMenu, ModPack, Explore, About, Wardrobe } from "./tabs";
-import { StateDebug } from "./StateDebug";
-import AdminPanel from "./tabs/AdminPanel";
-import { type AuthSession, type Server, type NewsItem, type LauncherConfig, type ColorTheme, type GameInstance } from "../types/launcher";
+import { type AuthSession, type Server, type NewsItem, type LauncherConfig, type GameInstance } from "../types/launcher";
 import { playClick, playSucceed, playNotification, setSoundConfig } from "../lib/sounds";
 import { useTranslation } from "../hooks/useTranslation";
 import { useConfigStore } from "../store/configStore";
 import { useAuthStore } from "../store/authStore";
 import { useUiStore } from "../store/uiStore";
 import { useProgressStore } from "../store/progressStore";
-import { InstallProgressModal } from "./tabs/ModPackTabs/InstallProgressModal";
-import { CalendarWidget } from "./ui/CalendarWidget";
 
 // ========================================
 // Error Boundary
 // ========================================
-
-// Read current language from persisted config (localStorage fallback)
-function getCurrentLanguage(): "th" | "en" {
-  try {
-    if (typeof window !== "undefined") {
-      const raw = localStorage.getItem("reality_config");
-      if (raw) {
-        const parsed = JSON.parse(raw as string);
-        if (parsed && parsed.language) return parsed.language === "en" ? "en" : "th";
-      }
-    }
-  } catch (e) {
-    // ignore and fallback
-  }
-  return "th";
-}
-
-
-
-
-
 
 // Types moved to types/launcher.ts
 
@@ -81,7 +44,6 @@ function getCurrentLanguage(): "th" | "en" {
 // getMCHeadURL handled by MCHead component
 
 // Color theme definitions
-import { COLOR_THEMES } from "../lib/constants";
 
 // ========================================
 // Icons
@@ -92,71 +54,6 @@ import { COLOR_THEMES } from "../lib/constants";
 // ========================================
 // Colors (dynamically based on theme)
 // ========================================
-
-function getColors(colorTheme: ColorTheme, themeMode: "light" | "dark" | "oled" | "auto", customColor?: string, rainbowMode?: boolean) {
-  const themeColor = rainbowMode ? "var(--secondary-color)" : (customColor || COLOR_THEMES[colorTheme].primary);
-
-  // Determine effective theme mode for "auto" - light during 6am-6pm, dark otherwise
-  let effectiveMode: "light" | "dark" | "oled" = themeMode === "auto"
-    ? new Date().getHours() >= 6 && new Date().getHours() < 18 ? "light" : "dark"
-    : themeMode;
-
-  if (effectiveMode === "oled") {
-    // OLED theme - pure black background for OLED screens
-    return {
-      primary: themeColor,
-      onPrimary: "#000000",
-      primaryContainer: "#0a0a0a",
-      onPrimaryContainer: "#ffffff",
-      secondary: themeColor,
-      secondaryContainer: themeColor,
-      surface: "#000000",
-      surfaceContainer: "#0a0a0a",
-      surfaceContainerHigh: "#141414",
-      surfaceContainerHighest: "#1e1e1e",
-      onSurface: "#ffffff",
-      onSurfaceVariant: "#a0a0a0",
-      outline: "#333333",
-      outlineVariant: "#222222",
-    };
-  } else if (effectiveMode === "dark") {
-    // Dark theme - พื้นดำ ฟอนต์ขาว
-    return {
-      primary: themeColor,
-      onPrimary: "#1a1a1a",
-      primaryContainer: "#2a2a2a",
-      onPrimaryContainer: "#ffffff",
-      secondary: themeColor,
-      secondaryContainer: themeColor,
-      surface: "#1a1a1a",
-      surfaceContainer: "#242424",
-      surfaceContainerHigh: "#2e2e2e",
-      surfaceContainerHighest: "#3a3a3a",
-      onSurface: "#ffffff",
-      onSurfaceVariant: "#b3b3b3",
-      outline: "#4a4a4a",
-      outlineVariant: "#3a3a3a",
-    };
-  } else {
-    // Light theme - พื้นขาว ฟอนต์ดำ
-    return {
-      primary: "#1a1a1a",
-      onPrimary: "#ffffff",
-      primaryContainer: "#f5f5f5",
-      onPrimaryContainer: "#1a1a1a",
-      secondary: themeColor,
-      secondaryContainer: themeColor,
-      surface: "#ffffff",
-      surfaceContainer: "#f8f8f8",
-      surfaceContainerHigh: "#f0f0f0",
-      surfaceContainerHighest: "#e8e8e8",
-      onSurface: "#1a1a1a",
-      onSurfaceVariant: "#666666",
-      outline: "#cccccc",
-      outlineVariant: "#e0e0e0",
-    };
-  }
-}
 
 // ========================================
 // Loading Screen
@@ -233,8 +130,11 @@ function LauncherAppContent() {
 
   const [isLoading, setIsLoading] = useState(true);
   // activeTab & settingsTab moved to UI Store
+  const [lastContentTab, setLastContentTab] = useState("home");
 
   const { t } = useTranslation(config.language);
+  const settingsDialogOpen = activeTab === "settings";
+  const contentTab = activeTab === "settings" ? lastContentTab : activeTab;
 
   // session & accounts moved to Auth Store
 
@@ -244,6 +144,12 @@ function LauncherAppContent() {
   useEffect(() => {
       // console.log("[LauncherApp] selectedInstance changed:", selectedInstance?.name || "null");
   }, [selectedInstance]);
+
+  useEffect(() => {
+    if (activeTab !== "settings") {
+      setLastContentTab(activeTab);
+    }
+  }, [activeTab]);
 
   // Modals state mapping (local variables for backward compatibility during refactor, or we switch to using store values directly)
   // For now, let's keep the usage of 'loginDialogOpen' etc. by deriving them from store if strictly necessary, 
@@ -343,6 +249,10 @@ function LauncherAppContent() {
       open: true,
     });
   }, []);
+
+  const handleCloseSettingsDialog = useCallback(() => {
+    setActiveTab(contentTab);
+  }, [contentTab, setActiveTab]);
 
 
   // Inbox/Notifications modal state
@@ -1424,7 +1334,10 @@ function LauncherAppContent() {
 
   // Show loading screen
   if (isLoading) {
-    return <LoadingScreen onComplete={() => setIsLoading(false)} themeColor={colors.secondary} />;
+    return <LoadingScreen onComplete={() => {
+        setIsLoading(false);
+        if (window.api?.windowSetMainMode) window.api.windowSetMainMode();
+    }} themeColor={colors.secondary} />;
   }
 
   // Render tabs - split into main and bottom navigation
@@ -1432,1435 +1345,134 @@ function LauncherAppContent() {
 
   return (
     <div ref={rootRef} className="h-screen flex flex-col overflow-hidden bg-surface" style={{ backgroundColor: colors.surface }}>
-      <Toaster
-        position="top-center"
-        containerStyle={{
-          top: 16,
-        }}
-        toastOptions={{
-          duration: 3000,
-          style: {
-            background: colors.surfaceContainer,
-            color: colors.onSurface,
-            borderRadius: '16px',
-            padding: '12px 18px',
-            fontSize: '13px',
-            fontWeight: 500,
-            boxShadow: `0 0 20px rgba(255, 0, 128, 0.5), 0 0 40px rgba(0, 255, 255, 0.3), 0 0 60px rgba(128, 0, 255, 0.2)`,
-            maxWidth: '350px',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-          },
-          success: {
-            style: {
-              boxShadow: `0 0 20px rgba(34, 197, 94, 0.5), 0 0 40px rgba(34, 197, 94, 0.3)`,
-            },
-            iconTheme: {
-              primary: '#22c55e',
-              secondary: '#fff',
-            },
-          },
-          error: {
-            style: {
-              boxShadow: `0 0 20px rgba(239, 68, 68, 0.5), 0 0 40px rgba(239, 68, 68, 0.3)`,
-            },
-            iconTheme: {
-              primary: '#ef4444',
-              secondary: '#fff',
-            },
-          },
-          loading: {
-            style: {
-              boxShadow: `0 0 20px ${colors.primary}80, 0 0 40px ${colors.primary}4d`,
-            },
-          },
-        }}
-      />
-
-      {/* Changelog Modal - Shows after update */}
-      <ChangelogModal
-        isOpen={changelogModalOpen}
-        onClose={() => setChangelogModalOpen(false)}
-        version={changelogData?.version || ""}
-        changelog={changelogData?.changelog || ""}
+      <LauncherAppOverlays
         colors={colors}
+        t={t}
+        changelogModalOpen={changelogModalOpen}
+        setChangelogModalOpen={setChangelogModalOpen}
+        changelogData={changelogData}
+        confirmDialog={confirmDialog}
+        setConfirmDialog={setConfirmDialog}
+        loginDialogOpen={loginDialogOpen}
+        setLoginDialogOpen={setLoginDialogOpen}
+        offlineUsernameOpen={offlineUsernameOpen}
+        setOfflineUsernameOpen={setOfflineUsernameOpen}
+        catIDLoginOpen={catIDLoginOpen}
+        setCatIDLoginOpen={setCatIDLoginOpen}
+        deviceCodeModalOpen={deviceCodeModalOpen}
+        setDeviceCodeModalOpen={setDeviceCodeModalOpen}
+        deviceCodeData={deviceCodeData}
+        setDeviceCodeData={setDeviceCodeData}
+        setDeviceCodeError={setDeviceCodeError}
+        setDeviceCodePolling={setDeviceCodePolling}
+        setIsLinkingMicrosoft={setIsLinkingMicrosoft}
+        handleOfflineLogin={handleOfflineLogin}
+        handleCatIDLogin={handleCatIDLogin}
+        catIDRegisterOpen={catIDRegisterOpen}
+        setCatIDRegisterOpen={setCatIDRegisterOpen}
+        catIDRegisterData={catIDRegisterData}
+        setCatIDRegisterData={setCatIDRegisterData}
+        isRegistering={isRegistering}
+        handleCatIDRegister={handleCatIDRegister}
+        verificationWaiting={verificationWaiting}
+        setVerificationWaiting={setVerificationWaiting}
+        verificationEmail={verificationEmail}
+        handleManualVerificationCheck={handleManualVerificationCheck}
+        setVerificationToken={setVerificationToken}
+        forgotPasswordOpen={forgotPasswordOpen}
+        setForgotPasswordOpen={setForgotPasswordOpen}
+        forgotPasswordStep={forgotPasswordStep}
+        setForgotPasswordStep={setForgotPasswordStep}
+        forgotPasswordEmail={forgotPasswordEmail}
+        setForgotPasswordEmail={setForgotPasswordEmail}
+        forgotPasswordOtp={forgotPasswordOtp}
+        setForgotPasswordOtp={setForgotPasswordOtp}
+        forgotPasswordNewPassword={forgotPasswordNewPassword}
+        setForgotPasswordNewPassword={setForgotPasswordNewPassword}
+        forgotPasswordConfirmNewPassword={forgotPasswordConfirmNewPassword}
+        setForgotPasswordConfirmNewPassword={setForgotPasswordConfirmNewPassword}
+        isForgotPasswordLoading={isForgotPasswordLoading}
+        setIsForgotPasswordLoading={setIsForgotPasswordLoading}
+        linkCatIDOpen={linkCatIDOpen}
+        setLinkCatIDOpen={setLinkCatIDOpen}
+        showLinkPassword={showLinkPassword}
+        setShowLinkPassword={setShowLinkPassword}
+        handleLinkCatID={handleLinkCatID}
+        accountManagerOpen={accountManagerOpen}
+        setAccountManagerOpen={setAccountManagerOpen}
+        accounts={accounts}
+        session={session}
+        selectAccount={selectAccount}
+        removeAccountFromList={removeAccountFromList}
+        importModpackOpen={importModpackOpen}
+        setImportModpackOpen={setImportModpackOpen}
+        isDragging={isDragging}
+        setIsDragging={setIsDragging}
       />
 
-      {/* Confirm Dialog */}
-      <ConfirmDialog
-        isOpen={confirmDialog.open}
-        onClose={() => setConfirmDialog(prev => ({ ...prev, open: false }))}
-        onConfirm={confirmDialog.onConfirm}
-        title={confirmDialog.title}
-        message={confirmDialog.message}
-        confirmText={confirmDialog.confirmText}
-        cancelText={confirmDialog.cancelText}
-        confirmColor={confirmDialog.confirmColor}
-        tertiaryText={confirmDialog.tertiaryText}
-        tertiaryColor={confirmDialog.tertiaryColor}
-        onTertiary={confirmDialog.onTertiary}
+      <LauncherAppShell
         colors={colors}
+        titleBarColors={titleBarColors}
+        config={config}
+        session={session}
+        accounts={accounts}
+        selectedInstance={selectedInstance}
+        calendarOpen={calendarOpen}
+        setCalendarOpen={setCalendarOpen}
+        hasEventsToday={hasEventsToday}
+        agendas={agendas}
+        isLoadingAgendas={isLoadingAgendas}
+        fetchAgendas={fetchAgendas}
+        inboxOpen={inboxOpen}
+        setInboxOpen={setInboxOpen}
+        announcements={announcements}
+        userNotifications={userNotifications}
+        unreadCount={unreadCount}
+        setInvitations={setInvitations}
+        setServerRefreshTrigger={setServerRefreshTrigger}
+        setNotificationRefreshTrigger={setNotificationRefreshTrigger}
+        accountDropdownOpen={accountDropdownOpen}
+        setAccountDropdownOpen={setAccountDropdownOpen}
+        t={t}
+        selectAccount={selectAccount}
+        removeAccountFromList={removeAccountFromList}
+        setLoginDialogOpen={setLoginDialogOpen}
+        setLinkCatIDOpen={setLinkCatIDOpen}
+        handleLinkMicrosoft={handleLinkMicrosoft}
+        handleLogout={handleLogout}
+        updateConfig={updateConfig}
+        contentTab={contentTab}
+        settingsDialogOpen={settingsDialogOpen}
+        onCloseSettingsDialog={handleCloseSettingsDialog}
+        news={news}
+        servers={servers}
+        selectedServer={selectedServer}
+        setSelectedServer={setSelectedServer}
+        setSelectedInstance={setSelectedInstance}
+        setActiveTab={setActiveTab}
+        serverRefreshTrigger={serverRefreshTrigger}
+        settingsTab={settingsTab}
+        setSettingsTab={setSettingsTab}
+        setImportModpackOpen={setImportModpackOpen}
+        handleShowConfirm={handleShowConfirm}
+        handleBrowseJava={handleBrowseJava}
+        handleBrowseMinecraftDir={handleBrowseMinecraftDir}
+        handleUnlink={handleUnlink}
+        isAdmin={isAdmin}
+        adminToken={adminToken}
+        isExporting={isExporting}
+        exportProgress={exportProgress}
+        isExportMinimized={isExportMinimized}
+        setExportMinimized={setExportMinimized}
+        handleCancelExport={handleCancelExport}
+        exportingInstanceId={exportingInstanceId}
+        isInstalling={isInstalling}
+        installProgress={installProgress}
+        isInstallMinimized={isInstallMinimized}
+        setInstallMinimized={setInstallMinimized}
+        operationType={operationType}
+        handleCancelInstall={handleCancelInstall}
       />
-
-
-
-      <LoginModal
-        isOpen={loginDialogOpen}
-        onClose={() => setLoginDialogOpen(false)}
-        onMicrosoftLogin={async () => {
-          console.log("[Auth] Microsoft login button clicked - starting device code flow");
-          setLoginDialogOpen(false);
-          if (window.api?.startDeviceCodeAuth) {
-            try {
-              const toastId = toast.loading(t('requesting_login_code'));
-              const result = await window.api.startDeviceCodeAuth();
-              toast.dismiss(toastId);
-              if (!result.ok || !result.deviceCode || !result.userCode) {
-                toast.error(result.error || t('request_code_failed'));
-                return;
-              }
-              setDeviceCodeData({
-                deviceCode: result.deviceCode,
-                userCode: result.userCode,
-                verificationUri: result.verificationUri || "https://microsoft.com/devicelogin",
-                expiresAt: Date.now() + (result.expiresIn || 900) * 1000,
-              });
-              setDeviceCodeError(null);
-              setDeviceCodeModalOpen(true);
-              setDeviceCodePolling(true);
-            } catch (error) {
-              console.error("[Auth] Error starting device code flow:", error);
-              toast.error(t('start_login_failed'));
-            }
-          } else {
-            toast.error(t('ms_login_requires_electron'));
-          }
-        }}
-        onCatIDLogin={() => {
-          setLoginDialogOpen(false);
-          setCatIDLoginOpen(true);
-        }}
-        onOfflineLogin={() => {
-          setLoginDialogOpen(false);
-          setOfflineUsernameOpen(true);
-        }}
-        colors={colors}
-      />
-
-      <OfflineLoginModal
-        isOpen={offlineUsernameOpen}
-        onClose={() => setOfflineUsernameOpen(false)}
-        onLogin={async (username) => {
-          const ok = await handleOfflineLogin(username);
-          if (ok) setOfflineUsernameOpen(false);
-        }}
-        colors={colors}
-      />
-
-      <CatIDLoginModal
-        isOpen={catIDLoginOpen}
-        onClose={() => setCatIDLoginOpen(false)}
-        onLogin={async (username, password) => {
-          const ok = await handleCatIDLogin(username, password);
-          if (ok) setCatIDLoginOpen(false);
-        }}
-        onRegister={() => {
-          setCatIDLoginOpen(false);
-          setCatIDRegisterOpen(true);
-        }}
-        onForgotPassword={() => {
-          setCatIDLoginOpen(false);
-          setForgotPasswordOpen(true);
-        }}
-        colors={colors}
-      />
-
-      <MicrosoftVerificationModal
-        isOpen={deviceCodeModalOpen}
-        data={deviceCodeData}
-        onClose={() => {
-          setDeviceCodeModalOpen(false);
-          setDeviceCodePolling(false);
-          setDeviceCodeData(null);
-          setDeviceCodeError(null);
-          setIsLinkingMicrosoft(false);
-        }}
-        colors={colors}
-      />
-
-
-
-      {catIDRegisterOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="flex w-full max-w-2xl h-[520px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden" style={{ backgroundColor: colors.surface }}>
-            {/* Left Branding Side */}
-            <div className="w-[35%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5" style={{ backgroundColor: `${"#8b5cf6"}10` }}>
-              <div className="absolute top-0 left-0 w-full h-full bg-linear-to-b from-purple-500/10 to-transparent pointer-events-none" />
-              <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-purple-500/30 z-10" style={{ backgroundColor: "#8b5cf6" }}>
-                <svg className="w-10 h-10" viewBox="0 0 24 24" fill="#ffffff">
-                  <path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-                </svg>
-              </div>
-              <h2 className="text-2xl font-black tracking-tighter text-center z-10" style={{ color: colors.onSurface }}>{t('join_the_journey')}</h2>
-              <div className="mt-2 px-3 py-1 rounded-full bg-purple-500/20 text-[10px] font-black uppercase tracking-widest z-10" style={{ color: "#8b5cf6" }}>{t('create_new_id')}</div>
-              <p className="mt-8 text-xs font-bold opacity-30 text-center leading-relaxed z-10" style={{ color: colors.onSurface }}>{t('create_your_identity_catlab')}</p>
-            </div>
-
-            {/* Right Form Side */}
-            <div className="flex-1 p-10 flex flex-col relative">
-              {/* Close Button */}
-              <button
-                onClick={() => setCatIDRegisterOpen(false)}
-                className="absolute top-6 right-6 w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors z-20"
-                style={{ color: colors.onSurfaceVariant }}
-              >
-                <Icons.Close className="w-6 h-6" />
-              </button>
-
-              <div className="mb-6">
-                <h3 className="text-2xl font-black tracking-tight" style={{ color: colors.onSurface }}>{t('create_new_account')}</h3>
-                <p className="text-sm font-medium opacity-60" style={{ color: colors.onSurfaceVariant }}>{t('start_new_journey')}</p>
-              </div>
-
-              <div className="space-y-3.5 flex-1">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>{t('username')}</label>
-                    <input
-                      id="catid-reg-username"
-                      type="text"
-                      placeholder={t('username_placeholder')}
-                      className="w-full px-4 py-3 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-purple-500/10"
-                      style={{ borderColor: 'transparent', backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
-                      value={catIDRegisterData.username}
-                      onChange={(e) => setCatIDRegisterData(prev => ({ ...prev, username: e.target.value }))}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>{t('email')}</label>
-                    <input
-                      id="catid-reg-email"
-                      type="email"
-                      placeholder={t('email')}
-                      className="w-full px-4 py-3 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-purple-500/10"
-                      style={{ borderColor: 'transparent', backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
-                      value={catIDRegisterData.email}
-                      onChange={(e) => setCatIDRegisterData(prev => ({ ...prev, email: e.target.value }))}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>{t('password')}</label>
-                  <input
-                    id="catid-reg-password"
-                    type="password"
-                    placeholder={t('password')}
-                    className="w-full px-5 py-3 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-purple-500/10"
-                    style={{ borderColor: 'transparent', backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
-                    value={catIDRegisterData.password}
-                    onChange={(e) => setCatIDRegisterData(prev => ({ ...prev, password: e.target.value }))}
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>{t('confirm_password')}</label>
-                  <input
-                    id="catid-reg-confirm"
-                    type="password"
-                    placeholder={t('confirm_password')}
-                    className="w-full px-5 py-3 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-purple-500/10"
-                    style={{ borderColor: 'transparent', backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
-                    value={catIDRegisterData.confirmPassword}
-                    onChange={(e) => setCatIDRegisterData(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-3 mt-8">
-                <button
-                  onClick={handleCatIDRegister}
-                  disabled={isRegistering}
-                  className="w-full py-4 rounded-2xl font-black text-lg transition-all hover:scale-[1.02] shadow-lg shadow-purple-500/20 disabled:opacity-50"
-                  style={{ backgroundColor: "#8b5cf6", color: "#ffffff" }}
-                >
-                  {t('register_now')}
-                </button>
-                <button
-                  onClick={() => {
-                    setCatIDRegisterOpen(false);
-                    setCatIDLoginOpen(true);
-                  }}
-                  className="w-full py-3 rounded-2xl font-bold opacity-60 hover:opacity-100 transition-all text-sm"
-                  style={{ color: colors.onSurface }}
-                >
-                  {t('already_have_account')}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Verification Waiting Modal */}
-      {verificationWaiting && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="w-full max-w-md rounded-4xl shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden p-8" style={{ backgroundColor: colors.surface }}>
-            <div className="flex-1 p-10 flex flex-col items-center justify-center text-center">
-              <div className="w-20 h-20 rounded-4xl flex items-center justify-center mb-8 relative" style={{ backgroundColor: `${colors.secondary}20` }}>
-                <Icons.Email className="w-10 h-10 animate-bounce" style={{ color: colors.secondary }} />
-                <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center animate-pulse" style={{ backgroundColor: colors.secondary }}>
-                  <Icons.Timer className="w-3.5 h-3.5" style={{ color: "#1a1a1a" }} />
-                </div>
-              </div>
-
-              <h3 className="text-3xl font-black tracking-tight mb-4" style={{ color: colors.onSurface }}>{t('verification_waiting')}</h3>
-
-              <div className="space-y-4 max-w-sm">
-                <p className="text-base font-medium opacity-80" style={{ color: colors.onSurface }}>
-                  {t('verification_check_email')}
-                </p>
-                <div className="px-4 py-3 rounded-2xl bg-white/5 border border-white/5">
-                  <span className="text-sm font-black opacity-40 mr-2" style={{ color: colors.onSurface }}>EMAIL:</span>
-                  <span className="text-sm font-bold" style={{ color: colors.secondary }}>{verificationEmail}</span>
-                </div>
-                <p className="text-xs opacity-50 leading-relaxed" style={{ color: colors.onSurfaceVariant }}>
-                  {t('verification_spam_hint')}
-                </p>
-              </div>
-
-              <div className="w-full h-px my-10 bg-white/5" />
-
-              <div className="flex flex-col gap-3 w-full">
-                <button
-                  onClick={handleManualVerificationCheck}
-                  className="w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xl shadow-yellow-500/10"
-                  style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
-                >
-                  {t('verification_confirm_btn')}
-                </button>
-
-                <button
-                  onClick={() => {
-                    setVerificationWaiting(false);
-                    setVerificationToken(null);
-                  }}
-                  className="w-full py-4 rounded-2xl font-bold text-sm opacity-50 hover:opacity-100 hover:bg-white/5 transition-all"
-                  style={{ color: colors.onSurface }}
-                >
-                  {t('cancel')}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      {forgotPasswordOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="flex w-full max-w-2xl h-[480px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden" style={{ backgroundColor: colors.surface }}>
-            {/* Left Branding Side */}
-            <div className="w-[38%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5" style={{ backgroundColor: `${colors.secondary}10` }}>
-              <div className="absolute top-0 left-0 w-full h-full bg-linear-to-b from-yellow-500/10 to-transparent pointer-events-none" />
-              <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-yellow-500/30 z-10" style={{ backgroundColor: colors.secondary }}>
-                {forgotPasswordStep === 'email' ? (
-                  <Icons.Info className="w-10 h-10 text-black" />
-                ) : (
-                  <Icons.Key className="w-10 h-10 text-black" />
-                )}
-              </div>
-              <h2 className="text-2xl font-black tracking-tighter text-center z-10" style={{ color: colors.onSurface }}>
-                {forgotPasswordStep === 'email' ? t('recovery_id') : t('reset_password')}
-              </h2>
-              <div className="mt-2 px-3 py-1 rounded-full bg-yellow-500/20 text-[10px] font-black uppercase tracking-widest z-10" style={{ color: colors.secondary }}>{t('support_team')}</div>
-              <p className="mt-8 text-xs font-bold opacity-30 text-center leading-relaxed z-10" style={{ color: colors.onSurface }}>
-                {forgotPasswordStep === 'email' ? t('forgot_password_desc') : t('check_email_otp')}
-              </p>
-            </div>
-
-            {/* Right Side */}
-            <div className="flex-1 p-10 flex flex-col relative justify-center">
-              {/* Close Button */}
-              <button
-                onClick={() => {
-                  setForgotPasswordOpen(false);
-                  setForgotPasswordStep('email');
-                  setForgotPasswordEmail("");
-                  setForgotPasswordOtp("");
-                  setForgotPasswordNewPassword("");
-                }}
-                className="absolute top-6 right-6 w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors z-20"
-                style={{ color: colors.onSurfaceVariant }}
-              >
-                <Icons.Close className="w-6 h-6" />
-              </button>
-
-              {forgotPasswordStep === 'email' ? (
-                <>
-                  <div className="mb-6">
-                    <h3 className="text-2xl font-black tracking-tight" style={{ color: colors.onSurface }}>{t('forgot_password_title')}</h3>
-                    <p className="text-sm font-medium opacity-60" style={{ color: colors.onSurfaceVariant }}>{t('enter_email_recovery')}</p>
-                  </div>
-
-                  <div className="space-y-4 w-full">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>{t('email')}</label>
-                      <input
-                        type="email"
-                        value={forgotPasswordEmail}
-                        onChange={(e) => setForgotPasswordEmail(e.target.value)}
-                        placeholder={t('email_placeholder')}
-                        className="w-full px-5 py-3.5 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-yellow-500/10"
-                        style={{ borderColor: 'transparent', backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
-                      />
-                    </div>
-
-                    <button
-                      onClick={async () => {
-                        if (!forgotPasswordEmail) {
-                          toast.error(t('fill_email'));
-                          return;
-                        }
-                        setIsForgotPasswordLoading(true);
-                        try {
-                          const result = await window.api?.forgotPassword?.(forgotPasswordEmail);
-                          if (result?.ok) {
-                            setForgotPasswordStep('reset');
-                            toast.success(result.message || t('otp_sent'));
-                          } else {
-                            toast.error(result?.error || t('error_occurred'));
-                          }
-                        } catch (err) {
-                          console.error(err);
-                          toast.error(t('error_occurred'));
-                        } finally {
-                          setIsForgotPasswordLoading(false);
-                        }
-                      }}
-                      disabled={isForgotPasswordLoading}
-                      className="w-full py-4 rounded-2xl font-black text-lg transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-yellow-500/20 disabled:opacity-50"
-                      style={{ backgroundColor: colors.secondary, color: colors.onPrimary }}
-                    >
-                      {isForgotPasswordLoading ? t('sending') : t('send_otp')}
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        setForgotPasswordOpen(false);
-                        setCatIDLoginOpen(true);
-                      }}
-                      className="w-full py-2 font-bold opacity-60 hover:opacity-100 transition-all text-sm"
-                      style={{ color: colors.onSurface }}
-                    >
-                      {t('back_to_login')}
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="mb-4">
-                    <h3 className="text-xl font-black tracking-tight" style={{ color: colors.onSurface }}>{t('set_new_password')}</h3>
-                    <p className="text-xs font-medium opacity-60" style={{ color: colors.onSurfaceVariant }}>
-                      {t('sent_to')} <span style={{ color: colors.secondary }}>{forgotPasswordEmail}</span>
-                    </p>
-                  </div>
-
-                  <div className="space-y-3 w-full">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>OTP Code (6 Digits)</label>
-                      <input
-                        type="text"
-                        value={forgotPasswordOtp}
-                        onChange={(e) => setForgotPasswordOtp(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
-                        placeholder="######"
-                        className="w-full px-5 py-3 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-yellow-500/10 tracking-widest font-mono text-center text-xl"
-                        style={{ borderColor: 'transparent', backgroundColor: colors.surfaceContainer, color: colors.secondary }}
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>{t('new_password')}</label>
-                      <input
-                        type="password"
-                        value={forgotPasswordNewPassword}
-                        onChange={(e) => setForgotPasswordNewPassword(e.target.value)}
-                        placeholder={t('password_placeholder')}
-                        className="w-full px-5 py-3 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-yellow-500/10"
-                        style={{ borderColor: 'transparent', backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>{t('confirm_password')}</label>
-                      <input
-                        type="password"
-                        value={forgotPasswordConfirmNewPassword}
-                        onChange={(e) => setForgotPasswordConfirmNewPassword(e.target.value)}
-                        placeholder={t('confirm_password')}
-                        className="w-full px-5 py-3 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-yellow-500/10"
-                        style={{ borderColor: 'transparent', backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
-                      />
-                    </div>
-
-                    <button
-                      onClick={async () => {
-                        if (!forgotPasswordOtp || !forgotPasswordNewPassword || !forgotPasswordConfirmNewPassword) {
-                          toast.error(t('fill_all_fields'));
-                          return;
-                        }
-
-                        if (forgotPasswordNewPassword !== forgotPasswordConfirmNewPassword) {
-                          toast.error(t('passwords_do_not_match') || "Passwords do not match");
-                          return;
-                        }
-                        setIsForgotPasswordLoading(true);
-                        try {
-                          const result = await window.api?.resetPassword?.(forgotPasswordEmail, forgotPasswordOtp, forgotPasswordNewPassword);
-                          if (result?.ok) {
-                            toast.success(result.message || t('password_reset_success'));
-                            setForgotPasswordOpen(false);
-                            setForgotPasswordStep('email');
-                            setCatIDLoginOpen(true);
-                          } else {
-                            toast.error(result?.error || t('error_occurred'));
-                          }
-                        } catch (err) {
-                          console.error(err);
-                          toast.error(t('error_occurred'));
-                        } finally {
-                          setIsForgotPasswordLoading(false);
-                        }
-                      }}
-                      disabled={isForgotPasswordLoading}
-                      className="w-full py-4 rounded-2xl font-black text-lg transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-yellow-500/20 disabled:opacity-50 mt-2"
-                      style={{ backgroundColor: colors.secondary, color: colors.onPrimary }}
-                    >
-                      {isForgotPasswordLoading ? t('processing') : t('reset_password')}
-                    </button>
-
-                    <button
-                      onClick={() => setForgotPasswordStep('email')}
-                      className="w-full py-1 font-bold opacity-60 hover:opacity-100 transition-all text-xs"
-                      style={{ color: colors.onSurface }}
-                    >
-                      {t('wrong_email')}
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-      {linkCatIDOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="flex w-full max-w-2xl h-[450px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden" style={{ backgroundColor: colors.surface }}>
-            {/* Left Branding Side */}
-            <div className="w-[38%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5" style={{ backgroundColor: `${colors.secondary}10` }}>
-              <div className="absolute top-0 left-0 w-full h-full bg-linear-to-b from-yellow-500/10 to-transparent pointer-events-none" />
-              <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-yellow-500/30 z-10" style={{ backgroundColor: colors.secondary }}>
-                <Icons.Refresh className="w-10 h-10" style={{ color: colors.onPrimary }} />
-              </div>
-              <h2 className="text-2xl font-black tracking-tighter text-center z-10" style={{ color: colors.onSurface }}>{t('connect_account')}</h2>
-              <div className="mt-2 px-3 py-1 rounded-full bg-yellow-500/20 text-[10px] font-black uppercase tracking-widest z-10" style={{ color: colors.secondary }}>{t('sync_account')}</div>
-              <p className="mt-8 text-xs font-bold opacity-30 text-center leading-relaxed z-10" style={{ color: colors.onSurface }}>{t('sync_progress')}</p>
-            </div>
-
-            {/* Right Form Side */}
-            <div className="flex-1 p-10 flex flex-col relative">
-              {/* Close Button */}
-              <button
-                onClick={() => setLinkCatIDOpen(false)}
-                className="absolute top-6 right-6 w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors z-20"
-                style={{ color: colors.onSurfaceVariant }}
-              >
-                <Icons.Close className="w-6 h-6" />
-              </button>
-
-              <div className="mb-8">
-                <h3 className="text-2xl font-black tracking-tight" style={{ color: colors.onSurface }}>{t('connect_with_catid')}</h3>
-                <p className="text-sm font-medium opacity-60" style={{ color: colors.onSurfaceVariant }}>{t('enter_catid_password_to_connect')}</p>
-              </div>
-
-              <div className="space-y-4 flex-1">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>{t('catid_username')}</label>
-                  <input
-                    id="link-catid-username"
-                    type="text"
-                    placeholder={t('catid_username')}
-                    className="w-full px-5 py-3.5 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-yellow-500/10"
-                    style={{ borderColor: 'transparent', backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>{t('password')}</label>
-                  <div className="relative">
-                    <input
-                      id="link-catid-password"
-                      type={showLinkPassword ? "text" : "password"}
-                      placeholder={t('password')}
-                      className="w-full px-5 py-3.5 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-yellow-500/10 pr-12"
-                      style={{ borderColor: 'transparent', backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowLinkPassword(!showLinkPassword)}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-all hover:bg-white/5 opacity-50 hover:opacity-100"
-                      style={{ color: colors.onSurface }}
-                    >
-                      {showLinkPassword ? (
-                        <Icons.EyeOff className="w-4 h-4" />
-                      ) : (
-                        <Icons.Eye className="w-4 h-4" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <button
-                onClick={async () => {
-                  const username = (document.getElementById("link-catid-username") as HTMLInputElement)?.value;
-                  const password = (document.getElementById("link-catid-password") as HTMLInputElement)?.value;
-
-                  if (!username || !password) {
-                    toast.error(t('fill_all_fields'));
-                    return;
-                  }
-                  await handleLinkCatID(username, password);
-                }}
-                className="w-full py-4 rounded-2xl font-black text-lg transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-yellow-500/20 mt-8"
-                style={{ backgroundColor: colors.secondary, color: colors.onPrimary }}
-              >
-                {t('connect_now')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {accountManagerOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="flex w-full max-w-3xl h-[600px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden" style={{ backgroundColor: colors.surface }}>
-            {/* Left Branding Side */}
-            <div className="w-[30%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5" style={{ backgroundColor: `${colors.secondary}10` }}>
-              <div className="absolute top-0 left-0 w-full h-full bg-linear-to-b from-yellow-500/10 to-transparent pointer-events-none" />
-              <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-yellow-500/30 z-10" style={{ backgroundColor: colors.secondary }}>
-                <Icons.Person className="w-10 h-10" style={{ color: "#1a1a1a" }} />
-              </div>
-              <h2 className="text-2xl font-black tracking-tighter text-center z-10" style={{ color: colors.onSurface }}>{t('account_manager')}</h2>
-              <div className="mt-2 px-3 py-1 rounded-full bg-yellow-500/20 text-[10px] font-black uppercase tracking-widest z-10" style={{ color: colors.secondary }}>{t('account_management')}</div>
-              <p className="mt-8 text-xs font-bold opacity-30 text-center leading-relaxed z-10" style={{ color: colors.onSurface }}>{t('manage_accounts_hint')}</p>
-            </div>
-
-            {/* Right Side - Account List */}
-            <div className="flex-1 p-10 flex flex-col relative">
-              {/* Close Button */}
-              <button
-                onClick={() => setAccountManagerOpen(false)}
-                className="absolute top-6 right-6 w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors z-20"
-                style={{ color: colors.onSurfaceVariant }}
-              >
-                <Icons.Close className="w-6 h-6" />
-              </button>
-
-              <div className="mb-8">
-                <h3 className="text-2xl font-black tracking-tight" style={{ color: colors.onSurface }}>{t('account_manager')}</h3>
-                <p className="text-sm font-medium opacity-60" style={{ color: colors.onSurfaceVariant }}>{t('manage_accounts_desc')}</p>
-              </div>
-
-              <div className="space-y-3 flex-1 overflow-y-auto px-1 custom-scrollbar mb-6">
-                {accounts.map((account, index) => {
-                  const isActive = session?.username === account.username && session?.type === account.type;
-                  return (
-                    <div
-                      key={`${account.type}-${account.username}-${index}`}
-                      className="group flex items-center gap-4 p-4 rounded-3xl transition-all border-2 relative overflow-hidden"
-                      style={{
-                        backgroundColor: isActive ? `${colors.secondary}15` : colors.surfaceContainer,
-                        borderColor: isActive ? colors.secondary : 'transparent',
-                      }}
-                    >
-                      <div className="relative shrink-0">
-                        <MCHead username={account.username} size={54} className="rounded-2xl shadow-lg border-2 border-white/5" />
-                        {isActive && (
-                          <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-green-500 border-4 border-[#1e1e2e] flex items-center justify-center shadow-lg">
-                            <Icons.Check className="w-3 h-3 text-white" />
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="font-black text-lg flex items-center gap-2" style={{ color: colors.onSurface }}>
-                          <span className="truncate">{account.username}</span>
-                          {account.isAdmin && (
-                            <div className="bg-yellow-500/20 px-2 py-0.5 rounded text-[10px] font-black text-yellow-500 uppercase">{t('admin')}</div>
-                          )}
-                        </div>
-                        <div className="text-xs font-bold uppercase tracking-widest opacity-30 mt-0.5" style={{ color: colors.onSurface }}>
-                          {t('account_type_label')} {account.type}
-                        </div>
-                      </div>
-
-                      <div className="flex gap-2">
-                        {!isActive && (
-                          <button
-                            onClick={() => {
-                              playClick();
-                              selectAccount(account);
-                            }}
-                            className="bg-white/5 hover:bg-yellow-500 hover:text-black w-10 h-10 rounded-xl flex items-center justify-center transition-all shadow-lg active:scale-90"
-                          >
-                            <Icons.Play className="w-5 h-5 ml-0.5" />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => {
-                            playClick();
-                            removeAccountFromList(account);
-                          }}
-                          className="bg-white/5 hover:bg-red-500 hover:text-white w-10 h-10 rounded-xl flex items-center justify-center transition-all shadow-lg active:scale-90"
-                        >
-                          <Icons.Trash className="w-5 h-5" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {accounts.length === 0 && (
-                  <div className="h-full flex flex-col items-center justify-center opacity-30 py-12">
-                    <Icons.Person className="w-16 h-16 mb-4" />
-                    <p className="font-black uppercase tracking-widest">{t('no_account_found')}</p>
-                  </div>
-                )}
-              </div>
-
-              <button
-                onClick={() => {
-                  playClick();
-                  setAccountManagerOpen(false);
-                }}
-                className="w-full py-4 rounded-2xl font-black text-lg transition-all hover:bg-white/5 border-2 border-white/5 active:scale-[0.98]"
-                style={{ color: colors.onSurface }}
-              >
-                {t('back_to_main')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )
-      }
-
-      {/* Import Modpack Modal - Horizontal */}
-      {
-        importModpackOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
-            <div className="flex w-full max-w-3xl h-[520px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden" style={{ backgroundColor: colors.surface }}>
-              {/* Left Branding Side */}
-              <div className="w-[32%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5" style={{ backgroundColor: `${colors.secondary}10` }}>
-                <div className="absolute top-0 left-0 w-full h-full bg-linear-to-b from-yellow-500/10 to-transparent pointer-events-none" />
-                <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-yellow-500/30 z-10" style={{ backgroundColor: colors.secondary }}>
-                  <Icons.Download className="w-10 h-10 -rotate-180" style={{ color: "#1a1a1a" }} />
-                </div>
-                <h2 className="text-2xl font-black tracking-tighter text-center z-10" style={{ color: colors.onSurface }}>{t('import')}</h2>
-                <div className="mt-2 px-3 py-1 rounded-full bg-yellow-500/20 text-[10px] font-black uppercase tracking-widest z-10" style={{ color: colors.secondary }}>{t('modpacks')}</div>
-                <p className="mt-8 text-xs font-bold opacity-30 text-center leading-relaxed z-10" style={{ color: colors.onSurface }}>{t('expand_your_world')}</p>
-              </div>
-
-              {/* Right Content Side */}
-              <div className="flex-1 p-10 flex flex-col relative">
-                {/* Close Button */}
-                <button
-                  onClick={() => {
-                    setImportModpackOpen(false);
-                    setIsDragging(false);
-                  }}
-                  className="absolute top-6 right-6 w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors z-20"
-                  style={{ color: colors.onSurfaceVariant }}
-                >
-                  <Icons.Close className="w-6 h-6" />
-                </button>
-
-                <div className="mb-6">
-                  <h3 className="text-2xl font-black tracking-tight" style={{ color: colors.onSurface }}>{t('import_content')}</h3>
-                  <p className="text-sm font-medium opacity-60" style={{ color: colors.onSurfaceVariant }}>{t('drag_and_drop_or_select')}</p>
-                </div>
-
-                {/* Drop Zone */}
-                <div
-                  className={`relative flex-1 border-2 border-dashed rounded-3xl p-8 flex flex-col items-center justify-center transition-all ${isDragging ? "scale-105" : "hover:border-yellow-500/30"}`}
-                  style={{
-                    borderColor: isDragging ? colors.secondary : colors.outline,
-                    backgroundColor: isDragging ? `${colors.secondary}15` : colors.surfaceContainer,
-                  }}
-                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setIsDragging(false);
-                    const files = Array.from(e.dataTransfer.files);
-                    const validFile = files.find(f => f.name.endsWith('.zip') || f.name.endsWith('.mrpack'));
-                    if (validFile) {
-                      toast.success(`${t('importing')}: ${validFile.name}`);
-                      setImportModpackOpen(false);
-                    } else {
-                      toast.error(t('support_zip_mrpack'));
-                    }
-                  }}
-                >
-                  <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                    <Icons.Box className="w-10 h-10 opacity-40" style={{ color: isDragging ? colors.secondary : colors.onSurface }} />
-                  </div>
-                  <p className="text-lg font-black tracking-tight" style={{ color: colors.onSurface }}>
-                    {isDragging ? t('drop_now_to_import') : t('drag_file_here')}
-                  </p>
-                  <p className="text-xs font-bold opacity-30 mt-1 uppercase tracking-widest">{t('support_zip_mrpack')}</p>
-
-                  <button
-                    onClick={() => {
-                      const input = document.createElement('input');
-                      input.type = 'file';
-                      input.accept = '.zip,.mrpack';
-                      input.onchange = (e) => {
-                        const file = (e.target as HTMLInputElement).files?.[0];
-                        if (file) {
-                          toast.success(`${t('importing')}: ${file.name}`);
-                          setImportModpackOpen(false);
-                        }
-                      };
-                      input.click();
-                    }}
-                    className="mt-6 px-8 py-3 rounded-2xl font-black text-sm transition-all hover:scale-105 shadow-xl"
-                    style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
-                  >
-                    {t('select_file_from_machine')}
-                  </button>
-                </div>
-
-                {/* Platform Info */}
-                <div className="mt-6 flex gap-4">
-                  <div className="flex-1 p-3 rounded-2xl flex items-center gap-3 border border-white/5" style={{ backgroundColor: colors.surfaceContainer }}>
-                    <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-500 font-black text-xs">CF</div>
-                    <div>
-                      <div className="text-xs font-black" style={{ color: colors.onSurface }}>CurseForge</div>
-                      <div className="text-[10px] opacity-40 uppercase font-bold">Standard .ZIP</div>
-                    </div>
-                  </div>
-                  <div className="flex-1 p-3 rounded-2xl flex items-center gap-3 border border-white/5" style={{ backgroundColor: colors.surfaceContainer }}>
-                    <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center text-green-500 font-black text-xs">MR</div>
-                    <div>
-                      <div className="text-xs font-black" style={{ color: colors.onSurface }}>Modrinth</div>
-                      <div className="text-[10px] opacity-40 uppercase font-bold">Native .MRPACK</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-
-
-      {/* Inbox/Notifications Modal */}
-
-
-      {/* Main App Layout */}
-      <div className={`flex-1 flex flex-col overflow-hidden ${config.rainbowMode ? 'rainbow-mode' : ''}`}>
-        {/* Header with Drag Region (Unified Title Bar) */}
-        <header
-          className="h-10 flex items-center justify-between pr-0 drag-region"
-          style={{ background: titleBarColors.background }}
-        >
-          <div className="flex items-center h-full">
-            {/* Logo box aligning with sidebar width (w-20) */}
-            <div 
-              className="w-20 h-full flex items-center justify-center no-drag"
-              style={{ backgroundColor: colors.secondary }}
-            >
-              <img src={rIcon.src} alt="Logo" className="w-13 h-13 object-contain select-none transform translate-y-2" draggable={false} style={{ WebkitUserDrag: "none" } as React.CSSProperties} />
-            </div>
-
-            {/* Separated Title Section */}
-            <div className="flex items-center gap-2 pl-4">
-              <h1 className="text-[18px] leading-none font-bold" style={{ fontFamily: "'Inter', sans-serif", color: titleBarColors.text }}>Reality</h1>
-              <AppVersionBadge
-                colors={colors}
-                className="border border-white/10 font-semibold tracking-tight"
-                bgColor={titleBarColors.versionBg}
-                textColor={titleBarColors.versionText}
-              />
-            </div>
-          </div>
-          {/* Header with Drag Region */}
-
-            {/* Right Side - Notifications and Account - Fixed at top */}
-            <div
-              className="fixed top-0 right-36 h-10 flex items-center gap-2 pr-2 no-drag"
-              style={{ zIndex: 99, pointerEvents: "auto" }}
-            >
-              {/* Calendar Button */}
-              {session && (
-                <div className="relative">
-                  <button
-                    onClick={() => {
-                        const newState = !calendarOpen;
-                        setCalendarOpen(newState);
-                        if (newState) {
-                            fetchAgendas();
-                        }
-                    }}
-                    className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 hover:bg-white/10 ${calendarOpen ? 'scale-110' : ''}`}
-                    style={{ color: titleBarColors.muted, backgroundColor: calendarOpen ? titleBarColors.active : "transparent" }}
-                    title={t('calendar')}
-                  >
-                    <Icons.Calendar className="w-5 h-5" />
-                    {hasEventsToday && (
-                        <span
-                            className="absolute top-1 right-1 w-2 h-2 rounded-full border-2"
-                            style={{ backgroundColor: "#ef4444", borderColor: titleBarColors.dotRing }}
-                        />
-                    )}
-                  </button>
-                  {calendarOpen && (
-                    <CalendarWidget
-                      isOpen={calendarOpen}
-                      onClose={() => setCalendarOpen(false)}
-                      colors={colors}
-                      language={config.language}
-                      instanceId={selectedInstance?.id}
-                      instanceName={selectedInstance?.name}
-                      preFetchedAgendas={agendas}
-                      isPreLoading={isLoadingAgendas}
-                      onRefresh={fetchAgendas}
-                    />
-                  )}
-                </div>
-              )}
-
-              {/* Notifications/Inbox Button - Only show when logged in */}
-              {session && (
-                <div className="relative">
-                  <button
-                    onClick={() => setInboxOpen(!inboxOpen)}
-                    className="w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 hover:bg-white/10 relative"
-                    style={{ color: titleBarColors.muted, backgroundColor: inboxOpen ? titleBarColors.active : "transparent" }}
-                    title={t('news_and_notifications')}
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                    </svg>
-                    {unreadCount > 0 && (
-                      <span
-                        className="absolute -top-1.5 -right-1.5 text-[13px] font-black pointer-events-none select-none"
-                        style={{ color: '#000000', textShadow: '0 0 2px rgba(255,255,255,0.7)' }}
-                      >
-                        {unreadCount > 9 ? '9+' : unreadCount}
-                      </span>
-                    )}
-                  </button>
-                  <NotificationInbox
-                    isOpen={inboxOpen}
-                    onClose={() => setInboxOpen(false)}
-                    announcements={announcements}
-                    notifications={userNotifications}
-                    colors={colors}
-                    isFullscreen={config.fullscreen}
-                    onInvitationAccepted={() => {
-                      if (window.api?.notificationsSync) {
-                        window.api.notificationsSync().then((data) => {
-                          if (data?.invitations) setInvitations(data.invitations);
-                        });
-                      } else if (window.api?.invitationsFetch) {
-                        window.api.invitationsFetch().then(setInvitations);
-                      }
-                      setServerRefreshTrigger(prev => prev + 1);
-                    }}
-                    onNotificationChanged={() => setNotificationRefreshTrigger(prev => prev + 1)}
-                  />
-                </div>
-              )}
-
-              {/* Account Section */}
-              <div className="relative">
-                {/* Account Button */}
-                <button
-                  onClick={() => setAccountDropdownOpen(!accountDropdownOpen)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm transition-all hover:scale-105 hover:bg-white/10"
-                  style={{ color: titleBarColors.text, backgroundColor: accountDropdownOpen ? titleBarColors.active : "transparent" }}
-                >
-                  {session ? (
-                    <MCHead username={session.username} size={22} className="rounded-full" />
-                  ) : (
-                    <Icons.Person className="w-4 h-4" />
-                  )}
-                  {session?.username || "Account"}
-                  {session?.isAdmin ? (
-                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full" style={{ backgroundColor: "#fbbf24" }}>
-                      <Icons.Check className="w-3 h-3 text-gray-900" />
-                    </span>
-                  ) : session?.type === "catid" ? (
-                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full" style={{ backgroundColor: "#3b82f6" }}>
-                      <Icons.Check className="w-3 h-3 text-white" />
-                    </span>
-                  ) : session?.type === "microsoft" ? (
-                    <>
-                      <img src={microsoftIcon.src} alt="Microsoft" className="w-5 h-5" />
-                      {session.apiToken && (
-                        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full" style={{ backgroundColor: "#fbbf24" }}>
-                          <Icons.Check className="w-3 h-3 text-white" />
-                        </span>
-                      )}
-                    </>
-                  ) : null}
-                  <svg className={`w-3 h-3 transition-transform ${accountDropdownOpen ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M7 10l5 5 5-5z" />
-                  </svg>
-                </button>
-
-                {/* Account Dropdown */}
-                {accountDropdownOpen && (
-                  <div
-                    className="absolute top-full right-0 mt-2 w-64 rounded-2xl shadow-xl p-4 z-50"
-                    style={{ backgroundColor: colors.surface, border: `1px solid ${colors.outline}` }}
-                  >
-                    <p className="text-xs font-medium mb-3" style={{ color: colors.onSurfaceVariant }}>Account</p>
-
-                    {/* Account List */}
-                    <div className="space-y-2 mb-4">
-                      {accounts.length > 0 ? (
-                        accounts.map((account, index) => (
-                          <div
-                            key={`${account.type}-${account.username}-${index}`}
-                            className="flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-all hover:bg-gray-500/10"
-                            style={{
-                              backgroundColor: session?.username === account.username ? colors.surfaceContainerHighest : "transparent",
-                              border: session?.username === account.username ? `1px solid ${colors.secondary}` : "1px solid transparent",
-                            }}
-                            onClick={() => {
-                              selectAccount(account);
-                              setAccountDropdownOpen(false);
-                            }}
-                          >
-                            <MCHead username={account.username} size={32} className="rounded-full" />
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm font-medium truncate flex items-center gap-1" style={{ color: colors.onSurface }}>
-                                {account.username}
-                                {account.isAdmin ? (
-                                  <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: "#fbbf24" }}>
-                                    <Icons.Check className="w-2.5 h-2.5 text-gray-900" />
-                                  </span>
-                                ) : account.type === "catid" ? (
-                                  <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: "#3b82f6" }}>
-                                    <Icons.Check className="w-2.5 h-2.5 text-white" />
-                                  </span>
-                                ) : account.type === "microsoft" ? (
-                                  <img src={microsoftIcon.src} alt="Microsoft" className="w-5 h-5" />
-                                ) : null}
-                                {account.type === "microsoft" && account.apiToken && (
-                                  <span title={t('linked_with_catid')} className="ml-1 opacity-80 inline-flex items-center justify-center w-4 h-4 rounded-full" style={{ backgroundColor: "#fbbf24" }}>
-                                    <Icons.Check className="w-3 h-3 text-white" />
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-xs" style={{ color: colors.onSurfaceVariant }}>
-                                {account.type === "microsoft" ? "Microsoft" : account.type === "catid" ? "CatID Account" : "Offline Account"}
-                              </div>
-                            </div>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                removeAccountFromList(account);
-                              }}
-                              className="w-6 h-6 rounded-full flex items-center justify-center hover:bg-red-500/20"
-                              style={{ color: colors.onSurfaceVariant }}
-                            >
-                              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-                              </svg>
-                            </button>
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-sm text-center py-2" style={{ color: colors.onSurfaceVariant }}>{t('no_accounts_yet')}</p>
-                      )}
-                    </div>
-
-                    {/* Divider */}
-                    <div className="h-px mb-3" style={{ backgroundColor: colors.outline }} />
-
-                    {/* Actions */}
-                    <p className="text-xs font-medium mb-2" style={{ color: colors.onSurfaceVariant }}>Actions</p>
-                    <div className="space-y-1">
-                      <button
-                        onClick={() => {
-                          setAccountDropdownOpen(false);
-                          setLoginDialogOpen(true);
-                        }}
-                        className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all hover:bg-gray-500/10"
-                        style={{ color: colors.onSurface }}
-                      >
-                        <span className="flex items-center justify-center w-5 h-5 text-lg" style={{ color: colors.secondary }}>+</span>
-                        <span className="text-sm">{t('add_account')}</span>
-                      </button>
-
-                      {/* Link CatID (for Microsoft users) */}
-                      {session && session.type === "microsoft" && !session.apiToken && (
-                        <button
-                          onClick={() => {
-                            setAccountDropdownOpen(false);
-                            setLinkCatIDOpen(true);
-                          }}
-                          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all hover:bg-gray-500/10"
-                          style={{ color: colors.onSurface }}
-                        >
-                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full" style={{ backgroundColor: "#fbbf24" }}>
-                            <Icons.Check className="w-3.5 h-3.5 text-white" />
-                          </span>
-                          <span className="text-sm">{t('link_catid')}</span>
-                        </button>
-                      )}
-
-                      {/* Disconnect buttons moved to Settings > Account */}
-
-
-                      {/* Link Microsoft (for CatID users) */}
-                      {session && session.type === "catid" && (
-                        <button
-                          onClick={async () => {
-                            playClick();
-                            setAccountDropdownOpen(false);
-                            await handleLinkMicrosoft();
-                          }}
-                          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all hover:bg-gray-500/10"
-                          style={{ color: colors.onSurface }}
-                        >
-                          {/* Use Microsoft Icon */}
-                          <svg className="w-5 h-5" viewBox="0 0 21 21" fill="currentColor">
-                            <rect x="1" y="1" width="9" height="9" fill="#F25022" />
-                            <rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
-                            <rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
-                            <rect x="11" y="11" width="9" height="9" fill="#FFB900" />
-                          </svg>
-                          <span className="text-sm">{t('link_microsoft')}</span>
-                        </button>
-                      )}
-
-                      <button
-                        onClick={() => {
-                          playClick();
-                          handleLogout();
-                          setAccountDropdownOpen(false);
-                        }}
-                        className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all hover:bg-gray-500/10"
-                        style={{ color: colors.onSurface }}
-                      >
-                        <span className="w-5 h-5 flex items-center justify-center text-lg">←</span>
-                        <span className="text-sm">{t('logout')}</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Backdrop to close dropdown */}
-                {accountDropdownOpen && (
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setAccountDropdownOpen(false)}
-                  />
-                )}
-              </div>
-
-              {/* Window Control Buttons - Fixed at top-right corner */}
-              <div className="fixed top-0 right-0 flex items-center gap-0 no-drag" style={{ pointerEvents: "auto", zIndex: 100 }}>
-                {/* Minimize */}
-                <button
-                  onClick={() => window.api?.windowMinimize()}
-                  className="w-12 h-10 flex items-center justify-center transition-all hover:bg-white/10"
-                  style={{ color: titleBarColors.muted }}
-                  title={t('minimize')}
-                >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M19 13H5v-2h14v2z" />
-                  </svg>
-                </button>
-                {/* Maximize / Fullscreen */}
-                <button
-                  onClick={async () => {
-                    await window.api?.windowMaximize();
-                    // Sync with fullscreen setting
-                    const isMaximized = await window.api?.windowIsMaximized?.();
-                    updateConfig({ fullscreen: isMaximized ?? false });
-                  }}
-                  className="w-12 h-10 flex items-center justify-center transition-all hover:bg-white/10"
-                  style={{ color: config.fullscreen ? titleBarColors.accent : titleBarColors.muted }}
-                  title={config.fullscreen ? t('restore') : t('maximize')}
-                >
-                  {config.fullscreen ? (
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z" />
-                    </svg>
-                  ) : (
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z" />
-                    </svg>
-                  )}
-                </button>
-                {/* Close */}
-                <button
-                  onClick={() => window.api?.windowClose()}
-                  className="w-12 h-10 flex items-center justify-center transition-all hover:bg-red-500 hover:text-white!"
-                  style={{ color: titleBarColors.muted }}
-                  title={t('close')}
-                >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </header>
-
-          <div className="flex-1 flex overflow-hidden">
-            {/* Sidebar */}
-            <Sidebar
-              colors={colors}
-              onTabSelect={(tabId) => {
-                // When user manually clicks Modpack tab, reset to list view
-                if (tabId === 'modpack') {
-                  setSelectedInstance(null);
-                }
-              }}
-            />
-
-            {/* Content Area */}
-          <main className="flex-1 overflow-auto pt-3 px-6 pb-6 relative">
-            {/* Seamless Tab Transition Wrapper */}
-            <div key={activeTab} className="h-full animate-fade-in">
-              {activeTab === "home" && (
-                <Home
-                  session={session}
-                  news={news}
-                  servers={servers}
-                  selectedServer={selectedServer}
-                  setSelectedServer={setSelectedServer}
-                  setSelectedInstance={setSelectedInstance}
-                  colors={colors}
-                  setActiveTab={setActiveTab}
-                  language={config.language}
-                />
-              )}
-
-              {activeTab === "servers" && (
-                <ServerMenu
-                  colors={colors}
-                  servers={servers}
-                  selectedServer={selectedServer}
-                  setSelectedServer={setSelectedServer}
-                  session={session}
-                  setActiveTab={setActiveTab}
-                  refreshTrigger={serverRefreshTrigger}
-                  language={config.language}
-                  config={config}
-                  updateConfig={updateConfig}
-                  setSettingsTab={setSettingsTab}
-                />
-              )}
-
-              {activeTab === "modpack" && (
-                <ModPack
-                  colors={colors}
-                  config={config}
-                  setImportModpackOpen={setImportModpackOpen}
-                  setActiveTab={setActiveTab}
-                  setSettingsTab={setSettingsTab}
-                  onShowConfirm={handleShowConfirm}
-                  isActive={true}
-                  selectedInstance={selectedInstance}
-                  setSelectedInstance={setSelectedInstance}
-                  selectedServer={selectedServer}
-                  session={session}
-                  updateConfig={updateConfig}
-                  language={config.language}
-                />
-              )}
-
-              {/* Explore Tab */}
-              {activeTab === "explore" && (
-                <UIErrorBoundary>
-                  <Explore colors={colors} config={config} />
-                </UIErrorBoundary>
-              )}
-
-              {/* Settings Tab */}
-              {activeTab === "settings" && (
-                <Settings
-                  config={config}
-                  updateConfig={updateConfig}
-                  colors={colors}
-                  setSettingsTab={setSettingsTab}
-                  settingsTab={settingsTab}
-                  handleBrowseJava={handleBrowseJava}
-                  handleBrowseMinecraftDir={handleBrowseMinecraftDir}
-                  session={session}
-                  accounts={accounts}
-                  handleLogout={handleLogout}
-                  selectAccount={selectAccount}
-                  removeAccount={removeAccountFromList}
-                  setLoginDialogOpen={setLoginDialogOpen}
-                  handleUnlink={handleUnlink}
-                  setLinkCatIDOpen={setLinkCatIDOpen}
-                  onLinkMicrosoft={handleLinkMicrosoft}
-                />
-              )}
-
-              {/* Admin Panel Tab - Only for admins */}
-              {activeTab === "admin" && isAdmin && adminToken && (
-                <AdminPanel
-                  colors={colors}
-                  adminToken={adminToken}
-                  language={config.language}
-                />
-              )}
-
-              {/* About Tab - New Premium Component */}
-              {activeTab === "about" && <About colors={colors} config={config} />}
-              {activeTab === "wardrobe" && <Wardrobe colors={colors} />}
-            </div>
-          </main>
-        </div>
-      </div>
-
-      {/* Global Export Progress Modal */}
-      {isExporting && exportProgress && !isExportMinimized && (
-        <InstallProgressModal
-          colors={colors}
-          installProgress={exportProgress}
-          title={t('export_modpack')}
-          isBytes={true}
-          onCancel={() => handleCancelExport(exportingInstanceId || "")}
-          onMinimize={() => setExportMinimized(true)}
-          language={config.language}
-        />
-      )}
-
-      {/* Global Minimized Export Widget */}
-      {isExporting && exportProgress && isExportMinimized && (
-        <div
-          className="fixed bottom-6 right-6 z-50 w-80 rounded-2xl shadow-2xl overflow-hidden border border-white/10 animate-fade-in-up cursor-pointer transition-transform hover:scale-105"
-          style={{ backgroundColor: colors.surfaceContainer }}
-          onClick={() => setExportMinimized(false)}
-        >
-          <div className="p-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center relative shrink-0"
-              style={{ backgroundColor: colors.surfaceContainerHighest }}>
-              {exportProgress.percent !== undefined ? (
-                <svg className="w-10 h-10 -rotate-90 transform" viewBox="0 0 36 36">
-                  <path
-                    className="text-gray-200 opacity-20"
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                  />
-                  <path
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    fill="none"
-                    stroke={colors.secondary}
-                    strokeWidth="3"
-                    strokeDasharray={`${exportProgress.percent}, 100`}
-                  />
-                </svg>
-              ) : (
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2" style={{ borderColor: colors.secondary }}></div>
-              )}
-              <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold" style={{ color: colors.onSurface }}>
-                {exportProgress.percent}%
-              </div>
-            </div>
-            <div className="flex-1 min-w-0">
-              <h4 className="font-medium text-sm truncate" style={{ color: colors.onSurface }}>{t('exporting' as any)}</h4>
-              <p className="text-xs truncate" style={{ color: colors.onSurfaceVariant }}>
-                {exportProgress.message}
-              </p>
-            </div>
-            <button
-              onClick={(e) => { e.stopPropagation(); setExportMinimized(false); }}
-              className="p-2 rounded-lg hover:bg-white/10"
-              title="Expand"
-            >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" style={{ color: colors.onSurfaceVariant }}>
-                <path d="M12 8l-6 6 1.41 1.41L12 10.83l4.59 4.58L18 14z" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Global Installation Progress Modal */}
-      {isInstalling && installProgress && !isInstallMinimized && (
-          <InstallProgressModal
-              colors={colors}
-              installProgress={installProgress}
-              title={operationType === "repair" ? t('repairing_instance') : undefined}
-              onCancel={handleCancelInstall}
-              onMinimize={() => setInstallMinimized(true)}
-              disableBackdropClick={operationType === "sync" || operationType === "repair"}
-              language={config.language}
-          />
-      )}
-
-      {/* Global Minimized Installation Widget */}
-      {isInstalling && installProgress && isInstallMinimized && (
-          <div
-              className="fixed bottom-6 right-6 z-50 w-80 rounded-2xl shadow-2xl overflow-hidden border border-white/10 animate-fade-in-up cursor-pointer transition-transform hover:scale-105"
-              style={{ backgroundColor: colors.surfaceContainer }}
-              onClick={() => setInstallMinimized(false)}
-          >
-              <div className="p-4 flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center relative shrink-0"
-                      style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                      {installProgress.percent !== undefined ? (
-                          <svg className="w-10 h-10 -rotate-90 transform" viewBox="0 0 36 36">
-                              <path
-                                  className="text-gray-200 opacity-20"
-                                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="3"
-                              />
-                              <path
-                                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                                  fill="none"
-                                  stroke={colors.secondary}
-                                  strokeWidth="3"
-                                  strokeDasharray={`${installProgress.percent}, 100`}
-                              />
-                          </svg>
-                      ) : (
-                          <div className="animate-spin rounded-full h-5 w-5 border-b-2" style={{ borderColor: colors.secondary }}></div>
-                      )}
-                      <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold" style={{ color: colors.onSurface }}>
-                          {installProgress.percent}%
-                      </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                      <h4 className="font-medium text-sm truncate" style={{ color: colors.onSurface }}>
-                          {operationType === "repair" ? t('repairing_instance') : operationType === "sync" ? t('checking_data') : t('installing')}
-                      </h4>
-                      <p className="text-xs truncate" style={{ color: colors.onSurfaceVariant }}>
-                          {installProgress.type ? t(installProgress.type as any, { filename: installProgress.filename, current: installProgress.current, total: installProgress.total } as any) : installProgress.message}
-                      </p>
-                  </div>
-                  <button
-                      onClick={(e) => { e.stopPropagation(); setInstallMinimized(false); }}
-                      className="p-2 rounded-lg hover:bg-white/10"
-                      title="Expand"
-                  >
-                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" style={{ color: colors.onSurfaceVariant }}>
-                          <path d="M12 8l-6 6 1.41 1.41L12 10.83l4.59 4.58L18 14z" />
-                      </svg>
-                  </button>
-              </div>
-          </div>
-      )}
     </div>
   );
 }
