@@ -2,7 +2,7 @@
 // Project List Component
 // ========================================
 
-import React from "react";
+import React, { useRef } from "react";
 import { useTranslation } from "../../../hooks/useTranslation";
 import type { ModrinthProject, InstallProgress } from "./types";
 import { ProjectCard } from "./ProjectCard";
@@ -38,8 +38,18 @@ export function ProjectList({
     installProgress,
 }: ProjectListProps) {
     const { t } = useTranslation();
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    const handlePageChange = (newPage: number) => {
+        onPageChange(newPage);
+        // Scroll to top of list container
+        if (containerRef.current) {
+            containerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    };
+
     return (
-        <div className="flex flex-col h-full gap-4">
+        <div ref={containerRef} className="flex flex-col h-full gap-4">
             {/* Header Stats */}
             {!isLoading && (
                 <div className="flex items-center justify-between px-1">
@@ -124,11 +134,7 @@ export function ProjectList({
                         style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}20` }}>
 
                         <button
-                            onClick={() => {
-                                onPageChange(Math.max(1, page - 1));
-                                // Scroll to top of list
-                                document.querySelector('.lg\\:col-span-8')?.scrollIntoView({ behavior: 'smooth' });
-                            }}
+                            onClick={() => handlePageChange(Math.max(1, page - 1))}
                             disabled={page === 1}
                             className="px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-1.5"
                             style={{ color: colors.onSurface }}
@@ -144,11 +150,7 @@ export function ProjectList({
                         </div>
 
                         <button
-                            onClick={() => {
-                                onPageChange(Math.min(totalPages, page + 1));
-                                // Scroll to top of list
-                                document.querySelector('.lg\\:col-span-8')?.scrollIntoView({ behavior: 'smooth' });
-                            }}
+                            onClick={() => handlePageChange(Math.min(totalPages, page + 1))}
                             disabled={page >= totalPages}
                             className="px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-1.5"
                             style={{ color: colors.onSurface }}

@@ -871,8 +871,6 @@ export const enTranslations = {
     desc_jo: "Co-planning and driving the project",
     role_it: "IT Department",
     desc_pumpkins: "Responsible for system development and features",
-    role_it_staff: "IT Department & Staff",
-    desc_mrpeachs: "Technical Assistant and Team Support",
     // Additional i18n coverage
     access_point: "Access Point",
     api_key_placeholder: "Enter new API Key",

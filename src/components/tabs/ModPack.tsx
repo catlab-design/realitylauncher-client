@@ -18,6 +18,7 @@ import { useProgressStore } from "../../store/progressStore";
 import { useInstances } from "../../hooks/useInstances";
 import { useGameEvents } from "../../hooks/useGameEvents";
 import { useAuthStore } from "../../store/authStore";
+import { Portal } from "../ui/Portal";
 import modpackIcon from "../../assets/modpack_icon.png";
 import {
     getLaunchPolicyForInstance,

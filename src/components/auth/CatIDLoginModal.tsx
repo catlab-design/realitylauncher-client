@@ -29,10 +29,10 @@ export function CatIDLoginModal({
 
     const handleLogin = async () => {
         playClick();
-        const usernameInput = document.getElementById("catid-username") as HTMLInputElement;
-        const passwordInput = document.getElementById("catid-password") as HTMLInputElement;
+        const usernameInput = document.getElementById("catid-username") as HTMLInputElement | null;
+        const passwordInput = document.getElementById("catid-password") as HTMLInputElement | null;
 
-        if (usernameInput?.value && passwordInput?.value) {
+        if (usernameInput && passwordInput && usernameInput.value && passwordInput.value) {
             setIsLoading(true);
             try {
                 await onLogin(usernameInput.value, passwordInput.value);

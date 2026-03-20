@@ -1295,7 +1295,7 @@ function LauncherAppContent() {
               updateAccount(updatedSession);
             }
           } else {
-            toast.error(`${res?.error || t('unlink_failed')} (Token: ${session?.apiToken})`);
+            toast.error(res?.error || t('unlink_failed'));
           }
         } catch (err) {
           toast.error(t('error_occurred'));

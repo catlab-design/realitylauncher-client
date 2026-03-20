@@ -146,7 +146,14 @@ export function ProjectPreview({
     };
 
     const heroImage = getImageUrl(heroImageRaw) || bannerImage.src;
-    const accentColor = project.color ? `#${project.color.toString(16).padStart(6, '0')}` : colors.primary;
+    const accentColor = (() => {
+        if (!project.color) return colors.primary;
+        // Handle string colors that might already be hex
+        if (typeof project.color === 'string') return project.color.startsWith('#') ? project.color : `#${project.color}`;
+        // Handle numeric colors - ensure non-negative
+        const colorNum = Math.max(0, Number(project.color) || 0);
+        return `#${colorNum.toString(16).padStart(6, '0')}`;
+    })();
 
     return (
         <>

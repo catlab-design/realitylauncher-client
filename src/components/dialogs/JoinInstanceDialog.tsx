@@ -97,9 +97,9 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-in fade-in duration-300" onClick={handleClose}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-md animate-in fade-in duration-300" onClick={handleClose}>
             <div
-                className="flex w-full max-w-3xl h-[480px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.5)] overflow-hidden animate-in slide-in-from-bottom-8 duration-500 relative border border-white/10"
+                className="flex w-full max-w-3xl h-[480px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.5)] overflow-hidden animate-in slide-in-from-bottom-8 duration-500 relative border border-white/10 z-51"
                 style={{ backgroundColor: bg, color: text }}
                 onClick={(e) => e.stopPropagation()}
             >

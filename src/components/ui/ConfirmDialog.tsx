@@ -1,5 +1,4 @@
 ﻿import React, { useEffect, useState } from "react";
-import { Icons } from "./Icons";
 import { useTranslation } from "../../hooks/useTranslation";
 
 interface ConfirmDialogProps {

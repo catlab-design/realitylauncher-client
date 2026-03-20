@@ -36,12 +36,6 @@ const TEAM: TeamMember[] = [
         role: "IT Department",
         description: "รับผิดชอบการพัฒนาและฟีเจอร์ของระบบ"
     },
-    {
-        name: "MrPeachs",
-        userGame: "MrPeachs",
-        role: "IT Department & Staff",
-        description: "ผู้ช่วยด้านเทคนิค และสนับสนุนการทำงานของทีม"
-    }
 ];
 
 const BackgroundDecorations = ({ colors }: { colors: any }) => {
@@ -104,12 +98,6 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
             role: t('role_it'),
             description: t('desc_pumpkins')
         },
-        {
-            name: "MrPeachs",
-            userGame: "MrPeachs",
-            role: t('role_it_staff'),
-            description: t('desc_mrpeachs')
-        }
     ];
 
     useEffect(() => {

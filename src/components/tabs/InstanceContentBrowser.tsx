@@ -122,6 +122,7 @@ export function InstanceContentBrowser({
 
     // Refs
     const debounceRef = useRef<NodeJS.Timeout | null>(null);
+    const contentListRef = useRef<HTMLDivElement | null>(null);
 
     // Lightbox state
     const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
@@ -956,7 +957,7 @@ export function InstanceContentBrowser({
                 {/* Main Content - Grid layout like Explore */}
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
                     {/* Project List */}
-                    <div className="lg:col-span-8 xl:col-span-9">
+                    <div ref={contentListRef} className="lg:col-span-8 xl:col-span-9">
                         <div className="flex flex-col gap-4">
                             {/* Header Stats */}
                             {!isLoading && (
@@ -1045,7 +1046,7 @@ export function InstanceContentBrowser({
                                                 const newPage = Math.max(1, page - 1);
                                                 setPage(newPage);
                                                 // Scroll to top of list
-                                                document.querySelector('.lg\\:col-span-8')?.scrollIntoView({ behavior: 'smooth' });
+                                                contentListRef.current?.scrollIntoView({ behavior: 'smooth' });
                                             }}
                                             disabled={page === 1}
                                             className="px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-1.5"
@@ -1067,7 +1068,7 @@ export function InstanceContentBrowser({
                                                 const newPage = Math.min(totalPages, page + 1);
                                                 setPage(newPage);
                                                 // Scroll to top of list
-                                                document.querySelector('.lg\\:col-span-8')?.scrollIntoView({ behavior: 'smooth' });
+                                                contentListRef.current?.scrollIntoView({ behavior: 'smooth' });
                                             }}
                                             disabled={page >= totalPages}
                                             className="px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-1.5"

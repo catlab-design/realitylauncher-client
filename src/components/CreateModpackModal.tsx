@@ -95,14 +95,27 @@ export function CreateModpackModal({
         input.type = "file";
         input.accept = "image/*";
         input.onchange = (e) => {
-            const file = (e.target as HTMLInputElement).files?.[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    setIcon(reader.result as string);
-                };
-                reader.readAsDataURL(file);
+            const file = (e.target as HTMLInputElement | null)?.files?.[0];
+            if (!file) return;
+
+            // Validate file size (max 5MB)
+            const MAX_FILE_SIZE = 5 * 1024 * 1024;
+            if (file.size > MAX_FILE_SIZE) {
+                toast.error(t("file_size_too_large") || "File size exceeds 5MB");
+                return;
             }
+
+            const reader = new FileReader();
+            reader.onload = () => {
+                if (reader.result) {
+                    setIcon(reader.result as string);
+                }
+            };
+            reader.onerror = () => {
+                toast.error(t("failed_to_read_file") || "Failed to read file");
+                console.error("FileReader error:", reader.error);
+            };
+            reader.readAsDataURL(file);
         };
         input.click();
     };

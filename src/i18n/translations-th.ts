@@ -892,8 +892,6 @@ export const thTranslations = {
     desc_jo: "ร่วมวางแผนและขับเคลื่อนโปรเจกต์",
     role_it: "IT Department",
     desc_pumpkins: "ดูแลระบบและพัฒนาฟีเจอร์ใหม่ๆ",
-    role_it_staff: "IT Department & Staff",
-    desc_mrpeachs: "ช่วยเหลือด้านเทคนิคและสนับสนุนทีม",
     // Additional i18n coverage
     access_point: "จุดเชื่อมต่อ",
     api_key_placeholder: "กรอก API Key ใหม่",

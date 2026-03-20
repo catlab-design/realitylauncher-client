@@ -62,8 +62,8 @@ export function LanguageEditorModal({ isOpen, onClose, colors, currentLanguage }
     const modifiedCount = Object.keys(editableTranslations).filter(k => isModified(k)).length;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
-            <div className="flex flex-col w-full max-w-6xl h-[90vh] rounded-[2rem] shadow-2xl relative border border-white/10 overflow-hidden"
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-md animate-in fade-in duration-300">
+            <div className="flex flex-col w-full max-w-6xl h-[90vh] rounded-[2rem] shadow-2xl relative border border-white/10 overflow-hidden z-51"
                 style={{ backgroundColor: colors.surface }}>
 
                 {/* Header */}

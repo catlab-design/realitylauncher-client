@@ -19,8 +19,8 @@ export function OfflineLoginModal({ isOpen, onClose, onLogin, colors }: OfflineL
 
     const handleLogin = async () => {
         playClick();
-        const usernameInput = document.getElementById("offline-username-input") as HTMLInputElement;
-        const username = usernameInput?.value.trim();
+        const usernameInput = document.getElementById("offline-username-input") as HTMLInputElement | null;
+        const username = usernameInput?.value.trim() || "";
 
         if (username && username.length >= 3) {
             setIsLoading(true);
