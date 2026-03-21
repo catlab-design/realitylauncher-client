@@ -194,6 +194,7 @@ pub fn read_file_from_zip(zip_path: String, file_path: String) -> napi::Result<O
 
 /// Modrinth modpack manifest
 #[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 #[napi(object)]
 pub struct ModrinthManifest {
     pub format_version: u32,
@@ -209,6 +210,7 @@ pub struct ModrinthManifest {
 
 /// Internal manifest for parsing (with serde_json::Value for dependencies)
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ModrinthManifestRaw {
     format_version: u32,
     game: String,
@@ -221,6 +223,7 @@ struct ModrinthManifestRaw {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 #[napi(object)]
 pub struct ModrinthManifestFile {
     pub path: String,
@@ -293,6 +296,7 @@ fn extract_loader_from_deps(deps: &serde_json::Value) -> (Option<String>, Option
 
 /// CurseForge modpack manifest
 #[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 #[napi(object)]
 pub struct CurseForgeManifest {
     pub minecraft: CurseForgeMinecraft,
@@ -306,6 +310,7 @@ pub struct CurseForgeManifest {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 #[napi(object)]
 pub struct CurseForgeMinecraft {
     pub version: String,
@@ -320,9 +325,12 @@ pub struct CurseForgeModLoader {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 #[napi(object)]
 pub struct CurseForgeManifestFile {
+    #[serde(alias = "projectID")]
     pub project_id: u32,
+    #[serde(alias = "fileID")]
     pub file_id: u32,
     pub required: bool,
 }
@@ -402,4 +410,87 @@ pub fn extract_modpack_overrides(
         files_extracted: extracted,
         error: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CurseForgeManifest, ModrinthManifestRaw};
+    use serde_json::json;
+
+    #[test]
+    fn modrinth_manifest_raw_accepts_camel_case_fields() {
+        let manifest_json = json!({
+            "formatVersion": 1,
+            "game": "minecraft",
+            "versionId": "1.0.0",
+            "name": "Test Pack",
+            "summary": "Example pack",
+            "files": [
+                {
+                    "path": "mods/test-mod.jar",
+                    "hashes": {
+                        "sha1": "deadbeef"
+                    },
+                    "downloads": ["https://example.com/test-mod.jar"],
+                    "fileSize": 12345
+                }
+            ],
+            "dependencies": {
+                "minecraft": "1.20.1",
+                "fabric-loader": "0.16.10"
+            }
+        })
+        .to_string();
+
+        let manifest: ModrinthManifestRaw = serde_json::from_str(&manifest_json)
+            .expect("expected official Modrinth camelCase manifest to parse");
+
+        assert_eq!(manifest.format_version, 1);
+        assert_eq!(manifest.version_id, "1.0.0");
+        assert_eq!(manifest.files.len(), 1);
+        assert_eq!(manifest.files[0].file_size, 12345);
+        assert_eq!(
+            manifest.dependencies.get("fabric-loader").and_then(|v| v.as_str()),
+            Some("0.16.10")
+        );
+    }
+
+    #[test]
+    fn curseforge_manifest_accepts_official_id_fields() {
+        let manifest_json = json!({
+            "minecraft": {
+                "version": "1.20.1",
+                "modLoaders": [
+                    {
+                        "id": "forge-47.2.0",
+                        "primary": true
+                    }
+                ]
+            },
+            "manifestType": "minecraftModpack",
+            "manifestVersion": 1,
+            "name": "Test CurseForge Pack",
+            "version": "1.0.0",
+            "author": "Tester",
+            "files": [
+                {
+                    "projectID": 123456,
+                    "fileID": 789012,
+                    "required": true
+                }
+            ],
+            "overrides": "overrides"
+        })
+        .to_string();
+
+        let manifest: CurseForgeManifest = serde_json::from_str(&manifest_json)
+            .expect("expected official CurseForge manifest to parse");
+
+        assert_eq!(manifest.manifest_type, "minecraftModpack");
+        assert_eq!(manifest.manifest_version, 1);
+        assert_eq!(manifest.minecraft.mod_loaders.len(), 1);
+        assert_eq!(manifest.files.len(), 1);
+        assert_eq!(manifest.files[0].project_id, 123456);
+        assert_eq!(manifest.files[0].file_id, 789012);
+    }
 }
