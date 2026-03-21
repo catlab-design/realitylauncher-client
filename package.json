@@ -27,6 +27,7 @@
     "build": "astro build && bun run electron:build",
     "start": "node scripts/run-electron.cjs --force-prod .",
     "check:asar-writes": "node scripts/check-no-app-asar-writes.cjs",
+    "check:release-workflow": "node scripts/check-release-workflow.cjs",
     "electron:build": "bun run check:asar-writes && esbuild src/electron/main.ts --bundle --platform=node --format=cjs --minify --external:electron --external:discord-rpc --external:electron-updater --external:minecraft-java-core --outfile=dist-electron/main.cjs && esbuild src/electron/preload.ts --bundle --platform=node --format=cjs --minify --external:electron --outdir=dist-electron",
     "dist": "bun run build && electron-builder",
     "dist:win": "bun run build && electron-builder --win",
@@ -38,7 +39,7 @@
     "dist:store:fast": "SKIP_DIST_WIN=true node scripts/build-msixupload.cjs",
     "build:rust": "cd ./native && bun run build",
     "build:rust:cargo": "cd ./native && cargo build --release",
-    "ci:check": "bun run check:asar-writes && bun run build && cargo check --manifest-path native/Cargo.toml"
+    "ci:check": "bun run check:asar-writes && bun run check:release-workflow && bun run build && cargo check --manifest-path native/Cargo.toml"
   },
   "build": {
     "appId": "net.catlab.reality-launcher",

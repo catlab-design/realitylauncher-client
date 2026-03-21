@@ -60,6 +60,9 @@ jobs:
       - name: Check app.asar safety
         run: bun run check:asar-writes
 
+      - name: Check release workflow invariants
+        run: bun run check:release-workflow
+
       - name: Build app bundles
         run: bun run build
 

@@ -1,7 +1,7 @@
 # Release Automation: Flatpak + Microsoft Store (MSIX)
 
 This project supports:
-- GitHub Release assets (including `.flatpak` and `.msix/.msixupload`)
+- GitHub Release assets (including `.flatpak`, `.flatpakref`, and `.msix/.msixupload`)
 - Microsoft Store publish via `msstore` CLI (MSIX flow)
 
 Workflow file:
@@ -157,7 +157,7 @@ Or run `workflow_dispatch`.
 
 ## Step-by-Step: Flatpak Setup
 
-Flatpak flow in this repo is bundle-based (`.flatpak` artifact), not direct Flathub publish.
+Flatpak flow in this repo uses a bundle artifact (`.flatpak`) plus a hosted Flatpak repo and `.flatpakref`, not direct Flathub publish.
 
 ## Step 1: Enable Flatpak in GitHub
 
@@ -177,24 +177,33 @@ git push origin v2.1.1
 When enabled, Linux job will:
 1. install `flatpak` and `flatpak-builder`
 2. run Electron Builder Flatpak target
-3. upload `.flatpak` as artifact
-4. attach `.flatpak` to GitHub Release
-5. upload `.flatpak` to R2/CDN version folder
+3. import the bundle into a hosted Flatpak repo and generate `.flatpakref`
+4. upload `.flatpak` and `.flatpakref` as artifacts
+5. attach `.flatpak` and `.flatpakref` to GitHub Release
+6. upload `.flatpak`, `.flatpakref`, and the Flatpak repo to R2/CDN
 
 ## Step 3: Validate Flatpak Artifact
 
 After workflow completes, verify:
-1. GitHub Actions artifact `reality-launcher-linux` contains `.flatpak`
-2. GitHub Release assets include `.flatpak`
+1. GitHub Actions artifact `reality-launcher-linux` contains `.flatpak` and `.flatpakref`
+2. GitHub Release assets include `.flatpak` and `.flatpakref`
 3. CDN path exists: `https://cdn.reality.catlabdesign.space/client/<version>/<file>.flatpak`
-4. `latest.json` includes `downloads.flatpak` for that release (when generated)
+4. CDN path exists: `https://cdn.reality.catlabdesign.space/client/<version>/<file>.flatpakref`
+5. CDN Flatpak repo exists under `https://cdn.reality.catlabdesign.space/client/flatpak-repo/`
+6. `latest.json` includes `downloads.flatpak` and `downloads.flatpakref` for that release (when generated)
 
 ## Step 4: Install/Test Flatpak Locally
 
 On a Linux machine with Flatpak installed:
 ```bash
+flatpak install --user --from ./Reality\ Launcher.flatpakref
+flatpak run net.catlab.reality_launcher
+```
+
+Or install the bundle directly:
+```bash
 flatpak install --user ./Reality-Launcher-<version>.flatpak
-flatpak run net.catlab.reality-launcher
+flatpak run net.catlab.reality_launcher
 ```
 
 If app ID differs in your generated bundle, use:

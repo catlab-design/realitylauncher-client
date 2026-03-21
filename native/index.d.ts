@@ -26,6 +26,42 @@ export declare function getRecommendedJavaVersion(minecraftVersion: string): num
 /** Find best Java for a Minecraft version from detected installations */
 export declare function findJavaForMinecraft(minecraftVersion: string): JavaInstallation | null
 export declare function installJavaRuntime(majorVersion: number, installRoot: string): Promise<string>
+export interface PackMetadataResult {
+  iconBase64?: string | null | undefined
+  version?: string | null | undefined
+  packFormat?: number | null | undefined
+}
+export declare function inspectPackMetadata(packPath: string, packKind: string): Promise<PackMetadataResult>
+export interface PackScanEntry {
+  filename: string
+  displayName: string
+  isDirectory: boolean
+  size: number
+  modifiedAt: string
+  enabled: boolean
+  iconBase64?: string | null | undefined
+  version?: string | null | undefined
+  packFormat?: number | null | undefined
+}
+export declare function scanPackDirectory(directory: string, packKind: string): Promise<Array<PackScanEntry>>
+export interface ModpackExportRequest {
+  instanceDir: string
+  outputPath: string
+  format: string
+  includedPaths: Array<string>
+  name: string
+  version: string
+  description?: string | null | undefined
+  minecraftVersion: string
+  loader: string
+  loaderVersion?: string | null | undefined
+}
+export interface ModpackExportResult {
+  success: boolean
+  filesWritten: number
+  totalBytes: number
+}
+export declare function exportModpackArchive(request: ModpackExportRequest): Promise<ModpackExportResult>
 export interface DownloadTask {
   url: string
   path: string
@@ -97,48 +133,12 @@ export interface NativeModConflict {
   file2?: string | null | undefined
   reason: string
 }
-export interface PackMetadataResult {
-  iconBase64?: string | null | undefined
-  version?: string | null | undefined
-  packFormat?: number | null | undefined
-}
 export declare function planServerSyncDownloads(gameDir: string, mods: Array<ServerModEntry>): Promise<ServerSyncPlanResult>
 export declare function cleanupExtraMods(gameDir: string, serverFilenames: Array<string>, lockedMods?: Array<string> | undefined | null): Promise<CleanupExtraModsResult>
 export declare function checkFastModListSync(gameDir: string, manifestRevision: string, serverFilenames: Array<string>, lockedMods?: Array<string> | undefined | null): Promise<FastModListSyncCheckResult>
 export declare function saveFastModListSyncSnapshot(gameDir: string, snapshot: FastModListSyncSnapshot): Promise<boolean>
 export declare function postInstallModpackFiles(gameDir: string): Promise<PostInstallModpackFilesResult>
 export declare function detectModConflictsNative(modsDir: string): Array<NativeModConflict>
-export declare function inspectPackMetadata(packPath: string, packKind: string): Promise<PackMetadataResult>
-export interface PackScanEntry {
-  filename: string
-  displayName: string
-  isDirectory: boolean
-  size: number
-  modifiedAt: string
-  enabled: boolean
-  iconBase64?: string | null | undefined
-  version?: string | null | undefined
-  packFormat?: number | null | undefined
-}
-export declare function scanPackDirectory(directory: string, packKind: string): Promise<Array<PackScanEntry>>
-export interface ModpackExportRequest {
-  instanceDir: string
-  outputPath: string
-  format: string
-  includedPaths: Array<string>
-  name: string
-  version: string
-  description?: string | null | undefined
-  minecraftVersion: string
-  loader: string
-  loaderVersion?: string | null | undefined
-}
-export interface ModpackExportResult {
-  success: boolean
-  filesWritten: number
-  totalBytes: number
-}
-export declare function exportModpackArchive(request: ModpackExportRequest): Promise<ModpackExportResult>
 /** Instance loader type */
 export const enum LoaderType {
   Vanilla = 'Vanilla',

@@ -280,9 +280,9 @@ jobs:
 
           Write-Host "Generated Store package: $($package.FullName)"
 
-      - name: Build Electron app (Linux)
+      - name: Build Electron app (Linux packages)
         if: matrix.platform == 'linux'
-        run: bun x electron-builder --linux AppImage --publish never
+        run: bun x electron-builder --linux AppImage deb rpm --publish never
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
@@ -299,6 +299,65 @@ jobs:
         run: bun x electron-builder --linux flatpak --publish never
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
+
+      - name: Generate Flatpak repo and ref (Linux release only)
+        if: matrix.platform == 'linux' && vars.ENABLE_FLATPAK_RELEASE == 'true' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch')
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          FLATPAK_BUNDLE="$(find release-build -maxdepth 1 -type f -name '*.flatpak' | head -n 1)"
+          if [ -z "${FLATPAK_BUNDLE:-}" ]; then
+            echo "ERROR: Flatpak bundle not found in release-build/"
+            find release-build -maxdepth 2 -type f | sort
+            exit 1
+          fi
+
+          APP_ID="$(node -p "const pkg=require('./package.json'); const appId=pkg.build?.appId || ('com.electron.' + pkg.name); appId.replace(/-/g, '_').replace(/[^a-zA-Z0-9._]/g, '')")"
+          BRANCH="$(node -p "const pkg=require('./package.json'); pkg.build?.flatpak?.branch || 'master'")"
+          PRODUCT_NAME="$(node -p "const pkg=require('./package.json'); pkg.build?.productName || pkg.productName || pkg.name")"
+          HOMEPAGE="$(node -p "const pkg=require('./package.json'); pkg.homepage || ''")"
+          DESCRIPTION="$(node -p "const pkg=require('./package.json'); pkg.description || ''")"
+          REMOTE_URL="${CDN_URL}/client/flatpak-repo"
+          RUNTIME_REPO_URL="https://dl.flathub.org/repo/flathub.flatpakrepo"
+          REPO_DIR="release-build/flatpak-repo"
+          REF_PATH="release-build/${PRODUCT_NAME}.flatpakref"
+
+          rm -rf "${REPO_DIR}"
+          mkdir -p "${REPO_DIR}"
+
+          flatpak build-import-bundle --update-appstream "${REPO_DIR}" "${FLATPAK_BUNDLE}"
+          flatpak build-update-repo \
+            --title="${PRODUCT_NAME}" \
+            --comment="${PRODUCT_NAME} Flatpak repository" \
+            --description="${DESCRIPTION}" \
+            --default-branch="${BRANCH}" \
+            "${REPO_DIR}"
+
+          if [ -n "${HOMEPAGE}" ]; then
+            flatpak build-update-repo --homepage="${HOMEPAGE}" "${REPO_DIR}"
+          fi
+
+          cat > "${REF_PATH}" <<EOF
+[Flatpak Ref]
+Version=1
+Title=${PRODUCT_NAME}
+Name=${APP_ID}
+Branch=${BRANCH}
+Url=${REMOTE_URL}
+IsRuntime=false
+RuntimeRepo=${RUNTIME_REPO_URL}
+SuggestRemoteName=reality-launcher
+Comment=${DESCRIPTION}
+Description=${DESCRIPTION}
+EOF
+
+          if [ -n "${HOMEPAGE}" ]; then
+            printf 'Homepage=%s\n' "${HOMEPAGE}" >> "${REF_PATH}"
+          fi
+
+          echo "Generated Flatpak ref:"
+          cat "${REF_PATH}"
 
       - name: Build Electron app (macOS)
         if: matrix.platform == 'mac'
@@ -330,6 +389,8 @@ jobs:
             release-build/*.deb
             release-build/*.rpm
             release-build/*.flatpak
+            release-build/*.flatpakref
+            release-build/flatpak-repo/**
             release-build/latest-linux.yml
           if-no-files-found: error
           retention-days: 7
@@ -540,7 +601,7 @@ jobs:
           VERSION=${{ steps.version.outputs.version }}
           echo "=== Uploading Linux build for version $VERSION ==="
           
-          for file in artifacts/reality-launcher-linux/*.AppImage artifacts/reality-launcher-linux/*.deb artifacts/reality-launcher-linux/*.rpm artifacts/reality-launcher-linux/*.flatpak; do
+          for file in artifacts/reality-launcher-linux/*.AppImage artifacts/reality-launcher-linux/*.deb artifacts/reality-launcher-linux/*.rpm artifacts/reality-launcher-linux/*.flatpak artifacts/reality-launcher-linux/*.flatpakref; do
             if [ -f "$file" ]; then
               FILENAME=$(basename "$file")
               echo "Uploading $FILENAME to /client/$VERSION/..."
@@ -548,6 +609,16 @@ jobs:
               echo "✓ Uploaded $FILENAME"
             fi
           done
+
+          if [ -d artifacts/reality-launcher-linux/flatpak-repo ]; then
+            echo "Uploading Flatpak repository to /client/flatpak-repo/..."
+            while IFS= read -r file; do
+              RELATIVE_PATH="${file#artifacts/reality-launcher-linux/flatpak-repo/}"
+              echo "Uploading flatpak-repo/${RELATIVE_PATH}..."
+              wrangler r2 object put --remote "$R2_BUCKET/client/flatpak-repo/$RELATIVE_PATH" --file="$file" --content-type="application/octet-stream"
+            done < <(find artifacts/reality-launcher-linux/flatpak-repo -type f | sort)
+            echo "✓ Uploaded Flatpak repository"
+          fi
           
           LATEST_LINUX_YML=$(find artifacts/reality-launcher-linux -name latest-linux.yml | head -n 1)
           if [ -n "$LATEST_LINUX_YML" ]; then
@@ -575,6 +646,7 @@ jobs:
           MAC_PATH=$(find artifacts/reality-launcher-macos -name "*.dmg" | head -n 1 || true)
           LINUX_PATH=$(find artifacts/reality-launcher-linux -name "*.AppImage" | head -n 1 || true)
           FLATPAK_PATH=$(find artifacts/reality-launcher-linux -name "*.flatpak" | head -n 1 || true)
+          FLATPAKREF_PATH=$(find artifacts/reality-launcher-linux -name "*.flatpakref" | head -n 1 || true)
 
           if [ -z "$LINUX_PATH" ]; then
             echo "ERROR: Linux artifact is required but missing."
@@ -601,6 +673,11 @@ jobs:
             FLATPAK_FILE=$(basename "$FLATPAK_PATH")
             FLATPAK_URL="$CDN_URL/client/$VERSION/$(echo "$FLATPAK_FILE" | sed 's/ /%20/g')"
           fi
+          FLATPAKREF_URL=""
+          if [ -n "$FLATPAKREF_PATH" ]; then
+            FLATPAKREF_FILE=$(basename "$FLATPAKREF_PATH")
+            FLATPAKREF_URL="$CDN_URL/client/$VERSION/$(echo "$FLATPAKREF_FILE" | sed 's/ /%20/g')"
+          fi
 
           jq -n \
             --arg version "$VERSION" \
@@ -610,6 +687,7 @@ jobs:
             --arg mac "$MAC_URL" \
             --arg linux "$LINUX_URL" \
             --arg flatpak "$FLATPAK_URL" \
+            --arg flatpakref "$FLATPAKREF_URL" \
             '{
               version: $version,
               releaseDate: $releaseDate,
@@ -618,7 +696,8 @@ jobs:
                 (if $windows == "" then {} else { windows: $windows } end) +
                 { linux: $linux } +
                 (if $mac == "" then {} else { mac: $mac } end) +
-                (if $flatpak == "" then {} else { flatpak: $flatpak } end)
+                (if $flatpak == "" then {} else { flatpak: $flatpak } end) +
+                (if $flatpakref == "" then {} else { flatpakref: $flatpakref } end)
               )
             }' > latest.json
           
@@ -665,6 +744,7 @@ jobs:
             artifacts/reality-launcher-linux/*.deb
             artifacts/reality-launcher-linux/*.rpm
             artifacts/reality-launcher-linux/*.flatpak
+            artifacts/reality-launcher-linux/*.flatpakref
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
