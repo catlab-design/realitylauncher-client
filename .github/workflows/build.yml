@@ -339,18 +339,18 @@ jobs:
           fi
 
           cat > "${REF_PATH}" <<EOF
-[Flatpak Ref]
-Version=1
-Title=${PRODUCT_NAME}
-Name=${APP_ID}
-Branch=${BRANCH}
-Url=${REMOTE_URL}
-IsRuntime=false
-RuntimeRepo=${RUNTIME_REPO_URL}
-SuggestRemoteName=reality-launcher
-Comment=${DESCRIPTION}
-Description=${DESCRIPTION}
-EOF
+          [Flatpak Ref]
+          Version=1
+          Title=${PRODUCT_NAME}
+          Name=${APP_ID}
+          Branch=${BRANCH}
+          Url=${REMOTE_URL}
+          IsRuntime=false
+          RuntimeRepo=${RUNTIME_REPO_URL}
+          SuggestRemoteName=reality-launcher
+          Comment=${DESCRIPTION}
+          Description=${DESCRIPTION}
+          EOF
 
           if [ -n "${HOMEPAGE}" ]; then
             printf 'Homepage=%s\n' "${HOMEPAGE}" >> "${REF_PATH}"
