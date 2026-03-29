@@ -257,7 +257,6 @@ function LauncherAppContent() {
 
   // Inbox/Notifications modal state
   const [inboxOpen, setInboxOpen] = useState(false);
-  const [calendarOpen, setCalendarOpen] = useState(false);
   const [inboxTab, setInboxTab] = useState<'news' | 'system'>('news');
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [userNotifications, setUserNotifications] = useState<any[]>([]);
@@ -359,56 +358,8 @@ function LauncherAppContent() {
   // News data (will be fetched from API)
   const [news] = useState<NewsItem[]>([]);
 
-  // Agenda/Calendar data pre-fetching
-  const [agendas, setAgendas] = useState<any[]>([]);
-  const [isLoadingAgendas, setIsLoadingAgendas] = useState(false);
 
-  const fetchAgendas = useCallback(async () => {
-    setIsLoadingAgendas(true);
-    try {
-        const res = await (window as any).api?.fetchAllAgendas?.();
-        if (res && res.ok) {
-            setAgendas(res.agendas || []);
-            console.log("[LauncherApp] Refreshed global agendas:", res.agendas?.length);
-        }
-    } catch (err) {
-        console.error("[LauncherApp] Failed to fetch agendas:", err);
-    } finally {
-        setIsLoadingAgendas(false);
-    }
-  }, [t]);
 
-  useEffect(() => {
-    fetchAgendas();
-  }, [fetchAgendas]);
-
-  // Check for events today to show red dot on calendar button
-  const hasEventsToday = useMemo(() => {
-    if (!agendas || agendas.length === 0) return false;
-    const now = new Date();
-    const dayOfWeek = now.getDay();
-    const dateStr = now.toLocaleDateString('en-CA'); // YYYY-MM-DD
-
-    return agendas.some(item => {
-      // 1. Recurring items (dayOfWeek matches)
-      if (item.dayOfWeek !== null && item.dayOfWeek !== undefined && item.dayOfWeek === dayOfWeek) {
-        // If recurringUntil is set, check if target date is within range
-        if (item.recurringUntil) {
-          const untilDate = new Date(item.recurringUntil);
-          untilDate.setHours(23, 59, 59, 999);
-          if (now > untilDate) return false;
-        }
-        return true;
-      }
-      
-      // 2. One-time date items
-      if (item.date) {
-        const itemDate = new Date(item.date).toLocaleDateString('en-CA');
-        return itemDate === dateStr;
-      }
-      return false;
-    });
-  }, [agendas]);
 
 
   // Sync Config/Session from Electron API on mount (if available)
@@ -1417,12 +1368,6 @@ function LauncherAppContent() {
         session={session}
         accounts={accounts}
         selectedInstance={selectedInstance}
-        calendarOpen={calendarOpen}
-        setCalendarOpen={setCalendarOpen}
-        hasEventsToday={hasEventsToday}
-        agendas={agendas}
-        isLoadingAgendas={isLoadingAgendas}
-        fetchAgendas={fetchAgendas}
         inboxOpen={inboxOpen}
         setInboxOpen={setInboxOpen}
         announcements={announcements}

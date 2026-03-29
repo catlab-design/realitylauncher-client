@@ -263,9 +263,10 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
                 <div className="flex flex-col md:flex-row gap-8">
                     {/* 3D Preview Card */}
                     <div
-                        className="flex-1 h-[440px] md:h-[540px] rounded-3xl overflow-hidden relative animate-fade-in"
+                        className="flex-1 h-[440px] md:h-[540px] rounded-3xl overflow-hidden relative animate-fade-in shadow-inner"
                         style={{
-                            background: "radial-gradient(ellipse at 50% 35%, rgba(255,255,255,0.06), transparent 70%), linear-gradient(180deg, #18181b 0%, #0c0c0f 100%)",
+                            backgroundColor: "#0a0a0c",
+                            backgroundImage: "radial-gradient(ellipse at 50% 35%, rgba(255,255,255,0.05), transparent 75%), linear-gradient(180deg, #121214 0%, #0a0a0c 100%)",
                             animationDelay: "80ms",
                             opacity: 0,
                         }}>

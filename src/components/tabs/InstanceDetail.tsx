@@ -118,9 +118,8 @@ export function InstanceDetail({
     const [loadedTabs, setLoadedTabs] = useState<Set<ContentCategory>>(new Set());
 
     // Ref to cancel recursive metadata refresh on unmount/instance change
-    const modMetadataCancelRef = useRef(false);
-    const modMetadataRefreshTokenRef = useRef(0);
-    const modMetadataRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Debounce timer for mod list refreshes
+    const modRefreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Drag & drop state
     const [isDragging, setIsDragging] = useState(false);
@@ -253,11 +252,9 @@ export function InstanceDetail({
 
     // Reset tab/data state when switching instance
     useEffect(() => {
-        modMetadataCancelRef.current = false;
-        modMetadataRefreshTokenRef.current += 1;
-        if (modMetadataRefreshTimerRef.current) {
-            clearTimeout(modMetadataRefreshTimerRef.current);
-            modMetadataRefreshTimerRef.current = null;
+        if (modRefreshDebounceRef.current) {
+            clearTimeout(modRefreshDebounceRef.current);
+            modRefreshDebounceRef.current = null;
         }
         const defaultTab: ContentCategory =
             instance.loader === "vanilla" ? "resourcepacks" : "mods";
@@ -268,11 +265,9 @@ export function InstanceDetail({
         setShaders([]);
         setDatapacks([]);
         return () => {
-            modMetadataCancelRef.current = true;
-            modMetadataRefreshTokenRef.current += 1;
-            if (modMetadataRefreshTimerRef.current) {
-                clearTimeout(modMetadataRefreshTimerRef.current);
-                modMetadataRefreshTimerRef.current = null;
+            if (modRefreshDebounceRef.current) {
+                clearTimeout(modRefreshDebounceRef.current);
+                modRefreshDebounceRef.current = null;
             }
         };
     }, [instance.id, instance.loader]);
@@ -284,60 +279,19 @@ export function InstanceDetail({
     const loadMods = async (options?: { silent?: boolean }) => {
         const silent = options?.silent === true;
         if (!silent) setModsLoading(true);
-        modMetadataRefreshTokenRef.current += 1;
-        const refreshToken = modMetadataRefreshTokenRef.current;
-        if (modMetadataRefreshTimerRef.current) {
-            clearTimeout(modMetadataRefreshTimerRef.current);
-            modMetadataRefreshTimerRef.current = null;
-        }
 
         try {
             const result = await (window.api as any)?.instanceListMods?.(instance.id);
 
             if (result?.ok) {
-                // Show mods immediately with basic info
+                // Show mods immediately (with whatever metadata is currently available)
                 setMods(result.mods);
-                if (!silent) setModsLoading(false);
-
-                // Then progressively load metadata for uncached mods
-                if (result.hasUncached) {
-                    let retryCount = 0;
-                    const MAX_RETRIES = result.mods.length > 120 ? 8 : 20;
-                    const retryDelay = result.mods.length > 120 ? 1800 : 600;
-                    const refreshMetadata = async () => {
-                        if (
-                            modMetadataCancelRef.current ||
-                            refreshToken !== modMetadataRefreshTokenRef.current
-                        ) return;
-                        const refreshResult = await (window.api as any)?.instanceListMods?.(instance.id);
-                        if (
-                            modMetadataCancelRef.current ||
-                            refreshToken !== modMetadataRefreshTokenRef.current
-                        ) return;
-                        if (refreshResult?.ok) {
-                            setMods(refreshResult.mods);
-                            // If still has uncached and under retry limit, try again
-                            if (refreshResult.hasUncached && ++retryCount < MAX_RETRIES) {
-                                modMetadataRefreshTimerRef.current = setTimeout(
-                                    refreshMetadata,
-                                    retryDelay,
-                                );
-                            } else {
-                                modMetadataRefreshTimerRef.current = null;
-                            }
-                        }
-                    };
-                    modMetadataRefreshTimerRef.current = setTimeout(
-                        refreshMetadata,
-                        retryDelay,
-                    );
-                }
             } else {
-                toast.error(result?.error || t('load_mods_failed'));
-                if (!silent) setModsLoading(false);
+                if (!silent) toast.error(result?.error || t('load_mods_failed'));
             }
         } catch (error) {
             console.error("[InstanceDetail] Failed to load mods:", error);
+        } finally {
             if (!silent) setModsLoading(false);
         }
     };
@@ -377,6 +331,28 @@ export function InstanceDetail({
             setDatapacksLoading(false);
         }
     };
+
+    // Listen for mod metadata updates via event rather than polling
+    useEffect(() => {
+        const unbind = (window.api as any)?.onModsIconsUpdated?.((updatedInstanceId: string) => {
+            if (updatedInstanceId === instance.id) {
+                // Debounce the refresh to prevent UI stutter when many mods update rapidly
+                if (modRefreshDebounceRef.current) {
+                    clearTimeout(modRefreshDebounceRef.current);
+                }
+                modRefreshDebounceRef.current = setTimeout(() => {
+                    loadMods({ silent: true });
+                }, 800);
+            }
+        });
+        
+        return () => {
+            if (unbind) unbind();
+            if (modRefreshDebounceRef.current) {
+                clearTimeout(modRefreshDebounceRef.current);
+            }
+        };
+    }, [instance.id]);
 
     // Lazy-load only the active content tab to avoid heavy first render stalls.
     useEffect(() => {

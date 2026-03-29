@@ -377,58 +377,57 @@ if (!gotTheLock) {
  * app.whenReady() - เมื่อ Electron พร้อมใช้งาน
  */
 app.whenReady().then(async () => {
-  // Initialize auth system
-  initAuth();
-
-  // Reset launcher state
-  resetLauncherState();
-
-  // Sync cloud instances on startup if logged in
-  try {
-    const session = getSession();
-    if (session) {
-      logger.info("Session found, syncing cloud instances...");
-      const apiToken = getApiToken();
-      if (apiToken) {
-        const { syncCloudInstances } = await import("./cloud-instances.js");
-        syncCloudInstances(apiToken)
-          .then(() => {
-            logger.info("Startup cloud sync complete, notifying UI...");
-            mainWindow?.webContents.send("instances-updated");
-          })
-          .catch((err) =>
-            logger.error("Failed to sync cloud instances on startup", err),
-          );
-      } else {
-        logger.warn("Session exists but no API token found, skipping sync");
-      }
-    }
-  } catch (error) {
-    logger.error("Error checking session for sync", error);
-  }
-
-  // Initialize Discord RPC
+  const startupStart = Date.now();
   const config = getConfig();
+
+  // 1. CREATE WINDOW & START LOADING UI IMMEDIATELY
+  // This is the highest priority - showing something to the user
+  mainWindow = createWindow();
+  monitorWaylandStartupWindow(mainWindow);
+  
+  // Start loading HTML early, but don't await yet if we want to run other tasks in parallel.
+  // We'll await it later to ensure the process continues correctly.
+  const loadUIPromise = loadMainWindow(mainWindow);
+
+  // 2. RUN ESSENTIAL SYNC INITIALIZATIONS
+  initAuth();
+  resetLauncherState();
+  initTelemetry();
+
+  // 3. START BACKGROUND INITIALIZATIONS (NON-BLOCKING)
+  
+  // Sync cloud instances in background
   const rpcSession = getSession();
   if (rpcSession) {
     setPlayerInfo(rpcSession.minecraftUuid || rpcSession.uuid, rpcSession.username);
+    const apiToken = getApiToken();
+    if (apiToken) {
+      import("./cloud-instances.js").then(({ syncCloudInstances }) => {
+        syncCloudInstances(apiToken)
+          .then(() => {
+            mainWindow?.webContents.send("instances-updated");
+          })
+          .catch((err) => logger.error("Failed to sync cloud instances", err));
+      }).catch(err => logger.error("Failed to load cloud-instances module", err));
+    }
   }
-  if (config.discordRPCEnabled) {
-    await initDiscordRPC();
-  }
 
-  // Initialize Telemetry
-  initTelemetry();
+  // 4. REGISTER HANDLERS & INITIALIZE DISCORD (IN PARALLEL)
+  // We MUST ensure handlers are registered before we consider startup finished,
+  // but we can do it while the window is already being created/loading.
+  const registerHandlersPromise = registerAllHandlers(() => mainWindow);
+  
+  const discordPromise = config.discordRPCEnabled 
+    ? initDiscordRPC().catch(err => logger.error("Discord RPC error", err))
+    : Promise.resolve();
 
-  // Create window shell first, but delay loading UI until IPC handlers are ready.
-  mainWindow = createWindow();
-  monitorWaylandStartupWindow(mainWindow);
+  // 5. WAIT FOR CRITICAL UI LOADING TO FINISH
+  await Promise.all([loadUIPromise, registerHandlersPromise]);
 
-  // Register all IPC handlers from modules before renderer starts invoking them.
-  await registerAllHandlers(() => mainWindow); // Now async
-
-  // Load renderer after handlers are ready to avoid missing IPC handlers.
-  await loadMainWindow(mainWindow);
+  // Discord can finish whenever, we don't strictly need it for UI interaction
+  discordPromise.then(() => {
+    logger.info("Discord RPC initialized in background");
+  });
 
   // Register debug/tracing IPC handlers
   ipcMain.handle("debug:get-traces", () => {

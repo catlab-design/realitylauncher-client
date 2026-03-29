@@ -1,9 +1,8 @@
-import { app } from "electron";
+import { app } from "electron";
 import * as path from "path";
 import { existsSync, readFileSync, writeFileSync, rmSync } from "fs";
 import * as fs from "fs-extra";
 import crypto from "node:crypto";
-import AdmZip from "adm-zip";
 import { createIpcLogger } from "../lib/logger.js";
 import { getConfig, getAppDataDir, getMinecraftDir } from "../config.js";
 import { getNativeModule } from "../native.js";
@@ -601,40 +600,38 @@ export async function calculateSha1(filePath: string): Promise<string> {
 }
 
 // Extract mod info from JAR file
-export async function extractModInfo(jarPath: string): Promise<ModMetadataCache> {
-  try {
-    const buffer = await fs.promises.readFile(jarPath);
-    const zip = new AdmZip(buffer);
+export async function extractModInfo(
+  jarPath: string,
+): Promise<ModMetadataCache> {
+  const native = getNativeModule();
 
-    // Try Fabric mod
-    const fabricEntry = zip.getEntry("fabric.mod.json");
-    if (fabricEntry) {
-      const content = fabricEntry.getData().toString("utf8");
+  try {
+    // Try Fabric mod (search for fabric.mod.json)
+    const fabricContent = native.readFileFromZip(jarPath, "fabric.mod.json");
+    if (fabricContent) {
       let json: any;
       try {
-        json = JSON.parse(content);
+        json = JSON.parse(fabricContent.toString("utf8"));
       } catch (parseErr) {
-        logger.warn(
-          `[ModInfo] Failed to parse fabric.mod.json in ${jarPath}:`,
-          { error: String(parseErr) },
-        );
+        logger.warn(`[ModInfo] Failed to parse fabric.mod.json in ${jarPath}:`, {
+          error: String(parseErr),
+        });
         return {};
       }
 
       let icon: string | undefined;
       if (json.icon) {
-        const iconEntry = zip.getEntry(json.icon);
-        if (iconEntry) {
-          const iconData = iconEntry.getData();
-          const mimeType = json.icon.endsWith(".png")
-            ? "image/png"
-            : "image/jpeg";
-          icon = `data:${mimeType};base64,${iconData.toString("base64")}`;
-        } else {
-          // console.log(`[ModInfo] Icon not found in zip: ${json.icon} for ${jarPath}`);
+        try {
+          const iconData = native.readFileFromZip(jarPath, json.icon);
+          if (iconData) {
+            const mimeType = json.icon.endsWith(".png")
+              ? "image/png"
+              : "image/jpeg";
+            icon = `data:${mimeType};base64,${iconData.toString("base64")}`;
+          }
+        } catch (e) {
+          // Icon read failed, skip it
         }
-      } else {
-        // console.log(`[ModInfo] No icon defined in fabric.mod.json for ${jarPath}`);
       }
 
       return {
@@ -652,10 +649,10 @@ export async function extractModInfo(jarPath: string): Promise<ModMetadataCache>
       };
     }
 
-    // Try Forge mod
-    const forgeEntry = zip.getEntry("META-INF/mods.toml");
-    if (forgeEntry) {
-      const content = forgeEntry.getData().toString("utf8");
+    // Try Forge mod (search for META-INF/mods.toml)
+    const forgeContent = native.readFileFromZip(jarPath, "META-INF/mods.toml");
+    if (forgeContent) {
+      const content = forgeContent.toString("utf8");
       const modIdMatch = content.match(/modId\s*=\s*"([^"]+)"/);
       const displayNameMatch = content.match(/displayName\s*=\s*"([^"]+)"/);
       const authorsMatch = content.match(/authors\s*=\s*"([^"]+)"/);
@@ -667,12 +664,14 @@ export async function extractModInfo(jarPath: string): Promise<ModMetadataCache>
 
       let icon: string | undefined;
       if (logoMatch) {
-        const logoPath = logoMatch[1];
-        const iconEntry = zip.getEntry(logoPath);
-        if (iconEntry) {
-          icon = `data:image/png;base64,${iconEntry.getData().toString("base64")}`;
-        } else {
-          // console.log(`[ModInfo] Forge logo not found: ${logoPath} in ${jarPath}`);
+        try {
+          const logoPath = logoMatch[1];
+          const iconData = native.readFileFromZip(jarPath, logoPath);
+          if (iconData) {
+            icon = `data:image/png;base64,${iconData.toString("base64")}`;
+          }
+        } catch (e) {
+          // Logo read failed, skip
         }
       }
 

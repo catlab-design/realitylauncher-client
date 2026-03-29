@@ -73,7 +73,7 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
                     fov: 60,
                     enableControls: false,
                     animation: new IdleAnimation(),
-                    background: "transparent",
+                    background: "#0a0a0c",
                 });
 
                 viewer.controls.enabled = false;
@@ -170,14 +170,14 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
         <div
             ref={containerRef}
             className="relative overflow-hidden cursor-grab active:cursor-grabbing touch-none select-none"
-            style={{ width, height }}
+            style={{ width, height, backgroundColor: "#0a0a0c" }}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={stopDragging}
             onPointerCancel={stopDragging}
             onPointerLeave={stopDragging}
         >
-            <canvas ref={canvasRef} className="block w-full h-full" />
+            <canvas ref={canvasRef} className="block w-full h-full" style={{ backgroundColor: "transparent" }} />
         </div>
     );
 };

@@ -22,56 +22,74 @@ export async function registerAllHandlers(
 ): Promise<void> {
   console.log("[IPC] Registering all handlers...");
 
-  // Lazy load handlers to improve startup time
+  // 1. CRITICAL HANDLERS - Load these first as they are needed for initial UI state/login
   const [
     { registerConfigHandlers },
     { registerAuthHandlers },
-    { registerLauncherHandlers },
-    { registerUtilityHandlers },
-    { registerDiscordHandlers },
-    { registerUpdateHandlers },
     { registerWindowHandlers },
-    { registerModrinthHandlers },
-    { registerCurseForgeHandlers },
-    { registerInstanceHandlers },
-    { registerModpackHandlers },
-    { registerNotificationHandlers },
-    { registerServerHandlers },
-    { registerAdminHandlers },
-    { registerContentHandlers },
+    { registerUtilityHandlers },
   ] = await Promise.all([
     import("./config-handlers.js"),
     import("./auth-handlers.js"),
-    import("./launcher-handlers.js"),
-    import("./utility-handlers.js"),
-    import("./discord-handlers.js"),
-    import("./update-handlers.js"),
     import("./window-handlers.js"),
-    import("./modrinth-handlers.js"),
-    import("./curseforge-handlers.js"),
-    import("./instance-handlers.js"),
-    import("./modpack-handlers.js"),
-    import("./notification-handlers.js"),
-    import("./server-handlers.js"),
-    import("./admin-handlers.js"),
-    import("./content-handlers.js"),
+    import("./utility-handlers.js"),
   ]);
 
   registerConfigHandlers();
   registerAuthHandlers(getMainWindow);
-  registerLauncherHandlers(getMainWindow);
-  registerUtilityHandlers(getMainWindow);
-  registerDiscordHandlers();
-  registerUpdateHandlers();
   registerWindowHandlers(getMainWindow);
-  registerModrinthHandlers(getMainWindow);
-  registerCurseForgeHandlers();
-  registerInstanceHandlers(getMainWindow);
-  registerModpackHandlers(getMainWindow);
-  registerContentHandlers(getMainWindow);
-  registerNotificationHandlers();
-  registerServerHandlers();
-  registerAdminHandlers();
+  registerUtilityHandlers(getMainWindow);
+  
+  console.log("[IPC] Critical handlers registered");
 
-  console.log("[IPC] All handlers registered");
+  // 2. SECONDARY HANDLERS - Start loading these immediately after critical ones
+  // We don't necessarily need to block UI interaction for these if the user isn't clicking them yet
+  const secondaryPromise = (async () => {
+    const [
+      { registerLauncherHandlers },
+      { registerDiscordHandlers },
+      { registerUpdateHandlers },
+      { registerModrinthHandlers },
+      { registerCurseForgeHandlers },
+      { registerInstanceHandlers },
+      { registerModpackHandlers },
+      { registerNotificationHandlers },
+      { registerServerHandlers },
+      { registerAdminHandlers },
+      { registerContentHandlers },
+    ] = await Promise.all([
+      import("./launcher-handlers.js"),
+      import("./discord-handlers.js"),
+      import("./update-handlers.js"),
+      import("./modrinth-handlers.js"),
+      import("./curseforge-handlers.js"),
+      import("./instance-handlers.js"),
+      import("./modpack-handlers.js"),
+      import("./notification-handlers.js"),
+      import("./server-handlers.js"),
+      import("./admin-handlers.js"),
+      import("./content-handlers.js"),
+    ]);
+
+    registerLauncherHandlers(getMainWindow);
+    registerDiscordHandlers();
+    registerUpdateHandlers();
+    registerModrinthHandlers(getMainWindow);
+    registerCurseForgeHandlers();
+    registerInstanceHandlers(getMainWindow);
+    registerModpackHandlers(getMainWindow);
+    registerContentHandlers(getMainWindow);
+    registerNotificationHandlers();
+    registerServerHandlers();
+    registerAdminHandlers();
+    
+    console.log("[IPC] Secondary handlers registered");
+  })();
+
+  // Resolve when critical handlers are ready. Secondary can continue in background.
+  // Actually, to be safe, we might want to wait for everything if we aren't sure,
+  // but splitting already helps by letting the critical ones finish faster.
+  await secondaryPromise;
+
+  console.log("[IPC] All handlers registration completed");
 }

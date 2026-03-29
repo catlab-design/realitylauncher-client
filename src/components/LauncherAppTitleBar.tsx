@@ -2,7 +2,6 @@ import type { CSSProperties, Dispatch, SetStateAction } from "react";
 
 import { NotificationInbox } from "./ui/NotificationInbox";
 import { AppVersionBadge } from "./ui/AppVersionBadge";
-import { CalendarWidget } from "./ui/CalendarWidget";
 import { MCHead } from "./ui/MCHead";
 import { Icons } from "./ui/Icons";
 import microsoftIcon from "../assets/microsoft_icon.svg";
@@ -42,12 +41,6 @@ interface LauncherAppTitleBarProps {
   session: AuthSession | null;
   accounts: AuthSession[];
   selectedInstance: GameInstance | null;
-  calendarOpen: boolean;
-  setCalendarOpen: Dispatch<SetStateAction<boolean>>;
-  hasEventsToday: boolean;
-  agendas: any[];
-  isLoadingAgendas: boolean;
-  fetchAgendas: () => void | Promise<void>;
   inboxOpen: boolean;
   setInboxOpen: Dispatch<SetStateAction<boolean>>;
   announcements: any[];
@@ -75,12 +68,6 @@ export function LauncherAppTitleBar({
   session,
   accounts,
   selectedInstance,
-  calendarOpen,
-  setCalendarOpen,
-  hasEventsToday,
-  agendas,
-  isLoadingAgendas,
-  fetchAgendas,
   inboxOpen,
   setInboxOpen,
   announcements,
@@ -142,51 +129,6 @@ export function LauncherAppTitleBar({
         className="fixed top-0 right-36 h-10 flex items-center gap-2 pr-2 no-drag"
         style={{ zIndex: 99, pointerEvents: "auto" }}
       >
-        {session && (
-          <div className="relative">
-            <button
-              onClick={() => {
-                const newState = !calendarOpen;
-                setCalendarOpen(newState);
-                if (newState) {
-                  void fetchAgendas();
-                }
-              }}
-              className={`w-8 h-8 rounded-full flex items-center justify-center transition-all hover:scale-110 hover:bg-white/10 ${calendarOpen ? "scale-110" : ""}`}
-              style={{
-                color: titleBarColors.muted,
-                backgroundColor: calendarOpen
-                  ? titleBarColors.active
-                  : "transparent",
-              }}
-              title={t("calendar")}
-            >
-              <Icons.Calendar className="w-5 h-5" />
-              {hasEventsToday && (
-                <span
-                  className="absolute top-1 right-1 w-2 h-2 rounded-full border-2"
-                  style={{
-                    backgroundColor: "#ef4444",
-                    borderColor: titleBarColors.dotRing,
-                  }}
-                />
-              )}
-            </button>
-            {calendarOpen && (
-              <CalendarWidget
-                isOpen={calendarOpen}
-                onClose={() => setCalendarOpen(false)}
-                colors={colors}
-                language={config.language}
-                instanceId={selectedInstance?.id}
-                instanceName={selectedInstance?.name}
-                preFetchedAgendas={agendas}
-                isPreLoading={isLoadingAgendas}
-                onRefresh={fetchAgendas}
-              />
-            )}
-          </div>
-        )}
 
         {session && (
           <div className="relative">

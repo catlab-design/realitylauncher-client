@@ -442,9 +442,6 @@ const api = {
 
     return _instancesCachePromise;
   },
-  fetchInstanceAgendas: (instanceId: string) =>
-    ipcRenderer.invoke("fetch-instance-agendas", instanceId),
-  fetchAllAgendas: () => ipcRenderer.invoke("fetch-all-agendas"),
   instancesGetJoinedServers: () => ipcRenderer.invoke("instances-get-joined"),
   instancesCloudInstall: (id: string) =>
     invokeWithInstancesCacheInvalidation("instances-cloud-install", id),
@@ -620,6 +617,12 @@ const api = {
     ipcRenderer.invoke("instance-delete-mod", instanceId, filename),
   instanceGetModMetadata: (instanceId: string, filename: string) =>
     ipcRenderer.invoke("instance-get-mod-metadata", instanceId, filename),
+  onModsIconsUpdated: (callback: (instanceId: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, instanceId: string) =>
+      callback(instanceId);
+    ipcRenderer.on("instance-mods-icons-updated", handler);
+    return () => ipcRenderer.removeListener("instance-mods-icons-updated", handler);
+  },
 
   // Browse icon dialog
   browseIcon: () => ipcRenderer.invoke("browse-icon"),

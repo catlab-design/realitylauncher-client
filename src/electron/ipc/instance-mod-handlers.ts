@@ -80,6 +80,10 @@ export function registerInstanceModHandlers(deps: InstanceModHandlersDeps): void
     getSession,
   } = deps;
 
+  const modListCache = new Map<
+    string,
+    { mtimeMs: number; mods: any[]; hasUncached: boolean }
+  >();
 
   ipcMain.handle("instance-list-mods", async (_event, instanceId: string) => {
     const instance = getInstance(instanceId);
@@ -91,77 +95,46 @@ export function registerInstanceModHandlers(deps: InstanceModHandlersDeps): void
     }
 
     const modsDir = path.join(instance.gameDirectory, "mods");
-    // Check mods dir existence async (avoid blocking main thread)
+    let stats: fs.Stats;
     try {
-      await fs.promises.access(modsDir);
+      stats = await fs.promises.stat(modsDir);
+      if (!stats.isDirectory()) return { ok: true, mods: [] };
     } catch {
       return { ok: true, mods: [] };
     }
 
+    // Check cache
+    const cacheEntry = modListCache.get(instanceId);
+    if (cacheEntry && cacheEntry.mtimeMs === stats.mtimeMs) {
+      return { ok: true, mods: cacheEntry.mods, hasUncached: cacheEntry.hasUncached };
+    }
+
     try {
-      // Keep the first pass lightweight: just list files.
-      // Metadata and icons are hydrated progressively from cache/background lookup.
       const jsModEntries = (await fs.promises.readdir(modsDir))
         .filter((f) => f.endsWith(".jar") || f.endsWith(".jar.disabled"))
         .map((filename) => ({ filename }));
+      
       const native = getNativeModule() as any;
       const NATIVE_MOD_SCAN_MAX = 80;
       const allowNativeSyncModScan = jsModEntries.length <= NATIVE_MOD_SCAN_MAX;
-      const nativeModMap = new Map<
-        string,
-        {
-          filename: string;
-          name?: string;
-          version?: string;
-          description?: string;
-          authors?: string[];
-          modId?: string;
-          iconBase64?: string | null;
-          enabled?: boolean;
-          size?: number;
-        }
-      >();
-      if (
-        allowNativeSyncModScan &&
-        typeof native.listInstanceMods === "function"
-      ) {
-        try {
-          const nativeMods = (native.listInstanceMods(
-            getInstancesDir(),
-            instanceId,
-          ) || []) as Array<{
-            filename: string;
-            name?: string;
-            version?: string;
-            description?: string;
-            authors?: string[];
-            modId?: string;
-            iconBase64?: string | null;
-            enabled?: boolean;
-            size?: number;
-          }>;
+      const nativeModMap = new Map<string, any>();
 
+      if (allowNativeSyncModScan && typeof native.listInstanceMods === "function") {
+        try {
+          const nativeMods = (native.listInstanceMods(getInstancesDir(), instanceId) || []) as any[];
           for (const item of nativeMods) {
-            if (!item?.filename) continue;
-            nativeModMap.set(item.filename, item);
+            if (item?.filename) nativeModMap.set(item.filename, item);
           }
         } catch (nativeError) {
           logger.warn("[Mods] Native listInstanceMods failed, fallback to JS", {
             message: String((nativeError as Error)?.message || nativeError),
           });
         }
-      } else if (!allowNativeSyncModScan) {
-        logger.info(
-          `[Mods] Skip synchronous native listInstanceMods for large mod set (${jsModEntries.length} entries)`,
-        );
       }
 
-      const nativeModsPrimary = nativeModMap.size > 0;
       const modEntryByFilename = new Map<string, { filename: string }>();
-      if (nativeModsPrimary) {
-        for (const filename of nativeModMap.keys()) {
-          modEntryByFilename.set(filename, { filename });
-        }
+      for (const filename of nativeModMap.keys()) {
+        modEntryByFilename.set(filename, { filename });
       }
       for (const entry of jsModEntries) {
         if (!modEntryByFilename.has(entry.filename)) {
@@ -170,7 +143,6 @@ export function registerInstanceModHandlers(deps: InstanceModHandlersDeps): void
       }
       const modEntries = Array.from(modEntryByFilename.values());
 
-      // Return quickly using cached/native metadata, then hydrate in background.
       const CONCURRENCY = 8;
       const LOOKUP_BATCH_PER_CALL = modEntries.length > 120 ? 4 : 10;
       const mods: (any | null)[] = new Array(modEntries.length).fill(null);
@@ -192,9 +164,9 @@ export function registerInstanceModHandlers(deps: InstanceModHandlersDeps): void
           if (!file) continue;
           const filePath = path.join(modsDir, file);
           try {
-            const stats = await fs.promises.stat(filePath);
-            const mtime = stats.mtime.toISOString();
-            const cacheKey = getModCacheKey(filePath, stats.size, mtime);
+            const fStats = await fs.promises.stat(filePath);
+            const mtime = fStats.mtime.toISOString();
+            const cacheKey = getModCacheKey(filePath, fStats.size, mtime);
             const seeded = modMetadataCache.get(cacheKey) || {};
             const nativeMeta = nativeModMap.get(file);
 
@@ -210,57 +182,32 @@ export function registerInstanceModHandlers(deps: InstanceModHandlersDeps): void
             const metadata: ModMetadataCache = {
               ...seeded,
               id: seeded.id || nativeMeta?.modId,
-              displayName:
-                seeded.displayName ||
-                (typeof nativeMeta?.name === "string" ? nativeMeta.name : name),
-              author:
-                seeded.author ||
-                (Array.isArray(nativeMeta?.authors)
-                  ? nativeMeta?.authors.filter(Boolean).join(", ")
-                  : undefined),
+              displayName: seeded.displayName || (typeof nativeMeta?.name === "string" ? nativeMeta.name : name),
+              author: seeded.author || (Array.isArray(nativeMeta?.authors) ? nativeMeta?.authors.filter(Boolean).join(", ") : undefined),
               description: seeded.description || nativeMeta?.description,
               version: seeded.version || nativeMeta?.version,
-              icon:
-                seeded.icon ||
-                (typeof nativeMeta?.iconBase64 === "string" &&
-                nativeMeta.iconBase64.length > 0
-                  ? `data:image/png;base64,${nativeMeta.iconBase64}`
-                  : undefined),
+              icon: seeded.icon || (typeof nativeMeta?.iconBase64 === "string" && nativeMeta.iconBase64.length > 0 ? `data:image/png;base64,${nativeMeta.iconBase64}` : undefined),
             };
 
-            if (!modMetadataCache.has(cacheKey)) {
+            if (!modMetadataCache.get(cacheKey)) {
               modMetadataCache.set(cacheKey, metadata);
               cacheTouched = true;
             }
 
             const hasUsefulLocalMetadata = Boolean(
               metadata.icon ||
-                (metadata.displayName &&
-                  metadata.displayName.toLowerCase() !== name.toLowerCase()) ||
+                (metadata.displayName && metadata.displayName.toLowerCase() !== name.toLowerCase()) ||
                 metadata.version ||
                 metadata.description ||
                 metadata.author,
             );
             const lookupPending = pendingModrinthLookups.has(cacheKey);
-            const needsLookup =
-              !isMetadataResolved(metadata) && !hasUsefulLocalMetadata;
-            if (lookupPending || needsLookup) {
-              hasUncached = true;
-            }
+            const needsLookup = !isMetadataResolved(metadata) && !hasUsefulLocalMetadata;
+            if (lookupPending || needsLookup) hasUncached = true;
 
-            // Batch background hydration to avoid UI stalls on large mod lists.
-            if (
-              needsLookup &&
-              !lookupPending &&
-              scheduledLookups < LOOKUP_BATCH_PER_CALL
-            ) {
+            if (needsLookup && !lookupPending && scheduledLookups < LOOKUP_BATCH_PER_CALL) {
               scheduledLookups += 1;
-              void ensureModMetadata(filePath, instanceId, stats.size, mtime)
-                .catch((error) => {
-                  logger.warn(
-                    `[Mods] Background metadata lookup failed for ${filePath}: ${String(error)}`,
-                  );
-                });
+              void ensureModMetadata(filePath, instanceId, fStats.size, mtime).catch(() => {});
             }
 
             mods[idx] = {
@@ -272,261 +219,131 @@ export function registerInstanceModHandlers(deps: InstanceModHandlersDeps): void
               icon: metadata?.icon || null,
               version: metadata?.version || "",
               enabled,
-              size: stats.size,
+              size: fStats.size,
               modifiedAt: mtime,
               modrinthProjectId: metadata?.modrinthProjectId,
               curseforgeProjectId: metadata?.curseforgeProjectId,
             };
-          } catch (e) {
-            // skip failed files
-          }
+          } catch (e) {}
         }
       };
 
-      // Run workers in parallel (limited concurrency)
-      await Promise.all(
-        Array.from({ length: Math.min(CONCURRENCY, modEntries.length) }, () =>
-          worker(),
-        ),
-      );
-
-      // Filter out failed stats
+      await Promise.all(Array.from({ length: Math.min(CONCURRENCY, modEntries.length) }, () => worker()));
       const validMods = mods.filter((m) => m !== null) as any[];
-
-      // logical sort
       validMods.sort((a, b) => a.displayName.localeCompare(b.displayName));
-      if (cacheTouched) {
-        saveMetadataCache();
-      }
+      if (cacheTouched) saveMetadataCache();
+
+      modListCache.set(instanceId, { mtimeMs: stats.mtimeMs, mods: validMods, hasUncached });
       return { ok: true, mods: validMods, hasUncached };
     } catch (error: any) {
       return { ok: false, error: error.message, mods: [] };
     }
   });
 
-  ipcMain.handle(
-    "instance-get-mod-metadata",
-    async (_event, instanceId: string, filename: string) => {
-      const instance = getInstance(instanceId);
-      if (!instance) return { ok: false, error: "Instance not found" };
+  ipcMain.handle("instance-get-mod-metadata", async (_event, instanceId, filename) => {
+    const instance = getInstance(instanceId);
+    if (!instance) return { ok: false, error: "Instance not found" };
+    const filePath = path.join(instance.gameDirectory, "mods", filename);
+    if (!fs.existsSync(filePath)) return { ok: false, error: "Mod not found" };
+    try {
+      const metadata = await ensureModMetadata(filePath, instanceId);
+      return { ok: true, metadata };
+    } catch (error: any) {
+      return { ok: false, error: error.message };
+    }
+  });
 
-      const filePath = path.join(instance.gameDirectory, "mods", filename);
-      if (!fs.existsSync(filePath))
-        return { ok: false, error: "Mod not found" };
+  ipcMain.handle("instance-toggle-mod", async (_event, instanceId, filename) => {
+    const instance = getInstance(instanceId);
+    if (!instance) return { ok: false, error: "Instance not found" };
+    const modsDir = path.join(instance.gameDirectory, "mods");
+    const filePath = path.join(modsDir, filename);
+    if (!fs.existsSync(filePath)) return { ok: false, error: "Mod not found" };
+    try {
+      let newFilename: string;
+      let enabled: boolean;
+      if (filename.endsWith(".jar.disabled")) {
+        newFilename = filename.replace(".jar.disabled", ".jar");
+        enabled = true;
+      } else if (filename.endsWith(".jar")) {
+        newFilename = filename + ".disabled";
+        enabled = false;
+      } else return { ok: false, error: "Invalid mod file" };
+      await fs.promises.rename(filePath, path.join(modsDir, newFilename));
+      return { ok: true, newFilename, enabled };
+    } catch (error: any) {
+      return { ok: false, error: error.message };
+    }
+  });
 
+  ipcMain.handle("instance-delete-mod", async (_event, instanceId, filename) => {
+    const instance = getInstance(instanceId);
+    if (!instance) return { ok: false, error: "Instance not found" };
+    if (instance.lockedMods?.includes(filename)) return { ok: false, error: "Mod is locked" };
+    const filePath = path.join(instance.gameDirectory, "mods", filename);
+    if (!fs.existsSync(filePath)) return { ok: false, error: "Mod not found" };
+    try {
+      await fs.promises.rm(filePath, { force: true });
+      return { ok: true };
+    } catch (error: any) {
+      return { ok: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle("instance-toggle-lock", async (_event, instanceId, filename) => {
+    const instance = getInstance(instanceId);
+    if (!instance) return { ok: false, error: "Instance not found" };
+    const locked = instance.lockedMods || [];
+    const isLocked = locked.includes(filename);
+    const newLocked = isLocked ? locked.filter((f) => f !== filename) : [...locked, filename];
+    updateInstance(instanceId, { lockedMods: newLocked });
+    return { ok: true, locked: !isLocked, lockedMods: newLocked };
+  });
+
+  ipcMain.handle("instance-lock-mods", async (_event, instanceId, filenames, lock) => {
+    const instance = getInstance(instanceId);
+    if (!instance) return { ok: false, error: "Instance not found" };
+    const locked = new Set(instance.lockedMods || []);
+    filenames.forEach((f: string) => {
+      if (lock) locked.add(f);
+      else locked.delete(f);
+    });
+    const newLocked = Array.from(locked);
+    updateInstance(instanceId, { lockedMods: newLocked });
+    return { ok: true, lockedMods: newLocked };
+  });
+
+  ipcMain.handle("instance-check-integrity", async (_event, instanceId) => {
+    const instance = getInstance(instanceId);
+    if (!instance) return { ok: false, error: "Instance not found" };
+    if (!instance.cloudId) return { ok: true, message: "Local instance check skipped" };
+    if (activeOperations.has(instanceId)) return { ok: false, error: "Operation in progress" };
+    const sendInstallProgress = createThrottledProgressSender("install-progress");
+    try {
+      const { syncServerMods } = await import("../cloud-instances.js");
+      let session = getSession();
+      if (!session || !session.apiToken) {
+        const refreshed = await refreshMicrosoftTokenIfNeeded(logger);
+        if (refreshed.ok) session = getSession() || session;
+      }
+      if (!session?.apiToken) return { ok: false, error: "Not logged in" };
+      const abortController = new AbortController();
+      activeOperations.set(instanceId, abortController);
+      const syncTimeout = setTimeout(() => abortController.abort(), 10 * 60 * 1000);
       try {
-        // ensureModMetadata is defined in this file
-        const metadata = await ensureModMetadata(filePath, instanceId);
-        return { ok: true, metadata };
-      } catch (error: any) {
-        return { ok: false, error: error.message };
+        await syncServerMods(instanceId, session.apiToken, (p) => {
+          sendInstallProgress({ type: p.type, task: p.task, current: p.current, total: p.total, percent: p.percent, filename: p.filename }, p?.type === "sync-complete" || p?.type === "sync-error" || p?.type === "cancelled");
+        }, abortController.signal);
+      } finally {
+        clearTimeout(syncTimeout);
+        activeOperations.delete(instanceId);
       }
-    },
-  );
-
-  ipcMain.handle(
-    "instance-toggle-mod",
-    async (_event, instanceId: string, filename: string) => {
-      const instance = getInstance(instanceId);
-      if (!instance) {
-        logger.warn(
-          ` instance-toggle-mod: Instance not found (ID: ${instanceId})`,
-        );
-        return { ok: false, error: "Instance not found" };
-      }
-
-      const modsDir = path.join(instance.gameDirectory, "mods");
-      const filePath = path.join(modsDir, filename);
-
-      if (!fs.existsSync(filePath))
-        return { ok: false, error: "Mod not found" };
-
-      try {
-        let newFilename: string;
-        let enabled: boolean;
-
-        if (filename.endsWith(".jar.disabled")) {
-          newFilename = filename.replace(".jar.disabled", ".jar");
-          enabled = true;
-        } else if (filename.endsWith(".jar")) {
-          newFilename = filename + ".disabled";
-          enabled = false;
-        } else {
-          return { ok: false, error: "Invalid mod file" };
-        }
-
-        await fs.promises.rename(filePath, path.join(modsDir, newFilename));
-        return { ok: true, newFilename, enabled };
-      } catch (error: any) {
-        return { ok: false, error: error.message };
-      }
-    },
-  );
-
-  ipcMain.handle(
-    "instance-delete-mod",
-    async (_event, instanceId: string, filename: string) => {
-      const instance = getInstance(instanceId);
-      if (!instance) return { ok: false, error: "Instance not found" };
-
-      // Check if locked
-      if (instance.lockedMods?.includes(filename)) {
-        return { ok: false, error: "Mod is locked (Cannot delete)" };
-      }
-
-      const filePath = path.join(instance.gameDirectory, "mods", filename);
-      if (!fs.existsSync(filePath))
-        return { ok: false, error: "Mod not found" };
-
-      try {
-        await fs.promises.rm(filePath, { force: true });
-        return { ok: true };
-      } catch (error: any) {
-        return { ok: false, error: error.message };
-      }
-    },
-  );
-
-  ipcMain.handle(
-    "instance-toggle-lock",
-    async (_event, instanceId: string, filename: string) => {
-      const instance = getInstance(instanceId);
-      if (!instance) {
-        logger.warn(
-          ` instance-toggle-lock: Instance not found (ID: ${instanceId})`,
-        );
-        return { ok: false, error: "Instance not found" };
-      }
-
-      const locked = instance.lockedMods || [];
-      const isLocked = locked.includes(filename);
-
-      let newLocked: string[];
-      if (isLocked) {
-        newLocked = locked.filter((f) => f !== filename);
-      } else {
-        newLocked = [...locked, filename];
-      }
-
-      updateInstance(instanceId, { lockedMods: newLocked });
-      return { ok: true, locked: !isLocked, lockedMods: newLocked };
-    },
-  );
-
-  ipcMain.handle(
-    "instance-lock-mods",
-    async (_event, instanceId: string, filenames: string[], lock: boolean) => {
-      const instance = getInstance(instanceId);
-      if (!instance) {
-        logger.warn(
-          ` instance-lock-mods: Instance not found (ID: ${instanceId})`,
-        );
-        return { ok: false, error: "Instance not found" };
-      }
-
-      const locked = new Set(instance.lockedMods || []);
-
-      filenames.forEach((filename) => {
-        if (lock) {
-          locked.add(filename);
-        } else {
-          locked.delete(filename);
-        }
-      });
-
-      const newLocked = Array.from(locked);
-      updateInstance(instanceId, { lockedMods: newLocked });
-      return { ok: true, lockedMods: newLocked };
-    },
-  );
-
-  ipcMain.handle(
-    "instance-check-integrity",
-    async (_event, instanceId: string) => {
-      const instance = getInstance(instanceId);
-      if (!instance) return { ok: false, error: "Instance not found" };
-
-      if (!instance.cloudId) {
-        return { ok: true, message: "Local instance integrity check skipped" };
-      }
-
-      if (activeOperations.has(instanceId)) {
-        return { ok: false, error: "Another operation is already running" };
-      }
-
-      const sendInstallProgress =
-        createThrottledProgressSender("install-progress");
-
-      try {
-        const { syncServerMods } = await import("../cloud-instances.js");
-        let session = getSession();
-        if (!session) {
-          return { ok: false, error: "Not logged in" };
-        }
-
-        let apiToken = session.apiToken;
-        if (!apiToken) {
-          const refreshed = await refreshMicrosoftTokenIfNeeded(logger);
-          if (refreshed.ok) {
-            session = getSession() || session;
-            apiToken = session.apiToken;
-          }
-        }
-        if (!apiToken) {
-          return { ok: false, error: "Not logged in or no API token" };
-        }
-
-        // Create AbortController for cancellation support
-        const abortController = new AbortController();
-        activeOperations.set(instanceId, abortController);
-        const syncTimeout = setTimeout(
-          () => abortController.abort(),
-          10 * 60 * 1000,
-        );
-
-        // Send progress updates to frontend
-        try {
-          await syncServerMods(
-            instanceId,
-            apiToken,
-            (progress) => {
-              sendInstallProgress(
-                {
-                  type: progress.type,
-                  task: progress.task,
-                  current: progress.current,
-                  total: progress.total,
-                  percent: progress.percent,
-                  filename: progress.filename,
-                },
-                progress?.type === "sync-complete" ||
-                  progress?.type === "sync-error" ||
-                  progress?.type === "cancelled",
-              );
-            },
-            abortController.signal,
-          );
-        } finally {
-          clearTimeout(syncTimeout);
-          activeOperations.delete(instanceId);
-        }
-
-        // Notify frontend that instance data might have changed (loader, version)
-        const wins = BrowserWindow.getAllWindows();
-        if (wins.length > 0) {
-          wins[0].webContents.send("instances-updated");
-        }
-
-        return { ok: true, message: "Sync complete" };
-      } catch (error: any) {
-        if (String(error?.message || "").includes("Cancelled")) {
-          sendInstallProgress(
-            { type: "cancelled", task: "Cancelled", percent: 0 },
-            true,
-          );
-        }
-        return { ok: false, error: error.message };
-      }
-    },
-  );
+      const wins = BrowserWindow.getAllWindows();
+      if (wins.length > 0) wins[0].webContents.send("instances-updated");
+      return { ok: true, message: "Sync complete" };
+    } catch (error: any) {
+      if (String(error?.message || "").includes("Cancelled")) sendInstallProgress({ type: "cancelled", task: "Cancelled", percent: 0 }, true);
+      return { ok: false, error: error.message };
+    }
+  });
 }

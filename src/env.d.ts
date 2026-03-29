@@ -408,6 +408,7 @@ declare global {
       windowMaximize: () => Promise<void>;
       windowClose: () => Promise<void>;
       windowIsMaximized: () => Promise<boolean>;
+      windowSetMainMode: () => Promise<void>;
       // Modrinth APIs
       modrinthSearch: (filters: {
         query?: string;

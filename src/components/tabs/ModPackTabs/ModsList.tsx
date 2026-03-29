@@ -5,6 +5,7 @@
 import React, { useState, useEffect } from "react";
 import { Icons } from "../../ui/Icons";
 import { Skeleton } from "../../ui/Skeleton";
+import { Portal } from "../../ui/Portal";
 import { LazyModItem } from "./LazyModItem";
 import { formatSize } from "./helpers";
 import type { ModInfo } from "./types";
@@ -363,7 +364,6 @@ export function ModsList({
                 <div className="flex justify-center mt-6 animate-fade-in" style={{ animationDelay: '300ms' }}>
                     <div className="flex items-center gap-2 p-1.5 rounded-2xl"
                             style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}20` }}>
-
                             <button
                                 onClick={() => {
                                     playClick();
@@ -384,109 +384,124 @@ export function ModsList({
                                 <span className="text-sm opacity-70">{totalPages}</span>
                             </div>
 
+                            <button
+                                onClick={() => {
+                                    playClick();
+                                    setPage(p => Math.min(totalPages, p + 1));
+                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                }}
+                                disabled={page === totalPages}
+                                className="px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-2"
+                                style={{ color: colors.onSurface }}
+                            >
+                                {t('next')}
+                                <i className="fa-solid fa-chevron-right text-xs"></i>
+                            </button>
                         </div>
                     </div>
                 )}
 
             {/* Floating Selection Bar */}
             {selectedFilenames.size > 0 && (
-                <div 
-                    className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 md:gap-3 px-4 py-2.5 md:px-6 rounded-full shadow-2xl backdrop-blur-xl border animate-float"
-                    style={{ 
-                        backgroundColor: `${colors.surfaceContainerHighest}e6`, 
-                        borderColor: colors.outlineVariant || 'rgba(128,128,128,0.2)' 
-                    }}
-                >
-                    <span className="font-bold whitespace-nowrap text-sm md:text-base mr-1" style={{ color: colors.onSurface }}>
-                        {selectedFilenames.size} {t('selected' as any)}
-                    </span>
+                <Portal>
+                    <div 
+                        className="fixed bottom-8 left-1/2 -translate-x-1/2 z-9999 flex items-center gap-2 md:gap-3 px-4 py-2.5 md:px-6 rounded-full shadow-2xl backdrop-blur-xl border animate-float"
+                        style={{ 
+                            backgroundColor: `${colors.surfaceContainerHighest}e6`, 
+                            borderColor: colors.outlineVariant || 'rgba(128,128,128,0.2)' 
+                        }}
+                    >
+                        <span className="font-bold whitespace-nowrap text-sm md:text-base mr-1" style={{ color: colors.onSurface }}>
+                            {selectedFilenames.size} {t('selected' as any)}
+                        </span>
 
-                    <div className="h-6 w-px mx-1 md:mx-2" style={{ backgroundColor: colors.outlineVariant || 'rgba(128,128,128,0.2)' }} />
+                        <div className="h-6 w-px mx-1 md:mx-2" style={{ backgroundColor: colors.outlineVariant || 'rgba(128,128,128,0.2)' }} />
 
-                    {(() => {
-                        const selectedMods = mods.filter(m => selectedFilenames.has(m.filename));
-                        const hasEnabledMods = selectedMods.some(m => m.enabled);
-                        const hasDisabledMods = selectedMods.some(m => !m.enabled);
+                        {(() => {
+                            const selectedMods = mods.filter(m => selectedFilenames.has(m.filename));
+                            const hasEnabledMods = selectedMods.some(m => m.enabled);
+                            const hasDisabledMods = selectedMods.some(m => !m.enabled);
 
-                        return (
+                            return (
+                                <>
+                                    {hasDisabledMods && (
+                                        <button
+                                            onClick={() => handleBulkToggle(true)}
+                                            className="px-3.5 py-1.5 md:px-4 md:py-2 rounded-2xl text-xs md:text-sm font-bold transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
+                                            style={{ backgroundColor: colors.surface, color: colors.onSurface, border: `1px solid ${colors.outlineVariant || 'rgba(128,128,128,0.1)'}` }}
+                                        >
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                                <circle cx="12" cy="12" r="10"></circle>
+                                                <path d="M9 12l2 2 4-4"></path>
+                                            </svg>
+                                            <span className="hidden sm:inline">{t('action_enable' as any)}</span>
+                                        </button>
+                                    )}
+
+                                    {hasEnabledMods && (
+                                        <button
+                                            onClick={() => handleBulkToggle(false)}
+                                            className="px-3.5 py-1.5 md:px-4 md:py-2 rounded-2xl text-xs md:text-sm font-bold transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
+                                            style={{ backgroundColor: colors.surface, color: colors.onSurfaceVariant, border: `1px solid ${colors.outlineVariant || 'rgba(128,128,128,0.1)'}` }}
+                                        >
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                                <circle cx="12" cy="12" r="10"></circle>
+                                                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+                                            </svg>
+                                            <span className="hidden sm:inline">{t('action_disable' as any)}</span>
+                                        </button>
+                                    )}
+                                </>
+                            );
+                        })()}
+
+                        {isServerManaged && onBulkLock && (
                             <>
-                                {hasDisabledMods && (
-                                    <button
-                                        onClick={() => handleBulkToggle(true)}
-                                        className="px-3 py-1.5 md:px-4 md:py-2 rounded-2xl text-xs md:text-sm font-bold transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
-                                        style={{ backgroundColor: colors.surface, color: colors.onSurface, border: `1px solid ${colors.outlineVariant || 'rgba(128,128,128,0.1)'}` }}
-                                    >
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                                            <circle cx="12" cy="12" r="10"></circle>
-                                            <path d="M9 12l2 2 4-4"></path>
-                                        </svg>
-                                        <span className="hidden sm:inline">{t('action_enable' as any)}</span>
-                                    </button>
-                                )}
-
-                                {hasEnabledMods && (
-                                    <button
-                                        onClick={() => handleBulkToggle(false)}
-                                        className="px-3 py-1.5 md:px-4 md:py-2 rounded-2xl text-xs md:text-sm font-bold transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
-                                        style={{ backgroundColor: colors.surface, color: colors.onSurfaceVariant, border: `1px solid ${colors.outlineVariant || 'rgba(128,128,128,0.1)'}` }}
-                                    >
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                                            <circle cx="12" cy="12" r="10"></circle>
-                                            <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
-                                        </svg>
-                                        <span className="hidden sm:inline">{t('action_disable' as any)}</span>
-                                    </button>
-                                )}
+                                <div className="h-6 w-px mx-1 hidden md:block" style={{ backgroundColor: colors.outlineVariant || 'rgba(128,128,128,0.2)' }} />
+                                <button
+                                    onClick={() => handleBulkLock(true)}
+                                    className="px-3.5 py-1.5 md:px-4 md:py-2 rounded-2xl text-xs md:text-sm font-bold transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
+                                    style={{ backgroundColor: colors.secondary, color: "#000000" }}
+                                >
+                                    <Icons.Lock className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                                    <span className="hidden sm:inline">{t('lock' as any)}</span>
+                                </button>
+                                <button
+                                    onClick={() => handleBulkLock(false)}
+                                    className="px-3.5 py-1.5 md:px-4 md:py-2 rounded-2xl text-xs md:text-sm font-bold transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
+                                    style={{ backgroundColor: 'transparent', color: colors.onSurfaceVariant, border: `1px solid ${colors.outlineVariant || 'rgba(128,128,128,0.3)'}` }}
+                                >
+                                    <Icons.Unlock className="w-3.5 h-3.5 md:w-4 md:h-4 opacity-70" />
+                                    <span className="hidden sm:inline">{t('unlock' as any)}</span>
+                                </button>
                             </>
-                        );
-                    })()}
+                        )}
 
-                    {isServerManaged && onBulkLock && (
-                        <>
-                            <div className="h-6 w-px mx-1 hidden md:block" style={{ backgroundColor: colors.outlineVariant || 'rgba(128,128,128,0.2)' }} />
-                            <button
-                                onClick={() => handleBulkLock(true)}
-                                className="px-3 py-1.5 md:px-4 md:py-2 rounded-2xl text-xs md:text-sm font-bold transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
-                                style={{ backgroundColor: colors.secondary, color: "#000000" }}
-                            >
-                                <Icons.Lock className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                                <span className="hidden sm:inline">{t('lock' as any)}</span>
-                            </button>
-                            <button
-                                onClick={() => handleBulkLock(false)}
-                                className="px-3 py-1.5 md:px-4 md:py-2 rounded-2xl text-xs md:text-sm font-bold transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
-                                style={{ backgroundColor: 'transparent', color: colors.onSurfaceVariant, border: `1px solid ${colors.outlineVariant || 'rgba(128,128,128,0.3)'}` }}
-                            >
-                                <Icons.Unlock className="w-3.5 h-3.5 md:w-4 md:h-4 opacity-70" />
-                                <span className="hidden sm:inline">{t('unlock' as any)}</span>
-                            </button>
-                        </>
-                    )}
+                        <div className="h-6 w-px mx-1 hidden md:block" style={{ backgroundColor: colors.outlineVariant || 'rgba(128,128,128,0.2)' }} />
 
-                    <div className="h-6 w-px mx-1 hidden md:block" style={{ backgroundColor: colors.outlineVariant || 'rgba(128,128,128,0.2)' }} />
-
-                    <button
-                        onClick={handleBulkDelete}
-                        className="px-3 py-1.5 md:px-4 md:py-2 rounded-2xl text-xs md:text-sm font-bold transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
-                        style={{ backgroundColor: "#ff4d6d", color: "#1a1a1a" }}
-                    >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                            <polyline points="3 6 5 6 21 6"></polyline>
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                            <line x1="10" y1="11" x2="10" y2="17"></line>
-                            <line x1="14" y1="11" x2="14" y2="17"></line>
-                        </svg>
-                        <span className="hidden sm:inline">{t('action_remove' as any)}</span>
-                    </button>
-                    
-                    <button
-                        onClick={() => setSelectedFilenames(new Set())}
-                        className="w-8 h-8 md:w-10 md:h-10 ml-1 rounded-full flex items-center justify-center transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-                        title={t('cancel_selection' as any)}
-                    >
-                        <Icons.Close className="w-4 h-4 md:w-5 md:h-5" style={{ color: colors.onSurfaceVariant }} />
-                    </button>
-                </div>
+                        <button
+                            onClick={handleBulkDelete}
+                            className="px-3.5 py-1.5 md:px-4 md:py-2 rounded-2xl text-xs md:text-sm font-bold transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
+                            style={{ backgroundColor: "#ff4d6d", color: "#1a1a1a" }}
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                <polyline points="3 6 5 6 21 6"></polyline>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                <line x1="10" y1="11" x2="10" y2="17"></line>
+                                <line x1="14" y1="11" x2="14" y2="17"></line>
+                            </svg>
+                            <span className="hidden sm:inline">{t('action_remove' as any)}</span>
+                        </button>
+                        
+                        <button
+                            onClick={() => setSelectedFilenames(new Set())}
+                            className="w-8 h-8 md:w-10 md:h-10 ml-1 rounded-full flex items-center justify-center transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+                            title={t('cancel_selection' as any)}
+                        >
+                            <Icons.Close className="w-4 h-4 md:w-5 md:h-5" style={{ color: colors.onSurfaceVariant }} />
+                        </button>
+                    </div>
+                </Portal>
             )}
 
 

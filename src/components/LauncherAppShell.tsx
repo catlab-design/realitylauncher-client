@@ -40,12 +40,6 @@ interface LauncherAppShellProps {
   session: AuthSession | null;
   accounts: AuthSession[];
   selectedInstance: GameInstance | null;
-  calendarOpen: boolean;
-  setCalendarOpen: Dispatch<SetStateAction<boolean>>;
-  hasEventsToday: boolean;
-  agendas: any[];
-  isLoadingAgendas: boolean;
-  fetchAgendas: () => void | Promise<void>;
   inboxOpen: boolean;
   setInboxOpen: Dispatch<SetStateAction<boolean>>;
   announcements: any[];
@@ -104,12 +98,6 @@ export function LauncherAppShell({
   session,
   accounts,
   selectedInstance,
-  calendarOpen,
-  setCalendarOpen,
-  hasEventsToday,
-  agendas,
-  isLoadingAgendas,
-  fetchAgendas,
   inboxOpen,
   setInboxOpen,
   announcements,
@@ -214,12 +202,6 @@ export function LauncherAppShell({
           session={session}
           accounts={accounts}
           selectedInstance={selectedInstance}
-          calendarOpen={calendarOpen}
-          setCalendarOpen={setCalendarOpen}
-          hasEventsToday={hasEventsToday}
-          agendas={agendas}
-          isLoadingAgendas={isLoadingAgendas}
-          fetchAgendas={fetchAgendas}
           inboxOpen={inboxOpen}
           setInboxOpen={setInboxOpen}
           announcements={announcements}
