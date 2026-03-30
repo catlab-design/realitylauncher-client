@@ -290,7 +290,7 @@ jobs:
         if: matrix.platform == 'linux' && vars.ENABLE_FLATPAK_RELEASE == 'true' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch')
         run: |
           sudo apt-get update
-          sudo apt-get install -y flatpak flatpak-builder elfutils
+          sudo apt-get install -y flatpak flatpak-builder elfutils ostree
           flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
           flatpak --user remotes
 
@@ -320,11 +320,12 @@ jobs:
           DESCRIPTION="$(node -p "const pkg=require('./package.json'); pkg.description || ''")"
           REMOTE_URL="${CDN_URL}/client/flatpak-repo"
           RUNTIME_REPO_URL="https://dl.flathub.org/repo/flathub.flatpakrepo"
-          REPO_DIR="release-build/flatpak-repo"
+          REPO_DIR="${{ github.workspace }}/release-build/flatpak-repo"
           REF_PATH="release-build/${PRODUCT_NAME}.flatpakref"
 
           rm -rf "${REPO_DIR}"
-          mkdir -p "${REPO_DIR}"
+          # ostree init will create the directory and initialize it
+          ostree init --repo="${REPO_DIR}" --mode=archive-z2
 
           flatpak build-import-bundle --update-appstream "${REPO_DIR}" "${FLATPAK_BUNDLE}"
           flatpak build-update-repo \
