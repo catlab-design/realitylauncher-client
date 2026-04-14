@@ -1,17 +1,12 @@
-
-
 import { BrowserWindow } from "electron";
 
-
-
-
-
+// Register all IPC handlers - critical handlers block startup, secondary load in background
 export async function registerAllHandlers(
   getMainWindow: () => BrowserWindow | null,
 ): Promise<void> {
   console.log("[IPC] Registering all handlers...");
 
-  
+  // Critical handlers - must be available immediately for app to function
   const [
     { registerConfigHandlers },
     { registerAuthHandlers },
@@ -28,11 +23,10 @@ export async function registerAllHandlers(
   registerAuthHandlers(getMainWindow);
   registerWindowHandlers(getMainWindow);
   registerUtilityHandlers(getMainWindow);
-  
+
   console.log("[IPC] Critical handlers registered");
 
-  
-  
+  // Secondary handlers - load in background to speed up startup
   const secondaryPromise = (async () => {
     const [
       { registerLauncherHandlers },
@@ -71,13 +65,9 @@ export async function registerAllHandlers(
     registerNotificationHandlers();
     registerServerHandlers();
     registerAdminHandlers();
-    
+
     console.log("[IPC] Secondary handlers registered");
   })();
 
-  
-  
-  
-  
-  console.log("[IPC] Critical handlers registration completed, secondary loading in background");
+  console.log("[IPC] Critical handlers registered, secondary loading in background");
 }

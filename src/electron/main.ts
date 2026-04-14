@@ -1,5 +1,3 @@
-
-
 import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import { createLogger, sendErrorToRenderer } from "./lib/logger.js";
@@ -10,22 +8,21 @@ import {
   getCompletedSpans,
 } from "./lib/tracing.js";
 
-
+// Create a logger instance for the main process
 const logger = createLogger("Main");
 
+// Check if Electron API is available
 if (!app || typeof app.on !== "function") {
   throw new Error(
     "Electron app API is unavailable. This usually means ELECTRON_RUN_AS_NODE is set. Unset it before launching Reality Launcher.",
   );
 }
 
-
-
-
-
+// Wayland/X11 fallback configuration
 const WAYLAND_X11_FALLBACK_ARG = "--reality-wayland-x11-fallback";
 const WAYLAND_WINDOW_SHOW_TIMEOUT_MS = 30000;
 
+// Linux display backend state
 const linuxDisplayBackendState = {
   isLinux: process.platform === "linux",
   isWaylandSession: false,
@@ -157,6 +154,7 @@ function configureLinuxDisplayBackend(): void {
   app.commandLine.appendSwitch("ozone-platform", "wayland");
 
   
+  // Disable GPU compositing on Wayland to prevent rendering issues
   app.commandLine.appendSwitch("disable-gpu-compositing");
 
   logger.info("Wayland session detected, configured Ozone flags", {
@@ -187,15 +185,13 @@ function monitorWaylandStartupWindow(win: BrowserWindow): void {
 }
 
 
+// Start tracing app startup for performance monitoring
 const appTrace = startTrace("app:startup", { pid: process.pid });
-
-
-
-
 
 process.on("uncaughtException", (error) => {
   logger.error("Uncaught exception in main process", error);
-  
+
+  // Send error to renderer window if it exists
   if (mainWindow && !mainWindow.isDestroyed()) {
     sendErrorToRenderer(mainWindow.webContents, "critical", error.message, {
       name: error.name,
@@ -225,8 +221,9 @@ app.on("child-process-gone", (_event, details) => {
 
 
 
+// Configure hardware acceleration based on environment flag
 const hardwareAccelerationFlag = process.env.ML_DISABLE_HARDWARE_ACCELERATION;
-const shouldDisableHardwareAcceleration = hardwareAccelerationFlag === "1"; 
+const shouldDisableHardwareAcceleration = hardwareAccelerationFlag === "1";
 
 if (shouldDisableHardwareAcceleration) {
   app["disableHardwareAcceleration"]();
@@ -237,7 +234,6 @@ if (shouldDisableHardwareAcceleration) {
   logger.info("Hardware acceleration enabled (default)", {
     platform: process.platform,
   });
-  
   app.commandLine.appendSwitch("force_high_performance_gpu");
 }
 
@@ -259,7 +255,7 @@ function createWindow(config: any): BrowserWindow {
 
   const preloadPath = path.join(__dirname, "preload.js");
 
-  
+  // Use different icon path depending on dev/prod environment
   const isDev = !app.isPackaged && process.env.ML_CLIENT_FORCE_PROD !== "1";
   const iconPath = isDev
     ? path.join(app.getAppPath(), "public", "r.png")
@@ -270,7 +266,7 @@ function createWindow(config: any): BrowserWindow {
     height: 380,
     resizable: false,
     icon: iconPath,
-    backgroundColor: '#09090b', 
+    backgroundColor: '#09090b',
     show: false,
     frame: false,
     webPreferences: {
@@ -280,6 +276,7 @@ function createWindow(config: any): BrowserWindow {
     },
   });
 
+  // Show window when ready to prevent flashing
   win.once("ready-to-show", () => {
     win.show();
   });
@@ -291,7 +288,6 @@ async function loadMainWindow(win: BrowserWindow): Promise<void> {
   const isDev = !app.isPackaged && process.env.ML_CLIENT_FORCE_PROD !== "1";
   if (isDev) {
     await win.loadURL("http://localhost:4321/");
-    
     return;
   }
 
@@ -300,6 +296,7 @@ async function loadMainWindow(win: BrowserWindow): Promise<void> {
 }
 
 
+// Ensure only one instance of the app runs at a time
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
@@ -315,8 +312,6 @@ if (!gotTheLock) {
 
 
 app.whenReady().then(async () => {
-  
-  
   const { getConfig } = await import("./config.js");
   const config = getConfig();
 
@@ -324,12 +319,10 @@ app.whenReady().then(async () => {
   monitorWaylandStartupWindow(mainWindow);
   const loadUIPromise = loadMainWindow(mainWindow);
 
-  
   const { registerAllHandlers } = await import("./ipc/index.js");
   const registerHandlersPromise = registerAllHandlers(() => mainWindow);
 
-  
-  
+  // Initialize background services
   const backgroundTasks = (async () => {
     const [
       { initAuth, getSession, getApiToken },
@@ -343,11 +336,11 @@ app.whenReady().then(async () => {
 
     initAuth();
     resetLauncherState();
-    
-    
+
+    // Delayed initialization to not block startup
     setTimeout(() => {
       initTelemetry();
-      
+
       const rpcSession = getSession();
       if (rpcSession) {
         const apiToken = getApiToken();
@@ -362,45 +355,42 @@ app.whenReady().then(async () => {
     }, 3000);
   })();
 
-  
   await Promise.all([loadUIPromise, registerHandlersPromise]);
 
-  
+  // Initialize delayed services after UI is ready
   setTimeout(async () => {
-    
     if (config.discordRPCEnabled) {
       const { initDiscordRPC } = await import("./discord.js");
       initDiscordRPC().catch(err => logger.error("Discord RPC error", err));
     }
 
-    
     if (app.isPackaged) {
       const { default: electronUpdater } = await import("electron-updater");
       const { autoUpdater } = electronUpdater;
-      
+
       autoUpdater.logger = console;
       autoUpdater.autoDownload = false;
       autoUpdater.checkForUpdates();
     }
 
-    
+    // Warm up native module cache by pre-loading search results
     try {
       const { createRequire } = await import("module");
       const customRequire = createRequire(__filename);
       const native = customRequire(path.join(app.getAppPath(), "native", "index.cjs"));
-      
+
       await Promise.all([
         native.modrinthSearch({ projectType: "modpack", limit: 20, sortBy: "downloads" }),
         native.modrinthSearch({ projectType: "mod", limit: 20, sortBy: "downloads" })
       ]);
-    } catch (e) {}
+    } catch (e) {
+      // Native module may not be available in all environments
+    }
   }, 5000);
 
-  
   endTrace(appTrace, "ok", { totalDuration: Date.now() - appTrace.startTime });
   logger.info(`App startup complete in ${Date.now() - appTrace.startTime}ms`);
 
-  
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       mainWindow = createWindow(getConfig());
@@ -416,7 +406,6 @@ app.on("before-quit", async () => {
   destroyRPC();
   cleanupTelemetry();
 });
-
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
