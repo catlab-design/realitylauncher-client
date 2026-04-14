@@ -61,7 +61,7 @@ export function useInstances({ session, t, isActive, selectedInstance, setSelect
         }
     }, [joinedServers.length]);
 
-    // Initial load when session changes
+    
     useEffect(() => {
         loadJoinedServers();
         loadInstances();
@@ -74,7 +74,7 @@ export function useInstances({ session, t, isActive, selectedInstance, setSelect
         return () => cleanup?.();
     }, [session, loadJoinedServers, loadInstances]);
 
-    // Reload tab when it becomes active
+    
     useEffect(() => {
         if (isActive && !wasActiveRef.current) {
              if (!selectedInstance) {
@@ -85,7 +85,7 @@ export function useInstances({ session, t, isActive, selectedInstance, setSelect
         wasActiveRef.current = isActive;
     }, [isActive, selectedInstance, loadInstances, loadJoinedServers]);
 
-    // React to instance list updates for the selected instance
+    
     useEffect(() => {
         if (selectedInstance && setSelectedInstance && instances.length > 0) {
             const fresh = instances.find(i => i.id === selectedInstance.id);
@@ -96,7 +96,7 @@ export function useInstances({ session, t, isActive, selectedInstance, setSelect
         }
     }, [instances, selectedInstance, setSelectedInstance]);
 
-    // Sync playing status from API
+    
     useEffect(() => {
         if (instances.length > 0) {
             const syncStatuses = async () => {
@@ -115,7 +115,7 @@ export function useInstances({ session, t, isActive, selectedInstance, setSelect
         }
     }, [instances]);
 
-    // Listen to game events
+    
     useEffect(() => {
         const removeStartedListener = (window.api as any).onGameStarted((data: any) => {
             console.log("[useInstances] Game Started Event:", data);

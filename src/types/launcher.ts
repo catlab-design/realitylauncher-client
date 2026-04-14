@@ -1,8 +1,6 @@
-/**
- * Launcher Type Definitions
- */
 
-// Color Theme Types
+
+
 export type ColorTheme =
   | "yellow"
   | "purple"
@@ -11,23 +9,23 @@ export type ColorTheme =
   | "red"
   | "orange"
   | "custom";
-// Export Options for Modpack
+
 export interface ExportOptions {
   format: "zip" | "mrpack";
   name: string;
   version: string;
   description?: string;
-  includedPaths: string[]; // e.g. ["mods", "config"]
+  includedPaths: string[]; 
 }
 
 export type LauncherCloseMode = "keep-open" | "hide-reopen" | "close";
 
-// Auth Session
+
 export interface AuthSession {
   type: "catid" | "microsoft" | "offline";
   username: string;
   uuid: string;
-  minecraftUuid?: string; // Real Minecraft UUID (from Microsoft linking)
+  minecraftUuid?: string; 
   accessToken?: string;
   refreshToken?: string;
   expiresAt?: number;
@@ -39,18 +37,18 @@ export interface AuthSession {
   apiTokenExpiresAt?: number;
 }
 
-// Server Definition
+
 export interface Server {
   id: string;
   name: string;
   version?: string;
   icon?: string;
-  iconUrl?: string; // From API
+  iconUrl?: string; 
   image?: string;
-  bannerUrl?: string; // From API
+  bannerUrl?: string; 
   description?: string;
   websiteUrl?: string;
-  socials?: string | null; // JSON string
+  socials?: string | null; 
   richDescription?: string;
   playerCount?: number;
   maxPlayers?: number;
@@ -64,7 +62,7 @@ export interface Server {
   storagePath?: string;
 }
 
-// News Item
+
 export interface NewsItem {
   id: string;
   title: string;
@@ -76,16 +74,16 @@ export interface NewsItem {
   tags?: string[];
 }
 
-// Java Installation ที่ตรวจพบในระบบ
+
 export interface JavaInstallation {
-  path: string; // เช่น C:\Program Files\Java\jdk-21\bin\java.exe
-  version: string; // เช่น "21.0.1", "17.0.2", "1.8.0_392"
-  majorVersion: number; // เช่น 21, 17, 8
-  vendor?: string; // เช่น "Eclipse Adoptium", "Oracle", "Microsoft"
-  isValid: boolean; // ผ่านการทดสอบแล้วหรือไม่
+  path: string; 
+  version: string; 
+  majorVersion: number; 
+  vendor?: string; 
+  isValid: boolean; 
 }
 
-// Java Paths แยกตาม version
+
 export interface JavaPaths {
   java8?: string;
   java17?: string;
@@ -93,13 +91,13 @@ export interface JavaPaths {
   java25?: string;
 }
 
-// Launcher Configuration
+
 export interface LauncherConfig {
   username: string;
   selectedVersion: string;
   ramMB: number;
   javaPath?: string;
-  javaPaths?: JavaPaths; // Java paths แยกตาม version
+  javaPaths?: JavaPaths; 
   minecraftDir?: string;
   theme: "dark" | "light" | "oled" | "auto";
   colorTheme: ColorTheme;
@@ -111,39 +109,39 @@ export interface LauncherConfig {
   closeOnLaunch: LauncherCloseMode;
   downloadSpeedLimit: number;
   discordRPCEnabled: boolean;
-  // Additional settings
+  
   fullscreen: boolean;
   javaArguments: string;
   maxConcurrentDownloads: number;
   telemetryEnabled: boolean;
   autoUpdateEnabled: boolean;
-  lastSeenVersion?: string; // Track last version user has seen for changelog modal
-  // UI Effects
-  clickSoundEnabled: boolean; // เสียงคลิกปุ่ม
-  notificationSoundEnabled: boolean; // เสียงแจ้งเตือน
-  rainbowMode: boolean; // Rainbow mode สำหรับ UI
+  lastSeenVersion?: string; 
+  
+  clickSoundEnabled: boolean; 
+  notificationSoundEnabled: boolean; 
+  rainbowMode: boolean; 
 }
 
-// Launcher Info
+
 export interface LauncherInfo {
   javaOK: boolean;
   runtime: string;
   minecraftDir: string;
 }
 
-// Launch Result
+
 export interface LaunchResult {
   ok: boolean;
   message?: string;
 }
 
-// Color Theme Info
+
 export interface ColorThemeInfo {
   primary: string;
   name: string;
 }
 
-// Game Instance Types
+
 export type LoaderType = "vanilla" | "fabric" | "forge" | "neoforge" | "quilt";
 
 export interface GameInstance {
@@ -197,7 +195,7 @@ export interface InstallProgress {
   current?: number;
   total?: number;
   percent?: number;
-  // Optional extra fields
+  
   type?: string;
   filename?: string;
 }

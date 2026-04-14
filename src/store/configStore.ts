@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware';
 import { type LauncherConfig } from '../types/launcher';
 
 interface ConfigState extends LauncherConfig {
-    // Actions
+    
     setConfig: (config: Partial<LauncherConfig>) => void;
     resetConfig: () => void;
     setTheme: (theme: LauncherConfig['theme']) => void;
@@ -39,7 +39,7 @@ export const useConfigStore = create<ConfigState>()(
             ...defaultConfig,
             setConfig: (newConfig) => set((state) => ({ ...state, ...newConfig })),
             resetConfig: () => {
-                // Clear persisted storage first, but preserve Java paths
+                
                 const stored = localStorage.getItem('reality_config');
                 let preservedJavaPath: string | undefined;
                 let preservedJavaPaths: any | undefined;
@@ -61,12 +61,12 @@ export const useConfigStore = create<ConfigState>()(
             setLanguage: (language) => set({ language }),
         }),
         {
-            name: 'reality_config', // name of item in the storage (must match old key for migration)
-            // storage is localStorage by default, which matches our needs
-            // Migrate old boolean closeOnLaunch to new mode string
+            name: 'reality_config', 
+            
+            
             migrate: (persistedState: any) => {
                 if (persistedState && typeof persistedState.closeOnLaunch === 'boolean') {
-                    // Convert old boolean to new mode string
+                    
                     persistedState.closeOnLaunch = persistedState.closeOnLaunch ? 'hide-reopen' : 'keep-open';
                 }
                 return persistedState;

@@ -1,13 +1,10 @@
-/**
- * Tracing System for ml-client Electron
- * Provides operation tracing and performance monitoring
- */
+
 
 import { createLogger } from "./logger.js";
 
-// ========================================
-// Types
-// ========================================
+
+
+
 
 export interface TraceContext {
   traceId: string;
@@ -37,9 +34,9 @@ export interface SpanEvent {
   attributes?: Record<string, unknown>;
 }
 
-// ========================================
-// ID Generation
-// ========================================
+
+
+
 
 function generateId(length: number = 16): string {
   const chars = "0123456789abcdef";
@@ -60,19 +57,17 @@ export function generateSpanId(): string {
   return generateId(16);
 }
 
-// ========================================
-// Global Trace Storage
-// ========================================
+
+
+
 
 const activeTraces = new Map<string, TraceContext>();
 const completedSpans: Span[] = [];
 const MAX_COMPLETED_SPANS = 1000;
-const MAX_ACTIVE_TRACES = 500; // Prevent unbounded growth from leaked traces
-const ACTIVE_TRACE_TTL = 30 * 60 * 1000; // 30 minutes max for any trace
+const MAX_ACTIVE_TRACES = 500; 
+const ACTIVE_TRACE_TTL = 30 * 60 * 1000; 
 
-/**
- * Clean up stale active traces that were never ended
- */
+
 function cleanupStaleTraces(): void {
   const now = Date.now();
   for (const [id, ctx] of activeTraces) {
@@ -82,30 +77,24 @@ function cleanupStaleTraces(): void {
   }
 }
 
-// Periodically clean up stale traces
-setInterval(cleanupStaleTraces, 5 * 60 * 1000); // Every 5 minutes
 
-/**
- * Get all active traces
- */
+setInterval(cleanupStaleTraces, 5 * 60 * 1000); 
+
+
 export function getActiveTraces(): TraceContext[] {
   return Array.from(activeTraces.values());
 }
 
-/**
- * Get recent completed spans
- */
+
 export function getCompletedSpans(limit: number = 100): Span[] {
   return completedSpans.slice(-limit);
 }
 
-// ========================================
-// Trace Management
-// ========================================
 
-/**
- * Start a new trace
- */
+
+
+
+
 export function startTrace(
   operationName: string,
   attributes: Record<string, unknown> = {}
@@ -120,10 +109,10 @@ export function startTrace(
 
   activeTraces.set(ctx.traceId, ctx);
 
-  // Enforce max active traces limit
+  
   if (activeTraces.size > MAX_ACTIVE_TRACES) {
     cleanupStaleTraces();
-    // If still over limit after cleanup, remove oldest
+    
     if (activeTraces.size > MAX_ACTIVE_TRACES) {
       const firstKey = activeTraces.keys().next().value;
       if (firstKey) activeTraces.delete(firstKey);
@@ -133,9 +122,7 @@ export function startTrace(
   return ctx;
 }
 
-/**
- * End a trace
- */
+
 export function endTrace(
   ctx: TraceContext,
   status: "ok" | "error" = "ok",
@@ -156,21 +143,19 @@ export function endTrace(
 
   activeTraces.delete(ctx.traceId);
 
-  // Store completed span
+  
   completedSpans.push(span);
   if (completedSpans.length > MAX_COMPLETED_SPANS) {
     completedSpans.shift();
   }
 
-  // Log the span
+  
   logSpan(span);
 
   return span;
 }
 
-/**
- * Create a child span within a trace
- */
+
 export function createChildSpan(
   parent: TraceContext,
   operationName: string,
@@ -186,9 +171,9 @@ export function createChildSpan(
   };
 }
 
-// ========================================
-// Span Logging
-// ========================================
+
+
+
 
 const traceLogger = createLogger("Trace");
 
@@ -212,13 +197,11 @@ function logSpan(span: Span): void {
   }
 }
 
-// ========================================
-// Utility Functions
-// ========================================
 
-/**
- * Wrap an async operation with tracing
- */
+
+
+
+
 export async function withTrace<T>(
   operationName: string,
   operation: (ctx: TraceContext) => Promise<T>,
@@ -241,9 +224,7 @@ export async function withTrace<T>(
   }
 }
 
-/**
- * Wrap an async operation as a child span
- */
+
 export async function withChildSpan<T>(
   parent: TraceContext,
   operationName: string,
@@ -266,9 +247,7 @@ export async function withChildSpan<T>(
   }
 }
 
-/**
- * Create trace headers for outgoing HTTP requests
- */
+
 export function createTraceHeaders(ctx: TraceContext): Record<string, string> {
   return {
     "x-trace-id": ctx.traceId,
@@ -278,9 +257,7 @@ export function createTraceHeaders(ctx: TraceContext): Record<string, string> {
   };
 }
 
-/**
- * IPC Handler wrapper with tracing
- */
+
 export function traceIpcHandler<T>(
   handlerName: string,
   handler: (...args: unknown[]) => Promise<T>
@@ -298,9 +275,7 @@ export function traceIpcHandler<T>(
   };
 }
 
-/**
- * HTTP fetch wrapper with tracing
- */
+
 export async function tracedFetch(
   ctx: TraceContext,
   url: string,
@@ -321,7 +296,7 @@ export async function tracedFetch(
 
       const response = await fetch(url, { ...options, headers });
 
-      // Add response info to span
+      
       ctx.attributes["http.status"] = response.status;
       ctx.attributes["http.url"] = url;
 
@@ -334,9 +309,9 @@ export async function tracedFetch(
   );
 }
 
-// ========================================
-// Performance Metrics
-// ========================================
+
+
+
 
 export interface PerformanceMetrics {
   totalTraces: number;
@@ -353,9 +328,7 @@ export interface PerformanceMetrics {
   >;
 }
 
-/**
- * Get performance metrics from completed spans
- */
+
 export function getPerformanceMetrics(): PerformanceMetrics {
   const spans = completedSpans;
 
@@ -373,7 +346,7 @@ export function getPerformanceMetrics(): PerformanceMetrics {
   const errorCount = spans.filter((s) => s.status === "error").length;
   const slowCount = spans.filter((s) => (s.duration || 0) > 5000).length;
 
-  // Group by operation name
+  
   const operationStats: PerformanceMetrics["operationStats"] = {};
   for (const span of spans) {
     const op = span.operationName;
@@ -385,7 +358,7 @@ export function getPerformanceMetrics(): PerformanceMetrics {
     if (span.status === "error") operationStats[op].errorCount++;
   }
 
-  // Calculate averages
+  
   for (const op of Object.keys(operationStats)) {
     operationStats[op].avgDuration = Math.round(
       operationStats[op].avgDuration / operationStats[op].count

@@ -1,21 +1,12 @@
-/**
- * ========================================
- * Minecraft Game Launcher Module
- * ========================================
- * 
- * ใช้ Rust native module (Native Addon) เพื่อเปิดเกม Minecraft
- * - เร็วกว่า javascript implementation
- * - ทำงานใน process เดียวกัน via Node API (NAPI)
- * - รองรับ mod loaders (Forge, Fabric, NeoForge, Quilt)
- */
+
 
 import { getMinecraftDir } from "./config.js";
 
-// Import Native Launcher implementation
+
 import { launchGame as launchGameNative } from "./MinecraftRun/rustLauncher.js";
 import type { LaunchOptions, LaunchResult } from "./MinecraftRun/types.js";
 
-// Re-export everything from modules for backward compatibility
+
 export * from "./MinecraftRun/types";
 export {
     setOnGameCloseCallback,
@@ -29,11 +20,9 @@ export {
     resetLauncherState,
 } from "./MinecraftRun/gameProcess";
 
-/**
- * Launch Minecraft game
- */
+
 export async function launchGame(options: LaunchOptions): Promise<LaunchResult> {
-    // Use Native Addon implementation
+    
     return launchGameNative(options);
 }
 

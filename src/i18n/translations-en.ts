@@ -1,5 +1,5 @@
 export const enTranslations = {
-    // Nav
+    
     home: "Home",
     servers: "Servers",
     modpacks: "Modpacks",
@@ -8,7 +8,7 @@ export const enTranslations = {
     about: "About",
     admin: "Admin",
 
-    // Common Actions
+    
     login: "Login",
     register: "Register",
     logout: "Logout",
@@ -34,14 +34,14 @@ export const enTranslations = {
     online_badge: "Online",
     ready_to_play: "Ready to Play",
 
-    // Greetings
+    
     good_morning: "Good Morning",
     good_afternoon: "Good Afternoon",
     good_evening: "Good Evening",
     please_login: "Please Login",
     not_logged_in: "Not logged in",
 
-    // Account
+    
     account_manager: "Account Manager",
     add_account: "Add Account",
     add_new_account: "Add New Account",
@@ -180,7 +180,7 @@ export const enTranslations = {
     browse_java_title: "Select Java Path",
     browse_minecraft_title: "Select .minecraft folder",
 
-    // Verification
+    
     verification_waiting: "Waiting for Verification",
     verification_check_email:
       "Please check your email to verify your registration",
@@ -195,7 +195,7 @@ export const enTranslations = {
     email_not_verified_yet: "Email not verified or verification failed",
     verification_check_error: "Error checking verification status",
 
-    // Notifications
+    
     notification_prefix: "Notification: {title}",
     user_label: "User",
     new_invitation_msg: "New invitation from {name} for {instance}",
@@ -210,7 +210,7 @@ export const enTranslations = {
       "✅ Version {version} has been downloaded and will be installed on exit",
     update_check_failed_msg: "Failed to check for updates: {message}",
 
-    // Home
+    
     news_and_updates: "News",
     items_count: "{count} Items",
     no_results: "No results",
@@ -223,7 +223,7 @@ export const enTranslations = {
     no_servers: "No Servers",
     reading_status: "Reading",
 
-    // Settings - Tabs
+    
     tab_account: "Account",
     wardrobe: "Skin Manager",
     coming_soon: "Coming Soon",
@@ -273,7 +273,7 @@ export const enTranslations = {
     advanced: "Advanced",
     save_settings: "Save Settings",
 
-    // Settings - Connections
+    
     discord_rpc: "Discord Rich Presence",
     discord_rpc_status_showing: "Showing status",
     discord_rpc_status_off: "Disabled",
@@ -286,7 +286,7 @@ export const enTranslations = {
     limit_download_speed: "Limit Download Speed",
     unlimited: "Unlimited",
 
-    // Settings - Launcher
+    
     launcher_settings: "Launcher Settings",
     language: "Language",
     select_language: "Select your preferred language",
@@ -307,7 +307,7 @@ export const enTranslations = {
     reset_settings: "Reset Settings",
     reset_settings_desc: "Reset all settings to default values",
 
-    // Settings - Game
+    
     recommended: "Recommended",
     custom_memory_allocation: "Custom memory allocation",
     memory_allocated: "Memory Allocated (RAM)",
@@ -319,7 +319,7 @@ export const enTranslations = {
     java_args_desc: "Add JVM arguments for Minecraft (e.g., -XX:+UseG1GC)",
     java_args_placeholder: "Enter Java arguments...",
 
-    // Settings - Java
+    
     java_install_path: "Java {version} Install Path",
     java_install_success: "Java {version} installed successfully",
     java_install_failed: "Java installation failed",
@@ -344,7 +344,7 @@ export const enTranslations = {
     java_search_failed: "Java search failed",
     leave_empty_to_use_default: "Leave empty to use default",
 
-    // Settings - Update
+    
     update_available: "Update Available",
     up_to_date: "Up to Date",
     update_disabled_dev: "Auto-update is disabled in Development mode",
@@ -371,7 +371,7 @@ export const enTranslations = {
     update_check_failed: "Update check failed",
     check: "Check",
 
-    // Settings - Resources
+    
     launcher_folder: "Launcher Folder",
     launcher_folder_desc: "Folder containing all Launcher files",
     path_copied: "Path copied to clipboard",
@@ -385,7 +385,7 @@ export const enTranslations = {
     max_concurrent_downloads: "Max Concurrent Downloads",
     max_concurrent_downloads_desc: "Number of files downloaded simultaneously",
 
-    // Settings - Appearance
+    
     appearance: "Appearance",
     appearance_and_themes: "Appearance & Themes",
     theme: "Theme",
@@ -406,7 +406,7 @@ export const enTranslations = {
     notification_sound: "Notification Sound",
     notification_sound_desc: "Play sound on new activities",
 
-    // Import Modpack
+    
     import: "Import",
     expand_your_world: "Expand your world with new content",
     import_content: "Import Content",
@@ -417,7 +417,7 @@ export const enTranslations = {
     select_file_from_machine: "Select file from machine",
     importing: "Importing",
 
-    // Microsoft Auth
+    
     microsoft_auth_step1: "1. Go to Microsoft website",
     microsoft_auth_step2: "2. Enter the following code",
     copy_code_success: "Code copied!",
@@ -425,7 +425,7 @@ export const enTranslations = {
     copy_code_and_open_login: "Copy code and open login page",
     waiting_for_approval: "Waiting for approval",
 
-    // Admin Panel & User Management
+    
     admin_panel: "Admin Panel",
     system_settings_api: "System settings and API Keys",
     refresh: "Refresh",
@@ -471,7 +471,7 @@ export const enTranslations = {
     sessions: "Sessions",
     unknown_ip: "Unknown IP",
 
-    // Game
+    
     play: "Play",
     stop: "Stop",
     join: "Join",
@@ -522,7 +522,7 @@ export const enTranslations = {
     not_installed: "Not installed",
     logs_console: "Logs / Console",
 
-    // Mod Pack
+    
     mod_pack: "Mod Pack",
     my_mod_packs: "My Mod Packs",
     server_mod_packs: "Server Mod Packs",
@@ -576,7 +576,7 @@ export const enTranslations = {
     minutes_unit: "minutes",
     hours_unit: "hours",
 
-    // Create Modal
+    
     vanilla: "Vanilla",
     fabric: "Fabric",
     forge: "Forge",
@@ -605,12 +605,12 @@ export const enTranslations = {
     create_instance_footer:
       "You can add mods, resource packs, and shaders later",
 
-    // Delete Confirm
+    
     confirm_delete_instance: "Confirm delete Instance?",
     delete_instance_ask:
       "Deleting will remove all files in this Instance including mods, saves, and config",
 
-    // Import Modal
+    
     import_modpack_title: "Import Mod Pack",
     import_modpack_desc: "Supports CurseForge (.zip) and Modrinth (.mrpack)",
     drop_file_here: "Drop file here!",
@@ -618,10 +618,10 @@ export const enTranslations = {
     curseforge_desc: ".zip - Modpack from CurseForge",
     modrinth_desc: ".mrpack - Modpack from Modrinth",
 
-    // Install Progress
+    
     installing_modpack: "Installing Modpack",
 
-    // Explore / Modpack labels
+    
     create_modpack_title: "Create Mod Pack",
     create_modpack_icon_label: "Icon",
     create_modpack_icon_desc: "Click to select an image",
@@ -663,7 +663,7 @@ export const enTranslations = {
     processing_dot: "Processing...",
     search_version_dot: "Searching versions...",
 
-    // Instance Detail
+    
     cannot_read_file_name: "Cannot read file",
     unsupported_extension: "Unsupported",
     files_added_success: "Files added successfully",
@@ -694,7 +694,7 @@ export const enTranslations = {
     no_shaders: "No Shaders in this Instance",
     drop_to_add_content: "Drop {ext} files to add {type}",
 
-    // Instance Settings
+    
     settings_saved_success: "Settings saved successfully",
     save_failed: "Failed to save",
     name_saved_success: "Name saved successfully",
@@ -726,7 +726,7 @@ export const enTranslations = {
     saving: "Saving...",
     duplicate: "Duplicate",
 
-    // Errors
+    
     export_modpack: "Export Modpack",
     export_desc:
       "Share this modpack with friends or the community. Choose a format below.",
@@ -759,7 +759,7 @@ export const enTranslations = {
     export_servers_dat: "servers.dat",
     export_screenshots: "Screenshots",
 
-    // Errors
+    
     error_critical: "Critical Error",
     error_network: "Network Error",
     error_unknown: "Unknown Error",
@@ -774,7 +774,7 @@ export const enTranslations = {
       "API might be down or network issue. Please try again.",
     retry: "Retry",
 
-    // Explore
+    
     load_instances_failed: "Failed to load instances",
     load_data_failed: "Failed to load data",
     not_support_mod: "Mods not supported",
@@ -785,44 +785,44 @@ export const enTranslations = {
     no_valid_version_id: "No valid version ID found",
     no_downloadable_version: "No downloadable version found",
 
-    // Compatibility reasons
+    
     not_supported_version: "Not supported {version}",
     not_supported_loader: "Not supported {loader}",
     compatibility_check_failed: "Compatibility check failed",
     no_compatible_version: "No compatible version found",
     project_not_found: "Project not found",
 
-    // Appearance descriptions
+    
     light_mode_desc: "Bright & Clear",
     dark_mode_desc: "Easy on eyes",
     oled_mode_desc: "Pure black",
     follow_system_desc: "Follow system setting",
     beta: "BETA",
 
-    // Update badges
+    
     stable: "Stable",
     dev: "Dev",
 
-    // Resources
+    
     default_folder: "Default Folder",
     search_failed: "Search failed",
     cannot_install_mod_vanilla:
       "Cannot install Mods on Vanilla. Please change to Fabric, Forge, or other Loader.",
 
-    // Project Preview / Gallery
+    
     gallery: "Gallery",
     client_required: "Client Required",
     client_optional: "Client Optional",
     loaders_label: "Loaders",
     versions_label: "Versions",
 
-    // Instance Content Browser
+    
     no_compatible_version_for: "No compatible version found for {instance}",
     install_success_name: "Installed {name} successfully",
     passwords_do_not_match: "Passwords do not match",
     unknown: "Unknown",
 
-    // Additional UI strings
+    
     story: "Description",
     installed: "Installed",
     installing_progress: "Installing...",
@@ -834,7 +834,7 @@ export const enTranslations = {
     drag_jar_hint: "Drag .jar files to mods folder or install from Explore",
     results_count: "{count} results",
 
-    // Inline Join
+    
     enter_invite_key_placeholder: "Paste invite key here...",
     enter_invite_key_desc: "Enter invite key to join Instance",
     please_enter_invite_key: "Please enter invite key",
@@ -846,14 +846,14 @@ export const enTranslations = {
     description: "Description",
     no_description: "No description provided",
 
-    // ContentList labels
+    
     install_resourcepack: "Install Resource Pack",
     install_shader: "Install Shader",
     install_datapack: "Install Datapack",
     enable: "Enable",
     disable: "Disable",
 
-    // About Page
+    
     about_passion_title: "Passion",
     about_passion_desc:
       'Reality aims to create a space for the <span style="color: #facc15; font-weight: 700;">Minecraft</span> community to connect and create stories together without limits through the most accessible Launcher technology.',
@@ -863,7 +863,7 @@ export const enTranslations = {
     about_made_in: "Made in Thailand",
     about_copyright: "© 2026 Cat Lab_ Design. All rights reserved.",
 
-    // Team Roles & Descriptions
+    
     role_ceo_founder: "CEO & Founder Q-Team",
     role_designer_dev: "Designer / Developer",
     desc_sam_su: "User Experience Design and System Development of Reality",
@@ -871,7 +871,7 @@ export const enTranslations = {
     desc_jo: "Co-planning and driving the project",
     role_it: "IT Department",
     desc_pumpkins: "Responsible for system development and features",
-    // Additional i18n coverage
+    
     access_point: "Access Point",
     api_key_placeholder: "Enter new API Key",
     auto_scroll_disabled: "Auto-scroll disabled",

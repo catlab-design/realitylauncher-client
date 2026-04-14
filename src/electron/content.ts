@@ -1,18 +1,12 @@
-/**
- * ========================================
- * Content Download Module
- * ========================================
- * 
- * Download and install mods, shaders, resourcepacks to instances
- */
+
 
 import path from "node:path";
 import { getInstanceDir, getInstance } from "./instances.js";
 import { downloadFile, getVersion, type ModrinthVersion, type DownloadProgress } from "./modrinth.js";
 
-// ========================================
-// Types
-// ========================================
+
+
+
 
 export type ContentType = "mod" | "shader" | "resourcepack" | "datapack";
 
@@ -31,9 +25,9 @@ export interface DownloadResult {
     error?: string;
 }
 
-// ========================================
-// Content Folder Mapping
-// ========================================
+
+
+
 
 function getContentFolder(contentType: ContentType): string {
     switch (contentType) {
@@ -50,9 +44,7 @@ function getContentFolder(contentType: ContentType): string {
     }
 }
 
-/**
- * Get valid file extensions for each content type
- */
+
 function getValidExtensions(contentType: ContentType): string[] {
     switch (contentType) {
         case "mod":
@@ -68,22 +60,18 @@ function getValidExtensions(contentType: ContentType): string[] {
     }
 }
 
-/**
- * Check if a file is valid for the content type
- */
+
 function isValidFileForContentType(filename: string, contentType: ContentType): boolean {
     const validExtensions = getValidExtensions(contentType);
     const lowerFilename = filename.toLowerCase();
     return validExtensions.some(ext => lowerFilename.endsWith(ext));
 }
 
-// ========================================
-// Download Functions
-// ========================================
 
-/**
- * Download content and install to instance
- */
+
+
+
+
 export async function downloadContentToInstance(
     options: DownloadToInstanceOptions,
     onProgress?: (progress: DownloadProgress) => void
@@ -92,7 +80,7 @@ export async function downloadContentToInstance(
 
     console.log(`[Content] Downloading ${contentType} from ${contentSource} to instance:`, { projectId, versionId, instanceId });
 
-    // Get instance
+    
     const instance = getInstance(instanceId);
     if (!instance) {
         return { ok: false, error: "Instance not found" };
@@ -103,10 +91,10 @@ export async function downloadContentToInstance(
         let filename: string;
 
         if (contentSource === "curseforge") {
-            // CurseForge download
+            
             const { getCurseForgeFile, getCurseForgeDownloadUrl } = await import("./curseforge-api.js");
 
-            // Get file info
+            
             const fileResult = await getCurseForgeFile(projectId, versionId);
             if (!fileResult?.data) {
                 return { ok: false, error: "Failed to get CurseForge file info" };
@@ -114,11 +102,11 @@ export async function downloadContentToInstance(
 
             filename = fileResult.data.fileName;
 
-            // Get download URL - CurseForge may have null downloadUrl for some mods
+            
             if (fileResult.data.downloadUrl) {
                 fileUrl = fileResult.data.downloadUrl;
             } else {
-                // Use proxy API to get download URL
+                
                 const urlResult = await getCurseForgeDownloadUrl(projectId, versionId);
                 if (!urlResult?.data) {
                     return { ok: false, error: "Failed to get CurseForge download URL" };
@@ -128,10 +116,10 @@ export async function downloadContentToInstance(
 
             console.log(`[Content] CurseForge file: ${filename}, URL: ${fileUrl}`);
         } else {
-            // Modrinth download (existing logic)
+            
             const version = await getVersion(versionId);
 
-            // Find appropriate file for content type
+            
             let file = version.files.find(f => f.primary && isValidFileForContentType(f.filename, contentType));
             if (!file) {
                 file = version.files.find(f => isValidFileForContentType(f.filename, contentType));
@@ -151,14 +139,14 @@ export async function downloadContentToInstance(
             filename = file.filename;
         }
 
-        // Determine target folder
+        
         const contentFolder = getContentFolder(contentType);
         const targetDir = path.join(instance.gameDirectory, contentFolder);
         const targetPath = path.join(targetDir, filename);
 
         console.log(`[Content] Downloading to:`, targetPath);
 
-        // Download file
+        
         await downloadFile(fileUrl, targetPath, onProgress);
 
         console.log(`[Content] Download complete:`, filename);
@@ -177,9 +165,7 @@ export async function downloadContentToInstance(
     }
 }
 
-/**
- * Get versions for a project that are compatible with an instance
- */
+
 export async function getCompatibleVersions(
     projectId: string,
     instanceId: string
@@ -193,7 +179,7 @@ export async function getCompatibleVersions(
         const { getProjectVersions } = await import("./modrinth.js");
         const versions = await getProjectVersions(projectId);
 
-        // Filter by Minecraft version compatibility
+        
         return versions.filter(v =>
             v.game_versions.includes(instance.minecraftVersion)
         );

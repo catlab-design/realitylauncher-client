@@ -1,17 +1,11 @@
-/**
- * ========================================
- * Admin Panel IPC Handlers
- * ========================================
- */
+
 
 import { ipcMain, app } from "electron";
 
 import { API_URL as ML_API_URL } from "../lib/constants.js";
 
 export function registerAdminHandlers(): void {
-    /**
-     * admin-check-status - Check if current user is admin
-     */
+    
     ipcMain.handle("admin-check-status", async (_event, token: string) => {
         try {
             const response = await fetch(`${ML_API_URL}/admin/check`, {
@@ -27,9 +21,7 @@ export function registerAdminHandlers(): void {
         }
     });
 
-    /**
-     * admin-get-settings - Get admin settings from API
-     */
+    
     ipcMain.handle("admin-get-settings", async (_event, token: string) => {
         try {
             const response = await fetch(`${ML_API_URL}/admin/settings`, {
@@ -46,9 +38,7 @@ export function registerAdminHandlers(): void {
         }
     });
 
-    /**
-     * admin-save-setting - Save admin setting to API
-     */
+    
     ipcMain.handle("admin-save-setting", async (_event, token: string, settingKey: string, value: string) => {
         try {
             let endpoint: string;
@@ -89,16 +79,12 @@ export function registerAdminHandlers(): void {
         }
     });
 
-    /**
-     * admin-get-system-info
-     */
+    
     ipcMain.handle("admin-get-system-info", async () => {
         return { apiUrl: ML_API_URL, version: app.getVersion() };
     });
 
-    /**
-     * admin-get-users - Get list of users with pagination
-     */
+    
     ipcMain.handle("admin-get-users", async (_event, token: string, page = 1, limit = 20, search = "") => {
         try {
             const params = new URLSearchParams({ page: page.toString(), limit: limit.toString() });
@@ -119,9 +105,7 @@ export function registerAdminHandlers(): void {
         }
     });
 
-    /**
-     * admin-ban-user
-     */
+    
     ipcMain.handle("admin-ban-user", async (_event, token: string, userId: string, reason = "") => {
         try {
             const response = await fetch(`${ML_API_URL}/admin/users/${userId}/ban`, {
@@ -138,9 +122,7 @@ export function registerAdminHandlers(): void {
         }
     });
 
-    /**
-     * admin-unban-user
-     */
+    
     ipcMain.handle("admin-unban-user", async (_event, token: string, userId: string) => {
         try {
             const response = await fetch(`${ML_API_URL}/admin/users/${userId}/unban`, {
@@ -156,9 +138,7 @@ export function registerAdminHandlers(): void {
         }
     });
 
-    /**
-     * admin-toggle-user-admin
-     */
+    
     ipcMain.handle("admin-toggle-user-admin", async (_event, token: string, userId: string) => {
         try {
             const response = await fetch(`${ML_API_URL}/admin/users/${userId}/toggle-admin`, {
@@ -177,9 +157,7 @@ export function registerAdminHandlers(): void {
         }
     });
 
-    /**
-     * admin-create-user
-     */
+    
     ipcMain.handle("admin-create-user", async (_event, token: string, userData: {
         email: string;
         catidUsername: string;
@@ -204,9 +182,7 @@ export function registerAdminHandlers(): void {
         }
     });
 
-    /**
-     * admin-get-user-details
-     */
+    
     ipcMain.handle("admin-get-user-details", async (_event, token: string, userId: string) => {
         try {
             const response = await fetch(`${ML_API_URL}/admin/users/${userId}`, {

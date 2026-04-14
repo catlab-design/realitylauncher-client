@@ -1,19 +1,10 @@
-/**
- * ========================================
- * Minecraft Server Status Module
- * ========================================
- * 
- * ตรวจสอบสถานะของ Minecraft servers
- * - Ping server เพื่อดูว่า online หรือไม่
- * - ดึงข้อมูล MOTD, player count, version
- * - วัด latency
- */
+
 
 import net from "node:net";
 
-// ========================================
-// Types
-// ========================================
+
+
+
 
 export interface ServerStatus {
     online: boolean;
@@ -36,13 +27,11 @@ export interface ServerPingOptions {
     timeout?: number;
 }
 
-// ========================================
-// Server Status Functions
-// ========================================
 
-/**
- * Parse Minecraft VarInt from buffer
- */
+
+
+
+
 function readVarInt(buffer: Buffer, offset: number): { value: number; bytesRead: number } {
     let value = 0;
     let bytesRead = 0;
@@ -63,9 +52,7 @@ function readVarInt(buffer: Buffer, offset: number): { value: number; bytesRead:
     return { value, bytesRead };
 }
 
-/**
- * Write Minecraft VarInt to buffer
- */
+
 function writeVarInt(value: number): Buffer {
     const bytes: number[] = [];
 
@@ -81,16 +68,14 @@ function writeVarInt(value: number): Buffer {
     return Buffer.from(bytes);
 }
 
-/**
- * Create handshake packet for Minecraft server
- */
+
 function createHandshakePacket(host: string, port: number): Buffer {
-    const protocolVersion = writeVarInt(765); // 1.20.4
+    const protocolVersion = writeVarInt(765); 
     const hostBuffer = Buffer.from(host, "utf8");
     const hostLength = writeVarInt(hostBuffer.length);
     const portBuffer = Buffer.alloc(2);
     portBuffer.writeUInt16BE(port);
-    const nextState = writeVarInt(1); // Status
+    const nextState = writeVarInt(1); 
 
     const payload = Buffer.concat([
         protocolVersion,
@@ -100,52 +85,46 @@ function createHandshakePacket(host: string, port: number): Buffer {
         nextState,
     ]);
 
-    const packetId = writeVarInt(0); // Handshake packet ID
+    const packetId = writeVarInt(0); 
     const packetData = Buffer.concat([packetId, payload]);
     const packetLength = writeVarInt(packetData.length);
 
     return Buffer.concat([packetLength, packetData]);
 }
 
-/**
- * Create status request packet
- */
+
 function createStatusRequestPacket(): Buffer {
-    const packetId = writeVarInt(0); // Status request packet ID
+    const packetId = writeVarInt(0); 
     const packetLength = writeVarInt(packetId.length);
     return Buffer.concat([packetLength, packetId]);
 }
 
-/**
- * Parse server response JSON
- */
+
 function parseServerResponse(buffer: Buffer): any {
     let offset = 0;
 
-    // Read packet length
+    
     const packetLengthResult = readVarInt(buffer, offset);
     offset += packetLengthResult.bytesRead;
 
-    // Read packet ID
+    
     const packetIdResult = readVarInt(buffer, offset);
     offset += packetIdResult.bytesRead;
 
-    // Read JSON string length
+    
     const jsonLengthResult = readVarInt(buffer, offset);
     offset += jsonLengthResult.bytesRead;
 
-    // Read JSON string
+    
     const jsonString = buffer.slice(offset, offset + jsonLengthResult.value).toString("utf8");
 
     return JSON.parse(jsonString);
 }
 
-/**
- * Clean MOTD from color codes
- */
+
 function cleanMotd(motd: string | { text?: string; extra?: any[] }): string {
     if (typeof motd === "string") {
-        // Remove Minecraft color codes (§x)
+        
         return motd.replace(/§[0-9a-fk-or]/gi, "");
     }
 
@@ -160,9 +139,7 @@ function cleanMotd(motd: string | { text?: string; extra?: any[] }): string {
     return "";
 }
 
-/**
- * Ping a Minecraft Java Edition server
- */
+
 export async function pingServer(options: ServerPingOptions): Promise<ServerStatus> {
     const { host, port = 25565, timeout = 5000 } = options;
 
@@ -189,11 +166,11 @@ export async function pingServer(options: ServerPingOptions): Promise<ServerStat
         socket.setTimeout(timeout);
 
         socket.on("connect", () => {
-            // Send handshake
+            
             const handshake = createHandshakePacket(host, port);
             socket.write(handshake);
 
-            // Send status request
+            
             const statusRequest = createStatusRequestPacket();
             socket.write(statusRequest);
         });
@@ -213,12 +190,12 @@ export async function pingServer(options: ServerPingOptions): Promise<ServerStat
                     latency,
                 };
 
-                // Parse version
+                
                 if (response.version) {
                     status.version = response.version.name;
                 }
 
-                // Parse players
+                
                 if (response.players) {
                     status.players = {
                         online: response.players.online || 0,
@@ -226,19 +203,19 @@ export async function pingServer(options: ServerPingOptions): Promise<ServerStat
                     };
                 }
 
-                // Parse MOTD
+                
                 if (response.description) {
                     status.motd = cleanMotd(response.description);
                 }
 
-                // Parse favicon
+                
                 if (response.favicon) {
                     status.favicon = response.favicon;
                 }
 
                 returnResult(status);
             } catch {
-                // Not enough data yet, wait for more
+                
             }
         });
 
@@ -271,14 +248,12 @@ export async function pingServer(options: ServerPingOptions): Promise<ServerStat
             }
         });
 
-        // Connect to server
+        
         socket.connect(port, host);
     });
 }
 
-/**
- * Simple check if server is reachable (faster than full ping)
- */
+
 export async function isServerOnline(host: string, port: number = 25565, timeout: number = 3000): Promise<boolean> {
     return new Promise((resolve) => {
         const socket = new net.Socket();

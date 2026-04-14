@@ -1,20 +1,10 @@
-/**
- * ========================================
- * Instance Management IPC Handlers
- * ========================================
- *
- * Handles all instance-related IPC:
- * - CRUD operations for instances
- * - Instance content (mods, resourcepacks, shaders, datapacks)
- * - Instance launching
- * - Log reading
- */
+
 
 import { ipcMain, dialog, shell, app, BrowserWindow, session } from "electron";
 import { join, basename, dirname } from "path";
 import * as path from "path";
 
-// Helper to get main window
+
 function getMainWindow() {
   return BrowserWindow.getAllWindows()[0];
 }
@@ -34,9 +24,9 @@ import crypto from "node:crypto";
 import { net } from "electron";
 import AdmZip from "adm-zip";
 import { createIpcLogger } from "../lib/logger.js";
-// ensureModMetadata is defined in this file, so no import needed.
 
-// Create logger for instance handlers
+
+
 const logger = createIpcLogger("Instance");
 import { dedupeResourcepacks, dedupeShaders, dedupeDatapacks } from "./dedupe";
 import {
@@ -73,7 +63,7 @@ import { registerInstanceCloudHandlers } from "./instance-cloud-handlers.js";
 import { registerInstanceContentFileHandlers } from "./instance-content-file-handlers.js";
 import { registerInstanceModHandlers } from "./instance-mod-handlers.js";
 
-// Map to track active operations (e.g. content download)
+
 const activeOperations = new Map<string, AbortController>();
 const launchInProgress = new Set<string>();
 
@@ -138,13 +128,13 @@ import {
   saveMetadataCache,
 } from "./instance-handler-utils.js";
 
-// Helper to ensure metadata is loaded (Local -> Hash -> Slug)
-// Moved inside registerInstanceHandlers to access getMainWindow
+
+
 export function registerInstanceHandlers(
   getMainWindow: () => BrowserWindow | null,
 ): void {
   logger.info("Registering instance IPC handlers...");
-  // Use module-scope activeOperations (not shadowed) for cancellation
+  
 
   async function ensureModMetadata(
     filePath: string,
@@ -163,20 +153,20 @@ export function registerInstanceHandlers(
     const cacheKey = getModCacheKey(filePath, size, mtime);
     let metadata = modMetadataCache.get(cacheKey);
 
-    // 1. Check if complete
+    
     if (metadata && (metadata.icon || metadata.modrinthId)) {
       return metadata;
     }
 
-    // 2. Local Extraction
+    
     if (!metadata) {
       metadata = await extractModInfo(filePath);
       modMetadataCache.set(cacheKey, metadata);
-      saveMetadataCache(); // Save new local data
+      saveMetadataCache(); 
     }
 
-    // 3. Modrinth Lookup (if no icon)
-    // Note: We use "checked_missing" to distinguish from old "checked" status, forcing a re-check with new logic
+    
+    
     if (
       !metadata.icon &&
       metadata.modrinthId !== "checked_missing" &&
@@ -185,18 +175,18 @@ export function registerInstanceHandlers(
       if (!pendingModrinthLookups.has(cacheKey)) {
         pendingModrinthLookups.add(cacheKey);
 
-        // Fire and forget async lookup
+        
         (async () => {
           try {
-            // Need the mutable reference from the map to ensure we don't overwrite if it changed
+            
             let currentMeta = modMetadataCache.get(cacheKey) || metadata;
 
-            // Calculate Hash
+            
             const hash = currentMeta.hash || (await calculateSha1(filePath));
             currentMeta.hash = hash;
             modMetadataCache.set(cacheKey, currentMeta);
 
-            // Hash Lookup
+            
             const modrinthResults = await ModrinthAPI.resolveHashes([hash]);
             if (modrinthResults[hash]) {
               currentMeta.modrinthIcon = modrinthResults[hash].icon;
@@ -204,7 +194,7 @@ export function registerInstanceHandlers(
               currentMeta.modrinthProjectId = modrinthResults[hash].projectId;
               currentMeta.modrinthId = "found";
               modMetadataCache.set(cacheKey, currentMeta);
-              saveMetadataCache(); // Save found icon
+              saveMetadataCache(); 
               if (instanceId)
                 getMainWindow()?.webContents.send(
                   "instance-mods-icons-updated",
@@ -213,7 +203,7 @@ export function registerInstanceHandlers(
               return;
             }
 
-            // Slug Lookup (Fallback)
+            
             if (currentMeta.id) {
               const slugResults = await ModrinthAPI.resolveSlugs([
                 currentMeta.id,
@@ -225,7 +215,7 @@ export function registerInstanceHandlers(
                   slugResults[currentMeta.id].projectId;
                 currentMeta.modrinthId = "found";
                 modMetadataCache.set(cacheKey, currentMeta);
-                saveMetadataCache(); // Save found icon
+                saveMetadataCache(); 
                 if (instanceId)
                   getMainWindow()?.webContents.send(
                     "instance-mods-icons-updated",
@@ -235,7 +225,7 @@ export function registerInstanceHandlers(
               }
             }
 
-            // 4. Fallback: Search by Filename
+            
             if (
               !currentMeta.icon ||
               currentMeta.modrinthId === "found_fuzzy" ||
@@ -267,10 +257,10 @@ export function registerInstanceHandlers(
               }
             }
 
-            // Mark checked (missing)
+            
             currentMeta.modrinthId = "checked_missing";
             modMetadataCache.set(cacheKey, currentMeta);
-            saveMetadataCache(); // Save checked status
+            saveMetadataCache(); 
           } catch (e) {
             logger.error(
               `[Mods] Failed async Modrinth lookup for ${filePath}:`,
@@ -314,9 +304,9 @@ export function registerInstanceHandlers(
     }
   });
 
-  // ----------------------------------------
-  // Instance CRUD
-  // ----------------------------------------
+  
+  
+  
 
   ipcMain.handle(
     "instances-list",
@@ -389,9 +379,9 @@ export function registerInstanceHandlers(
     },
   );
 
-  // ----------------------------------------
-  // Instance Launch
-  // ----------------------------------------
+  
+  
+  
 
   ipcMain.handle(
     "instance-cancel-action",
@@ -450,7 +440,7 @@ export function registerInstanceHandlers(
     }
     session = refreshResult.session || session;
 
-    // Warning for CatID users on server modpacks
+    
     if (
       launchPolicy.isServerBacked &&
       session?.type === "catid" &&
@@ -471,14 +461,14 @@ export function registerInstanceHandlers(
     const config = getConfig();
     const ramMB = instance.ramMB || config.ramMB || 4096;
 
-    // ----------------------------------------
-    // Auto-Sync Server Mods
-    // ----------------------------------------
+    
+    
+    
     if (launchPolicy.shouldSyncServerMods) {
       let syncSession = getSession();
       let syncApiToken = syncSession?.apiToken;
 
-      // If apiToken is expired/missing, try refreshing before giving up
+      
       if (syncSession && !syncApiToken) {
         logger.info(
           "[Launch] apiToken expired/missing, attempting refresh before sync...",
@@ -494,11 +484,11 @@ export function registerInstanceHandlers(
         try {
           const { syncServerMods } = await import("../cloud-instances.js");
 
-          // Create cancel controller
+          
           const controller = new AbortController();
           activeOperations.set(id, controller);
 
-          // Initial Status
+          
           sendLaunchProgress({
             type: "sync-start",
             task: "เธเธณเธฅเธฑเธเธ•เธฃเธงเธเธชเธญเธเธญเธฑเธเน€เธ”เธ•...",
@@ -523,8 +513,8 @@ export function registerInstanceHandlers(
             activeOperations.delete(id);
           }
 
-          // Reload instance data after sync (in case loader/version changed)
-          // Re-fetch fresh reference since updateInstance() replaces the object in the array
+          
+          
           const updatedInstance = getInstance(id);
           if (updatedInstance) {
             logger.info(
@@ -533,7 +523,7 @@ export function registerInstanceHandlers(
             instance = updatedInstance;
           }
 
-          // Notify frontend that instance data has changed (loader, version, etc.)
+          
           mainWindow?.webContents.send("instances-updated");
         } catch (error: any) {
           if (error.message === "Cancelled") {
@@ -544,17 +534,17 @@ export function registerInstanceHandlers(
             return { ok: false, message: "Game launch cancelled" };
           }
           console.error("[Launch] Auto-sync failed:", error);
-          // Decide strategy: Fail or Warn?
-          // For now, let's log and continue (Offline mode support)
-          // Optionally notify frontend of warning?
+          
+          
+          
           sendLaunchProgress({
             type: "sync-warning",
             task: "เนเธกเนเธชเธฒเธกเธฒเธฃเธ–เธญเธฑเธเน€เธ”เธ•เนเธ”เน (เน€เธฅเนเธเนเธเธ Offline)",
           }, true);
-          await new Promise((r) => setTimeout(r, 1000)); // Show warning briefly
+          await new Promise((r) => setTimeout(r, 1000)); 
         }
       } else if (syncSession && launchPolicy.isServerBacked) {
-        // apiToken still missing after refresh โ€” warn user
+        
         logger.warn(
           "[Launch] Cannot sync mods: apiToken unavailable after refresh attempt",
         );
@@ -566,12 +556,12 @@ export function registerInstanceHandlers(
       }
     }
 
-    // Auto-fix Forge version REMOVED: This was causing double-prefixing (e.g. 1.20.1-1.20.1-47.x)
-    // if (instance.loader === "forge" && instance.loaderVersion && !instance.loaderVersion.startsWith(instance.minecraftVersion)) {
-    //     const fixed = `${instance.minecraftVersion}-${instance.loaderVersion}`;
-    //     instance.loaderVersion = fixed;
-    //     updateInstance(id, { loaderVersion: fixed });
-    // }
+    
+    
+    
+    
+    
+    
 
     updateInstance(id, { lastPlayedAt: new Date().toISOString() });
 
@@ -583,11 +573,11 @@ export function registerInstanceHandlers(
       mainWindow?.webContents.send("game-log", { level, message });
     });
 
-    // Use minecraftUuid if available (for CatID linked with Microsoft)
+    
     const gameUuid = session.minecraftUuid || session.uuid;
     const telemetryUserId = await resolveTelemetryUserIdForSession(session);
 
-    // Pass instanceId to launchGame (options cast to any in launcher.ts allows this)
+    
     logger.info(
       `[Launch] Preparing to launch instance: ${instance.name} (${id})`,
     );
@@ -601,17 +591,17 @@ export function registerInstanceHandlers(
       `[Launch] Mods Sync: ${launchPolicy.shouldSyncServerMods ? "Enabled" : "Disabled"}`,
     );
 
-    // Validate loaderVersion for Forge/NeoForge
-    // Valid formats: "47.4.0", "1.20.1-47.4.0"
-    // Invalid: "1.20.1" (minecraft version only)
+    
+    
+    
     let loaderBuild = instance.loaderVersion || "latest";
     if (
       (instance.loader === "forge" || instance.loader === "neoforge") &&
       loaderBuild !== "latest"
     ) {
-      // If loaderVersion is EXACTLY the minecraft version (no forge version appended), it's wrong
-      // Valid: "47.4.0" or "1.20.1-47.4.0"
-      // Invalid: "1.20.1" (same as MC version)
+      
+      
+      
       if (loaderBuild === instance.minecraftVersion) {
         logger.warn(
           `[Launch] Invalid loaderVersion "${loaderBuild}" for ${instance.loader}, using "latest"`,
@@ -637,7 +627,7 @@ export function registerInstanceHandlers(
               enable: true,
             }
           : undefined,
-      instanceId: id, // Pass ID for tracking
+      instanceId: id, 
     };
 
     logger.info(`[Launch] Launch Options:`, { options: launchOptions });
@@ -648,21 +638,21 @@ export function registerInstanceHandlers(
 
     if (result.ok) {
       void updateRPC("playing", instance.name, instance.icon);
-      // Notify renderer that game has started (also sent from rustLauncher)
+      
       mainWindow?.webContents.send("game-started", { instanceId: id });
 
-      // Close/Hide launcher on successful game start based on config
+      
       if (config.closeOnLaunch === "hide-reopen" && mainWindow) {
         mainWindow.hide();
       } else if (config.closeOnLaunch === "close" && mainWindow) {
         mainWindow.close();
       }
-      // 'keep-open': do nothing
+      
 
-      // Track play time when game stops
+      
       const startTime2 = Date.now();
 
-      // Listen for game-stopped to update play time
+      
       const updatePlayTime = () => {
         const mins = Math.round((Date.now() - startTime2) / 60000);
         if (mins > 0) {
@@ -672,8 +662,8 @@ export function registerInstanceHandlers(
         }
       };
 
-      // The game-stopped event is now sent from rustLauncher.ts via ipcMain.emit
-      // We just need to track play time here
+      
+      
       const handler = (_e: any, data: { instanceId: string }) => {
         if (data && data.instanceId === id) {
           updatePlayTime();
@@ -687,7 +677,7 @@ export function registerInstanceHandlers(
 
       ipcMain.on("game-stopped", handler);
 
-      // Safety cleanup: remove listener after 24 hours to prevent leak
+      
       const cleanupTimeout = setTimeout(
         () => {
           ipcMain.removeListener("game-stopped", handler);
@@ -722,16 +712,16 @@ export function registerInstanceHandlers(
 
     const result = await joinInstanceByKey(key, apiToken);
     if (result.ok && result.instance) {
-      // Create/Update local instance from cloud data
+      
       await importCloudInstance(result.instance);
       getMainWindow()?.webContents.send("instances-updated");
     }
     return result;
   });
 
-  // ----------------------------------------
-  // Mods Management
-  // ----------------------------------------
+  
+  
+  
   registerInstanceModHandlers({
     ipcMain,
     logger,
@@ -750,9 +740,9 @@ export function registerInstanceHandlers(
     getSession,
   });
 
-  // ----------------------------------------
-  // Resource Packs / Shaders / Datapacks / Logs
-  // ----------------------------------------
+  
+  
+  
   registerInstancePackHandlers({
     ipcMain,
     logger,
@@ -771,9 +761,9 @@ export function registerInstanceHandlers(
     latestLogTailMaxBytes: LATEST_LOG_TAIL_MAX_BYTES,
   });
 
-  // ----------------------------------------
-  // Cloud Sync
-  // ----------------------------------------
+  
+  
+  
   registerInstanceCloudHandlers({
     ipcMain,
     getSession,
@@ -781,9 +771,9 @@ export function registerInstanceHandlers(
     activeOperations,
   });
 
-  // ----------------------------------------
-  // Add Content File (Drag & Drop)
-  // ----------------------------------------
+  
+  
+  
   registerInstanceContentFileHandlers({
     ipcMain,
     logger,

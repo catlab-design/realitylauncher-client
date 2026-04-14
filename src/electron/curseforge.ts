@@ -1,14 +1,4 @@
-/**
- * ========================================
- * CurseForge Modpack Installer
- * ========================================
- *
- * Install modpacks from CurseForge .zip files:
- * - Parse manifest.json
- * - Resolve file IDs to URLs using api.curse.tools (proxy)
- * - Download files
- * - Extract overrides
- */
+
 
 import fs from "node:fs";
 import path from "node:path";
@@ -22,15 +12,15 @@ import {
 import { getConfig } from "./config.js";
 import { getNativeModule } from "./native.js";
 
-// ========================================
-// Types
-// ========================================
+
+
+
 
 interface CurseForgeManifest {
   minecraft: {
     version: string;
     modLoaders: {
-      id: string; // e.g. "forge-47.2.0"
+      id: string; 
       primary: boolean;
     }[];
   };
@@ -47,11 +37,11 @@ interface CurseForgeManifest {
   overrides: string;
 }
 
-// ========================================
-// API Utils (using api.curse.tools proxy)
-// ========================================
 
-const PROXY_API = "https://api.curse.tools/v1/cf";
+
+
+
+const PROXY_API = "https://api.curseforge.com";
 
 const MIN_CF_DOWNLOAD_CONCURRENCY = 3;
 const MAX_CF_DOWNLOAD_CONCURRENCY = 10;
@@ -107,22 +97,22 @@ async function resolveFileUrl(
       console.warn(
         `[CurseForge] Failed to resolve file ${fileId} for project ${projectId}: ${response.status}`,
       );
-      // Try fallback URL construction
+      
       return constructFallbackUrl(fileId);
     }
     const json = await response.json();
 
-    // API returns { data: { downloadUrl: "..." } } structure
+    
     const fileData = json.data || json;
     let downloadUrl = fileData.downloadUrl;
 
-    // If downloadUrl is null (mod author restricted downloads), try fallback
+    
     if (!downloadUrl) {
       console.warn(
         `[CurseForge] No downloadUrl for file ${fileId}, trying fallback...`,
       );
 
-      // Try to construct URL from fileName if available
+      
       if (fileData.fileName) {
         downloadUrl = constructCdnUrl(fileId, fileData.fileName);
         console.log(`[CurseForge] Using CDN URL for ${fileData.fileName}`);
@@ -134,33 +124,28 @@ async function resolveFileUrl(
     return downloadUrl || null;
   } catch (error) {
     console.error(`[CurseForge] Error resolving file ${fileId}:`, error);
-    // Try fallback on error
+    
     return constructFallbackUrl(fileId);
   }
 }
 
-/**
- * Construct CurseForge CDN URL from file ID and filename
- * URL pattern: https://edge.forgecdn.net/files/{fileId/1000}/{fileId%1000}/{filename}
- */
+
 function constructCdnUrl(fileId: number, fileName: string): string {
   const firstPart = Math.floor(fileId / 1000);
   const secondPart = fileId % 1000;
-  return `https://edge.forgecdn.net/files/${firstPart}/${secondPart}/${encodeURIComponent(fileName)}`;
+  return `https://edge.forgecdn.net/files/${firstPart}/${secondPart}/${fileName}`;
 }
 
-/**
- * Fallback URL using CurseForge download API (may redirect)
- */
+
 function constructFallbackUrl(fileId: number): string | null {
-  // This endpoint sometimes works as a redirect
-  // Return null to skip - we can't reliably construct URL without filename
+  
+  
   return null;
 }
 
-// ========================================
-// Installer Logic
-// ========================================
+
+
+
 
 export async function installCurseForgeModpack(
   zipPath: string,
@@ -186,7 +171,7 @@ export async function installCurseForgeModpack(
       manifest.version,
     );
 
-    // Step 1: Create Instance
+    
     if (onProgress) {
       onProgress({
         stage: "creating",
@@ -194,7 +179,7 @@ export async function installCurseForgeModpack(
       });
     }
 
-    // Determine loader
+    
     const primaryLoader = manifest.minecraft.modLoaders.find((l) => l.primary);
     let loaderType: "forge" | "fabric" | "neoforge" | "quilt" | "vanilla" =
       "vanilla";
@@ -205,7 +190,7 @@ export async function installCurseForgeModpack(
       if (loaderId.startsWith("forge")) {
         loaderType = "forge";
         const v = loaderId.replace("forge-", "");
-        // Ensure version starts with mc version for minecraft-java-core
+        
         if (!v.startsWith(manifest.minecraft.version)) {
           loaderVersion = `${manifest.minecraft.version}-${v}`;
         } else {
@@ -233,7 +218,7 @@ export async function installCurseForgeModpack(
     createdInstance = instance;
     console.log("[CurseForge] Created instance:", instance.id, instance.name);
 
-    // Step 2: Download Mods
+    
     if (signal?.aborted) throw new Error("Installation cancelled");
 
     const files = manifest.files;
@@ -348,7 +333,7 @@ export async function installCurseForgeModpack(
         }),
     );
 
-    // Step 3: Extract Overrides
+    
     const overridesDir = manifest.overrides || "overrides";
     const extractResult = native.extractModpackOverrides(
       zipPath,
@@ -366,11 +351,11 @@ export async function installCurseForgeModpack(
       });
     }
 
-    // Step 4: Deduplicate mods (remove duplicates from downloaded + overrides)
+    
     const modsDir = path.join(instance.gameDirectory, "mods");
     deduplicateMods(modsDir);
 
-    // Step 5: Move .zip files from mods to resourcepacks folder
+    
     moveResourcePacks(instance.gameDirectory);
 
     if (onProgress) {
@@ -386,7 +371,7 @@ export async function installCurseForgeModpack(
       instance,
     };
   } catch (error: any) {
-    // Cleanup: Delete the instance if installation was cancelled or failed
+    
     if (createdInstance) {
       console.log(
         "[CurseForge] Installation failed or cancelled, cleaning up instance:",

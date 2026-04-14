@@ -1,8 +1,6 @@
-/// <reference types="astro/client" />
 
-/**
- * Global Type Declarations for Reality Launcher
- */
+
+
 
 type ColorTheme =
   | "yellow"
@@ -92,12 +90,12 @@ interface UpdateInstanceOptions {
 declare global {
   interface Window {
     api?: {
-      // Config
+      
       getConfig: () => Promise<LauncherConfig>;
       setConfig: (config: Partial<LauncherConfig>) => Promise<LauncherConfig>;
       resetConfig: () => Promise<LauncherConfig>;
       getColorThemes: () => Promise<Record<ColorTheme, ColorThemeInfo>>;
-      // Auth (Note: loginOffline removed, use loginCatID instead)
+      
       logout: () => Promise<void>;
       getSession: () => Promise<AuthSession | null>;
       setActiveSession: (session: AuthSession) => Promise<AuthSession | null>;
@@ -110,7 +108,7 @@ declare global {
         otp: string,
         newPassword: string,
       ) => Promise<{ ok: boolean; message?: string; error?: string }>;
-      // Launcher
+      
       listVersions: () => Promise<string[]>;
       getLauncherInfo: () => Promise<LauncherInfo>;
       launchGame: (payload: {
@@ -118,12 +116,12 @@ declare global {
         username: string;
         ramMB: number;
       }) => Promise<LaunchResult>;
-      // Utility
+      
       getPathForFile: (file: File) => string;
       openExternal: (url: string) => Promise<void>;
       getMinecraftDir: () => Promise<string>;
       getAppDataDir: () => Promise<string>;
-      // Dialog
+      
       browseJava: () => Promise<string | null>;
       browseDirectory: (title?: string) => Promise<string | null>;
       browseIcon: () => Promise<string | null>;
@@ -134,7 +132,7 @@ declare global {
         filePath: string,
       ) => Promise<{ success: boolean; name: string; error?: string }>;
       detectJavaInstallations: () => Promise<string[]>;
-      // Instance Content Management
+      
       instanceListMods: (instanceId: string) => Promise<{
         ok: boolean;
         mods: any[];
@@ -211,7 +209,7 @@ declare global {
         worldName: string,
         filename: string,
       ) => Promise<{ ok: boolean; error?: string }>;
-      // Discord RPC
+      
       discordRPCSetEnabled: (enabled: boolean) => Promise<void>;
       discordRPCUpdate: (
         status:
@@ -230,13 +228,13 @@ declare global {
         serverIcon?: string,
       ) => Promise<void>;
       discordRPCIsConnected: () => Promise<boolean>;
-      // Auth Window
+      
       openAuthWindow: () => Promise<void>;
       closeAuthWindow: () => Promise<void>;
       onAuthCallback: (
         callback: (data: { token: string }) => void,
       ) => () => void;
-      // Device Code Authentication
+      
       startDeviceCodeAuth: () => Promise<{
         ok: boolean;
         deviceCode?: string;
@@ -265,7 +263,7 @@ declare global {
           apiTokenExpiresAt?: number;
         };
       }>;
-      // CatID Authentication
+      
       loginCatID: (
         username: string,
         password: string,
@@ -327,7 +325,7 @@ declare global {
         forceRelogin?: boolean;
         error?: string;
       }>;
-      // Offline Account
+      
       loginOffline: (username: string) => Promise<{
         ok: boolean;
         session?: {
@@ -403,13 +401,13 @@ declare global {
         requiresRelogin?: boolean;
         error?: string;
       }>;
-      // Window Control
+      
       windowMinimize: () => Promise<void>;
       windowMaximize: () => Promise<void>;
       windowClose: () => Promise<void>;
       windowIsMaximized: () => Promise<boolean>;
       windowSetMainMode: () => Promise<void>;
-      // Modrinth APIs
+      
       modrinthSearch: (filters: {
         query?: string;
         projectType?: string;
@@ -444,7 +442,7 @@ declare global {
         curseforge?: { ok: boolean; error?: string };
       }>;
       invalidateInstancesListCache: () => Promise<boolean>;
-      // CurseForge APIs
+      
       curseforgeSearch: (filters: {
         query?: string;
         projectType?: string;
@@ -499,7 +497,7 @@ declare global {
         projectId: number | string,
         fileId: number | string,
       ) => Promise<{ data: string }>;
-      // Instance Management APIs
+      
       instancesList: (
         offset?: number,
         limit?: number,
@@ -541,7 +539,7 @@ declare global {
         instance?: any;
         error?: string;
       }>;
-      // Game Control
+      
       isGameRunning: (instanceId?: string) => Promise<boolean>;
       killGame: (instanceId?: string) => Promise<boolean>;
       onGameStarted: (
@@ -554,7 +552,7 @@ declare global {
           code: number;
         }) => void,
       ) => () => void;
-      // Content Download
+      
       contentDownloadToInstance: (options: {
         projectId: string;
         versionId: string;
@@ -576,7 +574,7 @@ declare global {
       onDeepLinkAuthCallback: (
         callback: (data: { token: string; username?: string }) => void,
       ) => () => void;
-      // Modpack Installer APIs
+      
       modpackInstall: (
         mrpackPath: string,
       ) => Promise<{ ok: boolean; instance?: GameInstance; error?: string }>;
@@ -602,7 +600,7 @@ declare global {
           percent?: number;
         }) => void,
       ) => () => void;
-      // Admin Panel APIs
+      
       checkAdminStatus: (
         token: string,
       ) => Promise<{ isAdmin: boolean; username?: string }>;
@@ -615,7 +613,7 @@ declare global {
         value: string,
       ) => Promise<{ ok: boolean; error?: string }>;
       getSystemInfo: () => Promise<{ apiUrl: string; version: string }>;
-      // User Management APIs
+      
       getAdminUsers: (
         token: string,
         page?: number,
@@ -686,7 +684,7 @@ declare global {
       onUpdateError: (
         callback: (data: { message: string }) => void,
       ) => () => void;
-      // Notifications APIs
+      
       notificationsFetchAnnouncements: () => Promise<any[]>;
       notificationsFetchUser: () => Promise<any[]>;
       notificationsSync: () => Promise<{
@@ -706,7 +704,7 @@ declare global {
       }>;
       notificationsMarkRead: (notificationId: string) => Promise<boolean>;
       notificationsDelete: (notificationId: string) => Promise<boolean>;
-      // Invitation APIs
+      
       invitationsFetch: () => Promise<
         {
           id: string;

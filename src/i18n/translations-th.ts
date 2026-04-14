@@ -1,5 +1,5 @@
 export const thTranslations = {
-    // Nav
+    
     home: "หน้าหลัก",
     servers: "เซิร์ฟเวอร์",
     modpacks: "มอดแพ็ก",
@@ -44,7 +44,7 @@ export const thTranslations = {
     wardrobe_applying: "กำลังอัปเดตสกิน...",
     checking_data: "กำลังตรวจสอบไฟล์",
 
-    // Crash Log
+    
     crash_out_of_memory:
       "OUT_OF_MEMORY: เกมพังเพราะ RAM ไม่พอ กรุณาเพิ่ม RAM ในการตั้งค่า",
     crash_wrong_java:
@@ -86,14 +86,14 @@ export const thTranslations = {
     online_badge: "เชื่อมต่ออยู่",
     ready_to_play: "พร้อมเล่น",
 
-    // Greetings
+    
     good_morning: "อรุณสวัสดิ์",
     good_afternoon: "สวัสดีตอนบ่าย",
     good_evening: "สวัสดีตอนเย็น",
     please_login: "กรุณาเข้าสู่ระบบ",
     not_logged_in: "ยังไม่ได้เข้าสู่ระบบ",
 
-    // Account
+    
     account_manager: "จัดการบัญชี",
     add_account: "เพิ่มบัญชี",
     add_new_account: "เพิ่มบัญชีใหม่",
@@ -229,7 +229,7 @@ export const thTranslations = {
     browse_java_title: "เลือก Java Path",
     browse_minecraft_title: "เลือกโฟลเดอร์ .minecraft",
 
-    // Verification
+    
     verification_waiting: "รอยืนยันอีเมล",
     verification_check_email: "กรุณาตรวจสอบอีเมลของคุณเพื่อยืนยันการสมัคร",
     verification_confirm_btn: "ยืนยันการสมัคร",
@@ -243,7 +243,7 @@ export const thTranslations = {
     email_not_verified_yet: "ยังไม่ได้ยืนยันอีเมล หรือยืนยันไม่สำเร็จ",
     verification_check_error: "เกิดข้อผิดพลาดในการตรวจสอบ",
 
-    // Notifications
+    
     notification_prefix: "แจ้งเตือน: {title}",
     user_label: "ผู้ใช้",
     new_invitation_msg: "คำเชิญใหม่จาก {name} สำหรับ {instance}",
@@ -257,7 +257,7 @@ export const thTranslations = {
       "✅ เวอร์ชัน {version} โหลดเสร็จแล้ว จะติดตั้งตอนปิดแอป",
     update_check_failed_msg: "เช็คอัปเดตไม่ได้: {message}",
 
-    // Home
+    
     news_and_updates: "ข่าวสาร",
     items_count: "{count} รายการ",
     no_results: "ไม่พบรายการ",
@@ -271,7 +271,7 @@ export const thTranslations = {
     no_servers: "ไม่มีเซิร์ฟเวอร์",
     reading_status: "กำลังอ่าน",
 
-    // Settings - Tabs
+    
     tab_account: "บัญชีผู้ใช้",
     tab_appearance: "การแสดงผล",
     tab_game: "เกมและประสิทธิภาพ",
@@ -283,7 +283,7 @@ export const thTranslations = {
     advanced: "ขั้นสูง",
     save_settings: "บันทึกการตั้งค่า",
 
-    // Settings - Connections
+    
     discord_rpc: "Discord Rich Presence",
     discord_rpc_status_showing: "กำลังแสดงสถานะ",
     discord_rpc_status_off: "ปิดอยู่",
@@ -296,7 +296,7 @@ export const thTranslations = {
     limit_download_speed: "จำกัดความเร็วดาวน์โหลด",
     unlimited: "ไม่จำกัด",
 
-    // Settings - Launcher
+    
     launcher_settings: "ตั้งค่า Launcher",
     language: "ภาษา (Language)",
     select_language: "เลือกภาษาที่ต้องการใช้งาน",
@@ -316,7 +316,7 @@ export const thTranslations = {
     reset_settings: "รีเซ็ตการตั้งค่า",
     reset_settings_desc: "เปลี่ยนการตั้งค่าทั้งหมดกลับเป็นค่าเริ่มต้น",
 
-    // Settings - Game
+    
     recommended: "แนะนำ",
     custom_memory_allocation: "กำหนดการใช้แรมเอง",
     memory_allocated: "หน่วยความจำ (RAM)",
@@ -328,7 +328,7 @@ export const thTranslations = {
     java_args_desc: "เพิ่ม JVM arguments สำหรับ Minecraft (เช่น -XX:+UseG1GC)",
     java_args_placeholder: "เพิ่ม Java arguments...",
 
-    // Settings - Java
+    
     java_install_path: "ตำแหน่งติดตั้ง Java {version}",
     java_install_success: "ติดตั้ง Java {version} สำเร็จ",
     java_install_failed: "ติดตั้ง Java ล้มเหลว",
@@ -353,7 +353,7 @@ export const thTranslations = {
     java_search_failed: "ค้นหา Java ไม่สำเร็จ",
     leave_empty_to_use_default: "ปล่อยว่างเพื่อใช้ค่าเริ่มต้น",
 
-    // Settings - Update
+    
     update_available: "มีอัปเดตใหม่",
     up_to_date: "เวอร์ชันล่าสุด",
     update_disabled_dev: "ระบบอัปเดตถูกปิดใช้งานในโหมด Development",
@@ -379,7 +379,7 @@ export const thTranslations = {
     update_check_failed: "ตรวจสอบไม่สำเร็จ",
     check: "ตรวจสอบ",
 
-    // Settings - Resources
+    
     launcher_folder: "โฟลเดอร์ Launcher",
     launcher_folder_desc: "โฟลเดอร์ที่เก็บไฟล์ทั้งหมดของ Launcher",
     path_copied: "คัดลอก path แล้ว",
@@ -393,7 +393,7 @@ export const thTranslations = {
     max_concurrent_downloads: "ดาวน์โหลดพร้อมกันสูงสุด",
     max_concurrent_downloads_desc: "จำนวนไฟล์ที่ดาวน์โหลดพร้อมกันได้",
 
-    // Settings - Appearance
+    
     appearance: "รูปลักษณ์",
     appearance_and_themes: "การแสดงผลและธีม",
     theme: "ธีม (Theme)",
@@ -414,21 +414,21 @@ export const thTranslations = {
     notification_sound: "เสียงแจ้งเตือน",
     notification_sound_desc: "เล่นเสียงเมื่อมีอะไรใหม่เข้ามา",
 
-    // Appearance descriptions
+    
     light_mode_desc: "สว่างสดใส",
     dark_mode_desc: "สบายตา",
     oled_mode_desc: "ดำสนิท ประหยัดไฟ",
     follow_system_desc: "ตามการตั้งค่าระบบ",
     beta: "รุ่นเบต้า",
 
-    // Update badges
+    
     stable: "รุ่นเสถียร",
     dev: "รุ่นพัฒนา",
 
-    // Resources
+    
     default_folder: "โฟลเดอร์เริ่มต้น",
 
-    // Import Modpack
+    
     import: "นำเข้า",
     expand_your_world: "เพิ่มเนื้อหาใหม่ๆ ให้โลกของคุณ",
     import_content: "นำเข้าเนื้อหา",
@@ -438,7 +438,7 @@ export const thTranslations = {
     support_zip_mrpack: "รองรับเฉพาะไฟล์ .zip และ .mrpack",
     select_file_from_machine: "เลือกไฟล์จากเครื่อง",
     importing: "กำลังนำเข้า",
-    // Create Modpack (new)
+    
     create_modpack_title: "สร้าง Mod Pack ใหม่",
     create_modpack_icon_label: "ไอคอน",
     create_modpack_icon_desc: "คลิกเพื่อเลือกรูปภาพ",
@@ -455,7 +455,7 @@ export const thTranslations = {
 
     by: "by",
 
-    // Explore / Project preview
+    
     select_item_to_view: "เลือกรายการเพื่อดูรายละเอียด",
     click_card_left_to_view:
       "คลิกที่การ์ดทางซ้ายเพื่อดูข้อมูลเพิ่มเติม รูปภาพ และเวอร์ชัน",
@@ -463,7 +463,7 @@ export const thTranslations = {
     install_as_new_instance: "ติดตั้งเป็น Instance ใหม่",
     add_to_instance: "เพิ่มใน Instance ที่มีอยู่",
 
-    // Explore search / mod labels
+    
     search_placeholder: "ค้นหา {type}...",
     search_versions: "ค้นหาเวอร์ชัน...",
     change_version: "เปลี่ยนเวอร์ชัน",
@@ -471,26 +471,26 @@ export const thTranslations = {
     loading_versions: "กำลังโหลดเวอร์ชัน...",
     no_compatible_versions: "ไม่พบเวอร์ชันที่รองรับ {version}",
 
-    // Instance selection
+    
     select_instance: "เลือก Instance",
     add_project_to_instance: 'เพิ่ม "{project}" ไปยัง Instance ไหน?',
     checking_compatibility: "กำลังตรวจสอบความเข้ากัน...",
     no_instances_create_first: "ไม่มี Instance กรุณาสร้างก่อน",
     compatible_tag: "✓ รองรับ",
-    // Project type labels
+    
     mods: "ม็อด",
     resourcepacks: "รีซอร์สแพ็ก",
     datapacks: "ดาตาแพ็ก",
     shaders: "เชเดอร์",
 
-    // Sort labels
+    
     "sort.relevance": "ความเกี่ยวข้อง",
     "sort.downloads": "ดาวน์โหลด",
     "sort.follows": "ผู้ติดตาม",
     "sort.newest": "ใหม่ล่าสุด",
     "sort.updated": "อัปเดตล่าสุด",
 
-    // Microsoft Auth
+    
     microsoft_auth_step1: "1. ไปที่เว็บไซต์ Microsoft",
     microsoft_auth_step2: "2. ใส่รหัสต่อไปนี้",
     copy_code_success: "คัดลอกรหัสแล้ว!",
@@ -498,7 +498,7 @@ export const thTranslations = {
     copy_code_and_open_login: "คัดลอกรหัสและเปิดหน้าเข้าสู่ระบบ",
     waiting_for_approval: "กำลังรอการอนุมัติ",
 
-    // Admin Panel & User Management
+    
     admin_panel: "Admin Panel",
     system_settings_api: "ตั้งค่าระบบและ API Keys",
     refresh: "รีเฟรช",
@@ -544,7 +544,7 @@ export const thTranslations = {
     sessions: "Sessions",
     unknown_ip: "Unknown IP",
 
-    // Game
+    
     play: "เล่น",
     stop: "หยุด",
     join: "เข้าร่วม",
@@ -605,7 +605,7 @@ export const thTranslations = {
     not_installed: "ไม่ได้ติดตั้ง",
     logs_console: "Logs / หน้าต่างคำสั่ง",
 
-    // Mod Pack
+    
     mod_pack: "Mod Pack",
     my_mod_packs: "ModPack ของฉัน",
     server_mod_packs: "ModPack ของเซิร์ฟเวอร์",
@@ -686,7 +686,7 @@ export const thTranslations = {
     export_servers_dat: "servers.dat",
     export_screenshots: "ภาพหน้าจอ",
 
-    // Create Modal
+    
     vanilla: "Vanilla",
     fabric: "Fabric",
     forge: "Forge",
@@ -714,7 +714,7 @@ export const thTranslations = {
     create_instance_footer:
       "สร้างแล้วสามารถเพิ่ม mod, resource pack, shader ได้ภายหลัง",
 
-    // Instance Detail
+    
     cannot_read_file_name: "ไม่สามารถอ่านไฟล์",
     unsupported_extension: "ไม่รองรับ",
     files_added_success: "เพิ่มไฟล์สำเร็จ",
@@ -745,7 +745,7 @@ export const thTranslations = {
     no_shaders: "ไม่มี Shader ใน Instance นี้",
     drop_to_add_content: "วางไฟล์ {ext} เพื่อเพิ่ม {type}",
 
-    // Instance Settings
+    
     settings_saved_success: "บันทึกการตั้งค่าเรียบร้อย",
     save_failed: "บันทึกไม่สำเร็จ",
     name_saved_success: "บันทึกชื่อเรียบร้อย",
@@ -786,7 +786,7 @@ export const thTranslations = {
     saving: "กำลังบันทึก...",
     duplicate: "สำเนา",
 
-    // Errors
+    
     error_occurred: "เกิดข้อผิดพลาด",
     error_critical: "ข้อผิดพลาดร้ายแรง",
     error_network: "ข้อผิดพลาดเครือข่าย",
@@ -799,7 +799,7 @@ export const thTranslations = {
     api_connection_error_desc: "API อาจล่มหรือเน็ตมีปัญหา กดลองใหม่อีกที",
     retry: "ลองใหม่",
 
-    // Explore
+    
     load_instances_failed: "โหลดรายการ Instance ไม่สำเร็จ",
     load_data_failed: "โหลดข้อมูลไม่สำเร็จ",
     not_support_mod: "ไม่รองรับ mod",
@@ -818,14 +818,14 @@ export const thTranslations = {
     processing_dot: "กำลังดำเนินการ...",
     search_version_dot: "ค้นหาเวอร์ชัน...",
 
-    // Project Preview / Gallery
+    
     gallery: "รูปภาพ",
     client_required: "ต้องใช้ฝั่งไคลเอนต์",
     client_optional: "ไม่จำเป็นฝั่งไคลเอนต์",
     loaders_label: "Loaders",
     versions_label: "เวอร์ชัน",
 
-    // Project Detail Page
+    
     all_mc_versions: "เวอร์ชันทั้งหมด",
     all_loaders: "Loader ทั้งหมด",
 
@@ -844,13 +844,13 @@ export const thTranslations = {
     created: "สร้างเมื่อ",
     updated: "อัปเดตเมื่อ",
 
-    // Instance Content Browser
+    
     no_compatible_version_for: "ไม่พบเวอร์ชันที่รองรับสำหรับ {instance}",
     install_success_name: "ติดตั้ง {name} สำเร็จ",
     passwords_do_not_match: "รหัสผ่านไม่ตรงกัน",
     unknown: "ไม่ทราบ",
 
-    // Additional UI strings
+    
     installed: "ติดตั้งแล้ว",
     installing_progress: "กำลังติดตั้ง...",
     vanilla_no_mod: "Vanilla ไม่รองรับ Mod",
@@ -867,14 +867,14 @@ export const thTranslations = {
 
     search_content_placeholder: "ค้นหา {type}...",
 
-    // ContentList labels
+    
     install_resourcepack: "ติดตั้ง Resource Pack",
     install_shader: "ติดตั้ง Shader",
     install_datapack: "ติดตั้ง Datapack",
     enable: "เปิด",
     disable: "ปิด",
 
-    // About Page
+    
     about_passion_title: "Passion",
     about_passion_desc:
       'Reality อยากสร้างพื้นที่ให้ชุมชน <span style="color: #facc15; font-weight: 700;">Minecraft</span> ได้เชื่อมต่อและสร้างสรรค์เรื่องราวร่วมกันได้อย่างไร้ขีดจำกัด ผ่าน Launcher ที่ใช้ง่ายที่สุด',
@@ -884,7 +884,7 @@ export const thTranslations = {
     about_made_in: "Made in Thailand",
     about_copyright: "© 2026 Cat Lab_ Design. สงวนลิขสิทธิ์",
 
-    // Team Roles & Descriptions
+    
     role_ceo_founder: "CEO & ผู้ก่อตั้ง Q-Team",
     role_designer_dev: "Designer / Developer",
     desc_sam_su: "ออกแบบ UX และพัฒนาระบบ Reality",
@@ -892,7 +892,7 @@ export const thTranslations = {
     desc_jo: "ร่วมวางแผนและขับเคลื่อนโปรเจกต์",
     role_it: "IT Department",
     desc_pumpkins: "ดูแลระบบและพัฒนาฟีเจอร์ใหม่ๆ",
-    // Additional i18n coverage
+    
     access_point: "จุดเชื่อมต่อ",
     api_key_placeholder: "กรอก API Key ใหม่",
     auto_scroll_disabled: "ปิดการเลื่อนอัตโนมัติแล้ว",

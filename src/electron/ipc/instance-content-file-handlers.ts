@@ -67,7 +67,7 @@ export function registerInstanceContentFileHandlers(
       const fileName = path.basename(filePath);
       const ext = path.extname(fileName).toLowerCase();
 
-      // Validate file extension based on content type
+      
       const validExtensions: Record<string, string[]> = {
         mod: [".jar"],
         resourcepack: [".zip"],
@@ -83,7 +83,7 @@ export function registerInstanceContentFileHandlers(
         };
       }
 
-      // Determine target directory
+      
       const folderMap: Record<string, string> = {
         mod: "mods",
         resourcepack: "resourcepacks",
@@ -98,17 +98,17 @@ export function registerInstanceContentFileHandlers(
       const targetPath = path.join(targetDir, fileName);
 
       try {
-        // Ensure directory exists
+        
         if (!fs.existsSync(targetDir)) {
           fs.mkdirSync(targetDir, { recursive: true });
         }
 
-        // Check if file already exists
+        
         if (fs.existsSync(targetPath)) {
           return { ok: false, error: `เนเธเธฅเน ${fileName} เธกเธตเธญเธขเธนเนเนเธฅเนเธง` };
         }
 
-        // Copy file
+        
         fs.copyFileSync(filePath, targetPath);
         return { ok: true, filename: fileName };
       } catch (error: any) {
@@ -117,7 +117,7 @@ export function registerInstanceContentFileHandlers(
     },
   );
 
-  // List files in instance directory recursively
+  
   ipcMain.handle("instances-list-files", async (_event, instanceId: string) => {
     try {
       const instance = getInstance(instanceId);
@@ -127,15 +127,15 @@ export function registerInstanceContentFileHandlers(
 
       const instancePath = getInstanceDir(instanceId);
 
-      // Recursive function to build file tree
+      
       const buildFileTree = (dir: string, relativePath: string = ""): any[] => {
         const items = fs.readdirSync(dir);
         const result: any[] = [];
 
         for (const item of items) {
-          // Skip hidden files/folders and system folders that shouldn't be exported
+          
           if (item.startsWith(".")) continue;
-          // Skip folders that are always excluded from export
+          
           if (
             [
               "logs",
@@ -172,7 +172,7 @@ export function registerInstanceContentFileHandlers(
           }
         }
 
-        // Sort: Directories first, then files
+        
         return result.sort((a, b) => {
           if (a.type === b.type) return a.name.localeCompare(b.name);
           return a.type === "directory" ? -1 : 1;
@@ -218,7 +218,7 @@ export function registerInstanceContentFileHandlers(
       const instance = getInstance(instanceId);
       if (!instance) return { ok: false, error: "Instance not found" };
 
-      // 1. Map content type to folder
+      
       const folderMap: Record<string, string> = {
         mod: "mods",
         mods: "mods",
@@ -233,7 +233,7 @@ export function registerInstanceContentFileHandlers(
       const folder = folderMap[contentType];
       if (!folder) return { ok: false, error: "Invalid content type" };
 
-      // 2. Delete old file
+      
       const oldPath = path.join(instance.gameDirectory, folder, oldFilename);
       try {
         if (fs.existsSync(oldPath)) {
@@ -253,7 +253,7 @@ export function registerInstanceContentFileHandlers(
         };
       }
 
-      // 3. Download new version
+      
       try {
         const mainWindow = getMainWindow();
         const result = await downloadContentToInstance(

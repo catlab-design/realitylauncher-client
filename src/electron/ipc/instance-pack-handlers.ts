@@ -177,7 +177,7 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
 
         const files = await fs.promises.readdir(dir);
 
-        // Get basic info without icons (fast) - icons will be loaded lazily
+        
         const basicItems = await Promise.all(
           files.map(async (file) => {
             const filePath = path.join(dir, file);
@@ -211,7 +211,7 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
               const cacheKey = `resourcepack:${displayName.toLowerCase()}`;
               const cached = getIconFromCache(cacheKey);
 
-              // Try native metadata first (background worker), then fallback reads.
+              
               let icon: string | null =
                 cached?.url || nativeMetadata.icon || null;
               let modrinthProjectId = cached?.modrinthId;
@@ -234,7 +234,7 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
                   const buffer = await fs.promises.readFile(filePath);
                   const zip = new AdmZip(buffer);
 
-                  // Extract icon
+                  
                   if (!icon) {
                     const packPng = zip.getEntry("pack.png");
                     if (packPng) {
@@ -242,17 +242,17 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
                     }
                   }
                 } catch (e) {
-                  // Ignore errors reading zip
+                  
                 }
               } else if ((!icon || !version) && isDirectory) {
-                // Directory-based resourcepack
+                
                 if (!icon) {
                   const packPngPath = path.join(filePath, "pack.png");
                   if (fs.existsSync(packPngPath)) {
                     try {
                       icon = `data:image/png;base64,${(await fs.promises.readFile(packPngPath)).toString("base64")}`;
                     } catch {
-                      /* ignore */
+                      
                     }
                   }
                 }
@@ -281,7 +281,7 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
 
         const validItems = basicItems.filter((i) => i !== null) as any[];
 
-        // Use dedupe helper
+        
         const rpItems = dedupeResourcepacks(validItems as any[]);
         return { ok: true, items: rpItems };
       } catch (error: any) {
@@ -350,9 +350,9 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
     },
   );
 
-  // ----------------------------------------
-  // Shaders
-  // ----------------------------------------
+  
+  
+  
 
   ipcMain.handle(
     "instance-list-shaders",
@@ -469,7 +469,7 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
 
         const files = await fs.promises.readdir(dir);
 
-        // First pass: get basic info without icons (fast)
+        
         const basicItems = await Promise.all(
           files.map(async (file) => {
             const filePath = path.join(dir, file);
@@ -513,10 +513,10 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
 
         const validItems = basicItems.filter((i) => i !== null) as any[];
 
-        // Second pass: fetch icons in parallel (Modrinth/CurseForge first, then fallback to ZIP)
+        
         const itemsWithIcons = await Promise.all(
           validItems.map(async (item) => {
-            // 1. Try local ZIP/directory icon first (Fast & Accurate)
+            
             const nativeInfo = await inspectPackMetadataWithNative(
               item.filePath,
               "shader",
@@ -546,7 +546,7 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
                     }
                   }
 
-                  // Extract version from shaders.properties
+                  
                   const propsEntry =
                     zip.getEntry("shaders/shaders.properties") ||
                     zip.getEntry("shaders.properties");
@@ -560,7 +560,7 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
                         version = versionMatch[1].trim();
                       }
                     } catch {
-                      /* ignore */
+                      
                     }
                   }
                 } else if (item.isDirectory) {
@@ -577,7 +577,7 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
                     }
                   }
 
-                  // Extract version from shaders.properties (directory)
+                  
                   const propsPaths = [
                     path.join(item.filePath, "shaders", "shaders.properties"),
                     path.join(item.filePath, "shaders.properties"),
@@ -596,7 +596,7 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
                           version = versionMatch[1].trim();
                         }
                       } catch {
-                        /* ignore */
+                        
                       }
                       break;
                     }
@@ -608,7 +608,7 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
             let modrinthProjectId: string | undefined;
             let curseforgeProjectId: string | undefined;
 
-            // 2. Fallback to online icon if local not found (Slow / Heuristic)
+            
             if (!icon) {
               const onlineResult = await fetchIconFromOnline(
                 item.name,
@@ -619,9 +619,9 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
               curseforgeProjectId = onlineResult.curseforgeId;
             }
 
-            // 3. Fallback: extract version from filename (e.g. "ComplementaryReimagined_r5.7.1")
+            
             if (!version) {
-              // Match patterns like _r5.7.1, _v2.0, -v1.2.3, _1.0.0, v1.2.3
+              
               const nameMatch = item.name.match(
                 /[_\-\s]([rv]?\d+(?:\.\d+)+(?:[._\-]\w+)*)$/i,
               );
@@ -645,7 +645,7 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
           }),
         );
 
-        // Use dedupe helper
+        
         const resultItems = dedupeShaders(itemsWithIcons);
         return { ok: true, items: resultItems };
       } catch (error: any) {
@@ -714,9 +714,9 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
     },
   );
 
-  // ----------------------------------------
-  // Datapacks
-  // ----------------------------------------
+  
+  
+  
 
   ipcMain.handle(
     "instance-list-datapacks",
@@ -848,11 +848,11 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
                 ) {
                   const zip = new AdmZip(filePath);
 
-                  // Try standard pack.png (root, assets/, or depth-1 subfolder)
+                  
                   let packPng =
                     zip.getEntry("pack.png") || zip.getEntry("assets/pack.png");
 
-                  // Also check for pack.png inside a root subfolder (e.g. MyDataPack/pack.png)
+                  
                   if (!packPng) {
                     const entries = zip.getEntries();
                     for (const e of entries) {
@@ -872,7 +872,7 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
                     } catch {}
                   }
 
-                  // Fallback: find first png file in zip root or assets
+                  
                   if (!icon) {
                     const entries = zip.getEntries();
                     for (const e of entries) {
@@ -891,10 +891,10 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
                     }
                   }
 
-                  // Extract version from pack.mcmeta
+                  
                   let mcmeta = zip.getEntry("pack.mcmeta");
                   if (!mcmeta) {
-                    // Check depth-1 subfolder
+                    
                     const entries = zip.getEntries();
                     for (const e of entries) {
                       if (
@@ -916,7 +916,7 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
                         version = packFormatToVersion(packFormat, "data");
                       }
                     } catch {
-                      /* ignore parse errors */
+                      
                     }
                   }
                 } else if ((!icon || !version) && isDir) {
@@ -924,7 +924,7 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
                   if (fs.existsSync(packPngPath)) {
                     icon = `data:image/png;base64,${fs.readFileSync(packPngPath).toString("base64")}`;
                   } else {
-                    // Fallback: search for first png inside directory (max depth 2)
+                    
                     const allFiles = await (async function walk(
                       dirPath: string,
                       depth = 0,
@@ -949,7 +949,7 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
                       } catch {}
                     }
                   }
-                  // Read pack.mcmeta from directory
+                  
                   const mcmetaPath = path.join(filePath, "pack.mcmeta");
                   if (fs.existsSync(mcmetaPath)) {
                     try {
@@ -961,7 +961,7 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
                         version = packFormatToVersion(packFormat, "data");
                       }
                     } catch {
-                      /* ignore parse errors */
+                      
                     }
                   }
                 }
@@ -1009,7 +1009,7 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
         } catch {}
       }
 
-      // Use dedupe helper
+      
       const sorted = dedupeDatapacks(items);
       return { ok: true, items: sorted };
     },
@@ -1090,9 +1090,9 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
     },
   );
 
-  // ----------------------------------------
-  // Logs
-  // ----------------------------------------
+  
+  
+  
 
   ipcMain.handle(
     "instance-read-latest-log",

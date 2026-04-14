@@ -6,7 +6,7 @@ interface AuthState {
   session: AuthSession | null;
   accounts: AuthSession[];
 
-  // Actions
+  
   setSession: (session: AuthSession | null) => void;
   setAccounts: (accounts: AuthSession[]) => void;
   addAccount: (account: AuthSession) => void;
@@ -28,15 +28,15 @@ export const useAuthStore = create<AuthState>()(
       addAccount: (account) => {
         const { accounts } = get();
 
-        // Deduplication:
-        // 1. Exact match (uuid + type)
-        // 2. Username fallback for same-type/basic CatID accounts
+        
+        
+        
 
         let filteredAccounts = accounts.filter((a) => {
-          // Rule 1: Remove exact matches for the incoming account
+          
           if (a.uuid === account.uuid && a.type === account.type) return false;
 
-          // Username fallback (only if same type or one is basic CatID)
+          
           if (
             a.username === account.username &&
             (a.type === account.type ||
@@ -48,7 +48,7 @@ export const useAuthStore = create<AuthState>()(
           return true;
         });
 
-        // Add the new/updated version
+        
         set({ accounts: [...filteredAccounts, account] });
       },
 
@@ -59,7 +59,7 @@ export const useAuthStore = create<AuthState>()(
         );
         set({ accounts: newAccounts });
 
-        // If removing current session, logout
+        
         if (session?.uuid === uuid && session?.type === type) {
           set({ session: null });
         }
@@ -67,7 +67,7 @@ export const useAuthStore = create<AuthState>()(
 
       updateAccount: (updatedAccount) => {
         set((state) => {
-          // Perform the same deduplication as addAccount
+          
           const filteredAccounts = state.accounts.filter((a) => {
             if (
               a.uuid === updatedAccount.uuid &&
@@ -101,7 +101,7 @@ export const useAuthStore = create<AuthState>()(
       logout: () => set({ session: null }),
     }),
     {
-      // Let's use 'reality_auth_store' to be clean.
+      
       name: "reality_auth_store",
     },
   ),

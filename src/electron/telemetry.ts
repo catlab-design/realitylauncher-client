@@ -1,20 +1,13 @@
-/**
- * ========================================
- * Telemetry Service - ส่งข้อมูลการใช้งานไป API
- * ========================================
- * 
- * ส่งข้อมูล telemetry แบบ anonymous เพื่อปรับปรุง launcher
- * ผู้ใช้สามารถปิด telemetry ได้ใน Settings
- */
+
 
 import { app } from "electron";
 import { getConfig, setConfig } from "./config.js";
 import { getSession } from "./auth.js";
 
-// API URL (hardcoded for bundled Electron - process.env doesn't work in production)
+
 import { API_URL } from "./lib/constants.js";
 
-// Event types
+
 export const TELEMETRY_EVENTS = {
     APP_OPEN: "app_open",
     APP_CLOSE: "app_close",
@@ -27,7 +20,7 @@ export const TELEMETRY_EVENTS = {
 
 export type TelemetryEventType = typeof TELEMETRY_EVENTS[keyof typeof TELEMETRY_EVENTS];
 
-// Session tracking
+
 let sessionStartTime: Date | null = null;
 let gameStartTimes: Map<string, Date> = new Map();
 let flushTimer: NodeJS.Timeout | null = null;
@@ -63,60 +56,47 @@ function extractCatIdUserId(uuid?: string | null): string | undefined {
     return extracted || undefined;
 }
 
-/**
- * Get or generate unique client ID
- * This is anonymous and not linked to any user identity
- */
+
 function getClientId(): string {
     const config = getConfig();
 
-    // Check if clientId exists in config
+    
     if ((config as any).clientId) {
         return (config as any).clientId;
     }
 
-    // Generate new UUID
+    
     const clientId = crypto.randomUUID();
 
-    // Save to config
+    
     setConfig({ clientId } as any);
 
     return clientId;
 }
 
-/**
- * Check if telemetry is enabled
- */
+
 function isTelemetryEnabled(): boolean {
     const config = getConfig();
-    return config.telemetryEnabled !== false; // Default to true if not set
+    return config.telemetryEnabled !== false; 
 }
 
-/**
- * Get launcher version
- */
+
 function getLauncherVersion(): string {
     return app.getVersion();
 }
 
-/**
- * Get platform
- */
+
 function getPlatform(): string {
-    return process.platform; // win32, darwin, linux
+    return process.platform; 
 }
 
-/**
- * Get locale from config
- */
+
 function getLocale(): string {
     const config = getConfig();
     return config.language || "th";
 }
 
-/**
- * Flush queued telemetry events to API
- */
+
 async function flushTelemetryQueue(force: boolean = false): Promise<void> {
     if (isFlushing) return;
     if (telemetryQueue.length === 0) return;
@@ -143,7 +123,7 @@ async function flushTelemetryQueue(force: boolean = false): Promise<void> {
             throw new Error(`Batch send failed (${response.status})`);
         }
     } catch (error) {
-        // Requeue on failure, preserving order
+        
         telemetryQueue.unshift(...events);
         if (telemetryQueue.length > TELEMETRY_MAX_QUEUE_SIZE) {
             telemetryQueue.splice(0, telemetryQueue.length - TELEMETRY_MAX_QUEUE_SIZE);
@@ -182,10 +162,7 @@ function getCachedTokenUserId(token?: string): string | undefined {
     return cachedTokenUserId;
 }
 
-/**
- * Resolve CatID user ID from active session with cache + API fallback.
- * Uses /auth/session/me for linked Microsoft sessions that don't have catid-* UUID.
- */
+
 export async function resolveTelemetryUserIdForSession(sessionOverride?: {
     uuid?: string;
     apiToken?: string;
@@ -255,9 +232,7 @@ export async function resolveTelemetryUserIdForSession(sessionOverride?: {
     return tokenUserIdResolvePromise;
 }
 
-/**
- * Resolve current authenticated user ID for queueing without waiting on network.
- */
+
 function resolveTelemetryUserId(explicitUserId?: string): string | undefined {
     if (explicitUserId && explicitUserId.trim()) {
         return explicitUserId.trim();
@@ -282,9 +257,7 @@ function resolveTelemetryUserId(explicitUserId?: string): string | undefined {
     return undefined;
 }
 
-/**
- * Queue telemetry event for batched API send
- */
+
 function queueEvent(
     eventType: TelemetryEventType,
     data?: Record<string, any>,
@@ -296,7 +269,7 @@ function queueEvent(
 
     const resolvedUserId = resolveTelemetryUserId(userId);
     if (!resolvedUserId) {
-        // Best effort background resolve for linked Microsoft sessions.
+        
         void resolveTelemetryUserIdForSession();
     }
 
@@ -321,13 +294,11 @@ function queueEvent(
     }
 }
 
-// ========================================
-// Event Tracking Functions
-// ========================================
 
-/**
- * Track app open
- */
+
+
+
+
 export function trackAppOpen(): void {
     sessionStartTime = new Date();
 
@@ -343,9 +314,7 @@ export function trackAppOpen(): void {
     });
 }
 
-/**
- * Track app close
- */
+
 export function trackAppClose(): void {
     let sessionDuration = 0;
 
@@ -358,9 +327,7 @@ export function trackAppClose(): void {
     });
 }
 
-/**
- * Track game launch
- */
+
 export function trackGameLaunch(
     instanceId: string,
     version: string,
@@ -376,9 +343,7 @@ export function trackGameLaunch(
     }, userId);
 }
 
-/**
- * Track game close
- */
+
 export function trackGameClose(instanceId: string, userId?: string): void {
     const startTime = gameStartTimes.get(instanceId);
     let playtime = 0;
@@ -388,7 +353,7 @@ export function trackGameClose(instanceId: string, userId?: string): void {
         gameStartTimes.delete(instanceId);
     }
 
-    // Also clean up any stale entries older than 24 hours
+    
     const now = Date.now();
     for (const [id, time] of gameStartTimes) {
         if (now - time.getTime() > 24 * 60 * 60 * 1000) {
@@ -402,9 +367,7 @@ export function trackGameClose(instanceId: string, userId?: string): void {
     }, userId);
 }
 
-/**
- * Track instance creation
- */
+
 export function trackInstanceCreate(
     version: string,
     loader: string,
@@ -418,9 +381,7 @@ export function trackInstanceCreate(
     }, userId);
 }
 
-/**
- * Track mod installation
- */
+
 export function trackModInstall(
     modId: string,
     source: string,
@@ -432,47 +393,39 @@ export function trackModInstall(
     }, userId);
 }
 
-/**
- * Track error
- */
+
 export function trackError(
     message: string,
     context?: string,
     stack?: string
 ): void {
     queueEvent(TELEMETRY_EVENTS.ERROR, {
-        message: message.substring(0, 500), // Limit message length
+        message: message.substring(0, 500), 
         context,
-        stack: stack ? stack.substring(0, 1000) : undefined, // Limit stack length
+        stack: stack ? stack.substring(0, 1000) : undefined, 
     });
 }
 
-// ========================================
-// Initialize & Cleanup
-// ========================================
 
-/**
- * Initialize telemetry
- * Call this when app is ready
- */
+
+
+
+
 export function initTelemetry(): void {
     console.log("[Telemetry] Initializing...");
     console.log("[Telemetry] Enabled:", isTelemetryEnabled());
     console.log("[Telemetry] Client ID:", getClientId());
     void resolveTelemetryUserIdForSession();
 
-    // Track app open
+    
     trackAppOpen();
 }
 
-/**
- * Cleanup telemetry
- * Call this before app quit
- */
+
 export async function cleanupTelemetry(): Promise<void> {
     console.log("[Telemetry] Cleaning up...");
 
-    // Queue app close and flush immediately before quit
+    
     trackAppClose();
     await flushTelemetryQueue(true);
 }

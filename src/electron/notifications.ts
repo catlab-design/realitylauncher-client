@@ -1,10 +1,7 @@
-/**
- * Notifications Module
- * Handles fetching announcements and user notifications from ml-api
- */
+
 
 import { API_URL } from './lib/constants.js';
-// API URL imported from shared constants
+
 
 const ANNOUNCEMENTS_CACHE_TTL_MS = 5 * 60 * 1000;
 const SYNC_CACHE_TTL_MS = 15 * 1000;
@@ -14,9 +11,9 @@ let syncCache:
     | { data: { notifications: Notification[]; invitations: Invitation[] }; timestamp: number }
     | null = null;
 
-/** Validate and sanitize an ID before using in URL paths */
+
 function sanitizeId(id: string): string {
-    // Only allow alphanumeric, hyphens, and underscores
+    
     if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
         throw new Error(`Invalid ID format: ${id}`);
     }
@@ -63,9 +60,7 @@ function mapInvitations(data: any): Invitation[] {
     }));
 }
 
-/**
- * Fetch all active announcements (public, no auth required)
- */
+
 export async function fetchAnnouncements(): Promise<Announcement[]> {
     if (
         announcementsCache &&
@@ -96,9 +91,7 @@ export async function fetchAnnouncements(): Promise<Announcement[]> {
     }
 }
 
-/**
- * Fetch user's personal notifications (requires auth)
- */
+
 export async function fetchUserNotifications(authToken: string): Promise<Notification[]> {
     try {
         const response = await fetch(`${API_URL}/announcements/notifications`, {
@@ -110,21 +103,19 @@ export async function fetchUserNotifications(authToken: string): Promise<Notific
         });
 
         if (!response.ok) {
-            // console.warn('[Notifications] Failed to fetch user notifications:', response.statusText);
+            
             return [];
         }
 
         const data = await response.json();
         return data;
     } catch (error) {
-        // console.error('[Notifications] Error fetching user notifications:', error);
+        
         return [];
     }
 }
 
-/**
- * Fetch notifications and invitations in a single API call
- */
+
 export async function fetchNotificationSync(
     authToken: string,
 ): Promise<{ notifications: Notification[]; invitations: Invitation[] }> {
@@ -157,9 +148,7 @@ export async function fetchNotificationSync(
     }
 }
 
-/**
- * Mark notification as read
- */
+
 export async function markNotificationAsRead(notificationId: string, authToken: string): Promise<boolean> {
     try {
         const response = await fetch(`${API_URL}/announcements/notifications/${sanitizeId(notificationId)}/read`, {
@@ -180,9 +169,7 @@ export async function markNotificationAsRead(notificationId: string, authToken: 
     }
 }
 
-/**
- * Delete a notification
- */
+
 export async function deleteNotification(notificationId: string, authToken: string): Promise<boolean> {
     try {
         const response = await fetch(`${API_URL}/announcements/notifications/${sanitizeId(notificationId)}`, {
@@ -203,9 +190,7 @@ export async function deleteNotification(notificationId: string, authToken: stri
     }
 }
 
-/**
- * Helper: Get icon and color for announcement type
- */
+
 export function getAnnouncementStyle(type: string) {
     switch (type) {
         case 'news':
@@ -221,9 +206,7 @@ export function getAnnouncementStyle(type: string) {
     }
 }
 
-/**
- * Helper: Format relative time
- */
+
 export function getRelativeTime(dateString: string): string {
     const now = new Date();
     const date = new Date(dateString);
@@ -244,9 +227,7 @@ export function getRelativeTime(dateString: string): string {
     });
 }
 
-/**
- * Invitation types
- */
+
 export interface Invitation {
     id: string;
     instanceId: string;
@@ -260,9 +241,7 @@ export interface Invitation {
     createdAt: string;
 }
 
-/**
- * Fetch pending invitations for current user
- */
+
 export async function fetchInvitations(authToken: string): Promise<Invitation[]> {
     try {
         const response = await fetch(`${API_URL}/invitations`, {
@@ -274,21 +253,19 @@ export async function fetchInvitations(authToken: string): Promise<Invitation[]>
         });
 
         if (!response.ok) {
-            // console.warn('[Invitations] Failed to fetch:', response.statusText);
+            
             return [];
         }
 
         const data = await response.json();
         return mapInvitations(data);
     } catch (error) {
-        // console.error('[Invitations] Error fetching:', error);
+        
         return [];
     }
 }
 
-/**
- * Accept an invitation
- */
+
 export async function acceptInvitation(invitationId: string, authToken: string): Promise<boolean> {
     try {
         const response = await fetch(`${API_URL}/invitations/${sanitizeId(invitationId)}/accept`, {
@@ -314,9 +291,7 @@ export async function acceptInvitation(invitationId: string, authToken: string):
     }
 }
 
-/**
- * Reject an invitation
- */
+
 export async function rejectInvitation(invitationId: string, authToken: string): Promise<boolean> {
     try {
         const response = await fetch(`${API_URL}/invitations/${sanitizeId(invitationId)}/reject`, {

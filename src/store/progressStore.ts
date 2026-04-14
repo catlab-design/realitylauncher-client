@@ -2,20 +2,20 @@ import { create } from "zustand";
 import type { InstallProgress } from "../types/launcher";
 
 interface ProgressState {
-  // Export State
+  
   isExporting: boolean;
   exportProgress: InstallProgress | null;
   isExportMinimized: boolean;
   exportingInstanceId: string | null;
 
-  // Install/Repair State
+  
   isInstalling: boolean;
   installProgress: InstallProgress | null;
   isInstallMinimized: boolean;
   operationType: "install" | "repair" | "sync" | null;
   installingInstanceId: string | null;
 
-  // Actions
+  
   setExporting: (isExporting: boolean) => void;
   setExportProgress: (progress: InstallProgress | null) => void;
   setExportMinimized: (isMinimized: boolean) => void;
@@ -27,7 +27,7 @@ interface ProgressState {
   setOperationType: (type: "install" | "repair" | "sync" | null) => void;
   setInstallingInstanceId: (id: string | null) => void;
 
-  // Composite Actions
+  
   startExport: (instanceId: string, initialProgress: InstallProgress) => void;
   resetExport: () => void;
 }

@@ -156,7 +156,7 @@ pub fn save_instance_meta(base_dir: String, instance_id: String, meta: InstanceM
 /// Load instance metadata
 #[napi]
 pub fn load_instance_meta(base_dir: String, instance_id: String) -> napi::Result<Option<InstanceMeta>> {
-    let meta_path = std::path::PathBuf::from(base_dir)
+    let meta_path = std::path::PathBuf::from(base_dir.clone())
         .join(&instance_id)
         .join("instance.json");
 
@@ -165,10 +165,34 @@ pub fn load_instance_meta(base_dir: String, instance_id: String) -> napi::Result
     }
 
     let content = std::fs::read_to_string(&meta_path)?;
-    let meta: InstanceMeta = serde_json::from_str(&content)
+    let mut meta: InstanceMeta = serde_json::from_str(&content)
         .map_err(|e| napi::Error::from_reason(format!("JSON parse error: {}", e)))?;
     
+    // Load icon from icon.png if icon is not set in metadata
+    if meta.icon.is_none() {
+        meta.icon = load_instance_icon(&base_dir, &instance_id);
+    }
+    
     Ok(Some(meta))
+}
+
+/// Load instance icon from icon.png file and convert to base64
+fn load_instance_icon(base_dir: &str, instance_id: &str) -> Option<String> {
+    let icon_path = std::path::PathBuf::from(base_dir)
+        .join(instance_id)
+        .join("icon.png");
+
+    if !icon_path.exists() {
+        return None;
+    }
+
+    match std::fs::read(&icon_path) {
+        Ok(bytes) => {
+            let base64 = general_purpose::STANDARD.encode(&bytes);
+            Some(format!("data:image/png;base64,{}", base64))
+        }
+        Err(_) => None,
+    }
 }
 
 /// List all instances with optional pagination
@@ -201,7 +225,11 @@ pub async fn list_instances(base_dir: String, offset: Option<u32>, limit: Option
             if meta_path.exists() {
                 // println!("[Rust Core] Found instance.json for {}", instance_id);
                 if let Ok(content) = tokio::fs::read_to_string(&meta_path).await {
-                    if let Ok(meta) = serde_json::from_str::<InstanceMeta>(&content) {
+                    if let Ok(mut meta) = serde_json::from_str::<InstanceMeta>(&content) {
+                        // Load icon from icon.png if icon is not set in metadata
+                        if meta.icon.is_none() {
+                            meta.icon = load_instance_icon(&base_dir, &instance_id);
+                        }
                         found_instances.push(meta);
                     } else {
                         println!("[Rust Core] Failed to parse instance.json for {}", instance_id);

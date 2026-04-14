@@ -1,12 +1,4 @@
-/**
- * ========================================
- * Modrinth API Client
- * ========================================
- *
- * API client สำหรับค้นหาและดาวน์โหลด modpacks จาก Modrinth
- *
- * API Docs: https://docs.modrinth.com/api
- */
+
 
 import https from "node:https";
 import http from "node:http";
@@ -17,15 +9,15 @@ import { getMinecraftDir } from "./config.js";
 import crypto from "node:crypto";
 import { getNativeModule } from "./native.js";
 
-// ========================================
-// Constants
-// ========================================
+
+
+
 
 const MODRINTH_API = "https://api.modrinth.com/v2";
-// Dynamic User-Agent with app version
+
 const USER_AGENT = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) RealityLauncher/${app?.getVersion?.() || "1.0.0"} Chrome/120.0.0.0 Electron/28.1.0 Safari/537.36`;
 
-// Reuse TCP/TLS connections across many mod downloads to reduce handshake overhead.
+
 const HTTP_AGENT = new http.Agent({
   keepAlive: true,
   maxSockets: 48,
@@ -47,9 +39,9 @@ function getRequestClient(url: string): {
   return { protocol: http, agent: HTTP_AGENT };
 }
 
-// ========================================
-// Types
-// ========================================
+
+
+
 
 export interface ModrinthProject {
   slug: string;
@@ -173,9 +165,9 @@ export interface SearchFilters {
   sortBy?: "relevance" | "downloads" | "follows" | "newest" | "updated";
 }
 
-// ========================================
-// HTTP Helper
-// ========================================
+
+
+
 
 function fetchJSON<T>(url: string): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -190,7 +182,7 @@ function fetchJSON<T>(url: string): Promise<T> {
         },
       },
       (response) => {
-        // Handle Redirects (301, 302, 307, 308)
+        
         if (
           response.statusCode === 301 ||
           response.statusCode === 302 ||
@@ -234,13 +226,11 @@ function fetchJSON<T>(url: string): Promise<T> {
   });
 }
 
-// ========================================
-// API Functions
-// ========================================
 
-/**
- * Search for projects on Modrinth
- */
+
+
+
+
 export async function searchModpacks(
   filters: SearchFilters = {},
 ): Promise<ModrinthSearchResult> {
@@ -254,7 +244,7 @@ export async function searchModpacks(
     sortBy = "relevance",
   } = filters;
 
-  // Build facets array
+  
   const facets: string[][] = [[`project_type:${projectType}`]];
 
   if (gameVersion) {
@@ -265,7 +255,7 @@ export async function searchModpacks(
     facets.push([`categories:${loader}`]);
   }
 
-  // Build URL
+  
   const params = new URLSearchParams({
     query,
     facets: JSON.stringify(facets),
@@ -280,9 +270,7 @@ export async function searchModpacks(
   return fetchJSON<ModrinthSearchResult>(url);
 }
 
-/**
- * Get full project details
- */
+
 export async function getProject(
   idOrSlug: string,
 ): Promise<ModrinthProjectFull> {
@@ -292,9 +280,7 @@ export async function getProject(
   return fetchJSON<ModrinthProjectFull>(url);
 }
 
-/**
- * Get all versions of a project
- */
+
 export async function getProjectVersions(
   idOrSlug: string,
 ): Promise<ModrinthVersion[]> {
@@ -304,9 +290,7 @@ export async function getProjectVersions(
   return fetchJSON<ModrinthVersion[]>(url);
 }
 
-/**
- * Get a specific version
- */
+
 export async function getVersion(versionId: string): Promise<ModrinthVersion> {
   const url = `${MODRINTH_API}/version/${encodeURIComponent(versionId)}`;
   console.log("[Modrinth] Getting version:", url);
@@ -314,48 +298,39 @@ export async function getVersion(versionId: string): Promise<ModrinthVersion> {
   return fetchJSON<ModrinthVersion>(url);
 }
 
-/**
- * Get available Minecraft versions from Modrinth
- */
+
 export async function getGameVersions(): Promise<
   { version: string; version_type: string }[]
 > {
   try {
-    // Use Official Mojang Piston Meta for Java Edition versions
-    // This guarantees only Java versions (no Bedrock) and is highly reliable
     const url =
-      "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
+      "https://launchermeta.mojang.com/mc/game/version_manifest.json";
     const data = await fetchJSON<{ versions: any[] }>(url);
 
     return data.versions.map((v: any) => ({
-      version: v.id, // Mojang uses 'id'
-      version_type: v.type, // Mojang uses 'type' ('release', 'snapshot', etc.)
+      version: v.id, 
+      version_type: v.type, 
     }));
   } catch (error) {
     console.error(
       "[Modrinth] Failed to fetch game versions from Mojang:",
       error,
     );
-    // Fallback or re-throw?
-    // If Mojang fails, we are in trouble. But let's return Modrinth tags as desperate fallback?
-    // No, Modrinth tags caused the Bedrock issue. Better to return empty or let it fail?
-    // Let's return empty array so UI handles it gracefully (or retry logic).
+    
+    
+    
+    
     return [];
   }
 }
 
-/**
- * Get available loaders from Modrinth
- */
+
 export async function getLoaders(): Promise<{ name: string; icon: string }[]> {
   const url = `${MODRINTH_API}/tag/loader`;
   return fetchJSON<{ name: string; icon: string }[]>(url);
 }
 
-/**
- * Get available versions for a specific loader and game version
- * Supports: fabric, quilt
- */
+
 export async function getLoaderVersions(
   loader: string,
   gameVersion: string,
@@ -364,22 +339,15 @@ export async function getLoaderVersions(
 
   try {
     if (loader === "fabric") {
-      // Fetch all loader versions (they are generally version-agnostic)
-      // Using /v2/versions/loader returns all, while /v2/versions/loader/{game_version} returns compatible ones
-      // But sometimes the compatibility list is incomplete or empty for new versions
-      const url = `https://meta.fabricmc.net/v2/versions/loader`;
+      const url = `https://meta.fabricmc.net/v2/versions/loader/${gameVersion}`;
       const data = await fetchJSON<any[]>(url);
       return data.map((d: any) => d.version);
     } else if (loader === "quilt") {
-      const url = `https://meta.quiltmc.org/v3/versions/loader`;
+      const url = `https://meta.quiltmc.org/v3/versions/loader/${gameVersion}`;
       const data = await fetchJSON<any[]>(url);
       return data.map((d: any) => d.version);
     } else if (loader === "forge") {
-      // Use Prism Launcher Meta for robust Forge version listing
-      // promotions_slim.json is too limited (only latest/recommended)
-      // Maven metadata is hard to map to MC version without downloading POMs
-
-      const url = "https://meta.prismlauncher.org/v1/net.minecraftforge";
+      const url = "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json";
       const data = await fetchJSON<{ versions: any[] }>(url);
 
       console.log(
@@ -388,10 +356,10 @@ export async function getLoaderVersions(
 
       const versions: string[] = [];
 
-      // Filter versions that match the requested game version
+      
       if (data && Array.isArray(data.versions)) {
         for (const v of data.versions) {
-          // Check requirements
+          
           if (v.requires && Array.isArray(v.requires)) {
             const mcReq = v.requires.find(
               (r: any) => r.uid === "net.minecraft",
@@ -406,13 +374,13 @@ export async function getLoaderVersions(
         `[Modrinth] Found ${versions.length} Forge versions for ${gameVersion}`,
       );
 
-      return versions; // Already sorted by Prism Meta (usually descending)
+      return versions; 
     } else if (loader === "neoforge") {
       const versions: string[] = [];
 
       try {
-        // 1. Try Prism Launcher Meta (Preferred) - correct UID is net.neoforged
-        const url = "https://meta.prismlauncher.org/v1/net.neoforged";
+        
+        const url = "https://maven.neoforged.net/api/maven/releases/releases/net/neoforged/neoforge/maven-metadata.xml";
         const data = await fetchJSON<{ versions: any[] }>(url);
 
         if (data && Array.isArray(data.versions)) {
@@ -437,37 +405,37 @@ export async function getLoaderVersions(
         );
       }
 
-      // 2. Fallback to NeoForge Maven if no versions found (e.g. for very new MC versions not yet in Prism Meta)
+      
       if (versions.length === 0) {
         console.log(
           `[Modrinth] NeoForge: No versions in Prism Meta for ${gameVersion}. Trying Maven...`,
         );
         try {
           const mavenUrl =
-            "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge";
+            "https://maven.neoforged.net/api/maven/releases/releases/net/neoforged/neoforge/maven-metadata.xml";
           const mavenData = await fetchJSON<{ versions: string[] }>(mavenUrl);
 
           if (mavenData && Array.isArray(mavenData.versions)) {
-            // NeoForge version naming convention:
-            // 1.20.2 -> 20.2.x, 1.20.3 -> 20.3.x, 1.20.4 -> 20.4.x, 1.20.5 -> 20.5.x, 1.20.6 -> 20.6.x
-            // 1.21 -> 21.0.x, 1.21.1 -> 21.1.x, 1.21.2 -> 21.2.x, 1.21.3 -> 21.3.x, 1.21.4 -> 21.4.x, etc.
-            // Special case: 1.20.1 uses legacy Forge-style "47.x"
+            
+            
+            
+            
 
             const parts = gameVersion.split(".");
             if (parts.length >= 2) {
-              // For 1.x.y format: major = x, minor = y (or 0 if no y)
+              
               const major = parts[0] === "1" ? parts[1] : parts[0];
               const minor = parts[2] || "0";
 
-              // Build prefix for matching (e.g., "21.4." for 1.21.4)
+              
               const prefix = `${major}.${minor}.`;
               const modernMatches = mavenData.versions.filter((v) =>
                 v.startsWith(prefix),
               );
 
-              versions.push(...modernMatches.reverse()); // Maven list is ascending, we want descending
+              versions.push(...modernMatches.reverse()); 
 
-              // Special case for 1.20.1 which uses legacy "47.x" naming
+              
               if (gameVersion === "1.20.1" && versions.length === 0) {
                 const legacyMatches = mavenData.versions.filter((v) =>
                   v.startsWith("47."),
@@ -500,9 +468,9 @@ export async function getLoaderVersions(
   }
 }
 
-// ========================================
-// Download Functions
-// ========================================
+
+
+
 
 export interface DownloadProgress {
   filename: string;
@@ -513,9 +481,7 @@ export interface DownloadProgress {
 
 type ProgressCallback = (progress: DownloadProgress) => void;
 
-/**
- * Download a file from URL to destination
- */
+
 export async function downloadFile(
   url: string,
   dest: string,
@@ -567,7 +533,7 @@ export async function downloadFile(
       return reject(new Error("Download cancelled"));
     }
 
-    // Ensure directory exists
+    
     const dir = path.dirname(dest);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
@@ -581,7 +547,7 @@ export async function downloadFile(
     let currentResponse: any = null;
     let dataTimeout: NodeJS.Timeout | null = null;
     let onAbort: (() => void) | null = null;
-    const TIMEOUT_MS = 60000; // 60 seconds (increased from 15s)
+    const TIMEOUT_MS = 60000; 
 
     const cleanup = () => {
       if (dataTimeout) clearTimeout(dataTimeout);
@@ -607,8 +573,8 @@ export async function downloadFile(
       }, TIMEOUT_MS);
     };
 
-    // Manual Connection Timeout (Wait for Headers)
-    // We use a standard setTimeout because request.setTimeout(0) failed to clear it reliably in some cases
+    
+    
     const connectionTimeout = setTimeout(() => {
       console.warn(
         `[Download] Connection/Header timeout (60s limit) for ${filename}`,
@@ -626,12 +592,12 @@ export async function downloadFile(
       url,
       { agent, headers: { "User-Agent": USER_AGENT } },
       (response) => {
-        // Headers received: CLEAR the connection timeout
+        
         clearTimeout(connectionTimeout);
 
         currentResponse = response;
 
-        // Handle redirects
+        
         if (
           response.statusCode === 301 ||
           response.statusCode === 302 ||
@@ -666,7 +632,7 @@ export async function downloadFile(
         const total = parseInt(response.headers["content-length"] || "0", 10);
         let downloaded = 0;
 
-        // Start timeout monitor (Data timeout)
+        
         resetTimeout();
 
         response.on("data", (chunk: Buffer) => {
@@ -679,7 +645,7 @@ export async function downloadFile(
             return;
           }
 
-          resetTimeout(); // Reset timeout on valid data
+          resetTimeout(); 
 
           downloaded += chunk.length;
           if (onProgress) {
@@ -694,9 +660,9 @@ export async function downloadFile(
 
         response.pipe(file);
 
-        // STOP timeout when network stream ends
-        // The user reported "download finishes but then timeout happens"
-        // This occurs because 'data' events stop, but 'file.finish' might be delayed (disk/AV)
+        
+        
+        
         response.on("end", () => {
           cleanup();
         });
@@ -710,7 +676,7 @@ export async function downloadFile(
     );
 
     request.on("error", (err) => {
-      clearTimeout(connectionTimeout); // Ensure we clear it on error too
+      clearTimeout(connectionTimeout); 
       cleanup();
       file.close();
       try {
@@ -790,9 +756,7 @@ function toNativeDownloadHashArgs(
   return { supported: true };
 }
 
-/**
- * Calculate file hash
- */
+
 export async function verifyFileHash(
   filePath: string,
   expectedHash?: string | { sha1?: string; sha512?: string },
@@ -803,7 +767,7 @@ export async function verifyFileHash(
     return false;
   }
 
-  // Prefer native hashing when the requested algorithm is supported.
+  
   try {
     const native = getNativeModule();
     if (typeof expectedHash === "string") {
@@ -821,7 +785,7 @@ export async function verifyFileHash(
           expectedHash,
         )) as boolean;
       }
-      // SHA512 hashes fall back to JS implementation below.
+      
     } else if (expectedHash.sha1) {
       return (await native.verifyFileHash(
         filePath,
@@ -830,7 +794,7 @@ export async function verifyFileHash(
       )) as boolean;
     }
   } catch {
-    // Fallback to JS hashing below.
+    
   }
 
   return new Promise((resolve) => {
@@ -839,8 +803,8 @@ export async function verifyFileHash(
       let targetHash = "";
 
       if (typeof expectedHash === "string") {
-        // Auto-detect based on length? Or default to sha1/sha256?
-        // Usually sha1 is 40 chars, sha256 is 64 chars, sha512 is 128 chars
+        
+        
         if (expectedHash.length === 128) hashType = "sha512";
         else if (expectedHash.length === 64) hashType = "sha256";
         else hashType = "sha1";
@@ -885,9 +849,7 @@ export async function verifyFileHash(
   });
 }
 
-/**
- * Download a file consistently with atomic writes and hash verification
- */
+
 export async function downloadFileAtomic(
   url: string,
   destPath: string,
@@ -927,7 +889,7 @@ export async function downloadFileAtomic(
   const tmpPath = `${destPath}.tmp`;
   const destDir = path.dirname(destPath);
 
-  // Ensure directory exists before download
+  
   if (!fs.existsSync(destDir)) {
     fs.mkdirSync(destDir, { recursive: true });
   }
@@ -935,7 +897,7 @@ export async function downloadFileAtomic(
   try {
     await downloadFile(url, tmpPath, onProgress, signal);
 
-    // Verify hash after download
+    
     const isHashValid = await verifyFileHash(tmpPath, hashes);
     if (!isHashValid) {
       fs.rmSync(tmpPath, { force: true });
@@ -944,19 +906,19 @@ export async function downloadFileAtomic(
       );
     }
 
-    // Ensure directory still exists before rename
+    
     if (!fs.existsSync(destDir)) {
       fs.mkdirSync(destDir, { recursive: true });
     }
 
-    // Verify tmp file exists before rename
+    
     if (!fs.existsSync(tmpPath)) {
       throw new Error(
         `Download failed: temporary file not found for ${path.basename(destPath)}`,
       );
     }
 
-    // Atomic rename
+    
     fs.rmSync(destPath, { force: true });
     fs.renameSync(tmpPath, destPath);
   } catch (error) {
@@ -967,22 +929,20 @@ export async function downloadFileAtomic(
   }
 }
 
-/**
- * Download and install a modpack version
- */
+
 export async function downloadModpack(
   version: ModrinthVersion,
   onProgress?: ProgressCallback,
   signal?: AbortSignal,
 ): Promise<string> {
-  // Find the primary .mrpack file
+  
   const mrpackFile = version.files.find((f) => f.primary) || version.files[0];
 
   if (!mrpackFile) {
     throw new Error("No files found in this version");
   }
 
-  // Create instances directory
+  
   const minecraftDir = getMinecraftDir();
   const instancesDir = path.join(minecraftDir, "instances");
   const modpackDir = path.join(instancesDir, version.project_id);
@@ -991,7 +951,7 @@ export async function downloadModpack(
     fs.mkdirSync(modpackDir, { recursive: true });
   }
 
-  // Download the .mrpack file
+  
   const mrpackPath = path.join(modpackDir, mrpackFile.filename);
 
   console.log("[Modrinth] Downloading modpack to:", mrpackPath);
@@ -1003,9 +963,7 @@ export async function downloadModpack(
   return mrpackPath;
 }
 
-/**
- * Get popular modpacks (featured/trending)
- */
+
 export async function getPopularModpacks(
   limit = 10,
 ): Promise<ModrinthSearchResult> {
@@ -1015,9 +973,9 @@ export async function getPopularModpacks(
   });
 }
 
-// ========================================
-// Installed Modpacks
-// ========================================
+
+
+
 
 export interface InstalledModpack {
   id: string;
@@ -1030,9 +988,7 @@ export interface InstalledModpack {
   downloadedAt: string;
 }
 
-/**
- * Scan instances folder for downloaded modpacks
- */
+
 export async function getInstalledModpacks(): Promise<InstalledModpack[]> {
   const minecraftDir = getMinecraftDir();
   const instancesDir = path.join(minecraftDir, "instances");
@@ -1087,9 +1043,7 @@ export async function getInstalledModpacks(): Promise<InstalledModpack[]> {
   return modpacks;
 }
 
-/**
- * Delete an installed modpack
- */
+
 export async function deleteInstalledModpack(
   modpackPath: string,
 ): Promise<boolean> {

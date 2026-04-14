@@ -1,12 +1,6 @@
-/**
- * ========================================
- * MinecraftRun Module
- * ========================================
- * 
- * Main exports for Minecraft game launcher
- */
 
-// Types
+
+
 export type {
     LaunchOptions,
     LaunchProgress,
@@ -16,7 +10,7 @@ export type {
     ProgressCallback,
 } from "./types.js";
 
-// Callbacks
+
 export {
     setOnGameCloseCallback,
     getOnGameCloseCallback,
@@ -26,7 +20,7 @@ export {
     getProgressCallback,
 } from "./callbacks.js";
 
-// Game Process
+
 export {
     resetLauncherState,
     getGameProcess,
@@ -45,6 +39,6 @@ export {
     killGame,
 } from "./gameProcess.js";
 
-// Re-export launcher from parent
-// Note: launchGame and getInstalledVersions remain in ../launcher.ts
-// They can be imported directly or re-exported here after refactoring
+
+
+

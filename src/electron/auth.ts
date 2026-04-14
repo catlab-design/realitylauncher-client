@@ -1,17 +1,13 @@
-/**
- * ========================================
- * Auth System - จัดการ Login/Logout
- * ========================================
- */
+
 
 import { app, safeStorage } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 
-// ========================================
-// ========================================
-// Types
-// ========================================
+
+
+
+
 
 const AUTH_MODULE_ID = Math.random().toString(36).substring(7);
 console.log(`[Auth] Module loaded. ID: ${AUTH_MODULE_ID}`);
@@ -19,22 +15,22 @@ console.log(`[Auth] Module loaded. ID: ${AUTH_MODULE_ID}`);
 export interface AuthSession {
     username: string;
     uuid: string;
-    minecraftUuid?: string;     // Real Minecraft UUID (from Microsoft linking)
+    minecraftUuid?: string;     
     accessToken?: string;
-    refreshToken?: string;      // Microsoft refresh token
-    tokenExpiresAt?: number;    // Unix timestamp when accessToken expires
-    apiToken?: string;          // Reality API token for cloud features (instances, etc.)
-    apiTokenExpiresAt?: number; // Unix timestamp when apiToken expires (from API session)
+    refreshToken?: string;      
+    tokenExpiresAt?: number;    
+    apiToken?: string;          
+    apiTokenExpiresAt?: number; 
     type: "catid" | "microsoft" | "offline";
     createdAt: number;
 }
 
-// ========================================
-// Auth State
-// ========================================
 
-// Use global variable to ensure singleton across multiple module instances
-// This prevents race conditions when the module is loaded multiple times (e.g., HMR)
+
+
+
+
+
 const globalAny = global as any;
 if (!globalAny.__AUTH_SESSION_LOCK__) {
     globalAny.__AUTH_SESSION_LOCK__ = false;
@@ -49,29 +45,23 @@ function syncToGlobal() {
     globalAny.__AUTH_SESSION__ = currentSession;
 }
 
-/**
- * Get the path to the session file
- */
+
 function getSessionPath(): string {
     return path.join(app.getPath("userData"), "session.dat");
 }
 
-/**
- * Get legacy session path (for migration)
- */
+
 function getLegacySessionPath(): string {
     return path.join(app.getPath("userData"), "session.json");
 }
 
-/**
- * Load session from disk (with encryption support)
- */
+
 function loadSession(): AuthSession | null {
     try {
         const sessionPath = getSessionPath();
         const legacyPath = getLegacySessionPath();
 
-        // Try loading encrypted session first
+        
         if (fs.existsSync(sessionPath)) {
             const fileData = fs.readFileSync(sessionPath);
 
@@ -88,17 +78,17 @@ function loadSession(): AuthSession | null {
             }
         }
 
-        // Try loading legacy plain text session (for migration)
+        
         if (fs.existsSync(legacyPath)) {
             const data = fs.readFileSync(legacyPath, "utf-8");
             currentSession = JSON.parse(data) as AuthSession;
             syncToGlobal();
             console.log("[Auth] Legacy session restored for:", currentSession.username);
 
-            // Migrate to encrypted storage
+            
             saveSession();
 
-            // Delete legacy file
+            
             try {
                 fs.unlinkSync(legacyPath);
                 console.log("[Auth] Migrated legacy session to encrypted storage");
@@ -112,12 +102,10 @@ function loadSession(): AuthSession | null {
     return null;
 }
 
-/**
- * Save session to disk (with encryption)
- */
+
 function saveSession(): void {
     try {
-        syncToGlobal(); // Ensure global is in sync before saving
+        syncToGlobal(); 
         const sessionPath = getSessionPath();
         const dir = path.dirname(sessionPath);
         if (!fs.existsSync(dir)) {
@@ -132,12 +120,12 @@ function saveSession(): void {
                 fs.writeFileSync(sessionPath, encrypted);
                 console.log("[Auth] Session saved (encrypted)");
             } else {
-                // Fallback to plain text if encryption not available
+                
                 fs.writeFileSync(sessionPath, data);
                 console.warn("[Auth] Encryption not available, session saved as plain text");
             }
         } else {
-            // Delete session file if logged out
+            
             if (fs.existsSync(sessionPath)) {
                 fs.unlinkSync(sessionPath);
             }
@@ -147,9 +135,7 @@ function saveSession(): void {
     }
 }
 
-/**
- * Initialize auth system (load saved session)
- */
+
 export function initAuth(): void {
     loadSession();
     if (currentSession) {
@@ -159,9 +145,7 @@ export function initAuth(): void {
     }
 }
 
-/**
- * Login with CatID (username/password via ml-api)
- */
+
 export function loginCatID(
     username: string,
     uuid: string,
@@ -172,7 +156,7 @@ export function loginCatID(
     currentSession = {
         username,
         uuid,
-        minecraftUuid,  // Real Minecraft UUID if linked with Microsoft
+        minecraftUuid,  
         accessToken: token,
         type: "catid",
         createdAt: Date.now(),
@@ -185,9 +169,7 @@ export function loginCatID(
     return currentSession;
 }
 
-/**
- * Login with Microsoft (stores Minecraft access token and refresh token)
- */
+
 export function loginMicrosoft(
     username: string,
     uuid: string,
@@ -211,9 +193,7 @@ export function loginMicrosoft(
     return currentSession;
 }
 
-/**
- * Update tokens for current session (used for token refresh)
- */
+
 export function updateTokens(accessToken: string, refreshToken?: string, expiresIn?: number): boolean {
     if (!currentSession || currentSession.type !== "microsoft") {
         return false;
@@ -232,9 +212,7 @@ export function updateTokens(accessToken: string, refreshToken?: string, expires
     return true;
 }
 
-/**
- * Update API token for current session (Reality API access)
- */
+
 export function updateApiToken(apiToken: string, expiresAt?: string): boolean {
     if (!currentSession) {
         return false;
@@ -249,9 +227,7 @@ export function updateApiToken(apiToken: string, expiresAt?: string): boolean {
     return true;
 }
 
-/**
- * Clear API token for current session (used when token is invalid/expired)
- */
+
 export function clearApiToken(): boolean {
     if (!currentSession) {
         return false;
@@ -264,14 +240,12 @@ export function clearApiToken(): boolean {
     return true;
 }
 
-/**
- * Get API token for cloud features (falls back to accessToken for CatID)
- */
+
 export function getApiToken(): string | undefined {
     const session = getSession();
     if (!session) return undefined;
 
-    // For CatID users, accessToken IS the API token
+    
     if (session.type === "catid") {
         if (session.tokenExpiresAt && Date.now() > session.tokenExpiresAt) {
             return undefined;
@@ -279,7 +253,7 @@ export function getApiToken(): string | undefined {
         return session.accessToken;
     }
 
-    // For Microsoft users, use dedicated apiToken (if not expired)
+    
     if (session.apiTokenExpiresAt && Date.now() > session.apiTokenExpiresAt) {
         return undefined;
     }
@@ -287,11 +261,9 @@ export function getApiToken(): string | undefined {
     return session.apiToken;
 }
 
-/**
- * Check if current session token is expired or about to expire
- */
+
 export function isTokenExpired(): boolean {
-    // Sync from global
+    
     currentSession = globalAny.__AUTH_SESSION__ || currentSession;
 
     if (!currentSession || currentSession.type !== "microsoft") {
@@ -299,37 +271,35 @@ export function isTokenExpired(): boolean {
     }
 
     if (!currentSession.tokenExpiresAt) {
-        // No expiry info - assume valid for 24 hours from creation
+        
         const assumed24Hours = currentSession.createdAt + (24 * 60 * 60 * 1000);
         return Date.now() > assumed24Hours;
     }
 
-    // Check if token expires within 5 minutes
+    
     const fiveMinutes = 5 * 60 * 1000;
     return Date.now() > (currentSession.tokenExpiresAt - fiveMinutes);
 }
 
-/**
- * Login with offline account (username only, generates deterministic UUID)
- */
+
 export function loginOffline(username: string): AuthSession {
-    // Generate deterministic UUID using crypto for better distribution
-    // Offline UUIDs use v3-style namespace hashing
+    
+    
     const crypto = require('node:crypto');
     const hash = crypto.createHash('md5').update(`OfflinePlayer:${username}`).digest('hex');
-    // Format as UUID v3 (set version bits)
+    
     const uuid = [
         hash.substring(0, 8),
         hash.substring(8, 12),
-        '3' + hash.substring(13, 16), // version 3
-        ((parseInt(hash.charAt(16), 16) & 0x3) | 0x8).toString(16) + hash.substring(17, 20), // variant bits
+        '3' + hash.substring(13, 16), 
+        ((parseInt(hash.charAt(16), 16) & 0x3) | 0x8).toString(16) + hash.substring(17, 20), 
         hash.substring(20, 32)
     ].join('-');
 
     currentSession = {
         username,
         uuid,
-        accessToken: "",  // No access token for offline
+        accessToken: "",  
         type: "offline",
         createdAt: Date.now(),
     };
@@ -340,50 +310,44 @@ export function loginOffline(username: string): AuthSession {
     return currentSession;
 }
 
-/**
- * Set active session (used when switching accounts)
- */
+
 export function setActiveSession(session: AuthSession): void {
     console.log("[Auth DEBUG] setActiveSession called with token present:", !!session.apiToken);
     currentSession = session;
     saveSession();
     console.log("[Auth] Active session switched to:", session.username);
 
-    // Update Discord RPC player info
+    
     try {
         const { setPlayerInfo } = require("./discord.js");
         setPlayerInfo(session.minecraftUuid || session.uuid, session.username);
     } catch {
-        // Discord module may not be loaded yet
+        
     }
 }
 
-/**
- * Logout from current session
- */
+
 export function logout(): void {
     currentSession = null;
     saveSession();
     console.log("[Auth] Logged out");
 }
 
-/**
- * Get current session
- */
+
 export function getSession(): AuthSession | null {
-    // Sync from global to get latest state from any module
+    
     currentSession = globalAny.__AUTH_SESSION__ || currentSession;
 
     if (currentSession) {
         const sessionWithToken = { ...currentSession };
         const now = Date.now();
 
-        // Clear expired Microsoft API token for safer callers
+        
         if (sessionWithToken.apiTokenExpiresAt && now > sessionWithToken.apiTokenExpiresAt) {
             sessionWithToken.apiToken = undefined;
         }
 
-        // Polyfill apiToken for CatID users (who use accessToken as apiToken)
+        
         if (sessionWithToken.type === "catid") {
             if (sessionWithToken.tokenExpiresAt && now > sessionWithToken.tokenExpiresAt) {
                 sessionWithToken.apiToken = undefined;
@@ -397,9 +361,7 @@ export function getSession(): AuthSession | null {
     return null;
 }
 
-/**
- * Check if user is logged in
- */
+
 export function isLoggedIn(): boolean {
     return currentSession !== null;
 }

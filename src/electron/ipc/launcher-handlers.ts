@@ -1,10 +1,4 @@
-/**
- * ========================================
- * Launcher IPC Handlers
- * ========================================
- * 
- * Handles game launching and version management
- */
+
 
 import { ipcMain, BrowserWindow } from "electron";
 import { getConfig } from "../config.js";
@@ -21,19 +15,15 @@ import {
 } from "../launcher.js";
 
 export function registerLauncherHandlers(getMainWindow: () => BrowserWindow | null): void {
-    /**
-     * list-versions - ดึงรายการเวอร์ชัน Minecraft ที่ติดตั้ง
-     */
+    
     ipcMain.handle("list-versions", async (): Promise<string[]> => {
         const versions = await getInstalledVersions();
-        // Return actual installed versions (empty array if none installed)
-        // Don't fake a hardcoded list — the UI should handle empty state
+        
+        
         return versions;
     });
 
-    /**
-     * get-launcher-info - ดึงข้อมูล Launcher
-     */
+    
     ipcMain.handle("get-launcher-info", async () => {
         const { getMinecraftDir, validateJavaPath } = await import("../config.js");
         const { spawnSync } = await import("node:child_process");
@@ -166,9 +156,7 @@ export function registerLauncherHandlers(getMainWindow: () => BrowserWindow | nu
         };
     });
 
-    /**
-     * launch-game - เปิดเกม Minecraft
-     */
+    
     ipcMain.handle(
         "launch-game",
         async (_event, payload: { version: string; username: string; ramMB: number }) => {
@@ -202,8 +190,8 @@ export function registerLauncherHandlers(getMainWindow: () => BrowserWindow | nu
                 mainWindow?.webContents.send("game-log", { level, message });
             });
 
-            // Use minecraftUuid if available (for CatID linked with Microsoft)
-            // Otherwise fall back to session.uuid
+            
+            
             const gameUuid = session.minecraftUuid || session.uuid;
 
             const result = await launchGame({
@@ -216,7 +204,7 @@ export function registerLauncherHandlers(getMainWindow: () => BrowserWindow | nu
 
             setProgressCallback(null);
 
-            // Close/Hide launcher on successful game start based on config
+            
             if (result.ok) {
                 const config = getConfig();
                 if (config.closeOnLaunch === "hide-reopen" && mainWindow) {
@@ -224,23 +212,19 @@ export function registerLauncherHandlers(getMainWindow: () => BrowserWindow | nu
                 } else if (config.closeOnLaunch === "close" && mainWindow) {
                     mainWindow.close();
                 }
-                // 'keep-open': do nothing
+                
             }
 
             return result;
         }
     );
 
-    /**
-     * is-game-running - ตรวจสอบว่าเกมกำลังรันอยู่หรือไม่
-     */
+    
     ipcMain.handle("is-game-running", async (_event, instanceId?: string): Promise<boolean> => {
         return isGameRunning(instanceId);
     });
 
-    /**
-     * kill-game - หยุดเกม
-     */
+    
     ipcMain.handle("kill-game", async (_event, instanceId?: string): Promise<{ ok: boolean; error?: string }> => {
         try {
             const targetId = instanceId || "default";

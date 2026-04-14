@@ -5,12 +5,12 @@ import { dialog, BrowserWindow } from "electron";
 import { getInstance, getInstanceDir } from "./instances.js";
 import { getNativeModule } from "./native.js";
 
-// Options passed from frontend
+
 export interface ExportOptions {
   name: string;
   version: string;
   description?: string;
-  includedPaths: string[]; // List of relative paths (files or directories)
+  includedPaths: string[]; 
   format: "zip" | "mrpack";
 }
 
@@ -20,12 +20,10 @@ interface ExportProgress {
   percent: number;
 }
 
-// Store abort controllers for active exports
+
 const exportControllers = new Map<string, AbortController>();
 
-/**
- * Calculate total size of files to be exported
- */
+
 function calculateTotalSize(baseDir: string, relativePaths: string[]): number {
   const native = getNativeModule();
   let total = 0;
@@ -36,7 +34,7 @@ function calculateTotalSize(baseDir: string, relativePaths: string[]): number {
       if (fs.existsSync(fullPath)) {
         const stats = fs.statSync(fullPath);
         if (stats.isDirectory()) {
-          // Native recursive walk is faster for large trees.
+          
           const info = native.getDirectorySize(fullPath) as {
             totalBytes?: number;
           };
@@ -52,9 +50,7 @@ function calculateTotalSize(baseDir: string, relativePaths: string[]): number {
   return total;
 }
 
-/**
- * Cancel an active export
- */
+
 export async function cancelExport(instanceId: string): Promise<void> {
   const controller = exportControllers.get(instanceId);
   if (controller) {
@@ -64,9 +60,7 @@ export async function cancelExport(instanceId: string): Promise<void> {
   }
 }
 
-/**
- * Export instance to Modpack (ZIP or MRPack)
- */
+
 export async function exportModpack(
   instanceId: string,
   options: ExportOptions,
@@ -80,16 +74,16 @@ export async function exportModpack(
 
     const instanceDir = getInstanceDir(instanceId);
 
-    // 1. Prompt for save location
+    
     const defaultName = `${options.name}-${options.version}`.replace(
       /[\/\\:*?"<>|]/g,
       "_",
     );
     const extension = options.format === "mrpack" ? "mrpack" : "zip";
 
-    // We typically can't open dialog from IPC invoke handler if it blocks,
-    // but in Electron it's usually fine if invoked from renderer.
-    // However, strictly speaking we should use the BrowserWindow.
+    
+    
+    
     const win = BrowserWindow.getFocusedWindow();
 
     const { filePath, canceled } = await dialog.showSaveDialog(win!, {
@@ -108,13 +102,13 @@ export async function exportModpack(
       return { ok: false, error: "Cancelled" };
     }
 
-    // 2. Setup AbortController
+    
     const controller = new AbortController();
     exportControllers.set(instanceId, controller);
 
     const signal = controller.signal;
 
-    // 3. Calculate Total Size for Progress
+    
     const totalBytes = calculateTotalSize(instanceDir, options.includedPaths);
     console.log(`[Export] Total size to export: ${totalBytes} bytes`);
     if (signal.aborted) {
@@ -182,14 +176,14 @@ export async function exportModpack(
       }
     }
 
-    // 4. Create Archive
+    
     const output = fs.createWriteStream(filePath);
     const archive = archiver("zip", {
-      zlib: { level: 9 }, // Maximum compression
+      zlib: { level: 9 }, 
     });
 
     return new Promise((resolve, reject) => {
-      // Handle abort
+      
       signal.addEventListener("abort", () => {
         archive.abort();
         output.end();
@@ -217,7 +211,7 @@ export async function exportModpack(
         reject({ ok: false, error: err.message });
       });
 
-      // Track Progress
+      
       archive.on("progress", (progress) => {
         if (signal.aborted) return;
 
@@ -234,9 +228,9 @@ export async function exportModpack(
 
       archive.pipe(output);
 
-      // 5. Add Files
+      
 
-      // If MRPack, add modrinth.index.json
+      
       if (options.format === "mrpack") {
         const indexJson = {
           formatVersion: 1,
@@ -257,7 +251,7 @@ export async function exportModpack(
                 ? instance.loaderVersion
                 : undefined,
           },
-          files: [], // Hydrated pack (no external downloads)
+          files: [], 
         };
 
         archive.append(JSON.stringify(indexJson, null, 2), {
@@ -265,16 +259,16 @@ export async function exportModpack(
         });
       }
 
-      // Add selected files
+      
       for (const relPath of options.includedPaths) {
         const fullPath = path.join(instanceDir, relPath);
 
         if (fs.existsSync(fullPath)) {
           const stats = fs.statSync(fullPath);
 
-          // Determine destination path inside zip
-          // For mrpack, everything goes into "overrides/" (except index.json)
-          // For zip, everything goes into root
+          
+          
+          
           const destPrefix = options.format === "mrpack" ? "overrides/" : "";
           const destPath = path.join(destPrefix, relPath).replace(/\\/g, "/");
 

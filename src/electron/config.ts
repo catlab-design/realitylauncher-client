@@ -1,17 +1,13 @@
-/**
- * ========================================
- * Config System - จัดการค่าตั้งค่า Launcher
- * ========================================
- */
+
 
 import { app } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
 
-// ========================================
-// Types
-// ========================================
+
+
+
 
 export type ColorTheme =
   | "yellow"
@@ -24,13 +20,13 @@ export type ColorTheme =
 export type LauncherCloseMode = "keep-open" | "hide-reopen" | "close";
 
 export interface LauncherConfig {
-  // Display
+  
   theme: "light" | "dark" | "oled" | "auto";
   colorTheme: ColorTheme;
   customColor?: string;
   language: "th" | "en";
 
-  // Game Settings
+  
   selectedVersion: string;
   minRamMB: number;
   ramMB: number;
@@ -44,45 +40,45 @@ export interface LauncherConfig {
   javaArguments: string;
   customMinecraftDir?: string;
 
-  // Download Settings
+  
   maxConcurrentDownloads: number;
-  downloadSpeedLimit: number; // 0 = unlimited, MB/s
+  downloadSpeedLimit: number; 
   cacheDir?: string;
 
-  // Window Settings
+  
   windowAutoSize: boolean;
   windowWidth: number;
   windowHeight: number;
 
-  // Discord
+  
   discordRPCEnabled: boolean;
 
-  // Telemetry
+  
   telemetryEnabled: boolean;
-  clientId?: string; // Anonymous unique ID for telemetry
-  hasLaunchedBefore?: boolean; // Track first launch
+  clientId?: string; 
+  hasLaunchedBefore?: boolean; 
 
-  // Auto Update
-  autoUpdateEnabled: boolean; // ผู้ใช้เปิด/ปิด auto update ได้
+  
+  autoUpdateEnabled: boolean; 
 
-  // UI Effects
-  clickSoundEnabled: boolean; // เสียงคลิกปุ่ม (default: true)
-  notificationSoundEnabled: boolean; // เสียงแจ้งเตือน (default: true)
-  rainbowMode: boolean; // Rainbow mode สำหรับ UI
+  
+  clickSoundEnabled: boolean; 
+  notificationSoundEnabled: boolean; 
+  rainbowMode: boolean; 
 
-  // Launcher Behavior
-  // 'keep-open': ไม่ปิด Launcher
-  // 'hide-reopen': ซ่อน Launcher เมื่อเกมเริ่ม, แสดงอีกครั้งเมื่อเกมปิด
-  // 'close': ปิด Launcher ทันทีเมื่อเกมเริ่ม
+  
+  
+  
+  
   closeOnLaunch: LauncherCloseMode;
 
-  // Hidden/Ignored Cloud Instances
+  
   ignoredCloudIds?: string[];
 }
 
-// ========================================
-// Constants
-// ========================================
+
+
+
 
 export const COLOR_THEMES: ColorTheme[] = [
   "yellow",
@@ -110,16 +106,16 @@ const DEFAULT_CONFIG: LauncherConfig = {
   windowHeight: 680,
   discordRPCEnabled: true,
   telemetryEnabled: true,
-  autoUpdateEnabled: true, // เปิด auto update เป็น default
-  clickSoundEnabled: true, // เปิด click sound เป็น default
-  notificationSoundEnabled: true, // เปิด notification sound เป็น default
-  rainbowMode: false, // ปิด rainbow mode เป็น default
-  closeOnLaunch: "keep-open", // ค่าเริ่มต้น: ไม่ปิด Launcher
+  autoUpdateEnabled: true, 
+  clickSoundEnabled: true, 
+  notificationSoundEnabled: true, 
+  rainbowMode: false, 
+  closeOnLaunch: "keep-open", 
 };
 
-// ========================================
-// Config State
-// ========================================
+
+
+
 
 let currentConfig: LauncherConfig = { ...DEFAULT_CONFIG };
 let configLoaded = false;
@@ -127,10 +123,7 @@ const CONFIG_SAVE_DEBOUNCE_MS = 150;
 let saveConfigTimer: NodeJS.Timeout | null = null;
 let pendingConfigSnapshot: LauncherConfig | null = null;
 
-/**
- * Get the app data directory for storing config and instances
- * Uses AppData\Roaming\RealityLauncher on Windows
- */
+
 export function getAppDataDir(): string {
   const platform = process.platform;
 
@@ -148,45 +141,34 @@ export function getAppDataDir(): string {
   }
 }
 
-/**
- * Get the path to the config file
- */
+
 function getConfigPath(): string {
   return path.join(getAppDataDir(), "config.json");
 }
 
-/**
- * Get the Minecraft data directory (where instances live)
- * Defaults to RealityLauncher folder, can be customized
- */
+
 export function getMinecraftDir(): string {
   if (currentConfig.customMinecraftDir) {
     return currentConfig.customMinecraftDir;
   }
-  // Default to same as app data dir
+  
   return getAppDataDir();
 }
 
-/**
- * Get total system RAM in MB
- */
+
 export function getSystemRamMB(): number {
   const totalBytes = os.totalmem();
   return Math.floor(totalBytes / (1024 * 1024));
 }
 
-/**
- * Get recommended max RAM for Minecraft (leave 2GB for system)
- */
+
 export function getMaxRamMB(): number {
   const total = getSystemRamMB();
-  // Leave at least 2GB for system
+  
   return Math.max(total - 2048, 4096);
 }
 
-/**
- * Load config from disk
- */
+
 function loadConfig(): LauncherConfig {
   try {
     const configPath = getConfigPath();
@@ -202,9 +184,7 @@ function loadConfig(): LauncherConfig {
   return currentConfig;
 }
 
-/**
- * Save config to disk
- */
+
 function saveConfig(): void {
   pendingConfigSnapshot = { ...currentConfig };
 
@@ -235,9 +215,7 @@ function saveConfig(): void {
   }, CONFIG_SAVE_DEBOUNCE_MS);
 }
 
-/**
- * Get current config
- */
+
 export function getConfig(): LauncherConfig {
   if (!configLoaded) {
     loadConfig();
@@ -246,26 +224,22 @@ export function getConfig(): LauncherConfig {
   return { ...currentConfig };
 }
 
-/**
- * Set config values (partial update)
- */
+
 export function setConfig(updates: Partial<LauncherConfig>): LauncherConfig {
   currentConfig = { ...currentConfig, ...updates };
   saveConfig();
   return { ...currentConfig };
 }
 
-/**
- * Reset config to defaults (preserves Java paths)
- */
+
 export function resetConfig(): LauncherConfig {
-  // Preserve Java paths during reset (avoid re-detection)
+  
   const preservedJavaPath = currentConfig.javaPath;
   const preservedJavaPaths = currentConfig.javaPaths;
 
   currentConfig = { ...DEFAULT_CONFIG };
 
-  // Restore preserved values
+  
   if (preservedJavaPath) {
     currentConfig.javaPath = preservedJavaPath;
   }
@@ -277,25 +251,23 @@ export function resetConfig(): LauncherConfig {
   return { ...currentConfig };
 }
 
-/**
- * Validate Java path
- */
+
 export function validateJavaPath(javaPath: string): boolean {
   if (!javaPath) return false;
 
   try {
-    // Check if file exists
+    
     if (!fs.existsSync(javaPath)) {
       return false;
     }
 
-    // Check if it's a file (not directory)
+    
     const stats = fs.statSync(javaPath);
     if (!stats.isFile()) {
       return false;
     }
 
-    // Check if it looks like a java executable
+    
     const basename = path.basename(javaPath).toLowerCase();
     return (
       basename === "java" || basename === "java.exe" || basename === "javaw.exe"
@@ -305,5 +277,5 @@ export function validateJavaPath(javaPath: string): boolean {
   }
 }
 
-// Initialize config on module load - REMOVED for performance
-// loadConfig();
+
+

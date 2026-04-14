@@ -1,14 +1,4 @@
-/**
- * ========================================
- * Modpack Installer Module
- * ========================================
- *
- * Install modpacks from .mrpack files:
- * - Parse modrinth.index.json
- * - Download all mods in parallel
- * - Extract overrides folder
- * - Create new instance with correct loader
- */
+
 
 import fs from "node:fs";
 import path from "node:path";
@@ -21,9 +11,9 @@ import { installCurseForgeModpack } from "./curseforge.js";
 import { getConfig } from "./config.js";
 import { getNativeModule } from "./native.js";
 
-// ========================================
-// Types
-// ========================================
+
+
+
 
 export interface ModpackIndex {
   formatVersion: number;
@@ -78,9 +68,9 @@ export interface InstallResult {
   error?: string;
 }
 
-// ========================================
-// Progress Callback
-// ========================================
+
+
+
 
 type ProgressCallback = (progress: InstallProgress) => void;
 
@@ -345,9 +335,9 @@ export async function parseModpackIndex(
   return index;
 }
 
-// ========================================
-// Determine Loader Type
-// ========================================
+
+
+
 
 function getLoaderFromDependencies(deps: ModpackDependencies): {
   type: LoaderType;
@@ -368,11 +358,11 @@ function getLoaderFromDependencies(deps: ModpackDependencies): {
   return { type: "vanilla" };
 }
 
-// ========================================
-// Download Modpack Files
-// ========================================
 
-// Local verifyFileHash removed, imported from modrinth.ts
+
+
+
+
 
 async function downloadModpackFiles(
   files: ModpackFile[],
@@ -565,15 +555,11 @@ async function downloadModpackFiles(
   );
 }
 
-// ========================================
-// Move ResourcePacks from Mods folder
-// ========================================
 
-/**
- * Move .zip files from mods folder to resourcepacks folder.
- * .zip files in mods folder are typically resourcepacks or shaderpacks
- * that got mixed in from the overrides folder.
- */
+
+
+
+
 export function moveResourcePacks(gameDir: string): void {
   const modsDir = path.join(gameDir, "mods");
   const resourcepacksDir = path.join(gameDir, "resourcepacks");
@@ -588,7 +574,7 @@ export function moveResourcePacks(gameDir: string): void {
     return;
   }
 
-  // Create resourcepacks folder if it doesn't exist
+  
   if (!fs.existsSync(resourcepacksDir)) {
     fs.mkdirSync(resourcepacksDir, { recursive: true });
   }
@@ -598,7 +584,7 @@ export function moveResourcePacks(gameDir: string): void {
     const destPath = path.join(resourcepacksDir, file);
 
     try {
-      // Move file to resourcepacks folder
+      
       fs.renameSync(srcPath, destPath);
       console.log(
         `[ModpackInstaller] Moved resourcepack: ${file} -> resourcepacks/`,
@@ -612,16 +598,11 @@ export function moveResourcePacks(gameDir: string): void {
   }
 }
 
-// ========================================
-// Deduplicate Mods
-// ========================================
 
-/**
- * Remove duplicate mods from the mods folder.
- * Keeps the larger file when duplicates are found (usually newer version).
- * Duplicates are detected by extracting mod name from filename
- * (before version number like modname-1.0.0.jar)
- */
+
+
+
+
 export function deduplicateMods(modsDir: string): void {
   if (!fs.existsSync(modsDir)) {
     return;
@@ -629,8 +610,8 @@ export function deduplicateMods(modsDir: string): void {
 
   const files = fs.readdirSync(modsDir).filter((f) => f.endsWith(".jar"));
 
-  // Map to track mods by normalized name
-  // Key: normalized mod name, Value: { filename, size, path }
+  
+  
   const modMap = new Map<
     string,
     { filename: string; size: number; path: string }
@@ -640,36 +621,36 @@ export function deduplicateMods(modsDir: string): void {
     const filePath = path.join(modsDir, file);
     const stats = fs.statSync(filePath);
 
-    // Extract mod name from filename
-    // Patterns: modname-version.jar, modname_version.jar, modname-fabric-version.jar
-    // Also handle patterns like: modname-fabric-mc1.20.1-version.jar
+    
+    
+    
     let modName = file.toLowerCase();
 
-    // Remove .jar extension
+    
     modName = modName.replace(/\.jar$/, "");
 
-    // Remove version patterns at the end
-    // Match patterns like: -1.0.0, _1.0.0, -v1.0, +build123
+    
+    
     modName = modName.replace(
       /[-_+](\d+\.?\d*\.?\d*|v?\d+)([-_.+][a-z0-9]+)*$/i,
       "",
     );
 
-    // Remove common suffixes that indicate MC version or loader
+    
     modName = modName.replace(
       /[-_](fabric|forge|neoforge|quilt|mc\d+[\.\d]*|minecraft|universal|client|server)[-_]?/gi,
       "-",
     );
 
-    // Normalize separators and clean up
+    
     modName = modName.replace(/[-_]+/g, "-").replace(/^-|-$/g, "");
 
     const existing = modMap.get(modName);
 
     if (existing) {
-      // Found duplicate - keep the larger file
+      
       if (stats.size > existing.size) {
-        // Delete existing, keep new
+        
         console.log(
           `[ModpackInstaller] Removing duplicate mod: ${existing.filename} (keeping ${file})`,
         );
@@ -687,7 +668,7 @@ export function deduplicateMods(modsDir: string): void {
           path: filePath,
         });
       } else {
-        // Delete new, keep existing
+        
         console.log(
           `[ModpackInstaller] Removing duplicate mod: ${file} (keeping ${existing.filename})`,
         );
@@ -706,9 +687,9 @@ export function deduplicateMods(modsDir: string): void {
   }
 }
 
-// ========================================
-// Extract Overrides
-// ========================================
+
+
+
 
 async function extractOverrides(
   mrpackPath: string,
@@ -751,7 +732,7 @@ async function extractOverrides(
       );
     }
   } catch {
-    // client-overrides is optional
+    
   }
 }
 
@@ -824,7 +805,7 @@ async function installModrinthModpack(
   try {
     if (signal?.aborted) throw new Error("Installation cancelled");
 
-    // Step 1: Parse modpack index
+    
     if (onProgress) {
       onProgress({
         stage: "extracting",
@@ -834,7 +815,7 @@ async function installModrinthModpack(
 
     const index = await parseModpackIndex(mrpackPath);
 
-    // Step 2: Create instance
+    
     if (onProgress) {
       onProgress({
         stage: "creating",
@@ -858,7 +839,7 @@ async function installModrinthModpack(
       instance.name,
     );
 
-    // Step 3: Download all mods
+    
     if (signal?.aborted) throw new Error("Installation cancelled");
     await downloadModpackFiles(
       index.files,
@@ -867,7 +848,7 @@ async function installModrinthModpack(
       signal,
     );
 
-    // Step 4: Extract overrides
+    
     if (signal?.aborted) throw new Error("Installation cancelled");
     await extractOverrides(
       mrpackPath,
@@ -875,7 +856,7 @@ async function installModrinthModpack(
       onProgress,
     );
 
-    // Step 5-6: Post-install file cleanup (prefer Rust background worker)
+    
     const modsDir = path.join(instance.gameDirectory, "mods");
     const postInstallNative = getNativeModule() as any;
     let postInstallHandledByNative = false;
@@ -892,7 +873,7 @@ async function installModrinthModpack(
     }
 
     if (!postInstallHandledByNative) {
-      // Fallback JS path
+      
       deduplicateMods(modsDir);
       moveResourcePacks(instance.gameDirectory);
     }
@@ -912,7 +893,7 @@ async function installModrinthModpack(
       instance,
     };
   } catch (error: any) {
-    // Cleanup: Delete the instance if installation was cancelled or failed
+    
     if (createdInstance) {
       console.log(
         "[ModpackInstaller] Installation failed or cancelled, cleaning up instance:",
@@ -933,9 +914,9 @@ async function installModrinthModpack(
   }
 }
 
-// ========================================
-// Mod Conflict Detection
-// ========================================
+
+
+
 
 export function detectModConflicts(modsDir: string): ModConflict[] {
   const native = getNativeModule() as any;
@@ -974,12 +955,12 @@ export function detectModConflicts(modsDir: string): ModConflict[] {
 
   const files = fs.readdirSync(modsDir).filter((f) => f.endsWith(".jar"));
 
-  // Track mod names (simplified - just checks filename patterns)
+  
   const modNames = new Map<string, string[]>();
 
   for (const file of files) {
-    // Extract mod name from filename (before version number)
-    // Pattern: modname-version.jar or modname_version.jar
+    
+    
     const match = file.match(/^(.+?)[-_]\d/);
     const modName = match ? match[1].toLowerCase() : file.toLowerCase();
 
@@ -989,7 +970,7 @@ export function detectModConflicts(modsDir: string): ModConflict[] {
     modNames.get(modName)!.push(file);
   }
 
-  // Check for duplicates
+  
   for (const [name, fileList] of modNames) {
     if (fileList.length > 1) {
       conflicts.push({
@@ -1001,7 +982,7 @@ export function detectModConflicts(modsDir: string): ModConflict[] {
     }
   }
 
-  // Check for known conflicting libraries
+  
   const conflictingLibs = [
     { pattern: /asm[-_]?\d/i, name: "ASM" },
     { pattern: /guava[-_]?\d/i, name: "Guava" },

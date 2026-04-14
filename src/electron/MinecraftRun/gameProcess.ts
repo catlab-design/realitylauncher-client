@@ -1,17 +1,17 @@
 import { ChildProcess, exec } from "child_process";
 import { getNativeModule } from "../native.js";
 
-// State
-// Map instanceId -> ChildProcess
+
+
 const gameProcesses = new Map<string, ChildProcess>();
-// Map instanceId -> boolean (launching state)
+
 const launchingStates = new Map<string, boolean>();
-// Map instanceId -> boolean (aborted state)
+
 const abortedStates = new Map<string, boolean>();
-// Map instanceId -> gameDirectory
+
 const activeGameDirectories = new Map<string, string>();
 
-// Map instanceId -> kill retry timer (to prevent race conditions with multiple instances)
+
 const killRetryTimers = new Map<string, NodeJS.Timeout>();
 let lastGamePid: number | null = null;
 
@@ -35,7 +35,7 @@ function getNativeProcessModule(): any | null {
 
 function normalizePathForCompare(value: string): string {
     if (process.platform === "win32") {
-        return value.replace(/\//g, "\\").toLowerCase();
+        return value.replace(/\\/g, "/");
     }
     return value;
 }
@@ -101,7 +101,7 @@ function killPidTree(pid: number): boolean {
     const platform = process.platform;
     if (platform === "win32") {
         exec(`taskkill /pid ${pid} /T /F`, () => {
-            // Ignore "not found" errors
+            
         });
         return true;
     }
@@ -164,14 +164,14 @@ function isNativeInstanceRunning(instanceId: string): boolean | null {
     }
 }
 
-// =========================================
-// Getters & Setters
-// =========================================
+
+
+
 
 export function getGameProcess(instanceId: string) { return gameProcesses.get(instanceId) || null; }
 export function setGameProcess(instanceId: string, p: ChildProcess | null) {
     if (p === null) {
-        // When process is null, remove from map entirely
+        
         gameProcesses.delete(instanceId);
     } else {
         gameProcesses.set(instanceId, p);
@@ -237,14 +237,14 @@ export function isGameRunning(instanceId?: string): boolean {
         return false;
     }
 
-    // If no ID provided, check if ANY tracked game is running
+    
     for (const [id, p] of gameProcesses) {
         if (processIsActive(id, p)) {
             return true;
         }
     }
 
-    // Also check persisted native tracker (covers app restart + orphaned JS map)
+    
     const nativeInstances = getNativeRunningInstances();
     if (nativeInstances.some((item) => isPidAlive(item.pid))) {
         return true;
@@ -267,13 +267,11 @@ export function resetLauncherState(instanceId?: string) {
     }
 }
 
-// =========================================
-// Helper Functions
-// =========================================
 
-/**
- * Find PID by game directory
- */
+
+
+
+
 function findPidByGameDirectory(gameDir: string): Promise<number | null> {
     return new Promise((resolve) => {
         const normalizedGameDir = normalizePathForCompare(gameDir);
@@ -319,7 +317,7 @@ function findPidByGameDirectory(gameDir: string): Promise<number | null> {
                 }
             });
         } else if (platform === "darwin" || platform === "linux") {
-            // macOS and Linux: use pgrep with pattern matching
+            
             const escapedDir = gameDir.replace(/'/g, "'\\''");
             const cmd = `pgrep -f "java.*${escapedDir}" | tail -1`;
 
@@ -345,13 +343,11 @@ export function killProcessAndChildren(pid: number): boolean {
     return killPidTree(pid);
 }
 
-// =========================================
-// Main Kill Logic
-// =========================================
 
-/**
- * Kill the current game process for a specific instance
- */
+
+
+
+
 export async function killGame(instanceId: string): Promise<void> {
     console.log(`[GameProcess] killGame called for instance ${instanceId}`);
     let killed = false;
@@ -368,7 +364,7 @@ export async function killGame(instanceId: string): Promise<void> {
         return true;
     };
 
-    // 1. Try killing the known PID
+    
     if (gameProcess && gameProcess.pid) {
         const pid = gameProcess.pid;
         killed = tryKillPid(pid, "known PID") || killed;
@@ -378,7 +374,7 @@ export async function killGame(instanceId: string): Promise<void> {
         console.warn(`[GameProcess] No gameProcess object found for ${instanceId}`);
     }
 
-    // 2. Fallback: Native tracker PID
+    
     if (!killed) {
         const nativeTrackedPid = getNativeTrackedPid(instanceId);
         if (nativeTrackedPid) {
@@ -386,7 +382,7 @@ export async function killGame(instanceId: string): Promise<void> {
         }
     }
 
-    // 3. Fallback: Scan by directory
+    
     if (!killed && gameDirectory) {
         console.log(`[GameProcess] Verify/Fallback: Checking for any Java process in: ${gameDirectory}`);
         const fallbackPid = await findPidByGameDirectory(gameDirectory);
@@ -403,9 +399,7 @@ export async function killGame(instanceId: string): Promise<void> {
     resetLauncherState(instanceId);
 }
 
-/**
- * Kill all known Java processes (Emergency cleanup)
- */
+
 export async function killAllLauncherJavaProcesses(): Promise<void> {
     const nativeInstances = getNativeRunningInstances();
     for (const nativeInstance of nativeInstances) {
@@ -417,7 +411,7 @@ export async function killAllLauncherJavaProcesses(): Promise<void> {
         killProcessAndChildren(lastGamePid);
     }
 
-    // Iterate over all active processes
+    
     const killPromises = Array.from(gameProcesses.keys()).map(id => killGame(id));
     await Promise.all(killPromises);
 }
@@ -430,7 +424,7 @@ export function clearKillRetry(instanceId?: string): void {
             killRetryTimers.delete(instanceId);
         }
     } else {
-        // Clear all timers
+        
         for (const timer of killRetryTimers.values()) {
             clearTimeout(timer);
         }

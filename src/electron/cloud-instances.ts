@@ -1,13 +1,8 @@
-/**
- * Cloud Instances Module
- *
- * Handles instance management via cloud API
- * Including joining instances via Invite Key
- */
+
 
 import { getNativeModule } from "./native.js";
 
-// Use production API URL (process.env doesn't work in bundled Electron)
+
 import { API_URL } from "./lib/constants.js";
 import { clearApiToken } from "./auth.js";
 import { getConfig } from "./config.js";
@@ -38,7 +33,7 @@ import {
   verifyFileHashNative,
   yieldToEventLoop,
 } from "./cloud-sync-utils.js";
-// const API_URL = 'http://localhost:8787'; // Dev URL
+
 
 interface JoinInstanceResult {
   ok: boolean;
@@ -47,19 +42,13 @@ interface JoinInstanceResult {
   instance?: any;
 }
 
-/**
- * Join an instance using Invite Key
- *
- * @param key - Invite Key (e.g., "7TKM-3F7D-WDSW-8T2L")
- * @param authToken - User's authentication token
- * @returns Result object with instance data if successful
- */
+
 export async function joinInstanceByKey(
   key: string,
   authToken: string,
 ): Promise<JoinInstanceResult> {
   try {
-    // Format key: trim and uppercase only (preserve dashes/custom format)
+    
     const formattedKey = key.trim().toUpperCase();
 
     console.log("[Cloud Instances] API_URL:", API_URL);
@@ -114,9 +103,7 @@ export async function joinInstanceByKey(
   }
 }
 
-/**
- * Join a PUBLIC instance by ID (no key required)
- */
+
 export async function joinPublicInstance(
   instanceId: string,
   authToken: string,
@@ -168,9 +155,7 @@ export async function joinPublicInstance(
   }
 }
 
-/**
- * Leave an instance (remove from members)
- */
+
 export async function leaveInstance(
   instanceId: string,
   authToken: string,
@@ -213,9 +198,7 @@ export async function leaveInstance(
   }
 }
 
-/**
- * Fetch all cloud instances (Owned & Member)
- */
+
 export async function fetchJoinedServers(
   authToken: string,
   signal?: AbortSignal,
@@ -272,9 +255,7 @@ export async function fetchJoinedServers(
   return task;
 }
 
-/**
- * Sync all cloud instances (Owned & Member) to local
- */
+
 export async function syncCloudInstances(authToken: string): Promise<void> {
   try {
     const { importCloudInstance, getInstance } = await import("./instances.js");
@@ -284,21 +265,21 @@ export async function syncCloudInstances(authToken: string): Promise<void> {
     let count = 0;
     const allInstances = [...data.owned, ...data.member];
 
-    // Only update EXISTING instances
-    // New instances will stay "Available" (in cloud) but "Not Installed" (locally)
-    // User must click "Install" to create them (via instances-cloud-install)
+    
+    
+    
 
     for (const instance of allInstances) {
-      const id = instance.storagePath || instance.id; // Correct ID derivation
+      const id = instance.storagePath || instance.id; 
       const existing = getInstance(id);
 
       if (existing) {
-        // Instance exists locally - Update metadata
+        
         await importCloudInstance(instance);
         count++;
       } else {
-        // Instance does not exist locally - Skip
-        // console.log(`[Cloud Instances] New instance found: ${instance.name}. Skipping auto-install.`);
+        
+        
       }
     }
 
@@ -308,10 +289,7 @@ export async function syncCloudInstances(authToken: string): Promise<void> {
   }
 }
 
-/**
- * Sync server mods (download updates, remove unknown)
- * Respects lockedMods to prevent deletion
- */
+
 export async function syncServerMods(
   instanceId: string,
   authToken: string,
@@ -326,7 +304,7 @@ export async function syncServerMods(
   signal?: AbortSignal,
 ): Promise<void> {
   const { getInstance } = await import("./instances.js");
-  // const { downloadFile } = await import("./modrinth.js"); // Removed, using top-level import
+  
   const fs = await import("node:fs");
   const path = await import("node:path");
 
@@ -346,8 +324,8 @@ export async function syncServerMods(
     throw new Error(`Instance ${instanceId} is not linked to a cloud server.`);
   }
 
-  // Reuse API_URL from top of file scope
-  // Note: This relies on API_URL being available in module scope
+  
+  
 
   console.log(
     `[Cloud Sync] Syncing mods for ${instance.name} (${instance.id})...`,
@@ -403,8 +381,8 @@ export async function syncServerMods(
   if (signal?.aborted) throw new Error("Cancelled");
 
   try {
-    // 1. Fetch Server Content Manifest (without signed URLs)
-    // and metadata in parallel. This avoids heavy URL signing when no download is needed.
+    
+    
     const manifestCacheKey = instance.cloudId;
     const cachedManifest = instanceManifestCache.get(manifestCacheKey);
     const manifestCacheValid =
@@ -425,7 +403,7 @@ export async function syncServerMods(
       }),
     ]);
 
-    // Process Metadata if available
+    
     if (metaRes.ok) {
       try {
         const metaData = await metaRes.json();
@@ -438,7 +416,7 @@ export async function syncServerMods(
         }
       } catch (e) {
         console.error("[Cloud Sync] Failed to process metadata update:", e);
-        // Continue with content sync even if metadata update fails
+        
       }
     }
 
@@ -467,7 +445,7 @@ export async function syncServerMods(
     const nativeModule = getNativeModule() as any;
     const serverModFilenames = validServerMods.map((mod) => mod.filename);
 
-    // Limit cleanup to mods directory ONLY to prevent deleting saves/configs/options
+    
     const modsDir = path.join(instance.gameDirectory, "mods");
     if (!fs.existsSync(modsDir)) {
       await fs.promises.mkdir(modsDir, { recursive: true });
@@ -594,8 +572,8 @@ export async function syncServerMods(
 
     emitProgress({ type: "sync-check", task: "" });
 
-    // 2. Download missing/updated files (ANY file in the instance)
-    // Path traversal protection: ensure all files stay within game directory
+    
+    
     const gameDirResolved = path.resolve(instance.gameDirectory);
 
     const launcherConfig = getConfig();
@@ -781,7 +759,7 @@ export async function syncServerMods(
           }
         }
 
-        // Chunk the hashing tasks to prevent blocking the event loop
+        
         const CHUNK_SIZE = 15;
         let validCount = 0;
         let invalidCount = 0;
@@ -861,7 +839,7 @@ export async function syncServerMods(
             true,
           );
 
-          // Give time for UI feedback and event loop processing
+          
           await yieldToEventLoop();
         }
 
@@ -943,7 +921,7 @@ export async function syncServerMods(
             e,
           );
         }
-        // Fallback to sequential if the native batch fails
+        
         let hashChecked = 0;
         await runWithConcurrency(
           hashCheckQueue,
@@ -1131,7 +1109,7 @@ export async function syncServerMods(
     }
     throwIfAborted(signal);
 
-    // 3. Delete extra mods (Respect Locked Mods, ONLY in mods folder)
+    
     if (!isFreshCloudInstance) {
       throwIfAborted(signal);
     emitProgress({ type: "sync-clean", task: "กำลังลบไฟล์ส่วนเกิน..." }, true);
@@ -1158,14 +1136,14 @@ export async function syncServerMods(
       }
     }
 
-    // Only scan mods folder for cleanup (fallback path)
+    
     if (!cleanedByNative && fs.existsSync(modsDir)) {
       const localFiles = fs
         .readdirSync(modsDir)
         .filter((f) => f.endsWith(".jar") || f.endsWith(".jar.disabled"));
-      // Server files that are in the mods/ directory
-      // We expect server filename to be "mods/foo.jar".
-      // We compare "mods/" + localName with serverFilename.
+      
+      
+      
       const serverModPaths = new Set(
         validServerMods.map((m) => m.filename.replace(/\\/g, "/")),
       );
@@ -1178,11 +1156,11 @@ export async function syncServerMods(
           await yieldToEventLoop();
         }
         throwIfAborted(signal);
-        const relativePath = `mods/${file}`; // Path relative to instance root
+        const relativePath = `mods/${file}`; 
         const realName = file.replace(".jar.disabled", ".jar");
         const realRelativePath = `mods/${realName}`;
 
-        // Check if this file (or its enabled version) is in the server list
+        
         if (
           !serverModPaths.has(relativePath) &&
           !serverModPaths.has(realRelativePath)
@@ -1198,13 +1176,13 @@ export async function syncServerMods(
           try {
             fs.unlinkSync(path.join(modsDir, file));
           } catch (unlinkErr: any) {
-            // File may be locked by game process
+            
             console.warn(
               `[Cloud Sync] Could not delete ${file}: ${unlinkErr.message}. File may be in use.`,
             );
           }
         } else {
-          // console.log(`[Cloud Sync] Keeping server mod: ${file}`);
+          
         }
       }
     }

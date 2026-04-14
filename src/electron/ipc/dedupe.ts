@@ -6,10 +6,7 @@ export type ContentItem = {
   [k: string]: any;
 };
 
-/**
- * Generic deduplication for content items (mods, resourcepacks, shaders)
- * Groups by normalized filename, preferring enabled items over disabled.
- */
+
 function dedupeContent(items: ContentItem[], scopeKey?: (item: ContentItem) => string) {
   const unique: Record<string, ContentItem> = {};
   for (const it of items) {
@@ -23,11 +20,11 @@ function dedupeContent(items: ContentItem[], scopeKey?: (item: ContentItem) => s
     }
   }
   return Object.values(unique).sort((a: ContentItem, b: ContentItem) => {
-    // Sort by scope (worldName) first if present
+    
     const aScope = scopeKey ? (scopeKey(a) || '') : '';
     const bScope = scopeKey ? (scopeKey(b) || '') : '';
     if (aScope !== bScope) return aScope.localeCompare(bScope);
-    // Then enabled first, then by name
+    
     if ((a.enabled || false) === (b.enabled || false)) return (a.name || '').localeCompare(b.name || '');
     return (a.enabled || false) ? -1 : 1;
   });

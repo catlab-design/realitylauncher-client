@@ -1,8 +1,4 @@
-/**
- * ========================================
- * CurseForge API IPC Handlers with Caching
- * ========================================
- */
+
 
 import { ipcMain } from "electron";
 import {
@@ -14,16 +10,16 @@ import {
   getCurseForgeDownloadUrl,
 } from "../curseforge-api.js";
 
-// ========================================
-// In-Memory Cache
-// ========================================
+
+
+
 
 interface CacheEntry<T> {
   data: T;
   timestamp: number;
 }
 
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache
+const CACHE_TTL_MS = 5 * 60 * 1000; 
 const searchCache = new Map<string, CacheEntry<any>>();
 const projectCache = new Map<string, CacheEntry<any>>();
 const filesCache = new Map<string, CacheEntry<any>>();
@@ -54,21 +50,19 @@ function setCache<T>(
 ): void {
   cache.set(key, { data, timestamp: Date.now() });
 
-  // Limit cache size to prevent memory leaks
+  
   if (cache.size > 100) {
     const firstKey = cache.keys().next().value;
     if (firstKey) cache.delete(firstKey);
   }
 }
 
-// ========================================
-// Handlers
-// ========================================
+
+
+
 
 export function registerCurseForgeHandlers(): void {
-  /**
-   * curseforge-search - ค้นหา mods/modpacks จาก CurseForge (with caching)
-   */
+  
   ipcMain.handle("curseforge-search", async (_event, filters: any) => {
     try {
       const cacheKey = getCacheKey("cf-search", filters);
@@ -101,9 +95,7 @@ export function registerCurseForgeHandlers(): void {
     }
   });
 
-  /**
-   * curseforge-get-project - ดึงรายละเอียด project (with caching)
-   */
+  
   ipcMain.handle(
     "curseforge-get-project",
     async (_event, projectId: number | string) => {
@@ -125,9 +117,7 @@ export function registerCurseForgeHandlers(): void {
     },
   );
 
-  /**
-   * curseforge-get-description - ดึงรายละเอียด description (HTML)
-   */
+  
   ipcMain.handle(
     "curseforge-get-description",
     async (_event, projectId: number | string) => {
@@ -146,9 +136,7 @@ export function registerCurseForgeHandlers(): void {
     },
   );
 
-  /**
-   * curseforge-get-files - ดึง files/versions ของ project (with caching)
-   */
+  
   ipcMain.handle(
     "curseforge-get-files",
     async (_event, projectId: number | string, gameVersion?: string) => {
@@ -162,7 +150,7 @@ export function registerCurseForgeHandlers(): void {
 
         const result = await getCurseForgeFiles(projectId, gameVersion);
 
-        // Debug: Log file count and versions
+        
         console.log("[CurseForge] Total files:", result?.data?.length);
         if (result?.data) {
           const versions = new Set<string>();
@@ -196,9 +184,7 @@ export function registerCurseForgeHandlers(): void {
     },
   );
 
-  /**
-   * curseforge-get-file - ดึงรายละเอียด file เดียว
-   */
+  
   ipcMain.handle(
     "curseforge-get-file",
     async (_event, projectId: number | string, fileId: number | string) => {
@@ -211,9 +197,7 @@ export function registerCurseForgeHandlers(): void {
     },
   );
 
-  /**
-   * curseforge-get-download-url - ดึง download URL
-   */
+  
   ipcMain.handle(
     "curseforge-get-download-url",
     async (_event, projectId: number | string, fileId: number | string) => {
@@ -226,14 +210,12 @@ export function registerCurseForgeHandlers(): void {
     },
   );
 
-  /**
-   * curseforge-prefetch - Prefetch popular content
-   */
+  
   ipcMain.handle("curseforge-prefetch", async () => {
     try {
       console.log("[CurseForge] Starting prefetch...");
 
-      // Prefetch popular modpacks
+      
       const modpacks = await searchCurseForge({
         projectType: "modpack",
         pageSize: 20,
@@ -249,7 +231,7 @@ export function registerCurseForgeHandlers(): void {
         modpacks,
       );
 
-      // Prefetch popular mods
+      
       const mods = await searchCurseForge({
         projectType: "mod",
         pageSize: 20,
@@ -283,9 +265,7 @@ export function registerCurseForgeHandlers(): void {
     }
   });
 
-  /**
-   * curseforge-clear-cache - Clear all CurseForge caches
-   */
+  
   ipcMain.handle("curseforge-clear-cache", async () => {
     searchCache.clear();
     projectCache.clear();

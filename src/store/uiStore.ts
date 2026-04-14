@@ -1,14 +1,14 @@
 import { create } from 'zustand';
 
 interface UiState {
-    // Navigation
+    
     activeTab: string;
     setActiveTab: (tab: string) => void;
 
     settingsTab: "appearance" | "game" | "connections" | "language" | "launcher" | "resources" | "java" | "account" | "update";
     setSettingsTab: (tab: UiState['settingsTab']) => void;
 
-    // Modals
+    
     modals: {
         login: boolean;
         register: boolean;
@@ -21,12 +21,12 @@ interface UiState {
         linkCatID: boolean;
     };
 
-    // Actions to toggle modals
+    
     openModal: (modal: keyof UiState['modals']) => void;
     closeModal: (modal: keyof UiState['modals']) => void;
     toggleModal: (modal: keyof UiState['modals']) => void;
 
-    // Specific modal data
+    
     changelogData: { version: string; changelog: string } | null;
     setChangelogData: (data: { version: string; changelog: string } | null) => void;
 }

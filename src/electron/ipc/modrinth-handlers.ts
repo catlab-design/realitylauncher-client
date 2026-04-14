@@ -1,8 +1,4 @@
-/**
- * ========================================
- * Modrinth API IPC Handlers with Caching
- * ========================================
- */
+
 
 import { ipcMain, BrowserWindow, app } from "electron";
 import path from "path";
@@ -22,16 +18,16 @@ import {
     type SearchFilters,
 } from "../modrinth.js";
 
-// ========================================
-// In-Memory Cache
-// ========================================
+
+
+
 
 interface CacheEntry<T> {
     data: T;
     timestamp: number;
 }
 
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache
+const CACHE_TTL_MS = 5 * 60 * 1000; 
 const searchCache = new Map<string, CacheEntry<any>>();
 const projectCache = new Map<string, CacheEntry<any>>();
 const versionsCache = new Map<string, CacheEntry<any>>();
@@ -55,20 +51,20 @@ function getFromCache<T>(cache: Map<string, CacheEntry<T>>, key: string): T | nu
 function setCache<T>(cache: Map<string, CacheEntry<T>>, key: string, data: T): void {
     cache.set(key, { data, timestamp: Date.now() });
 
-    // Limit cache size to prevent memory leaks
+    
     if (cache.size > 100) {
         const firstKey = cache.keys().next().value;
         if (firstKey) cache.delete(firstKey);
     }
 }
 
-// ========================================
-// Native Module Loading (Cached, CJS Compatible)
-// ========================================
+
+
+
 
 let nativeModule: any = null;
 
-// CJS compatible require using __filename (esbuild outputs CJS)
+
 const customRequire = createRequire(__filename);
 
 function getNative(): any {
@@ -81,14 +77,12 @@ function getNative(): any {
     return nativeModule;
 }
 
-// ========================================
-// Handlers
-// ========================================
+
+
+
 
 export function registerModrinthHandlers(getMainWindow: () => BrowserWindow | null): void {
-    /**
-     * modrinth-search - ค้นหา modpacks (with caching)
-     */
+    
     ipcMain.handle("modrinth-search", async (_event, filters: any) => {
         try {
             const cacheKey = getCacheKey("search", filters);
@@ -102,7 +96,7 @@ export function registerModrinthHandlers(getMainWindow: () => BrowserWindow | nu
             const game_version = filters.gameVersion;
             const loader = filters.loader;
 
-            // Use Pure TS implementation (Native struct has issues with Author field)
+            
             const result = await searchModpacks({
                 query: filters.query,
                 projectType: project_type,
@@ -122,9 +116,7 @@ export function registerModrinthHandlers(getMainWindow: () => BrowserWindow | nu
         }
     });
 
-    /**
-     * modrinth-get-project - ดึงรายละเอียด modpack (with caching)
-     */
+    
     ipcMain.handle("modrinth-get-project", async (_event, idOrSlug: string) => {
         try {
             if (!idOrSlug) {
@@ -138,7 +130,7 @@ export function registerModrinthHandlers(getMainWindow: () => BrowserWindow | nu
                 return cached;
             }
 
-            // Use Pure TS implementation
+            
             const result = await getProject(idOrSlug);
 
             setCache(projectCache, idOrSlug, result);
@@ -149,9 +141,7 @@ export function registerModrinthHandlers(getMainWindow: () => BrowserWindow | nu
         }
     });
 
-    /**
-     * modrinth-get-versions - ดึง versions ของ modpack (with caching)
-     */
+    
     ipcMain.handle("modrinth-get-versions", async (_event, idOrSlug: string) => {
         try {
             const cached = getFromCache(versionsCache, idOrSlug);
@@ -161,7 +151,7 @@ export function registerModrinthHandlers(getMainWindow: () => BrowserWindow | nu
             }
 
             console.log("[Modrinth] Getting versions for project:", idOrSlug);
-            // Use Pure TS implementation
+            
             const result = await getProjectVersions(idOrSlug);
 
             setCache(versionsCache, idOrSlug, result);
@@ -173,9 +163,7 @@ export function registerModrinthHandlers(getMainWindow: () => BrowserWindow | nu
         }
     });
 
-    /**
-     * modrinth-get-version - ดึง version เดียว
-     */
+    
     ipcMain.handle("modrinth-get-version", async (_event, versionId: string) => {
         try {
             return await getVersion(versionId);
@@ -185,9 +173,7 @@ export function registerModrinthHandlers(getMainWindow: () => BrowserWindow | nu
         }
     });
 
-    /**
-     * modrinth-download - ดาวน์โหลด modpack
-     */
+    
     ipcMain.handle("modrinth-download", async (_event, versionId: string) => {
         try {
             const mainWindow = getMainWindow();
@@ -204,9 +190,7 @@ export function registerModrinthHandlers(getMainWindow: () => BrowserWindow | nu
         }
     });
 
-    /**
-     * modrinth-get-popular - ดึง modpacks ยอดนิยม
-     */
+    
     ipcMain.handle("modrinth-get-popular", async (_event, limit: number = 10) => {
         try {
             return await getPopularModpacks(limit);
@@ -216,9 +200,7 @@ export function registerModrinthHandlers(getMainWindow: () => BrowserWindow | nu
         }
     });
 
-    /**
-     * modrinth-get-game-versions - ดึง Minecraft versions
-     */
+    
     ipcMain.handle("modrinth-get-game-versions", async () => {
         try {
             return await getGameVersions();
@@ -228,9 +210,7 @@ export function registerModrinthHandlers(getMainWindow: () => BrowserWindow | nu
         }
     });
 
-    /**
-     * modrinth-get-loaders - ดึง loaders (Fabric, Forge, etc.)
-     */
+    
     ipcMain.handle("modrinth-get-loaders", async () => {
         try {
             return await getLoaders();
@@ -240,9 +220,7 @@ export function registerModrinthHandlers(getMainWindow: () => BrowserWindow | nu
         }
     });
 
-    /**
-     * modrinth-get-loader-versions - ดึง versions ของ loader
-     */
+    
     ipcMain.handle("modrinth-get-loader-versions", async (_event, loader: string, gameVersion: string) => {
         try {
             const cacheKey = getCacheKey("loader-versions", { loader, gameVersion });
@@ -258,9 +236,7 @@ export function registerModrinthHandlers(getMainWindow: () => BrowserWindow | nu
         }
     });
 
-    /**
-     * modrinth-get-installed - ดึง modpacks ที่ติดตั้งแล้ว
-     */
+    
     ipcMain.handle("modrinth-get-installed", async () => {
         try {
             return await getInstalledModpacks();
@@ -270,9 +246,7 @@ export function registerModrinthHandlers(getMainWindow: () => BrowserWindow | nu
         }
     });
 
-    /**
-     * modrinth-delete-modpack - ลบ modpack ที่ติดตั้ง
-     */
+    
     ipcMain.handle("modrinth-delete-modpack", async (_event, modpackPath: string) => {
         try {
             return await deleteInstalledModpack(modpackPath);
@@ -282,15 +256,13 @@ export function registerModrinthHandlers(getMainWindow: () => BrowserWindow | nu
         }
     });
 
-    /**
-     * modrinth-prefetch - Prefetch popular content for faster loading
-     */
+    
     ipcMain.handle("modrinth-prefetch", async () => {
         try {
             console.log("[Modrinth] Starting prefetch...");
             const native = getNative();
 
-            // Prefetch popular modpacks
+            
             const modpacks = await native.modrinthSearch({
                 projectType: "modpack",
                 limit: 20,
@@ -298,7 +270,7 @@ export function registerModrinthHandlers(getMainWindow: () => BrowserWindow | nu
             });
             setCache(searchCache, getCacheKey("search", { projectType: "modpack", limit: 20, sortBy: "downloads" }), modpacks);
 
-            // Prefetch popular mods
+            
             const mods = await native.modrinthSearch({
                 projectType: "mod",
                 limit: 20,
@@ -314,9 +286,7 @@ export function registerModrinthHandlers(getMainWindow: () => BrowserWindow | nu
         }
     });
 
-    /**
-     * modrinth-clear-cache - Clear all caches
-     */
+    
     ipcMain.handle("modrinth-clear-cache", async () => {
         searchCache.clear();
         projectCache.clear();

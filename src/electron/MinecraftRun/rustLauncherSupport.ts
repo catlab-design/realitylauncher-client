@@ -1,10 +1,6 @@
 import os from "os";
 
-/**
- * Filter certain arguments that might cause issues if their values are invalid or empty.
- * For example: --quickPlayPath . (directory) causes silent exit.
- * --clientId (empty) might be harmless but cleaner to remove.
- */
+
 export function filterGameArgs(args: any[]): any[] {
   const result: any[] = [];
   for (let i = 0; i < args.length; i++) {
@@ -41,7 +37,7 @@ export function getOptimizedJvmArgs(): string[] {
     "-XX:InitiatingHeapOccupancyPercent=15",
     `-XX:ParallelGCThreads=${gcThreads}`,
     "-Dfile.encoding=UTF-8",
-    // Force English locale to prevent log parsing issues with Buddhist year (2569)
+    
     "-Duser.language=en",
     "-Duser.country=US",
   ];

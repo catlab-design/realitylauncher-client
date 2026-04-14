@@ -1,15 +1,4 @@
-/**
- * ========================================
- * Auth IPC Handlers
- * ========================================
- *
- * Handles all authentication-related IPC:
- * - CatID login/register
- * - Microsoft Device Code Flow
- * - Offline mode
- * - Token refresh
- * - Auth window management
- */
+
 
 import { ipcMain, BrowserWindow } from "electron";
 import {
@@ -26,18 +15,18 @@ import {
 import { createIpcLogger } from "../lib/logger.js";
 import { refreshMicrosoftTokenIfNeeded } from "../auth-refresh.js";
 
-// Create logger for auth handlers
+
 const logger = createIpcLogger("Auth");
 
-// Auth window reference
+
 let authWindow: BrowserWindow | null = null;
 
 import { API_URL } from "../lib/constants.js";
 
-// ml-api URL for CatID authentication
+
 const ML_API_URL = process.env.ML_API_URL || API_URL;
 
-// Microsoft OAuth Client ID - fetched from ml-api
+
 let MICROSOFT_CLIENT_ID: string | null = null;
 
 type CatIDUserPayload = {
@@ -106,7 +95,7 @@ async function syncCatIDSessionIdentity(
   };
 }
 
-// Fetch Device Client ID from ml-api
+
 async function fetchOAuthConfig(): Promise<boolean> {
   try {
     const response = await fetch(`${ML_API_URL}/oauth/config`);
@@ -126,18 +115,13 @@ async function fetchOAuthConfig(): Promise<boolean> {
   return false;
 }
 
-// Fetch OAuth config when module loads (catch to avoid unhandled rejection)
 fetchOAuthConfig().catch(() => {});
 
 export function registerAuthHandlers(
   getMainWindow: () => BrowserWindow | null,
 ): void {
   const AUTH_URL =
-    process.env.AUTH_URL || "https://reality.catlabdesign.space/login"; // Default to web login
-
-  // ----------------------------------------
-  // Basic Auth Handlers
-  // ----------------------------------------
+    process.env.AUTH_URL || "https://api.reality.catlabdesign.space";
 
   ipcMain.handle("auth-logout", async (): Promise<void> => {
     logout();
@@ -146,7 +130,7 @@ export function registerAuthHandlers(
   ipcMain.handle("auth-get-session", async (): Promise<AuthSession | null> => {
     const session = getSession();
 
-    // For Microsoft+CatID sessions missing apiTokenExpiresAt, fetch from API
+    
     if (
       session &&
       session.type === "microsoft" &&
@@ -166,11 +150,11 @@ export function registerAuthHandlers(
                 ? data.sessionExpiresAt
                 : new Date(data.sessionExpiresAt).toISOString(),
             );
-            return getSession(); // Return updated session
+            return getSession(); 
           }
         }
       } catch {
-        // Non-fatal — just return session without expiry
+        
       }
     }
 
@@ -234,9 +218,9 @@ export function registerAuthHandlers(
     },
   );
 
-  // ----------------------------------------
-  // Auth Window Handlers
-  // ----------------------------------------
+  
+  
+  
 
   ipcMain.handle("open-auth-window", async (): Promise<void> => {
     const mainWindow = getMainWindow();
@@ -354,9 +338,9 @@ export function registerAuthHandlers(
     },
   );
 
-  // ----------------------------------------
-  // Device Code Auth Handlers
-  // ----------------------------------------
+  
+  
+  
 
   ipcMain.handle("auth-device-code-start", async () => {
     try {
@@ -367,7 +351,7 @@ export function registerAuthHandlers(
       }
 
       const response = await fetch(
-        "https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode",
+        "https://login.live.com/oauth20_token.srf",
         {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -411,9 +395,9 @@ export function registerAuthHandlers(
         let linkSwitched = false;
         let oldCatID: string | null = null;
 
-        // Step 1: Poll for Microsoft token
+        
         const tokenResponse = await fetch(
-          "https://login.microsoftonline.com/consumers/oauth2/v2.0/token",
+          "https://login.live.com/oauth20_token.srf",
           {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -443,7 +427,7 @@ export function registerAuthHandlers(
         if (!tokenData.access_token)
           return { status: "error", error: "No access token" };
 
-        // Step 2: Xbox Live
+        
         const xblResponse = await fetch(
           "https://user.auth.xboxlive.com/user/authenticate",
           {
@@ -470,7 +454,7 @@ export function registerAuthHandlers(
         const userHash = xblData.DisplayClaims?.xui?.[0]?.uhs;
         if (!userHash) return { status: "error", error: "User hash not found" };
 
-        // Step 3: XSTS
+        
         const xstsResponse = await fetch(
           "https://xsts.auth.xboxlive.com/xsts/authorize",
           {
@@ -496,7 +480,7 @@ export function registerAuthHandlers(
           return { status: "error", error: `XSTS failed: ${xstsData.XErr}` };
         }
 
-        // Step 4: Minecraft
+        
         const mcResponse = await fetch(
           "https://api.minecraftservices.com/authentication/login_with_xbox",
           {
@@ -511,7 +495,7 @@ export function registerAuthHandlers(
         if (!mcData.access_token)
           return { status: "error", error: "Minecraft auth failed" };
 
-        // Step 5: Check ownership
+        
         const entitlementResponse = await fetch(
           "https://api.minecraftservices.com/entitlements/mcstore",
           {
@@ -522,7 +506,7 @@ export function registerAuthHandlers(
         if (!entitlementData.items?.length)
           return { status: "error", error: "ไม่มี Minecraft" };
 
-        // Step 6: Get profile
+        
         const profileResponse = await fetch(
           "https://api.minecraftservices.com/minecraft/profile",
           {
@@ -533,8 +517,8 @@ export function registerAuthHandlers(
         if (!profileData.id || !profileData.name)
           return { status: "error", error: "Profile not found" };
 
-        // Step 7: Save session
-        // Step 7: Save session
+        
+        
 
         let apiTokenString: string | undefined;
         let apiTokenExpiresAt: string | undefined;
@@ -543,7 +527,7 @@ export function registerAuthHandlers(
           "X-Client-App": "RealityLauncher",
         };
 
-        // Check for existing CatID session if linking
+        
         if (isLinking) {
           const currentSession = getSession();
           if (
@@ -559,7 +543,7 @@ export function registerAuthHandlers(
           }
         }
 
-        // Always login as Microsoft (updates local state details)
+        
         loginMicrosoft(
           profileData.name,
           profileData.id,
@@ -568,9 +552,9 @@ export function registerAuthHandlers(
           msExpiresIn,
         );
 
-        // Step 8: Link with Reality API to get/update API token and Sync Backend
-        // Only link if explicitly requested (isLinking is true)
-        // This prevents automatic saving of Microsoft accounts to the API/Admin panel
+        
+        
+        
         if (isLinking) {
           try {
             const linkResponse = await fetch(
@@ -601,7 +585,7 @@ export function registerAuthHandlers(
               oldCatID = linkData.oldCatID;
               logger.info(" Microsoft linked successfully");
             } else {
-              // Bug #2 Fix: Report link failure to user instead of silently ignoring
+              
               const linkErrorMsg =
                 linkData.error ||
                 `เชื่อมต่อล้มเหลว (HTTP ${linkResponse.status})`;
@@ -644,7 +628,7 @@ export function registerAuthHandlers(
           apiToken: apiTokenString,
         });
 
-        // Sync instances using API token
+        
         if (apiTokenString) {
           const { syncCloudInstances } = await import("../cloud-instances.js");
           syncCloudInstances(apiTokenString).catch((err) =>
@@ -672,9 +656,9 @@ export function registerAuthHandlers(
     },
   );
 
-  // ----------------------------------------
-  // Token Refresh Handler
-  // ----------------------------------------
+  
+  
+  
 
   ipcMain.handle("auth-refresh-token", async () => {
     const refreshResult = await refreshMicrosoftTokenIfNeeded(logger);
@@ -701,9 +685,9 @@ export function registerAuthHandlers(
     };
   });
 
-  // ----------------------------------------
-  // CatID Auth Handlers
-  // ----------------------------------------
+  
+  
+  
 
   ipcMain.handle(
     "auth-catid-login",
@@ -736,8 +720,8 @@ export function registerAuthHandlers(
 
         const displayName = getCatIDDisplayName(data.user, username);
         const uuid = getCatIDSessionUuid(data.user, `catid-${Date.now()}`);
-        const minecraftUuid = data.user?.minecraftUuid; // Real Minecraft UUID from linked Microsoft account
-        const expiresAt = data.expiresAt; // New field from API
+        const minecraftUuid = data.user?.minecraftUuid; 
+        const expiresAt = data.expiresAt; 
 
         loginCatID(displayName, uuid, data.token, minecraftUuid, expiresAt);
 
@@ -750,7 +734,7 @@ export function registerAuthHandlers(
           expiresAt,
         });
 
-        // Sync instances
+        
         const { syncCloudInstances } = await import("../cloud-instances.js");
         syncCloudInstances(data.token).catch((err) =>
           logger.error("Cloud sync failed", err),
@@ -792,7 +776,7 @@ export function registerAuthHandlers(
 
         const responseText = await response.text();
 
-        // DEBUG LOGS
+        
         logger.debug("Register request", { apiUrl: ML_API_URL });
         logger.debug("Register raw response", {
           response: responseText.slice(0, 200),
@@ -828,7 +812,7 @@ export function registerAuthHandlers(
     },
   );
 
-  // Check registration verification status (for polling)
+  
   ipcMain.handle(
     "auth-check-registration-status",
     async (_event, token: string) => {
@@ -924,7 +908,7 @@ export function registerAuthHandlers(
           return { ok: false, error: "ต้องเข้าสู่ระบบด้วย Microsoft ก่อน" };
         }
 
-        // reuse catid login logic
+        
         const response = await fetch(`${ML_API_URL}/auth/catid/login`, {
           method: "POST",
           headers: {
@@ -954,19 +938,19 @@ export function registerAuthHandlers(
           };
         }
 
-        // Link Microsoft account to CatID on server before accepting locally
+        
         let linkError: string | null = null;
         let linkSwitched = false;
         let oldCatID: string | null = null;
 
-        // ============================================
-        // CRITICAL: Perform Server-Side Link
-        // ============================================
+        
+        
+        
         try {
-          // We have the new CatID token.
-          // We also need the Microsoft Info from the OLD session (which is session).
-          // But we need to make sure we send the FRESH Microsoft Access Token?
-          // session.accessToken might be old? But usually valid.
+          
+          
+          
+          
 
           if (session.accessToken && session.username && session.uuid) {
             logger.info(" Linking Microsoft account to CatID on server...");
@@ -979,14 +963,14 @@ export function registerAuthHandlers(
               {
                 method: "POST",
                 headers: {
-                  Authorization: `Bearer ${data.token}`, // Authenticate as the CatID User
+                  Authorization: `Bearer ${data.token}`, 
                   "Content-Type": "application/json",
                   "X-Client-App": "RealityLauncher",
                 },
                 body: JSON.stringify({
                   accessToken: session.accessToken,
                   uuid: session.uuid,
-                  username: session.username, // Minecraft Username
+                  username: session.username, 
                   accessTokenExpiresAt: msExpiresAt,
                 }),
               },
@@ -999,7 +983,7 @@ export function registerAuthHandlers(
                 linkSwitched = !!linkData?.linkSwitched;
                 oldCatID = linkData?.oldCatID;
 
-                // Bug #1 Fix: Update minecraftUuid in local session after successful link
+                
                 if (linkData?.user?.minecraftUuid) {
                   const currentSess = getSession();
                   if (currentSess) {
@@ -1026,13 +1010,13 @@ export function registerAuthHandlers(
           logger.error("Server-side link error", linkErr as Error);
           linkError = (linkErr as Error).message || "เชื่อมต่อไม่สำเร็จ";
         }
-        // ============================================
+        
 
         if (linkError) {
           return { ok: false, error: linkError };
         }
 
-        // Sync instances after successful link
+        
         const { syncCloudInstances } = await import("../cloud-instances.js");
         syncCloudInstances(data.token).catch((err) =>
           logger.error("Cloud sync failed", err),
@@ -1112,17 +1096,17 @@ export function registerAuthHandlers(
           return { ok: false, error: "ไม่ได้เข้าสู่ระบบ" };
         }
 
-        // Unlink CatID from account - keeps Microsoft, removes CatID
+        
         if (provider === "catid") {
-          // Bug #4 & #5 Fix: Full cleanup of local session state
-          // Since API-side unlink revokes ALL sessions, we must force re-login
+          
+          
           const cleanupLocalState = (forceLogout: boolean = false) => {
             logger.info("Cleaning up CatID link from local session");
             if (forceLogout) {
-              // Bug #5 Fix: Server revoked all sessions, force full logout
+              
               logout();
             } else {
-              // Bug #4 Fix: Remove all CatID-related fields from local session
+              
               delete session.apiToken;
               delete (session as any).apiTokenExpiresAt;
               delete session.minecraftUuid;
@@ -1148,7 +1132,7 @@ export function registerAuthHandlers(
 
           logger.info("Unlinking CatID from account via API");
 
-          // Call server to unlink CatID (keeps Microsoft)
+          
           try {
             const response = await fetch(
               `${ML_API_URL}/auth/microsoft/unlink`,
@@ -1171,7 +1155,7 @@ export function registerAuthHandlers(
               logger.info(
                 "Server unlink successful - forcing re-login since sessions were revoked",
               );
-              // Bug #5 Fix: Server deleted all sessions, force logout so user re-authenticates
+              
               cleanupLocalState(true);
             }
 
@@ -1201,8 +1185,8 @@ export function registerAuthHandlers(
           }
         }
 
-        // provider === "microsoft" is no longer valid
-        // Once linked, unlinking removes CatID not Microsoft
+        
+        
         if (provider === "microsoft") {
           return {
             ok: false,
@@ -1219,9 +1203,9 @@ export function registerAuthHandlers(
     },
   );
 
-  // ----------------------------------------
-  // Offline Auth Handler
-  // ----------------------------------------
+  
+  
+  
 
   ipcMain.handle("auth-offline-login", async (_event, username: string) => {
     if (!username || username.trim().length < 1) {

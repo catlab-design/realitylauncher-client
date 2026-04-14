@@ -1,7 +1,4 @@
-/**
- * Centralized Logger for ml-client Electron
- * Provides structured logging with timestamps and levels
- */
+
 
 import type { WebContents } from "electron";
 
@@ -20,7 +17,7 @@ export interface LogEntry {
   };
 }
 
-// Color codes for terminal output
+
 const COLORS = {
   reset: "\x1b[0m",
   dim: "\x1b[2m",
@@ -38,9 +35,7 @@ const LEVEL_COLORS: Record<LogLevel, string> = {
   error: COLORS.red,
 };
 
-/**
- * Format log message for console output
- */
+
 function formatLog(entry: LogEntry): string {
   const color = LEVEL_COLORS[entry.level];
   const levelStr = entry.level.toUpperCase().padEnd(5);
@@ -62,9 +57,7 @@ function formatLog(entry: LogEntry): string {
   return output;
 }
 
-/**
- * Create a logger instance with a specific prefix
- */
+
 export function createLogger(prefix: string) {
   const log = (
     level: LogLevel,
@@ -79,7 +72,7 @@ export function createLogger(prefix: string) {
       timestamp: new Date().toISOString(),
     };
 
-    // Handle different argument patterns
+    
     if (errorOrData instanceof Error) {
       entry.error = {
         name: errorOrData.name,
@@ -93,7 +86,7 @@ export function createLogger(prefix: string) {
       entry.data = errorOrData;
     }
 
-    // Output to console
+    
     const logFn =
       level === "error"
         ? console.error
@@ -126,16 +119,12 @@ export function createLogger(prefix: string) {
   };
 }
 
-/**
- * Create a logger for IPC handlers
- */
+
 export function createIpcLogger(handlerName: string) {
   return createLogger(`IPC:${handlerName}`);
 }
 
-/**
- * Send error to renderer process for display
- */
+
 export function sendErrorToRenderer(
   webContents: WebContents,
   type: "critical" | "warning" | "info",
@@ -150,14 +139,12 @@ export function sendErrorToRenderer(
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
-    // Ignore if webContents is destroyed
+    
     console.error("Failed to send error to renderer:", err);
   }
 }
 
-/**
- * Global error reporter - sends to renderer and logs
- */
+
 export function reportError(
   prefix: string,
   message: string,
@@ -175,5 +162,5 @@ export function reportError(
   }
 }
 
-// Export a default logger for quick access
+
 export const mainLogger = createLogger("Main");

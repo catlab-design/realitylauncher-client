@@ -1,8 +1,4 @@
-/**
- * ========================================
- * Discord RPC IPC Handlers
- * ========================================
- */
+
 
 import { ipcMain } from "electron";
 import {
@@ -14,9 +10,7 @@ import {
 } from "../discord.js";
 
 export function registerDiscordHandlers(): void {
-    /**
-     * discord-rpc-set-enabled - เปิด/ปิด Discord RPC
-     */
+    
     ipcMain.handle("discord-rpc-set-enabled", async (_event, enabled: boolean): Promise<void> => {
         if (enabled) {
             await initDiscordRPC();
@@ -25,9 +19,7 @@ export function registerDiscordHandlers(): void {
         }
     });
 
-    /**
-     * discord-rpc-update - อัพเดทสถานะ Discord
-     */
+    
     ipcMain.handle(
         "discord-rpc-update",
         async (
@@ -40,9 +32,7 @@ export function registerDiscordHandlers(): void {
         }
     );
 
-    /**
-     * discord-rpc-is-connected - ตรวจสอบว่าเชื่อมต่อ Discord อยู่หรือไม่
-     */
+    
     ipcMain.handle("discord-rpc-is-connected", async (): Promise<boolean> => {
         return isRPCConnected();
     });

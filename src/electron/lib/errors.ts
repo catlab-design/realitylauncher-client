@@ -1,40 +1,37 @@
-/**
- * Centralized Error Handling for ml-client Electron
- * Provides standardized IPC error types and response formats
- */
 
-// Standard error codes for IPC
+
+
 export const IpcErrorCodes = {
-  // General errors
+  
   UNKNOWN_ERROR: 'UNKNOWN_ERROR',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
 
-  // Validation errors
+  
   VALIDATION_ERROR: 'VALIDATION_ERROR',
   INVALID_INPUT: 'INVALID_INPUT',
   MISSING_FIELD: 'MISSING_FIELD',
 
-  // Authentication errors
+  
   AUTH_REQUIRED: 'AUTH_REQUIRED',
   AUTH_FAILED: 'AUTH_FAILED',
   AUTH_EXPIRED: 'AUTH_EXPIRED',
 
-  // Network errors
+  
   NETWORK_ERROR: 'NETWORK_ERROR',
   TIMEOUT: 'TIMEOUT',
   API_ERROR: 'API_ERROR',
 
-  // File system errors
+  
   FILE_NOT_FOUND: 'FILE_NOT_FOUND',
   FILE_ACCESS_DENIED: 'FILE_ACCESS_DENIED',
   FILE_WRITE_ERROR: 'FILE_WRITE_ERROR',
 
-  // Game/Instance errors
+  
   INSTANCE_NOT_FOUND: 'INSTANCE_NOT_FOUND',
   GAME_LAUNCH_FAILED: 'GAME_LAUNCH_FAILED',
   GAME_ALREADY_RUNNING: 'GAME_ALREADY_RUNNING',
 
-  // Download errors
+  
   DOWNLOAD_FAILED: 'DOWNLOAD_FAILED',
   DOWNLOAD_CANCELLED: 'DOWNLOAD_CANCELLED',
   CHECKSUM_MISMATCH: 'CHECKSUM_MISMATCH',
@@ -42,7 +39,7 @@ export const IpcErrorCodes = {
 
 export type IpcErrorCode = typeof IpcErrorCodes[keyof typeof IpcErrorCodes];
 
-// IPC Response types
+
 export interface IpcErrorResponse {
   ok: false;
   error: {
@@ -59,9 +56,7 @@ export interface IpcSuccessResponse<T> {
 
 export type IpcResponse<T> = IpcSuccessResponse<T> | IpcErrorResponse;
 
-/**
- * IPC Error class for throwing typed errors
- */
+
 export class IpcError extends Error {
   public readonly code: IpcErrorCode;
   public readonly details?: Record<string, unknown>;
@@ -77,7 +72,7 @@ export class IpcError extends Error {
     this.details = details;
   }
 
-  // Factory methods for common errors
+  
   static validation(message: string, details?: Record<string, unknown>): IpcError {
     return new IpcError(IpcErrorCodes.VALIDATION_ERROR, message, details);
   }
@@ -114,9 +109,7 @@ export class IpcError extends Error {
     return new IpcError(IpcErrorCodes.INTERNAL_ERROR, message);
   }
 
-  /**
-   * Convert to IPC error response
-   */
+  
   toResponse(): IpcErrorResponse {
     return {
       ok: false,
@@ -129,9 +122,7 @@ export class IpcError extends Error {
   }
 }
 
-/**
- * Create IPC error response
- */
+
 export function ipcError(
   code: IpcErrorCode,
   message: string,
@@ -147,9 +138,7 @@ export function ipcError(
   };
 }
 
-/**
- * Create IPC success response
- */
+
 export function ipcSuccess<T>(data: T): IpcSuccessResponse<T> {
   return {
     ok: true,
@@ -157,9 +146,7 @@ export function ipcSuccess<T>(data: T): IpcSuccessResponse<T> {
   };
 }
 
-/**
- * Wrap IPC handler with error catching
- */
+
 export function wrapIpcHandler<T, A extends unknown[]>(
   handlerName: string,
   handler: (...args: A) => Promise<T>,
@@ -186,9 +173,7 @@ export function wrapIpcHandler<T, A extends unknown[]>(
   };
 }
 
-/**
- * Safely execute async operation with error handling
- */
+
 export async function trySafe<T>(
   operation: () => Promise<T>,
   errorMessage?: string
@@ -205,9 +190,7 @@ export async function trySafe<T>(
   }
 }
 
-/**
- * Create a timeout wrapper for promises
- */
+
 export function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,

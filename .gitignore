@@ -44,3 +44,10 @@ package-lock.json
 # Temporary files
 *.tmp
 *.temp
+
+# AI agent directories
+.agent/
+.agents/
+.claude/
+.codex/
+.gemini/

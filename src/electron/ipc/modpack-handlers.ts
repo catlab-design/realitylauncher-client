@@ -1,8 +1,4 @@
-/**
- * ========================================
- * Modpack Installer IPC Handlers
- * ========================================
- */
+
 
 import { ipcMain, BrowserWindow, app } from "electron";
 import fs from "node:fs";
@@ -27,15 +23,13 @@ import {
   type ExportOptions,
 } from "../modpack-exporter.js";
 
-// Store active installation controller
+
 let activeInstallController: AbortController | null = null;
 
 export function registerModpackHandlers(
   getMainWindow: () => BrowserWindow | null,
 ): void {
-  /**
-   * modpack-cancel-install - ยกเลิกการติดตั้งที่กำลังทำงานอยู่
-   */
+  
   ipcMain.handle("modpack-cancel-install", async () => {
     if (activeInstallController) {
       console.log("[Modpack] Cancelling installation...");
@@ -46,9 +40,7 @@ export function registerModpackHandlers(
     return false;
   });
 
-  /**
-   * modpack-install - ติดตั้ง modpack จากไฟล์ .mrpack
-   */
+  
   ipcMain.handle("modpack-install", async (_event, mrpackPath: string) => {
     try {
       const mainWindow = getMainWindow();
@@ -70,9 +62,7 @@ export function registerModpackHandlers(
     }
   });
 
-  /**
-   * modpack-install-from-modrinth - ดาวน์โหลดและติดตั้ง modpack จาก Modrinth
-   */
+  
   ipcMain.handle(
     "modpack-install-from-modrinth",
     async (_event, versionId: string) => {
@@ -82,7 +72,7 @@ export function registerModpackHandlers(
       try {
         activeInstallController = new AbortController();
 
-        // Step 1: Validate and get version
+        
         mainWindow?.webContents.send("modpack-install-progress", {
           stage: "downloading",
           message: "กำลังตรวจสอบเวอร์ชัน...",
@@ -101,8 +91,8 @@ export function registerModpackHandlers(
             error.message,
           );
 
-          // If version ID is invalid, it might be a project ID
-          // Try to get the project and use its latest version
+          
+          
           if (error.message.includes("404")) {
             console.log(
               "[Modpack] Version ID not found, checking if it's a project ID:",
@@ -112,7 +102,7 @@ export function registerModpackHandlers(
             if (activeInstallController.signal.aborted)
               throw new Error("Cancelled");
 
-            // Check if the ID looks like a numeric project ID (common pattern)
+            
             const isNumericId = /^\d+$/.test(versionId);
             if (isNumericId) {
               console.log(
@@ -123,7 +113,7 @@ export function registerModpackHandlers(
             try {
               const project = await getProject(versionId);
               if (project && project.versions && project.versions.length > 0) {
-                // Get the latest version
+                
                 const latestVersionId = project.versions[0];
                 console.log(
                   "[Modpack] Found project, using latest version:",
@@ -150,7 +140,7 @@ export function registerModpackHandlers(
         if (activeInstallController.signal.aborted)
           throw new Error("Cancelled");
 
-        // Step 2: Download
+        
         mainWindow?.webContents.send("modpack-install-progress", {
           stage: "downloading",
           message: "กำลังดาวน์โหลด modpack...",
@@ -171,7 +161,7 @@ export function registerModpackHandlers(
         if (activeInstallController.signal.aborted)
           throw new Error("Cancelled");
 
-        // Step 2: Install
+        
         mainWindow?.webContents.send("modpack-install-progress", {
           stage: "extracting",
           message: "กำลังติดตั้ง modpack...",
@@ -186,7 +176,7 @@ export function registerModpackHandlers(
         );
 
         if (result.ok && result.instance) {
-          // Step 3: Download icon
+          
           try {
             const projectId = version.project_id;
             if (projectId && !activeInstallController.signal.aborted) {
@@ -203,7 +193,7 @@ export function registerModpackHandlers(
             }
           } catch {}
 
-          // Step 4: Cleanup
+          
           try {
             const mrpackDir = path.dirname(mrpackPath);
             if (fs.existsSync(mrpackPath)) fs.unlinkSync(mrpackPath);
@@ -229,9 +219,7 @@ export function registerModpackHandlers(
     },
   );
 
-  /**
-   * modpack-install-from-curseforge - ดาวน์โหลดและติดตั้ง modpack จาก CurseForge
-   */
+  
   ipcMain.handle(
     "modpack-install-from-curseforge",
     async (_event, projectId: string, fileId: string) => {
@@ -245,7 +233,7 @@ export function registerModpackHandlers(
       try {
         activeInstallController = new AbortController();
 
-        // Step 1: Get file info
+        
         mainWindow?.webContents.send("modpack-install-progress", {
           stage: "downloading",
           message: "กำลังดึงข้อมูลไฟล์...",
@@ -266,7 +254,7 @@ export function registerModpackHandlers(
         if (activeInstallController.signal.aborted)
           throw new Error("Cancelled");
 
-        // Step 2: Download zip
+        
         mainWindow?.webContents.send("modpack-install-progress", {
           stage: "downloading",
           message: `กำลังดาวน์โหลด: ${fileData.fileName}`,
@@ -291,7 +279,7 @@ export function registerModpackHandlers(
         if (activeInstallController.signal.aborted)
           throw new Error("Cancelled");
 
-        // Step 3: Install
+        
         mainWindow?.webContents.send("modpack-install-progress", {
           stage: "extracting",
           message: "กำลังติดตั้ง modpack...",
@@ -303,10 +291,10 @@ export function registerModpackHandlers(
             mainWindow?.webContents.send("modpack-install-progress", progress);
           },
           activeInstallController.signal,
-        ); // Pass signal to installer
+        ); 
 
         if (result.ok && result.instance) {
-          // Step 4: Download icon
+          
           try {
             const projectResult = await getCurseForgeProject(projectId);
             if (
@@ -323,7 +311,7 @@ export function registerModpackHandlers(
             }
           } catch {}
 
-          // Step 5: Cleanup
+          
           try {
             if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
           } catch {}
@@ -342,9 +330,7 @@ export function registerModpackHandlers(
     },
   );
 
-  /**
-   * modpack-check-conflicts - ตรวจสอบ mod ที่ขัดแย้งกันใน instance
-   */
+  
   ipcMain.handle(
     "modpack-check-conflicts",
     async (_event, instanceId: string) => {
@@ -356,9 +342,7 @@ export function registerModpackHandlers(
     },
   );
 
-  /**
-   * modpack-parse-info - อ่านข้อมูล modpack จากไฟล์ .mrpack
-   */
+  
   ipcMain.handle("modpack-parse-info", async (_event, mrpackPath: string) => {
     try {
       return await parseModpackIndex(mrpackPath);
@@ -368,10 +352,8 @@ export function registerModpackHandlers(
     }
   });
 
-  /**
-   * instances-export - Export instance to modpack/zip
-   */
-  // Ensure no duplicate handler registration from other modules.
+  
+  
   ipcMain.removeHandler("instances-export");
   ipcMain.removeHandler("instances-export-cancel");
   ipcMain.handle(
@@ -396,9 +378,7 @@ export function registerModpackHandlers(
     },
   );
 
-  /**
-   * instances-export-cancel - Cancel active export
-   */
+  
   ipcMain.handle(
     "instances-export-cancel",
     async (_event, instanceId: string) => {

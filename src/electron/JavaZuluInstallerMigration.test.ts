@@ -15,7 +15,7 @@ const nativeJavaSource = readFileSync(
 describe("Java installer vendor defaults", () => {
   it("uses Azul Zulu metadata API in Electron fallback installer", () => {
     expect(utilityHandlersSource).toContain(
-      "https://api.azul.com/metadata/v1/zulu/packages/",
+      "https://api.azul.com/metadata/v1/zulu/packages/"
     );
     expect(utilityHandlersSource).toContain('java_package_features: "headful"');
     expect(utilityHandlersSource).toContain("download_url");
@@ -23,7 +23,7 @@ describe("Java installer vendor defaults", () => {
 
   it("uses Azul Zulu metadata API in native installer", () => {
     expect(nativeJavaSource).toContain(
-      "https://api.azul.com/metadata/v1/zulu/packages/",
+      "https://api.azul.com/metadata/v1/zulu/packages/"
     );
     expect(nativeJavaSource).toContain("java_package_features=headful");
     expect(nativeJavaSource).toContain("\"download_url\"");

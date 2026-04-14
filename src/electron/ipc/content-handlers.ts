@@ -1,8 +1,4 @@
-/**
- * ========================================
- * Content Download IPC Handlers
- * ========================================
- */
+
 
 import { ipcMain, BrowserWindow } from "electron";
 import {
@@ -12,9 +8,7 @@ import {
 } from "../content.js";
 
 export function registerContentHandlers(getMainWindow: () => BrowserWindow | null): void {
-    /**
-     * content-download-to-instance - Download mod/shader/resourcepack to instance
-     */
+    
     ipcMain.handle(
         "content-download-to-instance",
         async (_event, options: {
@@ -46,9 +40,7 @@ export function registerContentHandlers(getMainWindow: () => BrowserWindow | nul
         }
     );
 
-    /**
-     * content-get-compatible-versions - Get versions compatible with instance
-     */
+    
     ipcMain.handle(
         "content-get-compatible-versions",
         async (_event, projectId: string, instanceId: string) => {

@@ -103,7 +103,7 @@ export function registerInstanceModHandlers(deps: InstanceModHandlersDeps): void
       return { ok: true, mods: [] };
     }
 
-    // Check cache
+    
     const cacheEntry = modListCache.get(instanceId);
     if (cacheEntry && cacheEntry.mtimeMs === stats.mtimeMs) {
       return { ok: true, mods: cacheEntry.mods, hasUncached: cacheEntry.hasUncached };

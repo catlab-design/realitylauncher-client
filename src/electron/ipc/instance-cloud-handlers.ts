@@ -27,7 +27,7 @@ export function registerInstanceCloudHandlers(
       const { syncCloudInstances } = await import("../cloud-instances.js");
       await syncCloudInstances(session.apiToken);
 
-      // Notify frontend that instances might have been updated/added
+      
       getMainWindow()?.webContents.send("instances-updated");
 
       return { ok: true };
@@ -47,7 +47,7 @@ export function registerInstanceCloudHandlers(
       }
     };
 
-    // Register cancellable operation immediately to avoid early cancel race
+    
     activeOperations.set(id, controller);
 
     try {
@@ -68,12 +68,12 @@ export function registerInstanceCloudHandlers(
       });
       throwIfCancelled();
 
-      // 1. Fetch all joined servers
+      
       const data = await fetchJoinedServers(session.apiToken, controller.signal);
       throwIfCancelled();
       const allInstances = [...data.owned, ...data.member];
 
-      // 2. Find target
+      
       const target = allInstances.find((i) => (i.storagePath || i.id) === id);
 
       if (target) {
@@ -83,14 +83,14 @@ export function registerInstanceCloudHandlers(
         getMainWindow()?.webContents.send("instances-updated");
         throwIfCancelled();
 
-        // 3. Download Content
-        // MUST match importCloudInstance logic: storagePath || id
+        
+        
         const targetId = target.storagePath || target.id;
         console.log(
           `[Instances] Downloading content for: ${target.name} (ID: ${targetId})`,
         );
 
-        // Map both requested ID and resolved local storage ID to the same controller
+        
         if (targetId !== id) {
           mappedCancelId = targetId;
           activeOperations.set(targetId, controller);
@@ -106,7 +106,7 @@ export function registerInstanceCloudHandlers(
             controller.signal,
           );
 
-          // Success - clear the cleanup flag
+          
           createdInstanceId = null;
         } catch (syncError: any) {
           if (
@@ -131,7 +131,7 @@ export function registerInstanceCloudHandlers(
         return { ok: false, error: "Cloud Instance not found in your list." };
       }
     } catch (error: any) {
-      // Cleanup: Delete the instance if installation was cancelled or failed
+      
       if (createdInstanceId) {
         console.log(
           "[Instances] Installation failed or cancelled, cleaning up instance:",

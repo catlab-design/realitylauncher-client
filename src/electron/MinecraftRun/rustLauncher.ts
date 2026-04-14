@@ -1,13 +1,4 @@
-/**
- * ========================================
- * Rust-based Minecraft Launcher
- * ========================================
- *
- * ใช้ Rust native module สำหรับ launch Minecraft
- * - เร็วกว่า minecraft-java-core
- * - ไม่มีปัญหา PID polling
- * - รองรับ mod loaders
- */
+
 
 import { app, BrowserWindow, ipcMain } from "electron";
 import path from "path";
@@ -50,9 +41,9 @@ interface AssetIndexData {
 }
 
 function getRequiredJavaVersion(mcVersion?: string): number {
-  // Minecraft < 1.17 -> Java 8
-  // Minecraft 1.17 - 1.20.4 -> Java 17
-  // Minecraft 1.20.5+ -> Java 21
+  
+  
+  
   let targetJavaVersion = 17;
   if (!mcVersion) return targetJavaVersion;
 
@@ -145,7 +136,7 @@ async function getVersionManifestCached(
       }
     }
   } catch {
-    // Ignore disk cache read issues; fallback to network.
+    
   }
 
   try {
@@ -293,7 +284,7 @@ function canReuseExtractedNatives(
   if (marker.platform !== process.platform || marker.arch !== process.arch)
     return false;
 
-  // If this version doesn't need native jars, marker is enough.
+  
   if (marker.nativeSourceCount <= 0) return true;
   return hasNativeBinary(nativesDir);
 }
@@ -355,7 +346,7 @@ async function getJavaMajorVersion(
   try {
     statMtime = String(Math.floor(fs.statSync(javaPath).mtimeMs));
   } catch {
-    // Ignore mtime read failures; cache will key only by path.
+    
   }
 
   const cacheKey = `${javaPath}|${statMtime}`;
@@ -415,8 +406,8 @@ async function getJavaMajorVersion(
   return fallbackMajor;
 }
 
-// Helper to locate a suitable Java executable (prefer Java 17)
-// Helper to locate a suitable Java executable (Smart Version Selection)
+
+
 async function getJavaPath(
   customJavaPath: string | undefined,
   configJavaPath: string | undefined,
@@ -450,14 +441,14 @@ async function getJavaPath(
     return cacheHit.path;
   }
 
-  // 1. Use explicit custom path if provided and exists
+  
   let javaPath: string | undefined;
   if (isValidJavaPath(customJavaPath)) {
     javaPath = customJavaPath;
     console.log(`[RustLauncher] Using custom Java path: ${javaPath}`);
   }
 
-  // 2. Check user-configured javaPaths from Settings
+  
   if (!javaPath) {
     if (targetJavaVersion === 8 && isValidJavaPath(javaPaths.java8)) {
       javaPath = javaPaths.java8;
@@ -477,7 +468,7 @@ async function getJavaPath(
     }
   }
 
-  // 3. If still not set or set to "auto", discover installations via native module
+  
   if (!javaPath || javaPath === "auto") {
     const canProbe =
       native && typeof native.findJavaInstallations === "function";
@@ -523,7 +514,7 @@ async function getJavaPath(
     }
   }
 
-  // 4. Fallback to legacy single javaPath (only if file exists and we haven't found a better one)
+  
   if (!javaPath && isValidJavaPath(configJavaPath)) {
     javaPath = configJavaPath;
     console.log(`[RustLauncher] Using legacy configured javaPath: ${javaPath}`);
@@ -564,7 +555,7 @@ import { downloadFileAtomic } from "../modrinth.js";
 import { applyModLoader, mergeLibraries } from "./modLoaders.js";
 import { filterGameArgs, getOptimizedJvmArgs } from "./rustLauncherSupport.js";
 
-// Get native module (CJS compatible - esbuild outputs CJS)
+
 const customRequire = createRequire(__filename);
 
 function getNative() {
@@ -599,9 +590,7 @@ interface PrepareResult {
   error?: string;
 }
 
-/**
- * Launch Minecraft using Rust backend
- */
+
 export async function launchGameRust(
   options: LaunchOptions,
 ): Promise<LaunchResult> {
@@ -625,7 +614,7 @@ export async function launchGameRust(
 
   const config = getConfig();
   const gameDir = options.gameDirectory || getMinecraftDir();
-  const minecraftRoot = getMinecraftDir(); // Shared assets/libraries location
+  const minecraftRoot = getMinecraftDir(); 
   const assetsDir = path.join(minecraftRoot, "assets");
   const librariesDir = path.join(minecraftRoot, "libraries");
   const versionsDir = path.join(minecraftRoot, "versions");
@@ -669,7 +658,7 @@ export async function launchGameRust(
   };
 
   try {
-    // Step 1: Find Java
+    
     sendProgress({ type: "prepare", task: "กำลังค้นหา Java..." });
 
     const javaResolveStartedAt = Date.now();
@@ -682,7 +671,7 @@ export async function launchGameRust(
     logPerfStep("resolve-java-path", javaResolveStartedAt);
     console.log(`[RustLauncher] Using Java: ${javaPath}`);
 
-    // Step 2: Resolve version JSON (prefer local cache to avoid network on every launch)
+    
     sendProgress({ type: "prepare", task: "Checking version data..." });
     let manifest: any | null = null;
     const versionLoadStartedAt = Date.now();
@@ -697,7 +686,7 @@ export async function launchGameRust(
     let versionJson = versionLoad.versionJson;
     manifest = versionLoad.manifest;
 
-    // Step 4: Handle mod loader (Fabric/Forge/etc)
+    
     if (loader && loader.enable && loader.type !== "vanilla") {
       sendProgress({ type: "prepare", task: `กำลังเตรียม ${loader.type}...` });
       const applyLoaderStartedAt = Date.now();
@@ -712,7 +701,7 @@ export async function launchGameRust(
       logPerfStep(`apply-loader-${loader.type}`, applyLoaderStartedAt);
     }
 
-    // Step 4.5: Handle inheritsFrom (merge with parent version)
+    
     let mergedVersionData = JSON.parse(versionJson);
     if (mergedVersionData.inheritsFrom) {
       sendProgress({
@@ -743,16 +732,16 @@ export async function launchGameRust(
 
       const parentData = JSON.parse(parentJson);
 
-      // Merge: child overrides parent, but libraries are combined
+      
       mergedVersionData = {
         ...parentData,
         ...mergedVersionData,
-        // Combine libraries (child first, then parent) with deduplication
+        
         libraries: mergeLibraries(
           mergedVersionData.libraries || [],
           parentData.libraries || [],
         ),
-        // Merge arguments
+        
         arguments: {
           game: filterGameArgs([
             ...(mergedVersionData.arguments?.game || []),
@@ -765,7 +754,7 @@ export async function launchGameRust(
         },
       };
 
-      // Remove inheritsFrom after merge
+      
       delete mergedVersionData.inheritsFrom;
 
       console.log(
@@ -774,14 +763,14 @@ export async function launchGameRust(
       versionJson = JSON.stringify(mergedVersionData);
     }
 
-    // Step 5: Prepare launch
+    
     sendProgress({ type: "prepare", task: "กำลังเตรียมไฟล์เกม..." });
 
     const versionJarPath = path.join(versionsDir, version, `${version}.jar`);
 
-    // Handle UUID: if it's a valid Minecraft UUID, use it directly
-    // If it starts with "catid-", generate an offline-style UUID from username
-    // Uses Minecraft's actual offline UUID algorithm: UUID v3 from MD5("OfflinePlayer:" + name)
+    
+    
+    
     let sanitizedUuid = uuid || "00000000-0000-0000-0000-000000000000";
     if (uuid?.startsWith("catid-")) {
       const crypto = await import("node:crypto");
@@ -789,9 +778,9 @@ export async function launchGameRust(
         .createHash("md5")
         .update(`OfflinePlayer:${username}`)
         .digest();
-      // Set version to 3 (name-based MD5) per UUID spec
+      
       md5[6] = (md5[6] & 0x0f) | 0x30;
-      // Set variant to IETF (10xx)
+      
       md5[8] = (md5[8] & 0x3f) | 0x80;
       const hex = md5.toString("hex");
       sanitizedUuid = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
@@ -800,7 +789,7 @@ export async function launchGameRust(
       );
     }
 
-    // Get asset index from version JSON
+    
     const versionData = JSON.parse(versionJson);
     const assetIndex =
       versionData.assetIndex?.id || versionData.assets || version;
@@ -850,7 +839,7 @@ export async function launchGameRust(
       throw new Error(prepareResult.error || "Failed to prepare launch");
     }
 
-    // Post-process args: fix unreplaced template variables
+    
     const fixUnreplacedVars = (arg: string): string => {
       let res = arg
         .replace(/\$\{auth_xuid\}/g, "0")
@@ -861,20 +850,20 @@ export async function launchGameRust(
         .replace(/\$\{path_separator\}/g, path.delimiter)
         .replace(/\$\{primary_jar_name\}/g, `${version}.jar`);
 
-      // Safety: if arg still contains ${...}, try to replace common ones or just warn
-      // Not throwing error to allow game to attempt launch
+      
+      
       return res;
     };
 
     prepareResult.jvmArgs = prepareResult.jvmArgs.map(fixUnreplacedVars);
     prepareResult.gameArgs = prepareResult.gameArgs.map(fixUnreplacedVars);
 
-    // Warn about any remaining unreplaced variables but don't spam
+    
     const unreplacedPattern = /\$\{[^}]+\}/g;
     for (const arg of [...prepareResult.jvmArgs, ...prepareResult.gameArgs]) {
       const matches = arg.match(unreplacedPattern);
       if (matches) {
-        // Ignore standard log4j config patterns etc if any
+        
         console.warn(
           `[RustLauncher] WARNING: Unreplaced template variables in arg: ${matches.join(", ")}`,
         );
@@ -890,8 +879,8 @@ export async function launchGameRust(
         percent: 0,
       });
 
-      // Use TypeScript-based atomic download instead of native
-      // This fixes issues with Forge/NeoForge library corruption
+      
+      
       const downloads = prepareResult.downloadsNeeded;
       const concurrency = 10;
       const queue = [...downloads];
@@ -906,7 +895,7 @@ export async function launchGameRust(
             if (!dl) break;
 
             try {
-              // Use SHA1 from download item if available
+              
               const hash = dl.sha1;
 
               await downloadFileAtomic(
@@ -947,7 +936,7 @@ export async function launchGameRust(
       });
     }
 
-    // Step 7: Download assets (versionData already parsed above)
+    
     if (versionData.assetIndex) {
       sendProgress({ type: "download", task: "กำลังตรวจสอบ assets..." });
 
@@ -958,7 +947,7 @@ export async function launchGameRust(
       );
 
       if (!(await fileExists(assetIndexPath))) {
-        // Download asset index
+        
         const assetIndexJson = await native.fetchVersionDetail(
           versionData.assetIndex.url,
         );
@@ -970,7 +959,7 @@ export async function launchGameRust(
 
       let assetDownloads: DownloadItem[] = [];
       try {
-        // Use native batch scanner by default (faster on large asset sets).
+        
         assetDownloads = await native.getAssetDownloads(
           versionData.assetIndex.url,
           assetsDir,
@@ -1002,7 +991,7 @@ export async function launchGameRust(
       }
     }
 
-    // Step 8: Extract natives
+    
     sendProgress({ type: "extract", task: "Extracting natives..." });
 
     const versionDataForNatives = JSON.parse(versionJson);
@@ -1035,7 +1024,7 @@ export async function launchGameRust(
       }
       fs.mkdirSync(nativesDir, { recursive: true });
 
-      // Extract native libraries from classifier JARs to natives directory
+      
       for (const lib of versionDataForNatives.libraries || []) {
         if (!lib.natives) continue;
 
@@ -1060,7 +1049,7 @@ export async function launchGameRust(
         }
       }
 
-      // Clean up META-INF that may have been extracted
+      
       const metaInfPath = path.join(nativesDir, "META-INF");
       if (fs.existsSync(metaInfPath)) {
         fs.rmSync(metaInfPath, { recursive: true, force: true });
@@ -1085,14 +1074,14 @@ export async function launchGameRust(
       }
     }
 
-    // Step 9: Launch game
+    
     sendProgress({ type: "launch", task: "กำลังเปิดเกม..." });
 
     if (isAborted(instanceId)) {
       throw new Error("การเปิดเกมถูกยกเลิก");
     }
 
-    // Launch using Node.js spawn for live logging
+    
     const { spawn } = await import("child_process");
 
     const allArgs = [
@@ -1110,7 +1099,7 @@ export async function launchGameRust(
       `[RustLauncher] Detected Java Major Version: ${javaMajorVersion}`,
     );
 
-    // Keep this informational note for known Forge+Java combos.
+    
     const isForge20 =
       version.includes("1.20.1") &&
       loader &&
@@ -1121,7 +1110,7 @@ export async function launchGameRust(
       );
     }
 
-    // Use Argument File for Java 9+ to fix ENAMETOOLONG
+    
     let spawnArgs = allArgs;
     let argsFilePath: string | null = null;
     const safeInstanceId =
@@ -1134,15 +1123,15 @@ export async function launchGameRust(
         const argsFile = path.join(tempDir, argsFileName);
         argsFilePath = argsFile;
 
-        // Write arguments to file, one per line
-        // IMPORTANT: Java @argfile treats backslashes as escape characters!
-        // We MUST escape backslashes on Windows paths (e.g. C:\Path -> C:\\Path)
+        
+        
+        
         const fileContent = allArgs
           .map((arg) => {
-            // 1. Escape backslashes first
+            
             let escaped = arg.replace(/\\/g, "\\\\");
 
-            // 2. Quote if contains spaces (and not already quoted)
+            
             if (escaped.includes(" ") && !escaped.startsWith('"')) {
               escaped = `"${escaped}"`;
             }
@@ -1152,12 +1141,12 @@ export async function launchGameRust(
 
         fs.writeFileSync(argsFile, fileContent);
         console.log(`[RustLauncher] Created argument file at ${argsFile}`);
-        // IMPORTANT: Use a RELATIVE path for the @argfile argument.
-        // If we use an absolute path that contains spaces (e.g. "C:\Users\User Name\..."),
-        // Node.js will quote the argument as "@path with spaces" when spawning,
-        // and Java will NOT recognize a quoted "@ argument as an @argfile - causing immediate crash.
-        // Using a relative path avoids quoting since it has no spaces.
-        // Java resolves relative @argfile paths against the process CWD (which is set to gameDir).
+        
+        
+        
+        
+        
+        
         spawnArgs = [`@temp/${argsFileName}`];
       } catch (e) {
         console.error(
@@ -1171,13 +1160,13 @@ export async function launchGameRust(
       cwd: gameDir,
       env: { ...process.env },
       stdio: ["ignore", "pipe", "pipe"],
-      // On Windows: keep attached for proper cleanup
-      // On macOS/Linux: detach to prevent "not responding" issues
+      
+      
       detached: process.platform !== "win32",
       windowsHide: true,
     });
 
-    // On non-Windows, unref the child so it doesn't block launcher exit
+    
     if (process.platform !== "win32") {
       child.unref();
     }
@@ -1194,7 +1183,7 @@ export async function launchGameRust(
       `[RustLauncher] Launch Args (Tail): ${allArgs.slice(-5).join(" ")}`,
     );
 
-    // Save full launch command to crash log for debugging
+    
     const crashLogPath = path.join(gameDir, "launch-debug.log");
     try {
       const debugInfo = [
@@ -1224,20 +1213,20 @@ export async function launchGameRust(
       console.warn(`[RustLauncher] Failed to save debug log:`, e);
     }
 
-    // Setup live logging with throttling to prevent IPC flooding
+    
     const gameLogCallback = getGameLogCallback();
-    let stderrBuffer = ""; // Accumulate stderr for crash diagnostics (capped)
-    const MAX_STDERR_BUFFER = 100_000; // Cap at ~100KB to prevent memory leak
+    let stderrBuffer = ""; 
+    const MAX_STDERR_BUFFER = 100_000; 
 
-    // Throttle mechanism: batch logs and send every 100ms
+    
     let logQueue: Array<{ level: string; message: string }> = [];
     let logFlushTimer: NodeJS.Timeout | null = null;
-    const LOG_FLUSH_INTERVAL = 100; // ms
-    const MAX_QUEUE_SIZE = 50; // Force flush if queue gets too large
+    const LOG_FLUSH_INTERVAL = 100; 
+    const MAX_QUEUE_SIZE = 50; 
 
     const flushLogs = () => {
       if (logQueue.length > 0 && gameLogCallback) {
-        // Send batched logs (just the last few to prevent overwhelming UI)
+        
         const toSend = logQueue.slice(-20);
         for (const log of toSend) {
           gameLogCallback(log.level, log.message);
@@ -1250,7 +1239,7 @@ export async function launchGameRust(
     const queueLog = (level: string, message: string) => {
       logQueue.push({ level, message });
 
-      // Force flush if queue is too large
+      
       if (logQueue.length >= MAX_QUEUE_SIZE) {
         if (logFlushTimer) clearTimeout(logFlushTimer);
         flushLogs();
@@ -1265,7 +1254,7 @@ export async function launchGameRust(
         for (const line of lines) {
           const lineStr = line.trim();
           if (lineStr) {
-            // Check for corruption errors (always process immediately)
+            
             if (
               lineStr.includes("java.util.zip.ZipException") ||
               lineStr.includes("zip END header not found")
@@ -1281,7 +1270,7 @@ export async function launchGameRust(
               }
             }
 
-            // Queue log with appropriate level
+            
             let level = "info";
             if (lineStr.includes("/ERROR]") || lineStr.includes("/FATAL]"))
               level = "error";
@@ -1296,7 +1285,7 @@ export async function launchGameRust(
     if (child.stderr) {
       child.stderr.on("data", (data: Buffer) => {
         const text = data.toString();
-        // Accumulate for crash log, but cap size to prevent memory leak
+        
         if (stderrBuffer.length < MAX_STDERR_BUFFER) {
           stderrBuffer += text.substring(
             0,
@@ -1312,7 +1301,7 @@ export async function launchGameRust(
       });
     }
 
-    // Save running instance
+    
     native.saveRunningInstance(instanceId, child.pid, gameDir);
 
     setGameProcess(instanceId, child as any);
@@ -1325,17 +1314,17 @@ export async function launchGameRust(
       );
     }
 
-    // Send game-started event to renderer
+    
     const windows = BrowserWindow.getAllWindows();
     for (const win of windows) {
       win.webContents.send("game-started", { instanceId, pid: child.pid });
     }
 
-    // Track launch time for crash detection
+    
     const launchTimestamp = Date.now();
     const launchArgsFilePath = argsFilePath;
 
-    // Handle process close
+    
     child.on("close", (code: number | null) => {
       console.log(`[RustLauncher] Game process closed with code: ${code}`);
       if (telemetryInstanceId) {
@@ -1344,7 +1333,7 @@ export async function launchGameRust(
       native.removeRunningInstance(instanceId);
       setGameProcess(instanceId, null as any);
 
-      // Detect immediate crash (exit within 10 seconds)
+      
       const runDuration = Date.now() - launchTimestamp;
       if (runDuration < 10000 && code !== 0) {
         console.error(
@@ -1357,7 +1346,7 @@ export async function launchGameRust(
             `t:crash_immediate^^${Math.round(runDuration / 1000)}^^${code}`,
           );
 
-          // Analyze crash log using Rust Regex
+          
           let specificReasonFound = false;
           if (stderrBuffer) {
             try {
@@ -1365,7 +1354,7 @@ export async function launchGameRust(
                 | string
                 | null;
               if (parsedReason) {
-                // Return keys instead of full string from Rust, assume rust outputs prefix e.g. "OUT_OF_MEMORY: "
+                
                 let tKey = "crash_reason";
                 if (parsedReason.includes("OUT_OF_MEMORY"))
                   tKey = "crash_out_of_memory";
@@ -1400,7 +1389,7 @@ export async function launchGameRust(
           }
         }
 
-        // Append stderr output to crash debug log
+        
         try {
           const crashAppend = [
             ``,
@@ -1420,7 +1409,7 @@ export async function launchGameRust(
         } catch {}
       }
 
-      // Send IPC event to renderer
+      
       const windows = BrowserWindow.getAllWindows();
       for (const win of windows) {
         win.webContents.send("game-stopped", {
@@ -1430,10 +1419,10 @@ export async function launchGameRust(
         });
       }
 
-      // Emit local event for main process listeners (instance handlers)
+      
       ipcMain.emit("game-stopped", null, { instanceId });
 
-      // Clean up argfile
+      
       if (launchArgsFilePath) {
         try {
           fs.unlinkSync(launchArgsFilePath);

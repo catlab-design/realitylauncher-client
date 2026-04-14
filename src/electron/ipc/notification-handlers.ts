@@ -1,16 +1,10 @@
-/**
- * ========================================
- * Notification IPC Handlers
- * ========================================
- */
+
 
 import { ipcMain } from "electron";
 import { getSession } from "../auth.js";
 
 export function registerNotificationHandlers(): void {
-    /**
-     * notifications-fetch-announcements - Fetch public announcements
-     */
+    
     ipcMain.handle("notifications-fetch-announcements", async () => {
         try {
             const { fetchAnnouncements } = await import("../notifications.js");
@@ -21,9 +15,7 @@ export function registerNotificationHandlers(): void {
         }
     });
 
-    /**
-     * notifications-fetch-user - Fetch user's notifications
-     */
+    
     ipcMain.handle("notifications-fetch-user", async () => {
         try {
             const session = getSession();
@@ -32,14 +24,12 @@ export function registerNotificationHandlers(): void {
             const { fetchUserNotifications } = await import("../notifications.js");
             return await fetchUserNotifications(session.apiToken);
         } catch (error: any) {
-            // console.error("[Notifications] Error fetching user notifications:", error);
+            
             return [];
         }
     });
 
-    /**
-     * notifications-sync - Fetch notifications + invitations in one request
-     */
+    
     ipcMain.handle("notifications-sync", async () => {
         try {
             const session = getSession();
@@ -54,9 +44,7 @@ export function registerNotificationHandlers(): void {
         }
     });
 
-    /**
-     * notifications-mark-read - Mark notification as read
-     */
+    
     ipcMain.handle("notifications-mark-read", async (_event, notificationId: string) => {
         try {
             const session = getSession();
@@ -70,9 +58,7 @@ export function registerNotificationHandlers(): void {
         }
     });
 
-    /**
-     * notifications-delete - Delete a notification
-     */
+    
     ipcMain.handle("notifications-delete", async (_event, notificationId: string) => {
         try {
             const session = getSession();
@@ -86,9 +72,7 @@ export function registerNotificationHandlers(): void {
         }
     });
 
-    /**
-     * invitations-fetch - Fetch pending invitations
-     */
+    
     ipcMain.handle("invitations-fetch", async () => {
         try {
             const session = getSession();
@@ -102,9 +86,7 @@ export function registerNotificationHandlers(): void {
         }
     });
 
-    /**
-     * invitations-accept - Accept an invitation
-     */
+    
     ipcMain.handle("invitations-accept", async (_event, invitationId: string) => {
         try {
             const session = getSession();
@@ -118,9 +100,7 @@ export function registerNotificationHandlers(): void {
         }
     });
 
-    /**
-     * invitations-reject - Reject an invitation
-     */
+    
     ipcMain.handle("invitations-reject", async (_event, invitationId: string) => {
         try {
             const session = getSession();

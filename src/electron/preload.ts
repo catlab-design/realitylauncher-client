@@ -1,20 +1,13 @@
-/**
- * ========================================
- * Electron Preload Script
- * ========================================
- *
- * Bridge ระหว่าง Main Process และ Renderer Process
- * ใช้ contextBridge เพื่อ expose APIs อย่างปลอดภัย
- */
+
 
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 
-// Simple cache/coalescing for instancesList to avoid rapid duplicate IPC calls
+
 let _instancesCacheKey: string = "";
 let _instancesCacheTs: number = 0;
 let _instancesCacheData: any[] | null = null;
 let _instancesCachePromise: Promise<any> | null = null;
-const INSTANCES_CACHE_MS = 5_000; // milliseconds
+const INSTANCES_CACHE_MS = 5_000; 
 
 function invalidateInstancesListCache(): void {
   _instancesCacheKey = "";
@@ -34,41 +27,41 @@ async function invokeWithInstancesCacheInvalidation<T = unknown>(
   }
 }
 
-// ========================================
-// API Definition
-// ========================================
+
+
+
 
 const api = {
-  // ----------------------------------------
-  // Config APIs
-  // ----------------------------------------
+  
+  
+  
   getConfig: () => ipcRenderer.invoke("get-config"),
   setConfig: (config: Record<string, unknown>) =>
     ipcRenderer.invoke("set-config", config),
   resetConfig: () => ipcRenderer.invoke("reset-config"),
   getColorThemes: () => ipcRenderer.invoke("get-color-themes"),
 
-  // ----------------------------------------
-  // Auth APIs
-  // ----------------------------------------
-  // Note: loginOffline was removed in favor of CatID auth (use loginCatID)
+  
+  
+  
+  
   logout: () => ipcRenderer.invoke("auth-logout"),
   getSession: () => ipcRenderer.invoke("auth-get-session"),
   isLoggedIn: () => ipcRenderer.invoke("auth-is-logged-in"),
   setActiveSession: (session: any) =>
     ipcRenderer.invoke("auth-set-active-session", session),
 
-  // ----------------------------------------
-  // Launcher APIs
-  // ----------------------------------------
+  
+  
+  
   listVersions: () => ipcRenderer.invoke("list-versions"),
   getLauncherInfo: () => ipcRenderer.invoke("get-launcher-info"),
   launchGame: (payload: { version: string; username: string; ramMB: number }) =>
     ipcRenderer.invoke("launch-game", payload),
 
-  // ----------------------------------------
-  // Utility APIs
-  // ----------------------------------------
+  
+  
+  
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   openExternal: (url: string) => ipcRenderer.invoke("open-external", url),
   openMicrosoftLogin: (verificationUri: string, userCode: string) =>
@@ -79,9 +72,9 @@ const api = {
   getMaxRam: () => ipcRenderer.invoke("get-max-ram"),
   autoDetectJava: () => ipcRenderer.invoke("auto-detect-java"),
 
-  // ----------------------------------------
-  // Dialog APIs
-  // ----------------------------------------
+  
+  
+  
   browseJava: () => ipcRenderer.invoke("browse-java"),
   browseDirectory: (title?: string) =>
     ipcRenderer.invoke("browse-directory", title),
@@ -121,9 +114,9 @@ const api = {
     return () => ipcRenderer.removeListener("java-install-progress", handler);
   },
 
-  // ----------------------------------------
-  // Discord RPC APIs
-  // ----------------------------------------
+  
+  
+  
   discordRPCSetEnabled: (enabled: boolean) =>
     ipcRenderer.invoke("discord-rpc-set-enabled", enabled),
   discordRPCUpdate: (
@@ -144,9 +137,9 @@ const api = {
   ) => ipcRenderer.invoke("discord-rpc-update", status, serverName, serverIcon),
   discordRPCIsConnected: () => ipcRenderer.invoke("discord-rpc-is-connected"),
 
-  // ----------------------------------------
-  // Auth Window APIs
-  // ----------------------------------------
+  
+  
+  
   openAuthWindow: () => ipcRenderer.invoke("open-auth-window"),
   closeAuthWindow: () => ipcRenderer.invoke("close-auth-window"),
   onAuthCallback: (callback: (data: { token: string }) => void) => {
@@ -155,16 +148,16 @@ const api = {
       data: { token: string },
     ) => callback(data);
     ipcRenderer.on("auth-callback", handler);
-    // Return cleanup function
+    
     return () => ipcRenderer.removeListener("auth-callback", handler);
   },
 
-  // Device Code Authentication APIs
+  
   startDeviceCodeAuth: () => ipcRenderer.invoke("auth-device-code-start"),
   pollDeviceCodeAuth: (deviceCode: string, isLinking?: boolean) =>
     ipcRenderer.invoke("auth-device-code-poll", deviceCode, isLinking),
 
-  // CatID Authentication APIs
+  
   loginCatID: (username: string, password: string) =>
     ipcRenderer.invoke("auth-catid-login", username, password),
   linkCatID: (username: string, password: string) =>
@@ -193,14 +186,14 @@ const api = {
   resetPassword: (email: string, otp: string, newPassword: string) =>
     ipcRenderer.invoke("auth-reset-password", email, otp, newPassword),
 
-  // Offline Account API
+  
   loginOffline: (username: string) =>
     ipcRenderer.invoke("auth-offline-login", username),
 
-  // Token Refresh API
+  
   authRefreshToken: () => ipcRenderer.invoke("auth-refresh-token"),
 
-  // Minecraft Skin APIs (Microsoft account)
+  
   minecraftGetProfile: () => ipcRenderer.invoke("minecraft-get-profile"),
   minecraftUploadSkin: (
     dataUrl: string,
@@ -213,9 +206,9 @@ const api = {
       fileName,
     }),
 
-  // ----------------------------------------
-  // Auto Update APIs
-  // ----------------------------------------
+  
+  
+  
   checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
   downloadUpdate: () => ipcRenderer.invoke("download-update"),
   installUpdate: () => ipcRenderer.invoke("install-update"),
@@ -275,18 +268,18 @@ const api = {
     return () => ipcRenderer.removeListener("update-error", handler);
   },
 
-  // ----------------------------------------
-  // Window Control APIs
-  // ----------------------------------------
+  
+  
+  
   windowMinimize: () => ipcRenderer.invoke("window-minimize"),
   windowMaximize: () => ipcRenderer.invoke("window-maximize"),
   windowClose: () => ipcRenderer.invoke("window-close"),
   windowIsMaximized: () => ipcRenderer.invoke("window-is-maximized"),
   windowSetMainMode: () => ipcRenderer.invoke("window-set-main-mode"),
 
-  // ----------------------------------------
-  // Modrinth APIs
-  // ----------------------------------------
+  
+  
+  
   modrinthSearch: (filters: {
     query?: string;
     projectType?: string;
@@ -339,9 +332,9 @@ const api = {
       ipcRenderer.removeListener("modrinth-download-progress", handler);
   },
 
-  // ----------------------------------------
-  // CurseForge APIs
-  // ----------------------------------------
+  
+  
+  
   curseforgeSearch: (filters: {
     query?: string;
     projectType?: string;
@@ -402,15 +395,15 @@ const api = {
     };
   },
 
-  // ----------------------------------------
-  // Instance Management APIs
-  // ----------------------------------------
-  // Instance Management APIs
+  
+  
+  
+  
   instancesList: (offset?: number, limit?: number) => {
     const key = `${offset || 0}:${limit || 1000}`;
     const now = Date.now();
 
-    // Return cached data if fresh and same key
+    
     if (
       _instancesCacheData &&
       _instancesCacheKey === key &&
@@ -419,12 +412,12 @@ const api = {
       return Promise.resolve(_instancesCacheData);
     }
 
-    // Return in-flight promise if same key
+    
     if (_instancesCachePromise && _instancesCacheKey === key) {
       return _instancesCachePromise;
     }
 
-    // Otherwise invoke IPC and store promise
+    
     _instancesCacheKey = key;
     _instancesCacheTs = now;
     _instancesCachePromise = ipcRenderer
@@ -499,9 +492,9 @@ const api = {
     return () =>
       ipcRenderer.removeListener("instance-export-progress", subscription);
   },
-  // ----------------------------------------
-  // Instance Events
-  // ----------------------------------------
+  
+  
+  
   onInstancesUpdated: (callback: () => void) => {
     const handler = () => {
       invalidateInstancesListCache();
@@ -602,7 +595,7 @@ const api = {
   killGame: (instanceId?: string) =>
     ipcRenderer.invoke("kill-game", instanceId),
 
-  // Instance Content Management APIs
+  
   instanceListMods: (instanceId: string) =>
     ipcRenderer.invoke("instance-list-mods", instanceId),
   instanceToggleMod: (instanceId: string, filename: string) =>
@@ -624,10 +617,10 @@ const api = {
     return () => ipcRenderer.removeListener("instance-mods-icons-updated", handler);
   },
 
-  // Browse icon dialog
+  
   browseIcon: () => ipcRenderer.invoke("browse-icon"),
 
-  // Set instance icon (saves to icon.png file)
+  
   instancesSetIcon: (instanceId: string, iconData: string) =>
     invokeWithInstancesCacheInvalidation(
       "instances-set-icon",
@@ -635,25 +628,25 @@ const api = {
       iconData,
     ),
 
-  // List resourcepacks and shaders
+  
   instanceListResourcepacks: (instanceId: string) =>
     ipcRenderer.invoke("instance-list-resourcepacks", instanceId),
   instanceListShaders: (instanceId: string) =>
     ipcRenderer.invoke("instance-list-shaders", instanceId),
 
-  // Toggle resourcepacks and shaders
+  
   instanceToggleResourcepack: (instanceId: string, filename: string) =>
     ipcRenderer.invoke("instance-toggle-resourcepack", instanceId, filename),
   instanceToggleShader: (instanceId: string, filename: string) =>
     ipcRenderer.invoke("instance-toggle-shader", instanceId, filename),
 
-  // Delete resourcepacks and shaders
+  
   instanceDeleteResourcepack: (instanceId: string, filename: string) =>
     ipcRenderer.invoke("instance-delete-resourcepack", instanceId, filename),
   instanceDeleteShader: (instanceId: string, filename: string) =>
     ipcRenderer.invoke("instance-delete-shader", instanceId, filename),
 
-  // Datapacks APIs
+  
   instanceListDatapacks: (instanceId: string) =>
     ipcRenderer.invoke("instance-list-datapacks", instanceId),
   instanceToggleDatapack: (
@@ -679,9 +672,9 @@ const api = {
       filename,
     ),
 
-  // ----------------------------------------
-  // Content Download APIs
-  // ----------------------------------------
+  
+  
+  
   contentDownloadToInstance: (options: {
     projectId: string;
     versionId: string;
@@ -717,17 +710,17 @@ const api = {
       ipcRenderer.removeListener("content-download-progress", handler);
   },
 
-  // ----------------------------------------
-  // Server Status APIs
-  // ----------------------------------------
+  
+  
+  
   pingServer: (options: { host: string; port?: number; timeout?: number }) =>
     ipcRenderer.invoke("ping-server", options),
   isServerOnline: (host: string, port?: number) =>
     ipcRenderer.invoke("is-server-online", host, port),
 
-  // ----------------------------------------
-  // Modpack Installer APIs
-  // ----------------------------------------
+  
+  
+  
   modpackInstall: (mrpackPath: string) =>
     ipcRenderer.invoke("modpack-install", mrpackPath),
   modpackInstallFromModrinth: (versionId: string) =>
@@ -763,9 +756,9 @@ const api = {
   },
   modpackCancelInstall: () => ipcRenderer.invoke("modpack-cancel-install"),
 
-  // ----------------------------------------
-  // Game Log APIs
-  // ----------------------------------------
+  
+  
+  
   onGameLog: (callback: (data: { level: string; message: string }) => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,
@@ -788,9 +781,9 @@ const api = {
       contentType,
     ),
 
-  // ----------------------------------------
-  // Admin Panel APIs
-  // ----------------------------------------
+  
+  
+  
   checkAdminStatus: (token: string) =>
     ipcRenderer.invoke("admin-check-status", token),
   getAdminSettings: (token: string) =>
@@ -798,7 +791,7 @@ const api = {
   saveAdminSetting: (token: string, settingKey: string, value: string) =>
     ipcRenderer.invoke("admin-save-setting", token, settingKey, value),
   getSystemInfo: () => ipcRenderer.invoke("admin-get-system-info"),
-  // User Management APIs
+  
   getAdminUsers: (
     token: string,
     page?: number,
@@ -823,9 +816,9 @@ const api = {
   getUserDetails: (token: string, userId: string) =>
     ipcRenderer.invoke("admin-get-user-details", token, userId),
 
-  // ----------------------------------------
-  // Notifications APIs
-  // ----------------------------------------
+  
+  
+  
   notificationsFetchAnnouncements: () =>
     ipcRenderer.invoke("notifications-fetch-announcements"),
   notificationsFetchUser: () => ipcRenderer.invoke("notifications-fetch-user"),
@@ -835,9 +828,9 @@ const api = {
   notificationsDelete: (notificationId: string) =>
     ipcRenderer.invoke("notifications-delete", notificationId),
 
-  // ----------------------------------------
-  // Invitation APIs
-  // ----------------------------------------
+  
+  
+  
   invitationsFetch: () => ipcRenderer.invoke("invitations-fetch"),
   invitationsAccept: (invitationId: string) =>
     ipcRenderer.invoke("invitations-accept", invitationId),
@@ -845,12 +838,12 @@ const api = {
     ipcRenderer.invoke("invitations-reject", invitationId),
 };
 
-// ========================================
-// Expose API to Renderer
-// ========================================
+
+
+
 
 contextBridge.exposeInMainWorld("api", api);
 contextBridge.exposeInMainWorld(
   "API_URL",
-  "https://api.reality.catlabdesign.space",
+  "https://api.reality.catlabdesign.space"
 );
