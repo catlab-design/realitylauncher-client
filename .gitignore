@@ -51,3 +51,12 @@ package-lock.json
 .claude/
 .codex/
 .gemini/
+
+# Build logs
+build_log.txt
+compile_log.txt
+compile_short.txt
+output.txt
+
+# Build directory
+build/
