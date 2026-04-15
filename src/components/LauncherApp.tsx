@@ -1,17 +1,3 @@
-/**
- * ========================================
- * Reality Launcher - Complete UI
- * ========================================
- * 
- * Features:
- * - MC Head Avatar (crafthead.net)
- * - Loading Screen
- * - News Section
- * - Full Settings Page
- * - About Page with Credits
- * - Discord RPC Integration
- */
-
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import gsap from "gsap";
 import { toast } from "react-hot-toast";
@@ -30,119 +16,63 @@ import { useAuthStore } from "../store/authStore";
 import { useUiStore } from "../store/uiStore";
 import { useProgressStore } from "../store/progressStore";
 
-// ========================================
-// Error Boundary
-// ========================================
-
-// Types moved to types/launcher.ts
-
-// ========================================
-// Utility
-// ========================================
-
-// Utility functions moved to lib/utils.ts (cn) and internal helpers
-// getMCHeadURL handled by MCHead component
-
-// Color theme definitions
-
-// ========================================
-// Icons
-// ========================================
-
-// Icons moved to components/ui/Icons.tsx
-
-// ========================================
-// Colors (dynamically based on theme)
-// ========================================
-
-// ========================================
-// Loading Screen
-// ========================================
-
-// LoadingScreen moved to components/ui/LoadingScreen.tsx
-
-// ========================================
-// MC Head Component
-// ========================================
-
-// MCHead moved to components/ui/MCHead.tsx
-
-// ========================================
-// App Version Badge Component
-// ========================================
-
-// AppVersionBadge moved to components/ui/AppVersionBadge.tsx
-
-// ========================================
-// ========================================
-// Main Component Content
-// ========================================
-
 function LauncherAppContent() {
   const rootRef = useRef<HTMLDivElement>(null);
 
-  // Stores
   const config = useConfigStore();
   const {
-      isExporting,
-      exportProgress,
-      isExportMinimized,
-      setExportMinimized,
-      exportingInstanceId,
-
-      // Install/Repair State
-      isInstalling, setInstalling,
-      installProgress, setInstallProgress,
-      isInstallMinimized, setInstallMinimized,
-      operationType, setOperationType,
-      installingInstanceId, setInstallingInstanceId
+    isExporting,
+    exportProgress,
+    isExportMinimized,
+    setExportMinimized,
+    exportingInstanceId,
+    isInstalling, setInstalling,
+    installProgress, setInstallProgress,
+    isInstallMinimized, setInstallMinimized,
+    operationType, setOperationType,
+    installingInstanceId, setInstallingInstanceId
   } = useProgressStore();
 
   const handleCancelExport = async (instanceId: string) => {
-      playClick();
-      try {
-          await window.api?.instancesExportCancel?.(instanceId);
-      } catch (error) {
-          console.error("Failed to cancel export:", error);
-      }
+    playClick();
+    try {
+      await window.api?.instancesExportCancel?.(instanceId);
+    } catch (error) {
+      console.error("Failed to cancel export:", error);
+    }
   };
 
   const handleCancelInstall = async () => {
-      try {
-          if (installingInstanceId) {
-              await (window.api as any)?.instanceCancelAction?.(installingInstanceId);
-          }
-          await (window.api as any)?.modpackCancelInstall?.();
-          toast.error(t('cancel_install_success'));
-          
-          // Reset state (Optimistic)
-          setInstalling(false);
-          setInstallProgress(null);
-          setInstallingInstanceId(null);
-          setOperationType(null);
-      } catch (error) {
-          console.error("Failed to cancel install:", error);
+    try {
+      if (installingInstanceId) {
+        await (window.api as any)?.instanceCancelAction?.(installingInstanceId);
       }
+      await (window.api as any)?.modpackCancelInstall?.();
+      toast.error(t('cancel_install_success'));
+
+      setInstalling(false);
+      setInstallProgress(null);
+      setInstallingInstanceId(null);
+      setOperationType(null);
+    } catch (error) {
+      console.error("Failed to cancel install:", error);
+    }
   };
 
   const { session, accounts, setSession, addAccount, updateAccount, removeAccount: removeAccountAction } = useAuthStore();
   const { activeTab, setActiveTab, settingsTab, setSettingsTab, modals, openModal, closeModal } = useUiStore();
 
   const [isLoading, setIsLoading] = useState(true);
-  // activeTab & settingsTab moved to UI Store
   const [lastContentTab, setLastContentTab] = useState("home");
 
   const { t } = useTranslation(config.language);
   const settingsDialogOpen = activeTab === "settings";
   const contentTab = activeTab === "settings" ? lastContentTab : activeTab;
 
-  // session & accounts moved to Auth Store
-
   const [selectedServer, setSelectedServer] = useState<Server | null>(null);
   const [selectedInstance, setSelectedInstance] = useState<GameInstance | null>(null);
 
   useEffect(() => {
-      // console.log("[LauncherApp] selectedInstance changed:", selectedInstance?.name || "null");
   }, [selectedInstance]);
 
   useEffect(() => {
@@ -151,11 +81,6 @@ function LauncherAppContent() {
     }
   }, [activeTab]);
 
-  // Modals state mapping (local variables for backward compatibility during refactor, or we switch to using store values directly)
-  // For now, let's keep the usage of 'loginDialogOpen' etc. by deriving them from store if strictly necessary, 
-  // BUT the best way is to Replace the usage sites. 
-  // However, there are MANY usages.
-  // Strategy: Map store values to the old variable names to minimize diffs in this specific step.
   const loginDialogOpen = modals.login;
   const setLoginDialogOpen = (open: boolean) => open ? openModal('login') : closeModal('login');
 
@@ -167,14 +92,11 @@ function LauncherAppContent() {
 
   const [accountDropdownOpen, setAccountDropdownOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-
   const [customColorPending, setCustomColorPending] = useState<string | null>(null);
 
-  // Offline login warning states
   const [offlineWarningOpen, setOfflineWarningOpen] = useState(false);
   const [offlineUsernameOpen, setOfflineUsernameOpen] = useState(false);
 
-  // Device code authentication state
   const [deviceCodeModalOpen, setDeviceCodeModalOpen] = useState(false);
   const [deviceCodeData, setDeviceCodeData] = useState<{
     deviceCode: string;
@@ -188,7 +110,6 @@ function LauncherAppContent() {
   const [serverRefreshTrigger, setServerRefreshTrigger] = useState(0);
   const [notificationRefreshTrigger, setNotificationRefreshTrigger] = useState(0);
 
-  // CatID register modal state
   const [catIDRegisterOpen, setCatIDRegisterOpen] = useState(false);
   const [catIDLoginOpen, setCatIDLoginOpen] = useState(false);
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
@@ -201,21 +122,17 @@ function LauncherAppContent() {
   const [isForgotPasswordLoading, setIsForgotPasswordLoading] = useState(false);
   const [linkCatIDOpen, setLinkCatIDOpen] = useState(false);
 
-  // Registration verification waiting state
   const [verificationWaiting, setVerificationWaiting] = useState(false);
   const [verificationToken, setVerificationToken] = useState<string | null>(null);
   const [verificationExpiresAt, setVerificationExpiresAt] = useState<Date | null>(null);
   const [verificationEmail, setVerificationEmail] = useState<string | null>(null);
 
-  // Admin state
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminToken, setAdminToken] = useState<string | null>(null);
 
-  // Changelog modal state
   const [changelogModalOpen, setChangelogModalOpen] = useState(false);
   const [changelogData, setChangelogData] = useState<{ version: string; changelog: string } | null>(null);
 
-  // Confirm Dialog State
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
     title: string;
@@ -254,8 +171,6 @@ function LauncherAppContent() {
     setActiveTab(contentTab);
   }, [contentTab, setActiveTab]);
 
-
-  // Inbox/Notifications modal state
   const [inboxOpen, setInboxOpen] = useState(false);
   const [inboxTab, setInboxTab] = useState<'news' | 'system'>('news');
   const [announcements, setAnnouncements] = useState<any[]>([]);
@@ -263,11 +178,9 @@ function LauncherAppContent() {
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [invitations, setInvitations] = useState<any[]>([]);
   const [processingInvitationId, setProcessingInvitationId] = useState<string | null>(null);
-  // Refs to detect new items when polling
   const prevInvRef = useRef<string[]>([]);
   const prevNotificationIdsRef = useRef<string[]>([]);
 
-  // State for CatID Register form
   const [catIDRegisterData, setCatIDRegisterData] = useState({
     username: "",
     email: "",
@@ -276,13 +189,11 @@ function LauncherAppContent() {
   });
   const [isRegistering, setIsRegistering] = useState(false);
 
-  // Get colors based on current theme (memoized for performance)
   const colors = useMemo(
     () => getColors(config.colorTheme, config.theme, config.customColor, config.rainbowMode),
     [config.colorTheme, config.theme, config.customColor, config.rainbowMode]
   );
 
-  // Derive effective theme mode for CSS (used by scrollbar styling etc.)
   const effectiveThemeMode = useMemo(() => {
     if (config.theme === "auto") {
       const hour = new Date().getHours();
@@ -306,12 +217,10 @@ function LauncherAppContent() {
     };
   }, [colors, effectiveThemeMode]);
 
-  // Set data-theme attribute on <html> so global CSS can respond to theme changes
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", effectiveThemeMode);
   }, [effectiveThemeMode]);
 
-  // Sync sound config
   useEffect(() => {
     setSoundConfig({
       clickSoundEnabled: config.clickSoundEnabled,
@@ -319,7 +228,6 @@ function LauncherAppContent() {
     });
   }, [config.clickSoundEnabled, config.notificationSoundEnabled]);
 
-  // Global auto-update toast notifications
   useEffect(() => {
     const windowApi = (window as any).api;
     const cleanups: (() => void)[] = [];
@@ -327,7 +235,6 @@ function LauncherAppContent() {
     if (windowApi?.onUpdateAvailable) {
       cleanups.push(windowApi.onUpdateAvailable((data: { version: string }) => {
         if (!config.autoUpdateEnabled) {
-          // Auto-update OFF: just show toast with version info
           toast(t('update_available_toast').replace('{version}', data.version), {
             icon: "\u2b06\ufe0f",
             duration: 8000,
@@ -340,7 +247,6 @@ function LauncherAppContent() {
     if (windowApi?.onUpdateDownloaded) {
       cleanups.push(windowApi.onUpdateDownloaded((data: { version: string }) => {
         if (config.autoUpdateEnabled) {
-          // Auto-update ON: notify that update will install on next launch
           toast.success(t('update_ready_next_restart').replace('{version}', data.version), {
             duration: 8000,
             id: "global-update-downloaded",
@@ -352,21 +258,11 @@ function LauncherAppContent() {
     return () => cleanups.forEach(fn => fn());
   }, [config.autoUpdateEnabled, config.language]);
 
-  // Server data (will be fetched from API)
   const [servers] = useState<Server[]>([]);
-
-  // News data (will be fetched from API)
   const [news] = useState<NewsItem[]>([]);
 
-
-
-
-
-  // Sync Config/Session from Electron API on mount (if available)
-  // LocalStorage persistence is now handled by Zustand middleware
   useEffect(() => {
     (async () => {
-      // Try Electron API for config
       try {
         const savedConfig = await window.api?.getConfig();
         if (savedConfig) {
@@ -375,31 +271,25 @@ function LauncherAppContent() {
         }
       } catch { }
 
-      // Try Electron API for session
       try {
         const savedSession = await window.api?.getSession();
         if (savedSession) {
           setSession(savedSession);
-          // Add to accounts if not already there
           addAccount(savedSession);
         }
       } catch { }
     })();
   }, []);
 
-  // Track if initial load is complete
   const [isInitialized, setIsInitialized] = useState(false);
 
-  // Mark as initialized after first mount
   useEffect(() => {
     const timer = setTimeout(() => setIsInitialized(true), 500);
     return () => clearTimeout(timer);
   }, []);
 
   const getRpcStatusFromTab = useCallback(
-    (
-      tab: string,
-    ):
+    (tab: string):
       | "idle"
       | "playing"
       | "launching"
@@ -435,13 +325,6 @@ function LauncherAppContent() {
     [],
   );
 
-  // Persistence is now handled by Zustand middleware
-  // Removed explicit localStorage.setItem calls for accounts
-
-  // Persistence is now handled by Zustand middleware
-  // Removed explicit localStorage.setItem calls for session
-
-  // Sync Discord RPC with current tab activity
   useEffect(() => {
     if (!isInitialized || !window.api) return;
 
@@ -453,7 +336,6 @@ function LauncherAppContent() {
     }
   }, [activeTab, config.discordRPCEnabled, getRpcStatusFromTab, isInitialized]);
 
-  // When game exits, immediately restore RPC to the current tab context.
   useEffect(() => {
     if (!isInitialized || !window.api || !config.discordRPCEnabled) return;
 
@@ -466,7 +348,6 @@ function LauncherAppContent() {
     };
   }, [activeTab, config.discordRPCEnabled, getRpcStatusFromTab, isInitialized]);
 
-  // Fetch announcements on app load
   useEffect(() => {
     const fetchAnnouncements = async () => {
       try {
@@ -483,7 +364,6 @@ function LauncherAppContent() {
     fetchAnnouncements();
   }, []);
 
-  // Poll notifications + invitations together (reduced request volume)
   useEffect(() => {
     let pollTimer: NodeJS.Timeout | null = null;
     let expirationTimer: NodeJS.Timeout | null = null;
@@ -579,12 +459,11 @@ function LauncherAppContent() {
       if (session?.type === "catid" && session.tokenExpiresAt) {
         if (Date.now() >= session.tokenExpiresAt) {
           console.log("[Auth] Session expired, logging out...");
-           // Call logout action
-           removeAccountAction(session.uuid, session.type); 
-           setSession(null);
-           window.api?.logout?.(); // Clear backend/electron session too
-           toast.error(t('session_expired'));
-       }
+          removeAccountAction(session.uuid, session.type);
+          setSession(null);
+          window.api?.logout?.();
+          toast.error(t('session_expired'));
+        }
       }
     };
 
@@ -613,8 +492,6 @@ function LauncherAppContent() {
     return notificationsUnread + invitations.length;
   }, [userNotifications, invitations]);
 
-
-  // Handle Deep Link Login
   useEffect(() => {
     if (!window.api?.onDeepLinkAuthCallback) return;
 
@@ -625,13 +502,8 @@ function LauncherAppContent() {
       try {
         const result = await window.api?.loginCatIDToken?.(token);
         if (result?.ok && result.session) {
-          // Set session
           if (result.session.type === "catid") {
             setSession(result.session);
-            // Also update accounts list if needed, or rely on internal logic of setActiveSession (which is likely abstracted in main process but here we might need to update local state)
-            // Wait, LauncherApp prop has 'session' passed from parent?
-            // No, LauncherApp seems to manage session or receive it.
-            // Let's check how 'handleCatIDLogin' does it.
           }
           toast.success(t('login_success'), { id: loadingId });
         } else {
@@ -646,7 +518,6 @@ function LauncherAppContent() {
     return cleanup;
   }, []);
 
-  // Handle accepting invitation
   const handleAcceptInvitation = async (invitationId: string) => {
     setProcessingInvitationId(invitationId);
     try {
@@ -663,7 +534,6 @@ function LauncherAppContent() {
     }
   };
 
-  // Handle rejecting invitation
   const handleRejectInvitation = async (invitationId: string) => {
     setProcessingInvitationId(invitationId);
     try {
@@ -680,32 +550,25 @@ function LauncherAppContent() {
     }
   };
 
-  // Check for post-update notification
   useEffect(() => {
     const checkPostUpdate = async () => {
       const currentVersion = await window.api?.getAppVersion?.();
-      if (!currentVersion) return; // Not in Electron or not ready
+      if (!currentVersion) return;
 
-      // Prevent showing multiple times in same session
       if (sessionStorage.getItem("reality_update_shown")) {
         return;
       }
 
-      // Get the version we last NOTIFIED the user about
-      // Also check old key for migration
       let notifiedVersion = localStorage.getItem("reality_notified_version");
       if (!notifiedVersion) {
         notifiedVersion = localStorage.getItem("reality_last_version");
       }
 
-      // If we already notified about this exact version, do nothing
       if (notifiedVersion === currentVersion) {
         return;
       }
 
-      // If notifiedVersion exists (not first run) AND differs from current -> show changelog modal
       if (notifiedVersion && notifiedVersion !== currentVersion) {
-        // Fetch changelog and show modal (similar to the version check effect)
         try {
           const response = await fetch("https://cdn.reality.catlabdesign.space/client/latest.json");
           if (response.ok) {
@@ -720,7 +583,6 @@ function LauncherAppContent() {
           }
         } catch (fetchError) {
           console.log("[Changelog] Could not fetch changelog:", fetchError);
-          // Show modal anyway with default message
           setChangelogData({
             version: currentVersion,
             changelog: t('welcome_new_version')
@@ -728,22 +590,18 @@ function LauncherAppContent() {
           setChangelogModalOpen(true);
         }
 
-        // Mark as shown in this session
         sessionStorage.setItem("reality_update_shown", "true");
       }
 
-      // Always mark this version as notified (handles both first run and update cases)
       localStorage.setItem("reality_notified_version", currentVersion);
     };
 
     checkPostUpdate();
   }, []);
 
-  // Auto-update notification listeners
   useEffect(() => {
     if (!window.api) return;
 
-    // Listen for update available
     const unsubscribeAvailable = window.api.onUpdateAvailable?.((data: { version: string }) => {
       toast.success(
         t('update_available_msg').replace('{version}', data.version),
@@ -751,7 +609,6 @@ function LauncherAppContent() {
       );
     });
 
-    // Listen for update downloaded
     const unsubscribeDownloaded = window.api.onUpdateDownloaded?.((data: { version: string }) => {
       toast.success(
         t('update_downloaded_msg').replace('{version}', data.version),
@@ -759,12 +616,10 @@ function LauncherAppContent() {
       );
     });
 
-    // Listen for update not available
     const unsubscribeNotAvailable = window.api.onUpdateNotAvailable?.(() => {
       toast.success(t('already_latest_version'), { id: "check-update" });
     });
 
-    // Listen for update error
     const unsubscribeError = window.api.onUpdateError?.((data: { message: string }) => {
       toast.error(t('update_check_failed_msg').replace('{message}', data.message), { id: "check-update" });
     });
@@ -777,43 +632,35 @@ function LauncherAppContent() {
     };
   }, []);
 
-  // Device code polling effect
   useEffect(() => {
     if (!deviceCodePolling || !deviceCodeData) return;
 
     const pollInterval = setInterval(async () => {
-      // Check if expired
       if (Date.now() >= deviceCodeData.expiresAt) {
         setDeviceCodePolling(false);
         setDeviceCodeError(t('code_expired_retry'));
         return;
       }
-
-      // Poll for completion
       if (window.api?.pollDeviceCodeAuth) {
         try {
           const result = await window.api.pollDeviceCodeAuth(deviceCodeData.deviceCode, isLinkingMicrosoft);
 
           if (result.status === "success" && result.session) {
-            // Success! Add account and close modal
             const newSession: AuthSession = {
               username: result.session.username,
               uuid: result.session.uuid,
               accessToken: result.session.accessToken,
               refreshToken: result.session.refreshToken,
               tokenExpiresAt: result.session.expiresIn ? Date.now() + (result.session.expiresIn * 1000) : undefined,
-              apiToken: result.session.apiToken,  // Reality API token from CatID link
+              apiToken: result.session.apiToken,
               apiTokenExpiresAt: result.session.apiTokenExpiresAt ? new Date(result.session.apiTokenExpiresAt).getTime() : undefined,
               type: "microsoft",
-              createdAt: Date.now(),  // Add createdAt for session tracking
+              createdAt: Date.now(),
             };
 
             addAccount(newSession);
-
-            // Set as current session
             setSession(newSession);
 
-            // Close modal
             setDeviceCodeModalOpen(false);
             setDeviceCodePolling(false);
             setDeviceCodeData(null);
@@ -838,25 +685,19 @@ function LauncherAppContent() {
             setDeviceCodeError(result.error || t('error_occurred'));
             setIsLinkingMicrosoft(false);
           }
-          // If status === "pending", continue polling
         } catch (error) {
           console.error("[Auth] Polling error:", error);
         }
       }
-    }, 5000); // Poll every 5 seconds
+    }, 5000);
 
     return () => clearInterval(pollInterval);
   }, [deviceCodePolling, deviceCodeData, isLinkingMicrosoft]);
 
-  // Save config helper - อัพเดท state ทันทีก่อน แล้วค่อยบันทึก
-  // Save config helper - อัพเดท state ทันทีก่อน แล้วค่อยบันทึก
   const updateConfig = async (newConfig: Partial<LauncherConfig>) => {
-    // อัพเดท state ทันที (ทำให้ UI update ทันที)
-    // Zustand persist middleware handles localStorage
     config.setConfig(newConfig);
 
     try {
-      // พยายามบันทึกไปที่ Electron (ถ้ามี API)
       if (window.api?.setConfig) {
         const saved = await window.api.setConfig(newConfig);
         if (saved) config.setConfig(saved);
@@ -867,19 +708,15 @@ function LauncherAppContent() {
     }
   };
 
-  // Handlers
-  // Minecraft username regex: 2-16 characters, letters/numbers/underscore only
   const MINECRAFT_USERNAME_REGEX = /^[a-zA-Z0-9_]{2,16}$/;
 
   const handleCatIDLogin = async (username: string, password: string) => {
     try {
-      // Validate username format
       if (!MINECRAFT_USERNAME_REGEX.test(username)) {
         toast.error(t('username_invalid_format'));
         return false;
       }
 
-      // Login via Electron CatID API
       if (!window.api?.loginCatID) {
         toast.error(t('catid_required_electron'));
         return false;
@@ -894,23 +731,18 @@ function LauncherAppContent() {
         return false;
       }
 
-      // Create session object
       const newSession: AuthSession = {
         type: "catid",
         username: result.session.username,
         uuid: result.session.uuid,
-        minecraftUuid: result.session.minecraftUuid,  // Real Minecraft UUID if linked
+        minecraftUuid: result.session.minecraftUuid,
         accessToken: result.session.token,
       };
 
-      // Add to accounts using robust store action
       addAccount(newSession);
-
-      // Set as active session
       setSession(newSession);
       toast.success(t('welcome_user').replace('{username}', newSession.username));
 
-      // Check if user is admin (CatID only)
       if (result.session.token) {
         setAdminToken(result.session.token);
         try {
@@ -933,13 +765,11 @@ function LauncherAppContent() {
 
   const handleOfflineLogin = async (username: string) => {
     try {
-      // Validate username format
       if (!MINECRAFT_USERNAME_REGEX.test(username)) {
         toast.error(t('username_invalid_format'));
         return false;
       }
 
-      // Login via Electron Offline API
       if (!window.api?.loginOffline) {
         toast.error(t('offline_required_electron'));
         return false;
@@ -952,7 +782,6 @@ function LauncherAppContent() {
         return false;
       }
 
-      // Create session object
       const newSession: AuthSession = {
         type: "offline",
         username: result.session.username,
@@ -960,10 +789,7 @@ function LauncherAppContent() {
         accessToken: "",
       };
 
-      // Add to accounts
       addAccount(newSession);
-
-      // Set as active session
       setSession(newSession);
       toast.success(t('welcome_user').replace('{username}', newSession.username));
       return true;
@@ -976,13 +802,11 @@ function LauncherAppContent() {
   const handleCatIDRegister = async () => {
     setIsRegistering(true);
     try {
-      // Validate username format
       if (!MINECRAFT_USERNAME_REGEX.test(catIDRegisterData.username)) {
         toast.error(t('username_invalid_format'));
         return false;
       }
 
-      // Register via Electron CatID API
       if (!window.api?.registerCatID) {
         toast.error(t('register_required_electron'));
         return false;
@@ -1003,7 +827,6 @@ function LauncherAppContent() {
       }
 
       if (result.requiresVerification && result.verifyToken) {
-        // Show verification waiting screen
         setCatIDRegisterOpen(false);
         setVerificationWaiting(true);
         setVerificationToken(result.verifyToken);
@@ -1026,20 +849,15 @@ function LauncherAppContent() {
     }
   };
 
-  // Poll verification status (Optional: Just to keep token alive or check expiry)
   useEffect(() => {
     if (!verificationWaiting || !verificationToken) return;
 
-    // We don't auto-login anymore, but we can check for expiry
     const pollInterval = setInterval(async () => {
-      // Logic for expiry check is handled by the other useEffect (timeout)
-      // We can also poll status just to update UI state if we wanted, but for now we rely on manual button.
     }, 5000);
 
     return () => clearInterval(pollInterval);
   }, [verificationWaiting, verificationToken]);
 
-  // Auto-close verification waiting when expired
   useEffect(() => {
     if (!verificationWaiting || !verificationExpiresAt) return;
 
@@ -1063,7 +881,6 @@ function LauncherAppContent() {
       const result = await window.api?.checkRegistrationStatus?.(verificationToken);
 
       if (result?.status === "verified" && result.token) {
-        // Success! Login
         toast.success(t('verification_success_login'), { id: toastId });
         setVerificationWaiting(false);
         setVerificationToken(null);
@@ -1093,15 +910,11 @@ function LauncherAppContent() {
     }
   };
 
-  // Select account to use
   const selectAccount = async (account: AuthSession) => {
-    // Optimistically update UI to prevent freezing
     setSession(account);
     setAccountManagerOpen(false);
     toast.success(t('switched_to_account').replace('{username}', account.username));
 
-    // Sync session with backend in the background
-    // The backend may auto-refresh the token if expired
     let finalSession: AuthSession = account;
 
     try {
@@ -1109,16 +922,13 @@ function LauncherAppContent() {
       if (refreshedSession) {
         console.log("[Auth] Backend returned refreshed session:", refreshedSession.username);
         finalSession = refreshedSession as AuthSession;
-        // Also update in accounts list
         updateAccount(refreshedSession);
-        // Ensure the active session is also updated if it refreshed
         setSession(finalSession);
       }
     } catch (err) {
       console.error("[Auth] Failed to sync session with backend:", err);
     }
 
-    // Check admin status if switching to CatID account
     if (finalSession.type === "catid" && finalSession.accessToken) {
       setAdminToken(finalSession.accessToken);
       try {
@@ -1126,7 +936,6 @@ function LauncherAppContent() {
         setIsAdmin(adminCheck?.isAdmin || false);
         if (adminCheck?.isAdmin) {
           console.log("[Admin] Switched to admin account:", finalSession.username);
-          // Ensure admin status is saved in account
           if (!finalSession.isAdmin) {
              updateAccount({ ...finalSession, isAdmin: true });
           }
@@ -1136,19 +945,14 @@ function LauncherAppContent() {
         console.log("[Admin] Could not check admin status on account switch");
       }
     } else {
-      // Non-CatID account - reset admin state
       setIsAdmin(false);
       setAdminToken(null);
     }
   };
 
-  // Remove account from list
-  const removeAccountFromList = async (account: AuthSession) => { // Renamed to avoid specific conflict if I imported removeAccount (I didn't)
-    // Use store setAccounts or removeAccount action
-    // I didn't import removeAccount action, so manual:
+  const removeAccountFromList = async (account: AuthSession) => {
     removeAccountAction(account.uuid, account.type);
     if (session?.username === account.username && session?.type === account.type) {
-      // If deleting active account, call logout to remove session.json
       await window.api?.logout();
       setSession(null);
     }
@@ -1159,7 +963,6 @@ function LauncherAppContent() {
     try {
       await window.api?.logout();
       setSession(null);
-      // Reset admin state on logout
       setIsAdmin(false);
       setAdminToken(null);
       toast.success(t('logout_success'));
@@ -1190,11 +993,9 @@ function LauncherAppContent() {
         }
         setLinkCatIDOpen(false);
 
-        // Refresh session
         const updatedSession = await window.api?.getSession?.();
         if (updatedSession) {
           setSession(updatedSession);
-          // Update in accounts list too
           updateAccount(updatedSession);
         }
       } else {
@@ -1204,8 +1005,6 @@ function LauncherAppContent() {
       toast.error(t('error_occurred'), { id: loader });
     }
   };
-
-
 
   const handleBrowseJava = async () => {
     const path = await window.api?.browseJava();
@@ -1234,12 +1033,10 @@ function LauncherAppContent() {
           const res = await window.api?.authUnlink(provider);
           if (res?.ok) {
             toast.success(t('unlink_success'));
-            
-            // Refresh session and accounts
+
             const updatedSession = (await window.api?.getSession()) ?? null;
             setSession(updatedSession);
 
-            // Important: updateAccount handles robust deduplication AND matches the account in the list
             if (res.updatedAccount) {
               updateAccount(res.updatedAccount);
             } else if (updatedSession) {
@@ -1283,16 +1080,12 @@ function LauncherAppContent() {
     }
   };
 
-  // Show loading screen
   if (isLoading) {
     return <LoadingScreen onComplete={() => {
         setIsLoading(false);
         if (window.api?.windowSetMainMode) window.api.windowSetMainMode();
     }} themeColor={colors.secondary} />;
   }
-
-  // Render tabs - split into main and bottom navigation
-  // Render tabs - split into main and bottom navigation (Now handled in Sidebar)
 
   return (
     <div ref={rootRef} className="h-screen flex flex-col overflow-hidden bg-surface" style={{ backgroundColor: colors.surface }}>
@@ -1422,7 +1215,6 @@ function LauncherAppContent() {
   );
 }
 
-// Export the wrapped component
 export default function LauncherApp() {
   return (
     <UIErrorBoundary>
@@ -1430,5 +1222,3 @@ export default function LauncherApp() {
     </UIErrorBoundary>
   );
 }
-
-
