@@ -6,7 +6,7 @@ import type { Server } from "../../types/launcher";
 import Markdown from "react-markdown";
 
 interface ServerDetailViewProps {
-    instance: any; // Using any for flexibility as it comes from ServerMenu logic
+    instance: any;
     onBack: () => void;
     onPlay: (e: React.MouseEvent, instance: any) => void;
     onStop: (e: React.MouseEvent, instanceId: string) => void;
@@ -39,72 +39,65 @@ export function ServerDetailView({
     onViewLogs
 }: ServerDetailViewProps) {
 
-    // Determine the hero image URL (use banner if available, otherwise icon, or fallback)
     const heroImage = instance.bannerUrl || instance.image || instance.iconUrl;
 
     return (
-        <div className="flex-1 flex flex-col h-full animate-fade-in relative z-10">
-            {/* Top Bar - Back Button */}
-            <div className="mb-4">
+        <div className="flex-1 flex flex-col h-full animate-fade-in relative z-10 overflow-hidden">
+            {/* Compact Header with Back Button */}
+            <div className="flex items-center gap-3 mb-4 shrink-0">
                 <button
-                    onClick={() => {
-                        playClick();
-                        onBack();
-                    }}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl transition-all hover:bg-white/10 active:scale-95"
+                    onClick={() => { playClick(); onBack(); }}
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all hover:bg-white/10 active:scale-95 shrink-0"
                     style={{ color: colors.onSurface }}
                 >
                     <Icons.ArrowLeft className="w-5 h-5" />
-                    <span>{t('back')}</span>
+                    <span className="font-medium">{t('back')}</span>
                 </button>
             </div>
 
-            {/* Hero Section */}
-            <div className="relative w-full h-48 md:h-64 rounded-3xl overflow-hidden shadow-2xl mb-6 group shrink-0">
-                {/* Background Image */}
-                <div 
-                    className="absolute inset-0 bg-cover bg-center transition-transform duration-1000 group-hover:scale-105"
-                    style={{ 
-                        backgroundImage: heroImage ? `url(${getWithTimestamp(heroImage)})` : undefined,
-                        backgroundColor: colors.surfaceContainerHighest
-                    }}
-                >
-                    {!heroImage && (
-                        <div className="w-full h-full flex items-center justify-center opacity-10">
-                            <span className="text-7xl font-bold" style={{ color: colors.onSurface }}>
-                                {instance.name?.[0]?.toUpperCase()}
-                            </span>
-                        </div>
-                    )}
-                </div>
-                
-                {/* Overlay Gradient */}
-                <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/40 to-transparent" />
-
-                {/* Content Overlay */}
-                <div className="absolute inset-0 flex flex-col items-start justify-end p-6 transition-opacity duration-300 group-hover:opacity-0">
-                    {/* Logo / Title Area */}
-                    <div className="flex items-end gap-4 z-10 transform translate-y-1">
-                        {instance.iconUrl ? (
-                            <img 
-                                src={getWithTimestamp(instance.iconUrl)} 
-                                alt={t('server_icon_alt')}
-                                className="w-16 h-16 rounded-2xl shadow-xl object-cover border-2 border-white/10 backdrop-blur-sm"
-                            />
-                        ) : (
-                            <div className="w-16 h-16 rounded-2xl shadow-xl flex items-center justify-center bg-white/10 backdrop-blur-md border-2 border-white/10">
-                                <span className="text-3xl font-bold text-white">
+            {/* Modern Hero - Taller */}
+            <div className="relative w-full rounded-2xl overflow-hidden shadow-xl mb-5 shrink-0 group">
+                {/* Background Image - Increased height */}
+                <div className="h-48 relative">
+                    <div
+                        className="absolute inset-0 bg-cover bg-center"
+                        style={{
+                            backgroundImage: heroImage ? `url(${getWithTimestamp(heroImage)})` : undefined,
+                            backgroundColor: colors.surfaceContainerHighest
+                        }}
+                    >
+                        {!heroImage && (
+                            <div className="w-full h-full flex items-center justify-center">
+                                <span className="text-5xl font-bold opacity-20" style={{ color: colors.onSurface }}>
                                     {instance.name?.[0]?.toUpperCase()}
                                 </span>
                             </div>
                         )}
-                        
-                        <div className="flex flex-col">
-                            <h1 className="text-2xl md:text-4xl font-black text-white drop-shadow-lg tracking-tight mb-2">
+                    </div>
+                    <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/50 to-transparent" />
+
+                    {/* Content on Image */}
+                    <div className="absolute inset-0 flex items-center p-5 gap-4">
+                        {instance.iconUrl ? (
+                            <img
+                                src={getWithTimestamp(instance.iconUrl)}
+                                alt={t('server_icon_alt')}
+                                className="w-16 h-16 rounded-xl shadow-lg object-cover border-2 border-white/20 shrink-0"
+                            />
+                        ) : (
+                            <div className="w-16 h-16 rounded-xl shadow-lg flex items-center justify-center bg-white/10 border-2 border-white/20 shrink-0">
+                                <span className="text-2xl font-bold text-white">
+                                    {instance.name?.[0]?.toUpperCase()}
+                                </span>
+                            </div>
+                        )}
+
+                        <div className="flex-1 min-w-0">
+                            <h1 className="text-xl md:text-2xl font-black text-white drop-shadow-lg tracking-tight truncate">
                                 {instance.name}
                             </h1>
                             {instance.description && (
-                                <p className="text-white/90 font-medium text-lg drop-shadow-md max-w-2xl line-clamp-2">
+                                <p className="text-white/80 text-sm line-clamp-1 drop-shadow-md">
                                     {instance.description}
                                 </p>
                             )}
@@ -275,31 +268,45 @@ export function ServerDetailView({
                         </div>
                     </div>
 
-                    {/* Server Info Stats */}
-                    <div className="bg-white/5 p-4 rounded-3xl border border-white/5 space-y-3">
-                        <h3 className="text-base font-bold opacity-80" style={{ color: colors.onSurface }}>
-                            {t('server_info')}
-                        </h3>
-                        
-                        <div className="flex justify-between items-center py-2 border-b border-white/5">
-                            <span className="opacity-60 text-sm" style={{ color: colors.onSurface }}>{t('version')}</span>
-                            <span className="font-mono font-medium text-sm" style={{ color: colors.onSurface }}>
-                                {instance.minecraftVersion || instance.version || "1.20.1"}
-                            </span>
-                        </div>
-                        
-                        <div className="flex justify-between items-center py-2 border-b border-white/5">
-                            <span className="opacity-60 text-sm" style={{ color: colors.onSurface }}>{t('loader')}</span>
-                            <span className="font-mono font-medium uppercase text-sm" style={{ color: colors.onSurface }}>
-                                {instance.loaderType || "FORGE"}
-                            </span>
+                    {/* Server Info Stats - Horizontal Cards */}
+                    <div className="grid grid-cols-3 gap-3">
+                        {/* Version Card */}
+                        <div className="bg-white/5 p-4 rounded-2xl border border-white/5 flex flex-col items-center text-center gap-2 hover:bg-white/10 transition-colors">
+                            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.primary + '20' }}>
+                                <Icons.Box className="w-5 h-5" style={{ color: colors.primary }} />
+                            </div>
+                            <div>
+                                <p className="text-xs opacity-60 uppercase tracking-wider" style={{ color: colors.onSurface }}>{t('version')}</p>
+                                <p className="font-mono font-bold text-sm" style={{ color: colors.onSurface }}>
+                                    {instance.minecraftVersion || instance.version || "1.20.1"}
+                                </p>
+                            </div>
                         </div>
 
-                         <div className="flex justify-between items-center py-2 border-b border-white/5">
-                            <span className="opacity-60 text-sm" style={{ color: colors.onSurface }}>{t('mod_pack')}</span>
-                            <span className="font-medium text-right truncate max-w-[150px] text-sm" style={{ color: colors.onSurface }}>
-                                {instance.modpack || instance.name}
-                            </span>
+                        {/* Loader Card */}
+                        <div className="bg-white/5 p-4 rounded-2xl border border-white/5 flex flex-col items-center text-center gap-2 hover:bg-white/10 transition-colors">
+                            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.secondary + '30' }}>
+                                <Icons.Settings className="w-5 h-5" style={{ color: colors.secondary }} />
+                            </div>
+                            <div>
+                                <p className="text-xs opacity-60 uppercase tracking-wider" style={{ color: colors.onSurface }}>{t('loader')}</p>
+                                <p className="font-bold text-sm" style={{ color: colors.onSurface }}>
+                                    {(instance.loaderType || "FORGE").toUpperCase()}
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Mod Pack Card */}
+                        <div className="bg-white/5 p-4 rounded-2xl border border-white/5 flex flex-col items-center text-center gap-2 hover:bg-white/10 transition-colors">
+                            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.tertiary || colors.primary + '20' }}>
+                                <Icons.Modpack className="w-5 h-5" style={{ color: colors.tertiary || colors.primary }} />
+                            </div>
+                            <div className="min-w-0 w-full">
+                                <p className="text-xs opacity-60 uppercase tracking-wider" style={{ color: colors.onSurface }}>{t('mod_pack')}</p>
+                                <p className="font-bold text-sm truncate" style={{ color: colors.onSurface }}>
+                                    {instance.modpack || instance.name}
+                                </p>
+                            </div>
                         </div>
                     </div>
 
