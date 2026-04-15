@@ -268,44 +268,53 @@ export function ServerDetailView({
                         </div>
                     </div>
 
-                    {/* Server Info Stats - Horizontal Cards */}
-                    <div className="grid grid-cols-3 gap-3">
-                        {/* Version Card */}
-                        <div className="bg-white/5 p-4 rounded-2xl border border-white/5 flex flex-col items-center text-center gap-2 hover:bg-white/10 transition-colors">
-                            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.primary + '20' }}>
-                                <Icons.Box className="w-5 h-5" style={{ color: colors.primary }} />
-                            </div>
-                            <div>
-                                <p className="text-xs opacity-60 uppercase tracking-wider" style={{ color: colors.onSurface }}>{t('version')}</p>
-                                <p className="font-mono font-bold text-sm" style={{ color: colors.onSurface }}>
-                                    {instance.minecraftVersion || instance.version || "1.20.1"}
-                                </p>
-                            </div>
-                        </div>
-
-                        {/* Loader Card */}
-                        <div className="bg-white/5 p-4 rounded-2xl border border-white/5 flex flex-col items-center text-center gap-2 hover:bg-white/10 transition-colors">
-                            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.secondary + '30' }}>
-                                <Icons.Settings className="w-5 h-5" style={{ color: colors.secondary }} />
-                            </div>
-                            <div>
-                                <p className="text-xs opacity-60 uppercase tracking-wider" style={{ color: colors.onSurface }}>{t('loader')}</p>
-                                <p className="font-bold text-sm" style={{ color: colors.onSurface }}>
-                                    {(instance.loaderType || "FORGE").toUpperCase()}
-                                </p>
+                    {/* Server Info Stats - Modern Design */}
+                    <div className="grid grid-cols-3 gap-4">
+                        {/* Version Card - Blue accent */}
+                        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800/80 to-slate-900/80 p-4 transition-all hover:scale-[1.02] hover:shadow-lg hover:shadow-blue-500/10">
+                            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-cyan-500/5" />
+                            <div className="relative flex flex-col items-center gap-3">
+                                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 shadow-lg shadow-blue-500/25">
+                                    <Icons.Box className="h-6 w-6 text-white" />
+                                </div>
+                                <div className="text-center">
+                                    <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">{t('version')}</p>
+                                    <p className="mt-0.5 font-mono text-lg font-bold text-white">
+                                        {instance.minecraftVersion || instance.version || "1.20.1"}
+                                    </p>
+                                </div>
                             </div>
                         </div>
 
-                        {/* Mod Pack Card */}
-                        <div className="bg-white/5 p-4 rounded-2xl border border-white/5 flex flex-col items-center text-center gap-2 hover:bg-white/10 transition-colors">
-                            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.tertiary || colors.primary + '20' }}>
-                                <Icons.Modpack className="w-5 h-5" style={{ color: colors.tertiary || colors.primary }} />
+                        {/* Loader Card - Yellow/Amber accent */}
+                        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800/80 to-slate-900/80 p-4 transition-all hover:scale-[1.02] hover:shadow-lg hover:shadow-amber-500/10">
+                            <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 to-yellow-500/5" />
+                            <div className="relative flex flex-col items-center gap-3">
+                                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-yellow-500 shadow-lg shadow-amber-500/25">
+                                    <Icons.Settings className="h-6 w-6 text-white" />
+                                </div>
+                                <div className="text-center">
+                                    <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">{t('loader')}</p>
+                                    <p className="mt-0.5 text-lg font-bold text-white">
+                                        {(instance.loaderType || "FORGE").toUpperCase()}
+                                    </p>
+                                </div>
                             </div>
-                            <div className="min-w-0 w-full">
-                                <p className="text-xs opacity-60 uppercase tracking-wider" style={{ color: colors.onSurface }}>{t('mod_pack')}</p>
-                                <p className="font-bold text-sm truncate" style={{ color: colors.onSurface }}>
-                                    {instance.modpack || instance.name}
-                                </p>
+                        </div>
+
+                        {/* Mod Pack Card - Purple accent */}
+                        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800/80 to-slate-900/80 p-4 transition-all hover:scale-[1.02] hover:shadow-lg hover:shadow-purple-500/10">
+                            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-pink-500/5" />
+                            <div className="relative flex flex-col items-center gap-3">
+                                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 shadow-lg shadow-purple-500/25">
+                                    <Icons.Modpack className="h-6 w-6 text-white" />
+                                </div>
+                                <div className="min-w-0 text-center">
+                                    <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">{t('mod_pack')}</p>
+                                    <p className="mt-0.5 truncate px-1 text-lg font-bold text-white">
+                                        {instance.modpack || instance.name}
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     </div>
