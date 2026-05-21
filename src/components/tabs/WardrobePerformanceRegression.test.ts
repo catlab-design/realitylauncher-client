@@ -30,6 +30,18 @@ describe("wardrobe performance regressions", () => {
     expect(wardrobeSource).toContain("cachedWardrobeProfile");
   });
 
+  it("persists the selected preview skin between wardrobe remounts", () => {
+    expect(wardrobeSource).toContain("WARDROBE_PREVIEW_CACHE_KEY");
+    expect(wardrobeSource).toContain("localStorage");
+    expect(wardrobeSource).toContain("setSelectedSkinDataUrl");
+  });
+
+  it("lets users clear the cached preview skin explicitly", () => {
+    expect(wardrobeSource).toContain("clearCachedWardrobePreview");
+    expect(wardrobeSource).toContain("wardrobe_clear_preview");
+    expect(wardrobeSource).toContain("wardrobe_preview_cleared");
+  });
+
   it("persists the Minecraft profile cache in the main process for later wardrobe opens", () => {
     expect(utilityHandlersSource).toContain("MINECRAFT_PROFILE_CACHE_TTL_MS");
     expect(utilityHandlersSource).toContain("minecraft-profile-cache.json");
@@ -41,5 +53,12 @@ describe("wardrobe performance regressions", () => {
     expect(skinPreviewSource).not.toContain(
       'import { IdleAnimation, SkinViewer } from "skinview3d";',
     );
+  });
+
+  it("drives the preview background from theme-aware props instead of a hardcoded black canvas", () => {
+    expect(wardrobeSource).toContain("previewBackground");
+    expect(skinPreviewSource).toContain("background:");
+    expect(skinPreviewSource).toContain("backgroundColor");
+    expect(skinPreviewSource).not.toContain('background: "#0a0a0c"');
   });
 });

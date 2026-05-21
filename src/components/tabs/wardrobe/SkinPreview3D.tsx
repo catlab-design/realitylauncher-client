@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 interface SkinPreview3DProps {
     skinUrl: string | null;
     variant: "classic" | "slim";
+    backgroundColor?: string;
     width?: string | number;
     height?: string | number;
     onResetRotation?: (resetFn: () => void) => void;
@@ -12,6 +13,7 @@ interface SkinPreview3DProps {
 const FALLBACK_ROTATION = 0;
 
 let skinViewerModulePromise: Promise<any> | null = null;
+let fallbackSkinDataUrl: string | null = null;
 
 function loadSkinViewerModule() {
     if (!skinViewerModulePromise) {
@@ -20,9 +22,45 @@ function loadSkinViewerModule() {
     return skinViewerModulePromise;
 }
 
+function getFallbackSkinDataUrl(): string | null {
+    if (fallbackSkinDataUrl || typeof document === "undefined") {
+        return fallbackSkinDataUrl;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, 64, 64);
+
+    const fill = (color: string, x: number, y: number, w: number, h: number) => {
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y, w, h);
+    };
+
+    // A tiny generated classic skin keeps the 3D preview visible even if remote skin URLs fail.
+    fill("#c68642", 0, 0, 64, 64);
+    fill("#f1c27d", 0, 0, 32, 16);
+    fill("#2563eb", 16, 16, 24, 16);
+    fill("#1f2937", 0, 16, 16, 16);
+    fill("#f1c27d", 40, 16, 16, 16);
+    fill("#1f2937", 16, 48, 16, 16);
+    fill("#f1c27d", 32, 48, 16, 16);
+    fill("#3f2a1d", 8, 0, 24, 8);
+    fill("#111827", 16, 11, 2, 2);
+    fill("#111827", 24, 11, 2, 2);
+
+    fallbackSkinDataUrl = canvas.toDataURL("image/png");
+    return fallbackSkinDataUrl;
+}
+
 export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({ 
     skinUrl, 
     variant, 
+    backgroundColor = "#242424",
     width = "100%", 
     height = "100%",
     onResetRotation,
@@ -47,8 +85,8 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
         }
     }, [onResetRotation]);
 
-    // Calculate zoom based on container height - Increased for a more prominent view
-    const calcZoom = (h: number) => Math.min(0.85, Math.max(0.3, h / 650));
+    // Calculate zoom based on container height so the character does not disappear in large cards.
+    const calcZoom = (h: number) => Math.min(0.95, Math.max(0.45, h / 620));
 
     // Initialize Viewer
     useEffect(() => {
@@ -73,7 +111,7 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
                     fov: 60,
                     enableControls: false,
                     animation: new IdleAnimation(),
-                    background: "#0a0a0c",
+                    background: backgroundColor,
                 });
 
                 viewer.controls.enabled = false;
@@ -106,7 +144,7 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
             viewerRef.current = null;
             viewer?.dispose?.();
         };
-    }, [onSkinLoadStateChange]);
+    }, [backgroundColor, onSkinLoadStateChange]);
 
     // Sync Rotation
     useEffect(() => {
@@ -119,7 +157,10 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
         const viewer = viewerRef.current;
         if (!viewer || !viewerReady) return;
 
-        if (!skinUrl) {
+        const fallbackSkin = getFallbackSkinDataUrl();
+        const source = skinUrl || fallbackSkin;
+
+        if (!source) {
             viewer.loadSkin(null);
             onSkinLoadStateChange?.(false);
             return;
@@ -129,7 +170,7 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
         viewer.playerObject.visible = false;
         onSkinLoadStateChange?.(true);
         viewer
-            .loadSkin(skinUrl, {
+            .loadSkin(source, {
                 model: variant === "slim" ? "slim" : "default",
             })
             .then(() => {
@@ -138,6 +179,18 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
             })
             .catch((error: unknown) => {
                 console.error("Failed to load skin preview", error);
+                if (fallbackSkin && source !== fallbackSkin) {
+                    void viewer
+                        .loadSkin(fallbackSkin, {
+                            model: variant === "slim" ? "slim" : "default",
+                        })
+                        .finally(() => {
+                            viewer.playerObject.visible = true;
+                            onSkinLoadStateChange?.(false);
+                        });
+                    return;
+                }
+
                 viewer.playerObject.visible = true;
                 onSkinLoadStateChange?.(false);
             });
@@ -170,7 +223,7 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
         <div
             ref={containerRef}
             className="relative overflow-hidden cursor-grab active:cursor-grabbing touch-none select-none"
-            style={{ width, height, backgroundColor: "#0a0a0c" }}
+            style={{ width, height, backgroundColor }}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={stopDragging}

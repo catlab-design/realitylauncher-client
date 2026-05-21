@@ -41,4 +41,10 @@ describe("Delete feedback policy", () => {
       ),
     ).toBe(true);
   });
+
+  it("shows the floating bulk action bar for content tabs just like the mods tab", () => {
+    expect(contentListSource).toContain('import { Portal } from "../../ui/Portal";');
+    expect(contentListSource).toContain("fixed bottom-8 left-1/2 -translate-x-1/2");
+    expect(contentListSource).toContain("title={t('cancel_selection' as any)}");
+  });
 });

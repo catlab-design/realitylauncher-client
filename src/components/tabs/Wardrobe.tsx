@@ -31,6 +31,7 @@ type MinecraftProfile = {
 };
 
 const WARDROBE_PROFILE_CACHE_TTL_MS = 60 * 1000;
+const WARDROBE_PREVIEW_CACHE_KEY = "reality:wardrobe-preview:v1";
 
 let cachedWardrobeProfile:
     | {
@@ -65,6 +66,64 @@ function setCachedWardrobeProfile(
     };
 }
 
+type WardrobePreviewCacheEntry = {
+    username: string;
+    selectedSkinDataUrl: string | null;
+    selectedFileName: string;
+    variant: SkinVariant;
+};
+
+function getCachedWardrobePreview(username?: string | null): WardrobePreviewCacheEntry | null {
+    if (!username || typeof window === "undefined") return null;
+
+    try {
+        const raw = window.localStorage.getItem(WARDROBE_PREVIEW_CACHE_KEY);
+        if (!raw) return null;
+
+        const parsed = JSON.parse(raw) as Record<string, WardrobePreviewCacheEntry>;
+        return parsed?.[username] || null;
+    } catch {
+        return null;
+    }
+}
+
+function setCachedWardrobePreview(
+    username: string | undefined,
+    preview: Omit<WardrobePreviewCacheEntry, "username">,
+): void {
+    if (!username || typeof window === "undefined") return;
+
+    try {
+        const raw = window.localStorage.getItem(WARDROBE_PREVIEW_CACHE_KEY);
+        const parsed = raw ? (JSON.parse(raw) as Record<string, WardrobePreviewCacheEntry>) : {};
+        parsed[username] = { username, ...preview };
+        window.localStorage.setItem(WARDROBE_PREVIEW_CACHE_KEY, JSON.stringify(parsed));
+    } catch {
+    }
+}
+
+function clearCachedWardrobePreview(username?: string | null): void {
+    if (!username || typeof window === "undefined") return;
+
+    try {
+        const raw = window.localStorage.getItem(WARDROBE_PREVIEW_CACHE_KEY);
+        if (!raw) return;
+
+        const parsed = JSON.parse(raw) as Record<string, WardrobePreviewCacheEntry>;
+        delete parsed[username];
+        window.localStorage.setItem(WARDROBE_PREVIEW_CACHE_KEY, JSON.stringify(parsed));
+    } catch {
+    }
+}
+
+function hasWardrobePreviewCache(
+    username: string | null | undefined,
+    selectedSkinDataUrl: string | null,
+    selectedFileName: string,
+): boolean {
+    return Boolean(username && (selectedSkinDataUrl || selectedFileName));
+}
+
 export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
     const config = useConfigStore();
     const { session } = useAuthStore();
@@ -94,6 +153,44 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
         () => selectedSkinDataUrl || profile?.skinUrl || fallbackSkinUrl,
         [selectedSkinDataUrl, profile?.skinUrl, fallbackSkinUrl],
     );
+    const hasPreviewCache = useMemo(
+        () => hasWardrobePreviewCache(session?.username, selectedSkinDataUrl, selectedFileName),
+        [selectedFileName, selectedSkinDataUrl, session?.username],
+    );
+    const previewBackground = useMemo(
+        () => ({
+            card: colors.surfaceContainerHighest,
+            canvas: colors.surfaceContainerHigh,
+            gradient: `radial-gradient(ellipse at 50% 35%, ${colors.outline}33, transparent 72%), linear-gradient(180deg, ${colors.surfaceContainer} 0%, ${colors.surfaceContainerHighest} 100%)`,
+            overlay: `${colors.surface}cc`,
+            badgeBackground: `${colors.surface}cc`,
+            badgeText: colors.onSurfaceVariant,
+            hintBackground: `${colors.surface}d9`,
+            hintText: colors.onSurfaceVariant,
+            buttonBackground: `${colors.surface}cc`,
+            buttonText: colors.onSurfaceVariant,
+        }),
+        [colors],
+    );
+
+    useEffect(() => {
+        const cachedPreview = getCachedWardrobePreview(session?.username);
+        if (!cachedPreview) return;
+
+        setSelectedSkinDataUrl(cachedPreview.selectedSkinDataUrl);
+        setSelectedFileName(cachedPreview.selectedFileName);
+        setVariant(cachedPreview.variant);
+    }, [session?.username]);
+
+    useEffect(() => {
+        if (!session?.username) return;
+
+        setCachedWardrobePreview(session.username, {
+            selectedSkinDataUrl,
+            selectedFileName,
+            variant,
+        });
+    }, [selectedFileName, selectedSkinDataUrl, session?.username, variant]);
 
     const syncProfile = useCallback(async (options?: { force?: boolean }) => {
         if (!isMicrosoftSession || !window.api?.minecraftGetProfile) {
@@ -186,6 +283,7 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
             setSelectedSkinDataUrl(null);
             setSelectedFileName("");
             setVariant(normalizeVariant(result.profile.variant || result.profile.activeSkin?.variant));
+            clearCachedWardrobePreview(session?.username);
             toast.success(t("wardrobe_apply_success"));
             
             // Notify other components (like MCHead) to refresh the avatar cache
@@ -196,6 +294,14 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
             setIsApplying(false);
         }
     }, [isMicrosoftSession, selectedSkinDataUrl, variant, selectedFileName, t]);
+
+    const onClearPreview = useCallback(() => {
+        clearCachedWardrobePreview(session?.username);
+        setSelectedSkinDataUrl(null);
+        setSelectedFileName("");
+        setVariant(normalizeVariant(profile?.variant || profile?.activeSkin?.variant));
+        toast.success(t("wardrobe_preview_cleared"));
+    }, [profile, session?.username, t]);
 
     // --- Guard: Not logged in ---
     if (!session) {
@@ -265,14 +371,15 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
                     <div
                         className="flex-1 h-[440px] md:h-[540px] rounded-3xl overflow-hidden relative animate-fade-in shadow-inner"
                         style={{
-                            backgroundColor: "#0a0a0c",
-                            backgroundImage: "radial-gradient(ellipse at 50% 35%, rgba(255,255,255,0.05), transparent 75%), linear-gradient(180deg, #121214 0%, #0a0a0c 100%)",
+                            backgroundColor: previewBackground.card,
+                            backgroundImage: previewBackground.gradient,
                             animationDelay: "80ms",
                             opacity: 0,
                         }}>
                         <SkinPreview3D
                             skinUrl={previewSkin}
                             variant={variant}
+                            backgroundColor={previewBackground.canvas}
                             onResetRotation={(fn) => (resetRotationRef.current = fn)}
                             onSkinLoadStateChange={setIsPreviewSkinLoading}
                         />
@@ -280,11 +387,11 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
                         {(isLoadingProfile || isPreviewSkinLoading || !profileFetched) && (
                             <div
                                 className="absolute inset-0 animate-skeleton-wave flex items-center justify-center"
-                                style={{ backgroundColor: "rgba(14, 14, 18, 0.72)" }}
+                                style={{ backgroundColor: previewBackground.overlay }}
                             >
                                 <div
                                     className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2"
-                                    style={{ backgroundColor: "rgba(255,255,255,0.10)", color: "rgba(255,255,255,0.75)" }}
+                                    style={{ backgroundColor: previewBackground.badgeBackground, color: previewBackground.badgeText }}
                                 >
                                     <Icons.Spinner className="w-3 h-3 animate-spin" />
                                     {t("loading")}
@@ -294,13 +401,13 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
 
                         {/* Preview label */}
                         <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider"
-                            style={{ backgroundColor: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.4)" }}>
+                            style={{ backgroundColor: previewBackground.badgeBackground, color: previewBackground.badgeText }}>
                             {t("wardrobe_preview_3d")}
                         </div>
 
                         {/* Drag hint */}
                         <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 px-2.5 py-1 rounded-full text-[9px] font-bold"
-                            style={{ backgroundColor: "rgba(0,0,0,0.45)", color: "rgba(255,255,255,0.5)" }}>
+                            style={{ backgroundColor: previewBackground.hintBackground, color: previewBackground.hintText }}>
                             {t("wardrobe_drag_rotate")}
                         </div>
 
@@ -308,14 +415,14 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
                         <button
                             onClick={() => resetRotationRef.current?.()}
                             className="absolute bottom-2.5 right-2.5 p-1.5 rounded-lg hover:scale-105 active:scale-95 transition-all"
-                            style={{ backgroundColor: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)" }}
+                            style={{ backgroundColor: previewBackground.buttonBackground, color: previewBackground.buttonText }}
                         >
                             <Icons.Refresh className="w-3 h-3" />
                         </button>
 
                         {isLoadingProfile && (
                             <div className="absolute top-2.5 right-2.5 flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold"
-                                style={{ backgroundColor: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.4)" }}>
+                                style={{ backgroundColor: previewBackground.badgeBackground, color: previewBackground.badgeText }}>
                                 <Icons.Spinner className="w-2.5 h-2.5 animate-spin" />
                                 Loading
                             </div>
@@ -417,6 +524,18 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
                                     {profileError}
                                 </div>
                             )}
+
+                            <button
+                                onClick={onClearPreview}
+                                disabled={!hasPreviewCache}
+                                className="mt-3 w-full py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-80"
+                                style={{
+                                    backgroundColor: colors.surfaceContainerHighest,
+                                    color: colors.onSurface,
+                                }}
+                            >
+                                {t("wardrobe_clear_preview")}
+                            </button>
                         </div>
 
                         {/* Apply Button */}

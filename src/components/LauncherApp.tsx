@@ -15,6 +15,12 @@ import { useConfigStore } from "../store/configStore";
 import { useAuthStore } from "../store/authStore";
 import { useUiStore } from "../store/uiStore";
 import { useProgressStore } from "../store/progressStore";
+import {
+  FIRST_RUN_LOGIN_PROMPT_KEY,
+  hasSeenFirstRunLoginPrompt,
+  markFirstRunLoginPromptSeen,
+  shouldAutoOpenFirstRunLoginPrompt,
+} from "../lib/firstRunOnboarding";
 
 function LauncherAppContent() {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -63,6 +69,7 @@ function LauncherAppContent() {
   const { activeTab, setActiveTab, settingsTab, setSettingsTab, modals, openModal, closeModal } = useUiStore();
 
   const [isLoading, setIsLoading] = useState(true);
+  const [authBootstrapComplete, setAuthBootstrapComplete] = useState(false);
   const [lastContentTab, setLastContentTab] = useState("home");
 
   const { t } = useTranslation(config.language);
@@ -262,10 +269,12 @@ function LauncherAppContent() {
   const [news] = useState<NewsItem[]>([]);
 
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
       try {
         const savedConfig = await window.api?.getConfig();
-        if (savedConfig) {
+        if (!cancelled && savedConfig) {
           config.setConfig(savedConfig);
           console.log("[Config] Synced from Electron API");
         }
@@ -273,12 +282,21 @@ function LauncherAppContent() {
 
       try {
         const savedSession = await window.api?.getSession();
-        if (savedSession) {
+        if (!cancelled && savedSession) {
           setSession(savedSession);
           addAccount(savedSession);
         }
       } catch { }
+      finally {
+        if (!cancelled) {
+          setAuthBootstrapComplete(true);
+        }
+      }
     })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const [isInitialized, setIsInitialized] = useState(false);
@@ -287,6 +305,48 @@ function LauncherAppContent() {
     const timer = setTimeout(() => setIsInitialized(true), 500);
     return () => clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const isAnyAuthFlowOpen =
+      loginDialogOpen ||
+      offlineUsernameOpen ||
+      catIDLoginOpen ||
+      deviceCodeModalOpen ||
+      catIDRegisterOpen ||
+      forgotPasswordOpen;
+
+    const shouldOpenPrompt = shouldAutoOpenFirstRunLoginPrompt({
+      authBootstrapComplete,
+      isInitialized,
+      isLoading,
+      hasSession: Boolean(session),
+      accountCount: accounts.length,
+      hasSeenPrompt: hasSeenFirstRunLoginPrompt(window.localStorage),
+      isAnyAuthFlowOpen,
+    });
+
+    if (!shouldOpenPrompt) return;
+
+    markFirstRunLoginPromptSeen(window.localStorage);
+    console.log("[Onboarding] Auto-opening login dialog for first-time user", {
+      storageKey: FIRST_RUN_LOGIN_PROMPT_KEY,
+    });
+    setLoginDialogOpen(true);
+  }, [
+    accounts.length,
+    authBootstrapComplete,
+    catIDLoginOpen,
+    catIDRegisterOpen,
+    deviceCodeModalOpen,
+    forgotPasswordOpen,
+    isInitialized,
+    isLoading,
+    loginDialogOpen,
+    offlineUsernameOpen,
+    session,
+  ]);
 
   const getRpcStatusFromTab = useCallback(
     (tab: string):

@@ -46,7 +46,7 @@ export function InstallProgressModal({ colors, installProgress, title, isBytes, 
                     }
                 }}
             >
-                <div className="w-[380px] rounded-2xl p-5 shadow-2xl relative" style={{ backgroundColor: colors.surface }}>
+                <div className="w-[380px] rounded-2xl p-5 relative" style={{ backgroundColor: colors.surface }}>
                     {/* Minimize Button */}
                     {onMinimize && (
                         <button

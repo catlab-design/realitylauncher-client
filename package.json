@@ -2,7 +2,7 @@
   "name": "reality-launcher",
   "private": true,
   "type": "module",
-  "version": "3.0.3",
+  "version": "3.1.0",
   "license": "GPL-3.0-only",
   "main": "dist-electron/main.cjs",
   "repository": {
@@ -39,7 +39,9 @@
     "dist:store:fast": "SKIP_DIST_WIN=true node scripts/build-msixupload.cjs",
     "build:rust": "cd ./native && bun run build",
     "build:rust:cargo": "cd ./native && cargo build --release",
-    "ci:check": "bun run check:asar-writes && bun run check:release-workflow && bun run build && cargo check --manifest-path native/Cargo.toml"
+    "typecheck": "astro check && tsc --noEmit",
+    "test": "bun test",
+    "ci:check": "bun run check:asar-writes && bun run check:release-workflow && bun run test && bun run build && cargo check --manifest-path native/Cargo.toml"
   },
   "build": {
     "appId": "net.catlab.reality-launcher",
@@ -151,6 +153,7 @@
     "react-hot-toast": "^2.6.0",
     "react-markdown": "^10.1.0",
     "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
     "remark-breaks": "^4.0.0",
     "skinview3d": "^3.4.1",
     "tailwindcss": "^4.1.18",

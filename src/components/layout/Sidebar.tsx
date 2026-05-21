@@ -1,13 +1,10 @@
 import React, { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import rIcon from "../../assets/r.svg";
 import { Icons } from "../ui/Icons";
 import { playClick } from "../../lib/sounds";
 import { useTranslation } from "../../hooks/useTranslation";
 import { useConfigStore } from "../../store/configStore";
 import { useUiStore } from "../../store/uiStore";
 import { useAuthStore } from "../../store/authStore";
-import { type ColorTheme } from "../../types/launcher";
 
 interface SidebarProps {
     colors: any; // We can improve this type later, likely inferred from getColors return type
@@ -48,31 +45,24 @@ export function Sidebar({ colors, onTabSelect }: SidebarProps) {
     ];
 
     const renderTooltip = (id: string, label: string) => (
-        <AnimatePresence>
-            {hoveredTab === id && (
-                <motion.div
-                    initial={{ opacity: 0, x: 10, y: "-50%", scale: 0.95 }}
-                    animate={{ opacity: 1, x: 0, y: "-50%", scale: 1 }}
-                    exit={{ opacity: 0, x: 5, y: "-50%", scale: 0.95 }}
-                    transition={{ duration: 0.15, ease: "easeOut" }}
-                    className="absolute ml-3 px-3 py-1.5 rounded-lg whitespace-nowrap z-50 pointer-events-none select-none shadow-xl border border-white/10 will-change-transform"
-                    style={{
-                        backgroundColor: "rgba(0, 0, 0, 0.95)",
-                        color: "#fff",
-                        fontSize: "0.75rem",
-                        left: "100%",
-                        top: "50%",
-                        // transform: "translateY(-50%)", // Removed to avoid conflict with framer-motion
-                        // Force layout properties
-                        position: "absolute",
-                        display: "block",
-                        visibility: "visible"
-                    }}
-                >
-                    {label}
-                </motion.div>
-            )}
-        </AnimatePresence>
+        hoveredTab === id ? (
+            <div
+                className="absolute ml-3 px-3 py-1.5 rounded-lg whitespace-nowrap z-50 pointer-events-none select-none shadow-xl border border-white/10"
+                style={{
+                    backgroundColor: "rgba(0, 0, 0, 0.95)",
+                    color: "#fff",
+                    fontSize: "0.75rem",
+                    left: "100%",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    position: "absolute",
+                    display: "block",
+                    visibility: "visible"
+                }}
+            >
+                {label}
+            </div>
+        ) : null
     );
 
     return (
@@ -95,7 +85,9 @@ export function Sidebar({ colors, onTabSelect }: SidebarProps) {
                             title=""
                             onClick={() => { 
                                 playClick(); 
-                                setActiveTab(id);
+                                if (activeTab !== id) {
+                                    React.startTransition(() => setActiveTab(id));
+                                }
                                 onTabSelect?.(id);
                             }}
                             onDragStart={(e) => e.preventDefault()}
@@ -107,11 +99,7 @@ export function Sidebar({ colors, onTabSelect }: SidebarProps) {
                             } as React.CSSProperties}
                         >
                             {activeTab === id && (
-                                <motion.div
-                                    layoutId="active-tab-indicator"
-                                    className="absolute inset-0 bg-white/90 rounded-2xl"
-                                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                />
+                                <div className="absolute inset-0 bg-white/90 rounded-2xl" />
                             )}
                             <Icon className="w-6 h-6 z-10 relative pointer-events-none select-none" />
                         </button>
@@ -136,7 +124,9 @@ export function Sidebar({ colors, onTabSelect }: SidebarProps) {
                             title=""
                             onClick={() => { 
                                 playClick(); 
-                                setActiveTab(id);
+                                if (activeTab !== id) {
+                                    React.startTransition(() => setActiveTab(id));
+                                }
                                 onTabSelect?.(id);
                             }}
                             onDragStart={(e) => e.preventDefault()}
@@ -148,11 +138,7 @@ export function Sidebar({ colors, onTabSelect }: SidebarProps) {
                             } as React.CSSProperties}
                         >
                             {activeTab === id && (
-                                <motion.div
-                                    layoutId="active-tab-indicator"
-                                    className="absolute inset-0 bg-white/90 rounded-2xl"
-                                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                />
+                                <div className="absolute inset-0 bg-white/90 rounded-2xl" />
                             )}
                             <Icon className="w-6 h-6 z-10 relative pointer-events-none select-none" />
                         </button>

@@ -2,9 +2,11 @@
 // Instance Selection Modal
 // ========================================
 
-import React from "react";
+import React, { useState, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "../../../hooks/useTranslation";
-import type { GameInstance, InstanceCompatibility, ModVersion } from "./types";
+import { Icons } from "../../ui/Icons";
+import type { GameInstance, InstanceCompatibility } from "./types";
 
 interface InstanceSelectModalProps {
     colors: any;
@@ -28,11 +30,28 @@ export function InstanceSelectModal({
     onSelectInstance,
 }: InstanceSelectModalProps) {
     const { t } = useTranslation();
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-            <div className="w-full max-w-md rounded-2xl p-6 relative" style={{ backgroundColor: colors.surface }}>
+    const [filter, setFilter] = useState("");
+
+    // Filtered list (U16). We filter the compatibility result rather than `instances`
+    // so the "compatible" sort order is preserved.
+    const filtered = useMemo(() => {
+        const q = filter.trim().toLowerCase();
+        if (!q) return instanceCompatibility;
+        return instanceCompatibility.filter(({ instance }) =>
+            instance.name.toLowerCase().includes(q) ||
+            instance.minecraftVersion.toLowerCase().includes(q) ||
+            (instance.loader || "").toLowerCase().includes(q)
+        );
+    }, [instanceCompatibility, filter]);
+
+    return createPortal(
+        <div className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50" onClick={onClose}>
+            <div className="w-full max-w-2xl rounded-2xl p-8 relative" style={{ backgroundColor: colors.surface }} onClick={(e) => e.stopPropagation()}>
                 <button
+                    type="button"
                     onClick={onClose}
+                    aria-label={t("close")}
+                    title={t("close")}
                     className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-500/20"
                     style={{ color: colors.onSurfaceVariant }}
                 >
@@ -42,32 +61,56 @@ export function InstanceSelectModal({
                 </button>
 
                 <h3 className="text-lg font-semibold mb-1" style={{ color: colors.onSurface }}>
-                    {t('select_instance')}
+                    {t("select_instance")}
                 </h3>
-                <p className="text-sm mb-4" style={{ color: colors.onSurfaceVariant }}>
-                    {t('add_project_to_instance').replace('{project}', selectedProjectTitle)}
+                <p className="text-sm mb-3" style={{ color: colors.onSurfaceVariant }}>
+                    {t("add_project_to_instance").replace("{project}", selectedProjectTitle)}
                 </p>
+
+                {/* Search filter (U16) — only useful once the list has more than a couple of entries */}
+                {instances.length > 3 && !isCheckingCompatibility && (
+                    <div className="relative mb-3">
+                        <input
+                            type="text"
+                            placeholder={t("search_username") /* generic search placeholder */}
+                            value={filter}
+                            onChange={(e) => setFilter(e.target.value)}
+                            className="w-full px-4 py-2 pl-10 rounded-xl border text-sm"
+                            style={{
+                                backgroundColor: colors.surfaceContainer,
+                                borderColor: colors.outline,
+                                color: colors.onSurface,
+                            }}
+                        />
+                        <Icons.Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2" style={{ color: colors.onSurfaceVariant }} />
+                    </div>
+                )}
 
                 {isCheckingCompatibility ? (
                     <div className="p-6 text-center rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
                         <div className="animate-spin w-6 h-6 border-2 border-current border-t-transparent rounded-full mx-auto mb-2" style={{ color: colors.secondary }} />
-                        <p style={{ color: colors.onSurfaceVariant }}>{t('checking_compatibility')}</p>
+                        <p style={{ color: colors.onSurfaceVariant }}>{t("checking_compatibility")}</p>
                     </div>
-                ) : instances.length === 0 ? (
+                ) : instances.length === 0 || instanceCompatibility.length === 0 ? (
+                    // Cover both "no instances at all" and "compatibility array empty" cases (B10).
                     <div className="p-6 text-center rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
-                        <p style={{ color: colors.onSurfaceVariant }}>{t('no_instances_create_first')}</p>
+                        <p style={{ color: colors.onSurfaceVariant }}>{t("no_instances_create_first")}</p>
+                    </div>
+                ) : filtered.length === 0 ? (
+                    <div className="p-6 text-center rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
+                        <p style={{ color: colors.onSurfaceVariant }}>{t("no_results")}</p>
                     </div>
                 ) : (
-                    <div className="space-y-2 max-h-64 overflow-y-auto">
-                        {instanceCompatibility.map(({ instance, compatible, reason, bestVersion }) => (
+                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                        {filtered.map(({ instance, compatible, reason, bestVersion }) => (
                             <button
                                 key={instance.id}
+                                type="button"
                                 onClick={() => compatible && onSelectInstance(instance)}
                                 disabled={isDownloading || !compatible}
-                                className={`w-full p-3 rounded-xl text-left transition-all ${compatible ? 'hover:scale-[1.01]' : 'opacity-60 cursor-not-allowed'}`}
+                                className={`w-full p-3 rounded-xl text-left transition-all ${compatible ? "hover:scale-[1.01]" : "opacity-60 cursor-not-allowed"}`}
                                 style={{
                                     backgroundColor: colors.surfaceContainer,
-                                    borderLeft: `4px solid ${compatible ? '#22c55e' : '#ef4444'}`,
                                 }}
                             >
                                 <div className="flex items-center justify-between">
@@ -75,8 +118,8 @@ export function InstanceSelectModal({
                                         <div className="font-medium flex items-center gap-2" style={{ color: colors.onSurface }}>
                                             {instance.name}
                                             {compatible && (
-                                                <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: '#22c55e20', color: '#22c55e' }}>
-                                                    {t('compatible_tag')}
+                                                <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: "#22c55e20", color: "#22c55e" }}>
+                                                    {t("compatible_tag")}
                                                 </span>
                                             )}
                                         </div>
@@ -85,7 +128,7 @@ export function InstanceSelectModal({
                                         </div>
                                     </div>
                                     {!compatible && (
-                                        <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: '#ef444420', color: '#ef4444' }}>
+                                        <span className="text-xs px-2 py-1 rounded" style={{ backgroundColor: "#ef444420", color: "#ef4444" }}>
                                             {reason}
                                         </span>
                                     )}
@@ -102,10 +145,11 @@ export function InstanceSelectModal({
 
                 {isDownloading && (
                     <div className="mt-4 text-center" style={{ color: colors.onSurfaceVariant }}>
-                        {t('downloading')}
+                        {t("downloading")}
                     </div>
                 )}
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

@@ -169,6 +169,38 @@ export interface SearchFilters {
 
 
 
+function fetchText(url: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const { protocol, agent } = getRequestClient(url);
+    const request = protocol.get(
+      url,
+      { agent, headers: { "User-Agent": USER_AGENT } },
+      (response) => {
+        if (
+          response.statusCode === 301 ||
+          response.statusCode === 302 ||
+          response.statusCode === 307 ||
+          response.statusCode === 308
+        ) {
+          if (response.headers.location) {
+            fetchText(new URL(response.headers.location, url).toString()).then(resolve).catch(reject);
+            return;
+          }
+        }
+        if (response.statusCode !== 200) {
+          reject(new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`));
+          return;
+        }
+        let data = "";
+        response.on("data", (chunk) => (data += chunk));
+        response.on("end", () => resolve(data));
+      },
+    );
+    request.on("error", reject);
+    request.setTimeout(60000, () => { request.destroy(); reject(new Error("Request timeout (60s)")); });
+  });
+}
+
 function fetchJSON<T>(url: string): Promise<T> {
   return new Promise((resolve, reject) => {
     const { protocol, agent } = getRequestClient(url);
@@ -191,9 +223,6 @@ function fetchJSON<T>(url: string): Promise<T> {
         ) {
           if (response.headers.location) {
             const nextUrl = new URL(response.headers.location, url).toString();
-            console.log(
-              `[Modrinth] Following redirect: ${url} -> ${nextUrl}`,
-            );
             fetchJSON<T>(nextUrl).then(resolve).catch(reject);
             return;
           }
@@ -232,7 +261,7 @@ function fetchJSON<T>(url: string): Promise<T> {
 
 
 export async function searchModpacks(
-  filters: SearchFilters = {},
+  filters: SearchFilters & { facets?: string } = {},
 ): Promise<ModrinthSearchResult> {
   const {
     query = "",
@@ -244,7 +273,6 @@ export async function searchModpacks(
     sortBy = "relevance",
   } = filters;
 
-  
   const facets: string[][] = [[`project_type:${projectType}`]];
 
   if (gameVersion) {
@@ -253,6 +281,18 @@ export async function searchModpacks(
 
   if (loader) {
     facets.push([`categories:${loader}`]);
+  }
+
+  // Caller-supplied raw facets (used for multi-select OR within a category: e.g.
+  // [["categories:fabric","categories:forge"], ["versions:1.21","versions:1.20.1"]]).
+  // Each inner array is OR; outer arrays are AND'd together by Modrinth.
+  if (filters.facets) {
+    try {
+      const extra = JSON.parse(filters.facets) as string[][];
+      if (Array.isArray(extra)) facets.push(...extra);
+    } catch {
+      // Ignore malformed facets — preserves the existing search instead of erroring.
+    }
   }
 
   
@@ -265,8 +305,6 @@ export async function searchModpacks(
   });
 
   const url = `${MODRINTH_API}/search?${params.toString()}`;
-  console.log("[Modrinth] Searching:", url);
-
   return fetchJSON<ModrinthSearchResult>(url);
 }
 
@@ -275,8 +313,6 @@ export async function getProject(
   idOrSlug: string,
 ): Promise<ModrinthProjectFull> {
   const url = `${MODRINTH_API}/project/${encodeURIComponent(idOrSlug)}`;
-  console.log("[Modrinth] Getting project:", url);
-
   return fetchJSON<ModrinthProjectFull>(url);
 }
 
@@ -285,16 +321,12 @@ export async function getProjectVersions(
   idOrSlug: string,
 ): Promise<ModrinthVersion[]> {
   const url = `${MODRINTH_API}/project/${encodeURIComponent(idOrSlug)}/version`;
-  console.log("[Modrinth] Getting versions:", url);
-
   return fetchJSON<ModrinthVersion[]>(url);
 }
 
 
 export async function getVersion(versionId: string): Promise<ModrinthVersion> {
   const url = `${MODRINTH_API}/version/${encodeURIComponent(versionId)}`;
-  console.log("[Modrinth] Getting version:", url);
-
   return fetchJSON<ModrinthVersion>(url);
 }
 
@@ -339,122 +371,45 @@ export async function getLoaderVersions(
 
   try {
     if (loader === "fabric") {
+      // Response: [{ loader: { version: "0.16.14" }, ... }, ...]
       const url = `https://meta.fabricmc.net/v2/versions/loader/${gameVersion}`;
       const data = await fetchJSON<any[]>(url);
-      return data.map((d: any) => d.version);
+      return data.map((d: any) => d.loader?.version).filter(Boolean);
     } else if (loader === "quilt") {
+      // Response: [{ loader: { version: "0.26.3" }, ... }, ...]
       const url = `https://meta.quiltmc.org/v3/versions/loader/${gameVersion}`;
       const data = await fetchJSON<any[]>(url);
-      return data.map((d: any) => d.version);
+      return data.map((d: any) => d.loader?.version).filter(Boolean);
     } else if (loader === "forge") {
+      // promotions_slim.json: { promos: { "1.21.1-latest": "47.3.11", ... } }
       const url = "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json";
-      const data = await fetchJSON<{ versions: any[] }>(url);
-
-      console.log(
-        `[Modrinth] Fetched ${data?.versions?.length} Forge versions from Prism Meta`,
+      const data = await fetchJSON<{ promos?: Record<string, string> }>(url);
+      const promos = data?.promos ?? {};
+      const versions = Array.from(
+        new Set(
+          Object.entries(promos)
+            .filter(([key]) => key.startsWith(`${gameVersion}-`))
+            .map(([, ver]) => ver),
+        ),
       );
-
-      const versions: string[] = [];
-
-      
-      if (data && Array.isArray(data.versions)) {
-        for (const v of data.versions) {
-          
-          if (v.requires && Array.isArray(v.requires)) {
-            const mcReq = v.requires.find(
-              (r: any) => r.uid === "net.minecraft",
-            );
-            if (mcReq && mcReq.equals === gameVersion) {
-              versions.push(v.version);
-            }
-          }
-        }
-      }
-      console.log(
-        `[Modrinth] Found ${versions.length} Forge versions for ${gameVersion}`,
-      );
-
-      return versions; 
+      console.log(`[Modrinth] Found ${versions.length} Forge versions for ${gameVersion}`);
+      return versions;
     } else if (loader === "neoforge") {
-      const versions: string[] = [];
-
-      try {
-        
-        const url = "https://maven.neoforged.net/api/maven/releases/releases/net/neoforged/neoforge/maven-metadata.xml";
-        const data = await fetchJSON<{ versions: any[] }>(url);
-
-        if (data && Array.isArray(data.versions)) {
-          for (const v of data.versions) {
-            if (v.requires && Array.isArray(v.requires)) {
-              const mcReq = v.requires.find(
-                (r: any) => r.uid === "net.minecraft",
-              );
-              if (mcReq && mcReq.equals === gameVersion) {
-                versions.push(v.version);
-              }
-            }
-          }
-        }
-        console.log(
-          `[Modrinth] Found ${versions.length} NeoForge versions from Prism Meta for ${gameVersion}`,
-        );
-      } catch (err) {
-        console.warn(
-          "[Modrinth] Prism Meta for NeoForge failed, trying Maven fallback:",
-          err,
-        );
-      }
-
-      
-      if (versions.length === 0) {
-        console.log(
-          `[Modrinth] NeoForge: No versions in Prism Meta for ${gameVersion}. Trying Maven...`,
-        );
-        try {
-          const mavenUrl =
-            "https://maven.neoforged.net/api/maven/releases/releases/net/neoforged/neoforge/maven-metadata.xml";
-          const mavenData = await fetchJSON<{ versions: string[] }>(mavenUrl);
-
-          if (mavenData && Array.isArray(mavenData.versions)) {
-            
-            
-            
-            
-
-            const parts = gameVersion.split(".");
-            if (parts.length >= 2) {
-              
-              const major = parts[0] === "1" ? parts[1] : parts[0];
-              const minor = parts[2] || "0";
-
-              
-              const prefix = `${major}.${minor}.`;
-              const modernMatches = mavenData.versions.filter((v) =>
-                v.startsWith(prefix),
-              );
-
-              versions.push(...modernMatches.reverse()); 
-
-              
-              if (gameVersion === "1.20.1" && versions.length === 0) {
-                const legacyMatches = mavenData.versions.filter((v) =>
-                  v.startsWith("47."),
-                );
-                versions.push(...legacyMatches.reverse());
-              }
-            }
-            console.log(
-              `[Modrinth] Found ${versions.length} NeoForge versions from Maven for ${gameVersion}`,
-            );
-          }
-        } catch (mavenErr) {
-          console.error("[Modrinth] NeoForge Maven fallback failed:", mavenErr);
-        }
-      }
-
-      console.log(
-        `[Modrinth] Returning ${versions.length} NeoForge versions for ${gameVersion}`,
+      // Maven metadata XML: parse <version> tags and filter by MC version prefix
+      // NeoForge 21.1.x = MC 1.21.1 (strip leading "1." from MC version)
+      const xml = await fetchText(
+        "https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml",
       );
+      const allVersions = [...xml.matchAll(/<version>([^<]+)<\/version>/g)].map((m) => m[1]);
+      const mcParts = gameVersion.match(/^1\.(\d+)(?:\.(\d+))?/);
+      const versions: string[] = [];
+      if (mcParts) {
+        const prefix = `${mcParts[1]}.${mcParts[2] ?? "0"}.`;
+        const matches = allVersions.filter((v) => v.startsWith(prefix));
+        // Newest first
+        versions.push(...matches.reverse());
+      }
+      console.log(`[Modrinth] Found ${versions.length} NeoForge versions for ${gameVersion}`);
       return versions;
     }
 
@@ -487,8 +442,9 @@ export async function downloadFile(
   dest: string,
   onProgress?: ProgressCallback,
   signal?: AbortSignal,
+  options?: { preferNative?: boolean },
 ): Promise<void> {
-  if (!signal) {
+  if (!signal && options?.preferNative !== false) {
     try {
       const native = getNativeModule() as any;
       if (typeof native.downloadFile === "function") {
@@ -612,7 +568,7 @@ export async function downloadFile(
             response.destroy();
             file.close();
             if (fs.existsSync(dest)) fs.rmSync(dest, { force: true });
-            downloadFile(resolvedRedirectUrl, dest, onProgress, signal)
+            downloadFile(resolvedRedirectUrl, dest, onProgress, signal, options)
               .then(resolve)
               .catch(reject);
             return;

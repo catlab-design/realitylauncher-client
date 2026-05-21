@@ -19,10 +19,4 @@ export const PROJECT_TABS: {
   { id: "shader", labelKey: "shaders", icon: Icons.Sun },
 ];
 
-export const SORT_OPTIONS = [
-  { value: "relevance", labelKey: "sort.relevance" },
-  { value: "downloads", labelKey: "sort.downloads" },
-  { value: "follows", labelKey: "sort.follows" },
-  { value: "newest", labelKey: "sort.newest" },
-  { value: "updated", labelKey: "sort.updated" },
-];
+// SORT_OPTIONS now lives in filterOptions.ts alongside the other filter taxonomies.

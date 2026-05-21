@@ -71,6 +71,22 @@ function parsePngDataUrl(dataUrl: string): Buffer | null {
   }
 }
 
+function parseSafeExternalUrl(url: string): string | null {
+  if (typeof url !== "string" || url.trim().length === 0) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
 function getMinecraftProfileCachePath(): string {
   return path.join(getAppDataDir(), MINECRAFT_PROFILE_CACHE_FILE);
 }
@@ -178,7 +194,11 @@ export function registerUtilityHandlers(
   ipcMain.handle(
     "open-external",
     async (_event, url: string): Promise<void> => {
-      await shell.openExternal(url);
+      const safeUrl = parseSafeExternalUrl(url);
+      if (!safeUrl) {
+        throw new Error("Only http/https URLs are allowed.");
+      }
+      await shell.openExternal(safeUrl);
     },
   );
 
@@ -615,6 +635,8 @@ export function registerUtilityHandlers(
     const { createWriteStream } = await import("node:fs");
     const { spawn } = await import("node:child_process");
     const native = getNativeModule() as any;
+    const METADATA_TIMEOUT_MS = 15_000;
+    const DOWNLOAD_IDLE_TIMEOUT_MS = 30_000;
 
     console.log(`[Java] Starting installation of Java ${majorVersion}`);
 
@@ -633,6 +655,10 @@ export function registerUtilityHandlers(
 
     try {
       const featureVersion = majorVersion;
+      // Platform-aware executable name (Windows: java.exe, Linux/macOS: java)
+      const javaExeName = process.platform === "win32" ? "java.exe" : "java";
+      // Platform-aware archive type (zip on Windows, tar.gz on Linux/macOS)
+      const archiveType = process.platform === "win32" ? "zip" : "tar.gz";
 
       const javaBaseDir = path.join(getAppDataDir(), "java");
       if (!fs.existsSync(javaBaseDir)) {
@@ -643,16 +669,19 @@ export function registerUtilityHandlers(
         javaBaseDir,
         `jdk-${majorVersion}`,
         "bin",
-        "java.exe",
+        javaExeName,
       );
       if (fs.existsSync(existingJava)) {
         console.log(
           `[Java] Java ${majorVersion} already exists at ${existingJava}`,
         );
+        sendProgress("complete", 100, "Java already installed");
         return { ok: true, path: existingJava };
       }
 
-      if (typeof native.installJavaRuntime === "function") {
+      const useNativeJavaInstaller =
+        process.env.ML_USE_NATIVE_JAVA_INSTALLER === "1";
+      if (useNativeJavaInstaller && typeof native.installJavaRuntime === "function") {
         try {
           sendProgress("fetch", 10, "Preparing Java installation...");
           const installedPath = (await native.installJavaRuntime(
@@ -683,25 +712,44 @@ export function registerUtilityHandlers(
           : process.arch === "ia32"
             ? "x86"
             : "x64";
-      const azulQuery = new URLSearchParams({
-        java_version: `${featureVersion}`,
-        os: azulOs,
-        arch: azulArch,
-        archive_type: "zip",
-        java_package_type: "jdk",
-        javafx_bundled: "false",
-        release_status: "ga",
-        latest: "true",
-        page: "1",
-        page_size: "100",
-      });
-      const apiUrl = `https://api.azul.com/metadata/v1/zulu/packages/?${azulQuery.toString()}`;
-      const apiResponse = await new Promise<any>((resolve, reject) => {
-        https
-          .get(apiUrl, (res) => {
+      const getAzulApiUrl = (
+        javaPackageType: "jre" | "jdk",
+        options: { features?: boolean; certified?: boolean } = {},
+      ): string => {
+        const includeFeatures = options.features !== false;
+        const includeCertified = options.certified !== false;
+        // Java 25+ may only be available as EA (early access); try ga first then ea
+        const releaseStatus = featureVersion >= 25 ? "ea" : "ga";
+        const azulQuery = new URLSearchParams({
+          java_version: `${featureVersion}`,
+          os: azulOs,
+          arch: azulArch,
+          archive_type: archiveType,
+          java_package_type: javaPackageType,
+          javafx_bundled: "false",
+          release_status: releaseStatus,
+          latest: "true",
+          page: "1",
+          page_size: "3",
+        });
+        if (includeFeatures) azulQuery.set("java_package_features", "headful");
+        if (includeCertified) {
+          azulQuery.set("availability_types", "CA");
+          azulQuery.set("certifications", "tck");
+        }
+        return `https://api.azul.com/metadata/v1/zulu/packages/?${azulQuery.toString()}`;
+      };
+      const fetchJsonWithTimeout = async (url: string): Promise<any> =>
+        await new Promise<any>((resolve, reject) => {
+          const request = https.get(url, (res) => {
             let data = "";
             res.on("data", (chunk) => (data += chunk));
             res.on("end", () => {
+              if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
+                reject(new Error(`Java metadata API returned HTTP ${res.statusCode}`));
+                return;
+              }
+
               try {
                 resolve(JSON.parse(data));
               } catch (e) {
@@ -710,14 +758,59 @@ export function registerUtilityHandlers(
                 );
               }
             });
-          })
-          .on("error", reject);
-      });
+          });
 
-      const zuluPackage = Array.isArray(apiResponse)
-        ? (apiResponse.find((entry: any) => entry?.latest && entry?.download_url) ??
-            apiResponse.find((entry: any) => entry?.download_url))
-        : null;
+          request.setTimeout(METADATA_TIMEOUT_MS, () => {
+            request.destroy(
+              new Error(
+                "Java metadata request timed out. Please check your internet connection and try again.",
+              ),
+            );
+          });
+          request.on("error", reject);
+        });
+
+      sendProgress("fetch", 5, "กำลังค้นหาแพ็กเกจ Java...");
+      const pickZuluPackage = (apiResponse: any): any | null => {
+        if (!Array.isArray(apiResponse)) return null;
+        const downloadable = apiResponse.filter((entry: any) => entry?.download_url);
+        return (
+          downloadable.find((entry: any) => entry?.latest && !String(entry?.name || "").includes("-crac-")) ??
+          downloadable.find((entry: any) => !String(entry?.name || "").includes("-crac-")) ??
+          downloadable.find((entry: any) => entry?.latest) ??
+          downloadable[0] ??
+          null
+        );
+      };
+
+      const packageAttempts = [
+        { type: "jre" as const, features: true, certified: true, message: "Finding Java Runtime..." },
+        { type: "jre" as const, features: true, certified: false, message: "Trying fallback Java Runtime..." },
+        { type: "jre" as const, features: false, certified: false, message: "Trying broad Java Runtime search..." },
+        { type: "jdk" as const, features: true, certified: true, message: "Trying Java JDK package..." },
+        { type: "jdk" as const, features: false, certified: false, message: "Trying broad Java JDK search..." },
+      ];
+      // For Java 25+ (EA), also try without certification/features since EA builds
+      // may not be tagged as certified or headful in the Azul metadata API.
+      if (featureVersion >= 25) {
+        packageAttempts.push(
+          { type: "jdk" as const, features: false, certified: false, message: "Trying EA JDK (no filter)..." } as any,
+        );
+      }
+
+      let zuluPackage: any | null = null;
+      for (let i = 0; i < packageAttempts.length; i++) {
+        const attempt = packageAttempts[i];
+        sendProgress("fetch", Math.min(5 + i * 3, 18), attempt.message);
+        const apiResponse = await fetchJsonWithTimeout(
+          getAzulApiUrl(attempt.type, {
+            features: attempt.features,
+            certified: attempt.certified,
+          }),
+        );
+        zuluPackage = pickZuluPackage(apiResponse);
+        if (zuluPackage) break;
+      }
       if (!zuluPackage) {
         console.log(
           `[Java] No Java ${majorVersion} found in Azul Zulu metadata`,
@@ -751,25 +844,15 @@ export function registerUtilityHandlers(
       console.log(`[Java] Downloading ${fileName} (${fileSizeMB}MB)...`);
       const zipPath = path.join(javaBaseDir, fileName);
 
-      if (typeof native.downloadFile === "function") {
-        sendProgress("download", 25, "Downloading with native core...");
-        const nativeResult = (await native.downloadFile(
-          downloadUrl,
-          zipPath,
-          undefined,
-          undefined,
-        )) as { success?: boolean; error?: string };
-        if (!nativeResult?.success) {
-          throw new Error(nativeResult?.error || "Native Java download failed");
-        }
-        sendProgress("download", 100, "Download complete");
-      } else {
-        await new Promise<void>((resolve, reject) => {
-          const download = (url: string) => {
-            https
-              .get(url, (res) => {
+      await new Promise<void>((resolve, reject) => {
+        const download = (url: string, redirectCount = 0) => {
+          const request = https.get(url, (res) => {
                 if (res.statusCode === 301 || res.statusCode === 302) {
-                  if (res.headers.location) download(res.headers.location);
+                  if (res.headers.location && redirectCount < 5) {
+                    download(new URL(res.headers.location, url).toString(), redirectCount + 1);
+                  } else {
+                    reject(new Error("Java download redirect failed"));
+                  }
                   return;
                 }
                 if (res.statusCode !== 200) {
@@ -803,12 +886,19 @@ export function registerUtilityHandlers(
                   console.log(`[Java] Download complete: ${zipPath}`);
                   resolve();
                 });
-              })
-              .on("error", reject);
-          };
-          download(downloadUrl);
-        });
-      }
+              });
+
+          request.setTimeout(DOWNLOAD_IDLE_TIMEOUT_MS, () => {
+            request.destroy(
+              new Error(
+                "Java download timed out. Please check your internet connection and try again.",
+              ),
+            );
+          });
+          request.on("error", reject);
+        };
+        download(downloadUrl);
+      });
 
       const extractDir = path.join(javaBaseDir, `temp-${majorVersion}`);
       sendProgress("extract", 0, "กำลังแตกไฟล์...");
@@ -979,9 +1069,9 @@ export function registerUtilityHandlers(
       await fs.promises.rename(sourcePath, targetPath);
       await fs.promises.rm(extractDir, { recursive: true });
 
-      const javaExePath = path.join(targetPath, "bin", "java.exe");
+      const javaExePath = path.join(targetPath, "bin", javaExeName);
       if (!fs.existsSync(javaExePath))
-        return { ok: false, error: "ไม่พบ java.exe" };
+        return { ok: false, error: `ไม่พบ Java executable (${javaExeName})` };
 
       const currentConfig = getConfig();
       const updatedJavaPaths = { ...currentConfig.javaPaths };

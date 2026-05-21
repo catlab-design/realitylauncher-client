@@ -13,6 +13,7 @@ import { Icons } from "./ui/Icons";
 import type { AuthSession } from "../types/launcher";
 import type { TranslationKey } from "../i18n/translations";
 import { playClick } from "../lib/sounds";
+import { startMicrosoftLoginFlow } from "../lib/microsoftLoginFlow";
 
 interface LauncherPalette {
   primary: string;
@@ -216,33 +217,17 @@ export function LauncherAppOverlays({
         isOpen={loginDialogOpen}
         onClose={() => setLoginDialogOpen(false)}
         onMicrosoftLogin={async () => {
-          setLoginDialogOpen(false);
-          if (window.api?.startDeviceCodeAuth) {
-            try {
-              const toastId = toast.loading(t("requesting_login_code"));
-              const result = await window.api.startDeviceCodeAuth();
-              toast.dismiss(toastId);
-              if (!result.ok || !result.deviceCode || !result.userCode) {
-                toast.error(result.error || t("request_code_failed"));
-                return;
-              }
-              setDeviceCodeData({
-                deviceCode: result.deviceCode,
-                userCode: result.userCode,
-                verificationUri:
-                  result.verificationUri || "https://microsoft.com/devicelogin",
-                expiresAt: Date.now() + (result.expiresIn || 900) * 1000,
-              });
-              setDeviceCodeError(null);
-              setDeviceCodeModalOpen(true);
-              setDeviceCodePolling(true);
-            } catch (error) {
-              console.error("[Auth] Error starting device code flow:", error);
-              toast.error(t("start_login_failed"));
-            }
-          } else {
-            toast.error(t("ms_login_requires_electron"));
-          }
+          await startMicrosoftLoginFlow({
+            startDeviceCodeAuth: window.api?.startDeviceCodeAuth,
+            setLoginDialogOpen,
+            setDeviceCodeData,
+            setDeviceCodeError,
+            setDeviceCodeModalOpen,
+            setDeviceCodePolling,
+            toast,
+            t,
+            logError: console.error,
+          });
         }}
         onCatIDLogin={() => {
           setLoginDialogOpen(false);

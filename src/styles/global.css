@@ -223,7 +223,7 @@ body {
 }
 
 .animate-fade-in {
-  animation: fade-in 0.5s ease-out forwards;
+  animation: fade-in 0.15s ease-out forwards;
 }
 
 /* Float animation */
@@ -391,7 +391,7 @@ body {
 }
 
 /* Base styles for common animated elements */
-.animate-in, .animate-fade-in, .animate-fade-in-up, .animate-float {
+.animate-fade-in-up, .animate-float {
   will-change: transform, opacity;
 }
 

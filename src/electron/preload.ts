@@ -450,6 +450,8 @@ const api = {
     ramMB?: number;
   }) => invokeWithInstancesCacheInvalidation("instances-create", options),
   instancesGet: (id: string) => ipcRenderer.invoke("instances-get", id),
+  instancesPreInstall: (id: string) =>
+    ipcRenderer.invoke("instances-preinstall", id),
   instancesUpdate: (
     id: string,
     updates: {

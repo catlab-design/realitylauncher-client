@@ -19,7 +19,7 @@ export function DeleteConfirmModal({ colors, instanceId, onCancel, onConfirm, la
     return (
         <Portal>
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                <div className="w-full max-w-md rounded-2xl p-6 shadow-2xl" style={{ backgroundColor: colors.surface }}>
+                <div className="w-full max-w-md rounded-2xl p-6" style={{ backgroundColor: colors.surface }}>
                     <h3 className="text-lg font-medium mb-2" style={{ color: colors.onSurface }}>
                         {t('confirm_delete_instance')}
                     </h3>

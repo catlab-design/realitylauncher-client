@@ -1,9 +1,42 @@
 import React from "react";
+import Markdown from "react-markdown";
 import { Icons } from "../ui/Icons";
 import { cn } from "../../lib/utils";
 import { playClick } from "../../lib/sounds";
-import type { Server } from "../../types/launcher";
-import Markdown from "react-markdown";
+
+type SocialLink = {
+    type?: string;
+    url: string;
+};
+
+function getSafeExternalUrl(rawUrl?: string | null): string | null {
+    if (typeof rawUrl !== "string") return null;
+    try {
+        const parsed = new URL(rawUrl);
+        if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+        return parsed.toString();
+    } catch {
+        return null;
+    }
+}
+
+function parseSocialLinks(rawSocials: unknown): SocialLink[] {
+    if (typeof rawSocials !== "string" || rawSocials.trim().length === 0) return [];
+    try {
+        const parsed = JSON.parse(rawSocials);
+        if (!Array.isArray(parsed)) return [];
+        return parsed
+            .filter((entry): entry is { type?: unknown; url?: unknown } => !!entry && typeof entry === "object")
+            .map((entry) => ({
+                type: typeof entry.type === "string" ? entry.type : undefined,
+                url: typeof entry.url === "string" ? entry.url : "",
+            }))
+            .filter((entry) => !!getSafeExternalUrl(entry.url));
+    } catch (e) {
+        console.error("Failed to parse social links", e);
+        return [];
+    }
+}
 
 interface ServerDetailViewProps {
     instance: any;
@@ -36,305 +69,313 @@ export function ServerDetailView({
     colors,
     t,
     getWithTimestamp,
-    onViewLogs
+    onViewLogs,
 }: ServerDetailViewProps) {
-
     const heroImage = instance.bannerUrl || instance.image || instance.iconUrl;
+    const socialLinks = parseSocialLinks(instance.socials);
+    const safeWebsiteUrl = getSafeExternalUrl(instance.websiteUrl);
+    const isActive = isPlaying || isLaunching;
+    const isOnline = instance.status === "active";
+
+    const playerSummary = instance.players
+        ? `${instance.players.online}/${instance.players.max}`
+        : typeof instance.playerCount === "number"
+            ? instance.maxPlayers
+                ? `${instance.playerCount}/${instance.maxPlayers}`
+                : String(instance.playerCount)
+            : null;
+
+    const hasExternalLinks = socialLinks.length > 0 || !!safeWebsiteUrl;
+
+    const handleOpenExternal = (url: string) => {
+        const safeUrl = getSafeExternalUrl(url);
+        if (!safeUrl) return;
+        window.api?.openExternal?.(safeUrl);
+    };
+
+    const getSocialIcon = (url: string, type?: string) => {
+        const l = url.toLowerCase(), lt = type?.toLowerCase() || "";
+        if (lt === "discord" || l.includes("discord")) return Icons.Discord;
+        if (lt === "youtube" || l.includes("youtu")) return Icons.YouTube;
+        if (lt === "facebook" || l.includes("facebook")) return Icons.Facebook;
+        if (lt === "twitter" || lt === "x" || l.includes("twitter") || l.includes("x.com")) return Icons.TwitterX;
+        if (lt === "instagram" || l.includes("instagram")) return Icons.Instagram;
+        return Icons.Globe;
+    };
+
+    const getSocialColor = (url: string, type?: string) => {
+        const l = url.toLowerCase(), lt = type?.toLowerCase() || "";
+        if (lt === "discord" || l.includes("discord")) return "#5865F2";
+        if (lt === "youtube" || l.includes("youtu")) return "#DC2626";
+        if (lt === "facebook" || l.includes("facebook")) return "#2563EB";
+        if (lt === "twitter" || lt === "x" || l.includes("twitter") || l.includes("x.com")) return "#111827";
+        if (lt === "instagram" || l.includes("instagram"))
+            return "linear-gradient(45deg,#f09433 0%,#e6683c 28%,#dc2743 55%,#bc1888 100%)";
+        return "#2b2d31";
+    };
 
     return (
         <div className="flex-1 flex flex-col h-full animate-fade-in relative z-10 overflow-hidden">
-            {/* Compact Header with Back Button */}
+
+            {/* ── Back Button ───────────────────────────────────────────── */}
             <div className="flex items-center gap-3 mb-4 shrink-0">
                 <button
+                    type="button"
                     onClick={() => { playClick(); onBack(); }}
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all hover:bg-white/10 active:scale-95 shrink-0"
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all hover:bg-black/5 active:scale-[0.98]"
                     style={{ color: colors.onSurface }}
                 >
                     <Icons.ArrowLeft className="w-5 h-5" />
-                    <span className="font-medium">{t('back')}</span>
+                    <span className="font-medium">{t("back")}</span>
                 </button>
             </div>
 
-            {/* Modern Hero - Taller */}
-            <div className="relative w-full rounded-2xl overflow-hidden shadow-xl mb-5 shrink-0 group">
-                {/* Background Image - Increased height */}
-                <div className="h-48 relative">
-                    <div
-                        className="absolute inset-0 bg-cover bg-center"
-                        style={{
-                            backgroundImage: heroImage ? `url(${getWithTimestamp(heroImage)})` : undefined,
-                            backgroundColor: colors.surfaceContainerHighest
-                        }}
-                    >
-                        {!heroImage && (
-                            <div className="w-full h-full flex items-center justify-center">
-                                <span className="text-5xl font-bold opacity-20" style={{ color: colors.onSurface }}>
-                                    {instance.name?.[0]?.toUpperCase()}
-                                </span>
-                            </div>
+            {/* ── Hero Banner ───────────────────────────────────────────── */}
+            <div className="relative w-full rounded-2xl overflow-hidden mb-5 shrink-0" style={{ height: "220px" }}>
+                {/* Background */}
+                <div
+                    className="absolute inset-0 bg-cover bg-center"
+                    style={{
+                        backgroundImage: heroImage ? `url(${getWithTimestamp(heroImage)})` : undefined,
+                        backgroundColor: colors.surfaceContainerHighest,
+                    }}
+                >
+                    {!heroImage && (
+                        <div className="w-full h-full flex items-center justify-center">
+                            <span className="text-8xl font-black opacity-[0.07]" style={{ color: colors.onSurface }}>
+                                {instance.name?.[0]?.toUpperCase()}
+                            </span>
+                        </div>
+                    )}
+                </div>
+
+                {/* Gradient overlays */}
+                <div className="absolute inset-0 bg-linear-to-r from-black/80 via-black/45 to-black/10" />
+                <div className="absolute inset-x-0 bottom-0 h-28 bg-linear-to-t from-black/60 to-transparent" />
+
+                {/* Content overlay */}
+                <div className="absolute inset-0 flex items-end p-5 gap-4">
+                    {/* Icon */}
+                    {instance.iconUrl ? (
+                        <img
+                            src={getWithTimestamp(instance.iconUrl)}
+                            alt={t("server_icon_alt")}
+                            className="w-16 h-16 rounded-xl object-cover border-2 border-white/20 shrink-0 shadow-xl"
+                        />
+                    ) : (
+                        <div className="w-16 h-16 rounded-xl flex items-center justify-center bg-white/10 border-2 border-white/20 shrink-0">
+                            <span className="text-2xl font-black text-white">
+                                {instance.name?.[0]?.toUpperCase()}
+                            </span>
+                        </div>
+                    )}
+
+                    <div className="flex-1 min-w-0">
+                        <h1 className="text-2xl font-black text-white tracking-tight truncate leading-tight">
+                            {instance.name}
+                        </h1>
+                        {instance.description && (
+                            <p className="text-white/65 text-sm line-clamp-1 mt-0.5">
+                                {instance.description}
+                            </p>
                         )}
                     </div>
-                    <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/50 to-transparent" />
 
-                    {/* Content on Image */}
-                    <div className="absolute inset-0 flex items-center p-5 gap-4">
-                        {instance.iconUrl ? (
-                            <img
-                                src={getWithTimestamp(instance.iconUrl)}
-                                alt={t('server_icon_alt')}
-                                className="w-16 h-16 rounded-xl shadow-lg object-cover border-2 border-white/20 shrink-0"
-                            />
-                        ) : (
-                            <div className="w-16 h-16 rounded-xl shadow-lg flex items-center justify-center bg-white/10 border-2 border-white/20 shrink-0">
-                                <span className="text-2xl font-bold text-white">
-                                    {instance.name?.[0]?.toUpperCase()}
-                                </span>
-                            </div>
-                        )}
-
-                        <div className="flex-1 min-w-0">
-                            <h1 className="text-xl md:text-2xl font-black text-white drop-shadow-lg tracking-tight truncate">
-                                {instance.name}
-                            </h1>
-                            {instance.description && (
-                                <p className="text-white/80 text-sm line-clamp-1 drop-shadow-md">
-                                    {instance.description}
-                                </p>
+                    {/* Status badge - top right */}
+                    <div className="absolute top-4 right-4">
+                        <span
+                            className={cn(
+                                "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold border backdrop-blur-md uppercase tracking-wide",
+                                isOnline
+                                    ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400"
+                                    : "bg-red-500/15 border-red-500/30 text-red-400"
                             )}
-                        </div>
+                        >
+                            <span className={cn("w-1.5 h-1.5 rounded-full", isOnline ? "bg-emerald-400 animate-pulse" : "bg-red-400")} />
+                            {isOnline ? "Online" : "Offline"}
+                        </span>
                     </div>
                 </div>
             </div>
 
-            {/* Content Grid */}
-            <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-6 overflow-hidden min-h-0">
-                
-                {/* LEFT COLUMN - Actions & Stats */}
-                <div className="md:col-span-4 flex flex-col gap-4 overflow-y-auto pr-2 custom-scrollbar">
-                    
-                    {/* Main Action Button */}
-                    <div className="bg-white/5 p-4 rounded-3xl border border-white/5 flex flex-col gap-3">
-                        {!isMember ? (
+            {/* ── Stats Chips Row ───────────────────────────────────────── */}
+            <div className="flex flex-wrap gap-2 mb-5 shrink-0">
+                {instance.minecraftVersion && (
+                    <div
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border"
+                        style={{
+                            backgroundColor: colors.surfaceContainer,
+                            color: colors.onSurfaceVariant,
+                            borderColor: `${colors.outline}25`,
+                        }}
+                    >
+                        <svg className="w-3.5 h-3.5 opacity-60" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z" />
+                        </svg>
+                        MC {instance.minecraftVersion}
+                    </div>
+                )}
+                {instance.loaderType && (
+                    <div
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border uppercase tracking-wide"
+                        style={{
+                            backgroundColor: colors.surfaceContainer,
+                            color: colors.onSurfaceVariant,
+                            borderColor: `${colors.outline}25`,
+                        }}
+                    >
+                        {instance.loaderType}
+                    </div>
+                )}
+                {playerSummary && (
+                    <div
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border"
+                        style={{
+                            backgroundColor: colors.surfaceContainer,
+                            color: colors.onSurfaceVariant,
+                            borderColor: `${colors.outline}25`,
+                        }}
+                    >
+                        <Icons.Person className="w-3.5 h-3.5 opacity-60" />
+                        {playerSummary} {t("online_players") || "players"}
+                    </div>
+                )}
+                {instance.address && (
+                    <div
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-mono border"
+                        style={{
+                            backgroundColor: colors.surfaceContainer,
+                            color: colors.onSurfaceVariant,
+                            borderColor: `${colors.outline}25`,
+                        }}
+                    >
+                        <Icons.Dns className="w-3.5 h-3.5 opacity-60" />
+                        {instance.address}
+                    </div>
+                )}
+            </div>
+
+            {/* ── Main Layout: Actions (left) + Description (right) ─────── */}
+            <div className="flex-1 grid grid-cols-1 xl:grid-cols-[280px_1fr] gap-5 overflow-y-auto xl:overflow-hidden min-h-0">
+
+                {/* LEFT: Action Buttons + Social Links */}
+                <div className="flex flex-col gap-3 xl:overflow-y-auto shrink-0">
+
+                    {/* Primary action */}
+                    {!isMember ? (
+                        <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); playClick(); onJoin(instance); }}
+                            className="w-full h-12 rounded-xl flex items-center justify-center gap-2.5 transition-all hover:brightness-105 active:scale-[0.98] font-bold text-base"
+                            style={{ backgroundColor: colors.primary, color: colors.onPrimary }}
+                        >
+                            <Icons.UserPlus className="w-5 h-5" />
+                            {t("join")}
+                        </button>
+                    ) : isInstalled ? (
+                        <div className="flex gap-2">
+                            {/* Play / Stop */}
                             <button
+                                type="button"
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     playClick();
-                                    onJoin(instance);
+                                    isActive ? onStop(e, instance.id) : onPlay(e, instance);
                                 }}
-                                className="w-full h-12 rounded-xl flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-95 shadow-lg hover:shadow-xl hover:brightness-110"
-                                style={{ backgroundColor: colors.primary, color: colors.onPrimary }}
-                            >
-                                <Icons.UserPlus className="w-5 h-5" />
-                                <span className="text-lg font-bold">{t('join')}</span>
-                            </button>
-                        ) : isInstalled ? (
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        playClick();
-                                        if (isPlaying || isLaunching) {
-                                            onStop(e, instance.id);
-                                        } else {
-                                            onPlay(e, instance);
-                                        }
-                                    }}
-                                    className={cn(
-                                        "flex-1 h-12 rounded-xl flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-95 shadow-lg hover:shadow-xl hover:brightness-110",
-                                        (isPlaying || isLaunching) ? "bg-red-500 text-white" : "text-white"
-                                    )}
-                                    style={(isPlaying || isLaunching) ? { backgroundColor: colors.error || "#ef4444" } : { backgroundColor: colors.secondary }}
-                                >
-                                    {(isPlaying || isLaunching) ? (
-                                        <>
-                                            {isLaunching ? (
-                                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                            ) : (
-                                                <div className="w-5 h-5 bg-white rounded-sm" />
-                                            )}
-                                            <span className="text-lg font-bold">{isLaunching ? t('launching') : t('stop')}</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Icons.Play className="w-6 h-6 fill-current" />
-                                            <span className="text-xl font-bold">{t('play')}</span>
-                                        </>
-                                    )}
-                                </button>
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        playClick();
-                                        onViewLogs(e, instance);
-                                    }}
-                                    className="w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:scale-[1.05] active:scale-95 shadow-lg hover:brightness-110"
-                                    style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                                    title={t('logs')}
-                                >
-                                    <Icons.Terminal className="w-6 h-6" />
-                                </button>
-                            </div>
-                        ) : (
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    playClick();
-                                    onInstall(e, instance);
-                                }}
-                                className="w-full h-12 rounded-xl flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-95 shadow-lg hover:shadow-xl hover:brightness-110"
-                                style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
-                            >
-                                <Icons.Download className="w-5 h-5" />
-                                <span className="text-lg font-bold">{t('install')}</span>
-                            </button>
-                        )}
-                        
-                        {/* Social Buttons */}
-                        <div className="flex gap-3 flex-wrap">
-                            {(() => {
-                                let socialLinks: { type: string, url: string }[] = [];
-                                try {
-                                    if (instance.socials) {
-                                        socialLinks = JSON.parse(instance.socials);
-                                    }
-                                } catch (e) {
-                                    console.error("Failed to parse social links", e);
+                                className="flex-1 h-12 rounded-xl flex items-center justify-center gap-2.5 transition-all hover:brightness-105 active:scale-[0.98] font-bold text-base"
+                                style={
+                                    isActive
+                                        ? { backgroundColor: colors.error || "#ef4444", color: "#fff" }
+                                        : { backgroundColor: colors.secondary, color: "#1a1a1a" }
                                 }
-
-                                // Helper to return icon based on URL or type
-                                const getSocialIcon = (url: string, type?: string) => {
-                                    const lowerUrl = url.toLowerCase();
-                                    const lowerType = type?.toLowerCase() || "";
-
-                                    if (lowerType === 'discord' || lowerUrl.includes('discord.gg') || lowerUrl.includes('discord.com')) return Icons.Discord;
-                                    if (lowerType === 'youtube' || lowerUrl.includes('youtube.com') || lowerUrl.includes('youtu.be')) return Icons.YouTube;
-                                    if (lowerType === 'facebook' || lowerUrl.includes('facebook.com')) return Icons.Facebook;
-                                    if (lowerType === 'twitter' || lowerType === 'x' || lowerUrl.includes('twitter.com') || lowerUrl.includes('x.com')) return Icons.TwitterX;
-                                    if (lowerType === 'instagram' || lowerUrl.includes('instagram.com')) return Icons.Instagram;
-                                    
-                                    return Icons.Globe;
-                                };
-
-                                // Helper to return color based on type
-                                const getSocialColor = (url: string, type?: string) => {
-                                    const lowerUrl = url.toLowerCase();
-                                    const lowerType = type?.toLowerCase() || "";
-
-                                    if (lowerType === 'discord' || lowerUrl.includes('discord')) return '#5865F2';
-                                    if (lowerType === 'youtube' || lowerUrl.includes('youtu')) return '#FF0000';
-                                    if (lowerType === 'facebook' || lowerUrl.includes('facebook')) return '#1877F2';
-                                    if (lowerType === 'twitter' || lowerType === 'x' || lowerUrl.includes('twitter') || lowerUrl.includes('x.com')) return '#000000';
-                                    if (lowerType === 'instagram' || lowerUrl.includes('instagram')) return 'linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%)';
-
-                                    return '#2b2d31'; // Default dark gray
-                                };
-
-                                return (
+                            >
+                                {isLaunching ? (
                                     <>
-                                        {socialLinks.map((link, index) => {
-                                            const Icon = getSocialIcon(link.url, link.type);
-                                            const bgValue = getSocialColor(link.url, link.type);
-                                            return (
-                                                <button
-                                                    key={index}
-                                                    onClick={() => (window as any).api.openExternal(link.url)}
-                                                    className="flex-1 min-w-12 h-10 rounded-xl flex items-center justify-center text-white font-bold transition-all hover:scale-[1.05] active:scale-95 shadow-lg hover:brightness-110"
-                                                    style={{ background: bgValue }}
-                                                >
-                                                    <Icon className="w-5 h-5" />
-                                                </button>
-                                            );
-                                        })}
-                                        
-                                        {/* Fallback Legacy Website URL Button if no socials or as extra?? 
-                                            User said "change mind", implying we replace the old behavior?
-                                            "ถ้าเขาไม่ระบุให้มีให้ไม่แสดง" (If not specified, don't show)
-                                            "เพิ่มได้หลายลิงค์" (Can add multiple links)
-                                            Let's keep websiteUrl as a generic "Website" button if it exists and NOT in socials?
-                                            Or just treat websiteUrl as one of the socials if not empty?
-                                            Let's render it as a button if it exists, to be safe.
-                                        */}
-                                        {instance.websiteUrl && !socialLinks.some(l => l.url === instance.websiteUrl) && (
-                                            <button
-                                                onClick={() => (window as any).api.openExternal(instance.websiteUrl)}
-                                                className="flex-1 min-w-12 h-10 rounded-xl flex items-center justify-center bg-[#2b2d31] text-white font-bold transition-all hover:bg-[#3f4147] hover:scale-[1.05] active:scale-95 shadow-lg"
-                                            >
-                                                <Icons.Globe className="w-5 h-5" />
-                                            </button>
-                                        )}
+                                        <div className="w-5 h-5 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+                                        {t("launching")}
                                     </>
+                                ) : isPlaying ? (
+                                    <>
+                                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z" /></svg>
+                                        {t("stop")}
+                                    </>
+                                ) : (
+                                    <>
+                                        <Icons.Play className="w-5 h-5 fill-current" />
+                                        {t("play")}
+                                    </>
+                                )}
+                            </button>
+                            {/* Logs */}
+                            <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); playClick(); onViewLogs(e, instance); }}
+                                className="w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:brightness-105 active:scale-[0.98]"
+                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                title={t("logs")}
+                            >
+                                <Icons.Terminal className="w-5 h-5" />
+                            </button>
+                        </div>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); playClick(); onInstall(e, instance); }}
+                            className="w-full h-12 rounded-xl flex items-center justify-center gap-2.5 transition-all hover:brightness-105 active:scale-[0.98] font-bold text-base"
+                            style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                        >
+                            <Icons.Download className="w-5 h-5" />
+                            {t("install")}
+                        </button>
+                    )}
+
+                    {/* Social links */}
+                    {hasExternalLinks && (
+                        <div className="flex gap-2 flex-wrap">
+                            {socialLinks.map((link, i) => {
+                                const Icon = getSocialIcon(link.url, link.type);
+                                return (
+                                    <button
+                                        key={`${link.url}-${i}`}
+                                        type="button"
+                                        onClick={() => handleOpenExternal(link.url)}
+                                        className="flex-1 min-w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold transition-all hover:scale-[1.04] active:scale-[0.97]"
+                                        style={{ background: getSocialColor(link.url, link.type) }}
+                                        title={link.type || link.url}
+                                    >
+                                        <Icon className="w-5 h-5" />
+                                    </button>
                                 );
-                            })()}
+                            })}
+                            {safeWebsiteUrl && !socialLinks.some((l) => getSafeExternalUrl(l.url) === safeWebsiteUrl) && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleOpenExternal(safeWebsiteUrl)}
+                                    className="flex-1 min-w-10 h-10 rounded-xl flex items-center justify-center bg-[#2b2d31] text-white font-bold transition-all hover:scale-[1.04] active:scale-[0.97]"
+                                    title={safeWebsiteUrl}
+                                >
+                                    <Icons.Globe className="w-5 h-5" />
+                                </button>
+                            )}
                         </div>
-                    </div>
-
-                    {/* Server Info Stats - Modern Design */}
-                    <div className="grid grid-cols-3 gap-4">
-                        {/* Version Card - Blue accent */}
-                        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800/80 to-slate-900/80 p-4 transition-all hover:scale-[1.02] hover:shadow-lg hover:shadow-blue-500/10">
-                            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-cyan-500/5" />
-                            <div className="relative flex flex-col items-center gap-3">
-                                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 shadow-lg shadow-blue-500/25">
-                                    <Icons.Box className="h-6 w-6 text-white" />
-                                </div>
-                                <div className="text-center">
-                                    <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">{t('version')}</p>
-                                    <p className="mt-0.5 font-mono text-lg font-bold text-white">
-                                        {instance.minecraftVersion || instance.version || "1.20.1"}
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Loader Card - Yellow/Amber accent */}
-                        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800/80 to-slate-900/80 p-4 transition-all hover:scale-[1.02] hover:shadow-lg hover:shadow-amber-500/10">
-                            <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 to-yellow-500/5" />
-                            <div className="relative flex flex-col items-center gap-3">
-                                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-yellow-500 shadow-lg shadow-amber-500/25">
-                                    <Icons.Settings className="h-6 w-6 text-white" />
-                                </div>
-                                <div className="text-center">
-                                    <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">{t('loader')}</p>
-                                    <p className="mt-0.5 text-lg font-bold text-white">
-                                        {(instance.loaderType || "FORGE").toUpperCase()}
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Mod Pack Card - Purple accent */}
-                        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800/80 to-slate-900/80 p-4 transition-all hover:scale-[1.02] hover:shadow-lg hover:shadow-purple-500/10">
-                            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-pink-500/5" />
-                            <div className="relative flex flex-col items-center gap-3">
-                                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 shadow-lg shadow-purple-500/25">
-                                    <Icons.Modpack className="h-6 w-6 text-white" />
-                                </div>
-                                <div className="min-w-0 text-center">
-                                    <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">{t('mod_pack')}</p>
-                                    <p className="mt-0.5 truncate px-1 text-lg font-bold text-white">
-                                        {instance.modpack || instance.name}
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
+                    )}
                 </div>
 
-                {/* RIGHT COLUMN - Stories & Details */}
-                <div className="md:col-span-8 flex flex-col gap-4 overflow-y-auto custom-scrollbar pb-4">
-                    
-                    {/* Story Section */}
-                    <div className="bg-white/5 p-6 rounded-3xl border border-white/5">
-                        <h2 className="text-2xl font-bold mb-4 flex items-center gap-3" style={{ color: colors.onSurface }}>
-                            <Icons.Book className="w-6 h-6" style={{ color: colors.primary }} />
-                            <span>{t('story')}</span>
+                {/* RIGHT: Description */}
+                <div className="flex flex-col gap-4 overflow-y-auto xl:overflow-y-auto custom-scrollbar pb-6">
+                    <div>
+                        <h2
+                            className="text-lg font-bold flex items-center gap-2.5 mb-3"
+                            style={{ color: colors.onSurface }}
+                        >
+                            <Icons.Book className="w-5 h-5" style={{ color: colors.primary }} />
+                            {t("story")}
                         </h2>
-                        
-                        <div className="prose prose-invert max-w-none">
-                            <div className="text-base leading-relaxed opacity-90 whitespace-pre-line markdown-content" style={{ color: colors.onSurface }}>
-                                <Markdown>{instance.richDescription || instance.description || t('no_description')}</Markdown>
-                            </div>
+                        <div
+                            className="text-sm leading-relaxed markdown-content"
+                            style={{ color: colors.onSurfaceVariant }}
+                        >
+                            <Markdown>{instance.richDescription || instance.description || t("no_description")}</Markdown>
                         </div>
                     </div>
                 </div>

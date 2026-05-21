@@ -350,8 +350,10 @@ export function registerAuthHandlers(
         return { ok: false, error: "Device Client ID ยังไม่ได้ตั้งค่า" };
       }
 
+      logger.info("Starting device code flow", { clientIdLength: MICROSOFT_CLIENT_ID.length });
+
       const response = await fetch(
-        "https://login.live.com/oauth20_token.srf",
+        "https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode",
         {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -365,8 +367,16 @@ export function registerAuthHandlers(
       const data = (await response.json()) as any;
 
       if (!response.ok || data.error) {
+        logger.error("Device code request failed", {
+          status: response.status,
+          error: data.error,
+          errorDescription: data.error_description,
+          errorCodes: data.error_codes,
+        });
         return { ok: false, error: data.error_description || data.error };
       }
+
+      logger.info("Device code received", { userCode: data.user_code });
 
       return {
         ok: true,
@@ -397,7 +407,7 @@ export function registerAuthHandlers(
 
         
         const tokenResponse = await fetch(
-          "https://login.live.com/oauth20_token.srf",
+          "https://login.microsoftonline.com/consumers/oauth2/v2.0/token",
           {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },

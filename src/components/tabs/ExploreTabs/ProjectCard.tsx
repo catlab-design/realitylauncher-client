@@ -37,10 +37,7 @@ export function ProjectCard({ colors, project, isActive, onClick, isInstalling, 
                 backgroundColor: isActive ? `${colors.primary}15` : `${colors.surfaceContainer}60`, // Glassmorphism base
                 border: `1px solid ${isActive ? colors.primary : colors.outline + "20"}`,
                 transform: isHovered ? "translateY(-2px)" : "none",
-                boxShadow: isHovered
-                    ? `0 8px 20px -6px ${colors.shadow}40`
-                    : "none",
-                willChange: "transform, box-shadow",
+                willChange: "transform",
             }}
         >
             {/* Accent Glow on Hover */}
@@ -57,7 +54,7 @@ export function ProjectCard({ colors, project, isActive, onClick, isInstalling, 
                     <div className="flex flex-col items-center gap-2 p-3 rounded-lg"
                          style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}30` }}>
                         <i className="fa-solid fa-spinner fa-spin text-lg" style={{ color: colors.secondary }}></i>
-                        <span className="text-[10px] font-medium" style={{ color: colors.onSurface }}>
+                        <span className="text-xs font-medium" style={{ color: colors.onSurface }}>
                             {installProgress?.message || "Installing..."}
                         </span>
                         {installProgress?.percent !== undefined && (
@@ -78,7 +75,7 @@ export function ProjectCard({ colors, project, isActive, onClick, isInstalling, 
             <div className="p-4 flex items-start gap-4 relative z-10">
                 {/* Icon */}
                 <div
-                    className="w-12 h-12 rounded-xl bg-cover bg-center shrink-0 shadow-sm group-hover:shadow-md transition-shadow overflow-hidden"
+                    className="w-12 h-12 rounded-xl bg-cover bg-center shrink-0 overflow-hidden"
                     style={{
                         backgroundImage: project.icon_url ? `url('${project.icon_url}')` : undefined,
                         backgroundColor: colors.surfaceContainerHighest,
@@ -97,31 +94,31 @@ export function ProjectCard({ colors, project, isActive, onClick, isInstalling, 
                 {/* Content */}
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-0.5">
-                        <h3 className="text-sm font-semibold truncate pr-2 transition-colors"
+                        <h3 className="text-[15px] font-semibold truncate pr-2 transition-colors"
                             style={{ color: isActive ? colors.primary : colors.onSurface }}>
                             {project.title}
                         </h3>
                     </div>
 
-                    <p className="text-[11px] truncate mb-2" style={{ color: colors.onSurfaceVariant }}>
+                    <p className="text-xs truncate mb-2" style={{ color: colors.onSurfaceVariant }}>
                         {t('by')} <span style={{ color: colors.onSurface }}>{project.author}</span>
                     </p>
 
-                    <p className="text-[11px] line-clamp-2 leading-relaxed h-[34px] mb-3 opacity-80"
+                    <p className="text-xs line-clamp-2 leading-5 h-[40px] mb-3 opacity-80"
                         style={{ color: colors.onSurfaceVariant }}>
                         {project.description}
                     </p>
 
                     {/* Stats Badges */}
                     <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium"
+                        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium"
                             style={{ backgroundColor: `${colors.secondary}15`, color: colors.onSurface }}>
-                            <i className="fa-solid fa-download text-[9px]" style={{ color: colors.secondary }}></i>
+                            <i className="fa-solid fa-download text-[10px]" style={{ color: colors.secondary }}></i>
                             {formatNumber(project.downloads)}
                         </span>
 
                         {project.categories && project.categories.length > 0 && (
-                            <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-medium truncate max-w-[80px]"
+                            <span className="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-medium truncate max-w-[96px]"
                                 style={{ backgroundColor: `${colors.surfaceContainerHighest}80`, color: colors.onSurfaceVariant }}>
                                 {project.categories[0]}
                             </span>

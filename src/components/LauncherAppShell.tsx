@@ -151,16 +151,18 @@ export function LauncherAppShell({
   return (
     <>
       <Toaster
-        position="top-center"
+        position="bottom-right"
+        gutter={10}
         containerStyle={{
-          top: 16,
+          bottom: 24,
+          right: 24,
         }}
         toastOptions={{
           duration: 3000,
           style: {
             background: colors.surfaceContainer,
             color: colors.onSurface,
-            borderRadius: "16px",
+            borderRadius: "8px",
             padding: "12px 18px",
             fontSize: "13px",
             fontWeight: 500,
@@ -170,6 +172,8 @@ export function LauncherAppShell({
           },
           success: {
             style: {
+              background: "#2ecc71",
+              color: "#fff",
               boxShadow: "0 8px 32px rgba(34, 197, 94, 0.25)",
             },
             iconTheme: {
@@ -179,6 +183,8 @@ export function LauncherAppShell({
           },
           error: {
             style: {
+              background: "#ff3b1f",
+              color: "#fff",
               boxShadow: "0 8px 32px rgba(239, 68, 68, 0.25)",
             },
             iconTheme: {
@@ -232,8 +238,8 @@ export function LauncherAppShell({
             }}
           />
 
-          <main className="flex-1 overflow-auto pt-3 px-6 pb-6 relative">
-            <div key={contentTab} className="h-full animate-fade-in">
+          <main className="flex-1 overflow-y-auto overflow-x-hidden pt-3 px-6 pb-6 relative">
+            <div className="h-full">
               {contentTab === "home" && (
                 <Home
                   session={session}

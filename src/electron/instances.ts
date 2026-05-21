@@ -67,6 +67,7 @@ export interface UpdateInstanceOptions {
   lastPlayedAt?: string;
   totalPlayTime?: number;
   autoUpdate?: boolean;
+  banner?: string;
   lockedMods?: string[];
 }
 
@@ -205,9 +206,10 @@ export async function loadInstances(
 
 // Cache to avoid redundant disk writes
 const lastSavedContent = new Map<string, string>();
+const saveQueues = new Map<string, Promise<void>>();
 
-// Save single instance to its instance.json file
-async function saveInstance(instance: GameInstance): Promise<void> {
+async function writeInstance(instance: GameInstance): Promise<void> {
+  let tmpPath: string | null = null;
   try {
     const instanceDir = getInstanceDir(instance.id);
     await fs.promises.mkdir(instanceDir, { recursive: true });
@@ -231,7 +233,7 @@ async function saveInstance(instance: GameInstance): Promise<void> {
     }
 
     // Atomic write: write to .tmp then rename
-    const tmpPath = `${metaPath}.tmp`;
+    tmpPath = `${metaPath}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
     await fs.promises.writeFile(tmpPath, json);
     await fs.promises.rename(tmpPath, metaPath);
 
@@ -241,6 +243,28 @@ async function saveInstance(instance: GameInstance): Promise<void> {
     }
   } catch (error) {
     console.error("[Instances] Failed to save instance:", instance.id, error);
+    if (tmpPath) {
+      try {
+        await fs.promises.unlink(tmpPath);
+      } catch {}
+    }
+  }
+}
+
+// Save single instance to its instance.json file.
+// Writes for the same instance are serialized so concurrent metadata enrichments
+// cannot rename/delete each other's temporary file on Windows.
+async function saveInstance(instance: GameInstance): Promise<void> {
+  const previous = saveQueues.get(instance.id) ?? Promise.resolve();
+  const next = previous.catch(() => undefined).then(() => writeInstance(instance));
+  saveQueues.set(instance.id, next);
+
+  try {
+    await next;
+  } finally {
+    if (saveQueues.get(instance.id) === next) {
+      saveQueues.delete(instance.id);
+    }
   }
 }
 
@@ -264,13 +288,22 @@ export function getInstance(id: string): GameInstance | null {
     return instanceCache.get(id)!;
   }
 
-  const instance = instances.find((i) => i.id === id);
-  if (!instance) {
+  const instance =
+    instances.find((i) => i.id === id) ||
+    instances.find((i) => i.cloudId === id) ||
+    Array.from(instanceCache.values()).find((i) => i.cloudId === id) ||
+    null;
+  if (instance) {
+    instanceCache.set(id, instance);
+    return instance;
+  }
+
+  if (!instance && DEBUG_INSTANCES) {
     console.warn(
       `[Instances] getInstance FAILED for ID: "${id}". Cache Size: ${instanceCache.size}. Available: ${instances.length}`,
     );
   }
-  return instance || null;
+  return null;
 }
 
 export async function createInstance(

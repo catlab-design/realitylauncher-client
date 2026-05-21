@@ -777,8 +777,8 @@ export function InstanceSettingsModal({
                                             <label className="block text-sm font-medium mb-1.5" style={{ color: colors.onSurface }}>{t('icon')}</label>
                                             <div className="relative group">
                                                 <div
-                                                    className={`w-28 h-28 rounded-3xl flex items-center justify-center text-3xl transition-all overflow-hidden border-2 ${instance.cloudId ? "" : "cursor-pointer hover:border-secondary/50 group-hover:shadow-lg"}`}
-                                                    style={{ 
+                                                    className={`w-28 h-28 rounded-3xl flex items-center justify-center text-3xl transition-all overflow-hidden border-2 ${instance.cloudId ? "" : "cursor-pointer hover:border-secondary/50"}`}
+                                                    style={{
                                                         backgroundColor: colors.surfaceContainerHighest,
                                                         borderColor: colors.outline + "20"
                                                     }}
@@ -807,7 +807,7 @@ export function InstanceSettingsModal({
                                                 </div>
                                                 {!instance.cloudId && (
                                                     <div
-                                                        className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full flex items-center justify-center text-xs shadow-md transform group-hover:scale-110 transition-transform cursor-pointer"
+                                                        className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full flex items-center justify-center text-xs transform group-hover:scale-110 transition-transform cursor-pointer"
                                                         style={{ backgroundColor: "#ffffff", color: "#1a1a1a", border: `2px solid ${colors.surfaceContainerHighest}` }}
                                                         onClick={async (e) => {
                                                             e.stopPropagation();
@@ -830,6 +830,62 @@ export function InstanceSettingsModal({
                                             </div>
                                         </div>
                                     </div>
+
+                                    {/* Banner Section */}
+                                    {!instance.cloudId && (
+                                        <div className="mt-5">
+                                            <label className="block text-sm font-medium mb-1.5" style={{ color: colors.onSurface }}>
+                                                Banner
+                                            </label>
+                                            <div
+                                                className="relative w-full h-28 rounded-2xl overflow-hidden border-2 cursor-pointer group transition-all"
+                                                style={{
+                                                    backgroundColor: colors.surfaceContainerHighest,
+                                                    borderColor: instance.banner ? "transparent" : colors.outline + "20",
+                                                }}
+                                                onClick={async () => {
+                                                    playClick();
+                                                    const result = await window.api?.browseIcon?.();
+                                                    if (result) {
+                                                        onUpdate(instance.id, { banner: result });
+                                                        toast.success("บันทึก Banner แล้ว");
+                                                    }
+                                                }}
+                                            >
+                                                {instance.banner ? (
+                                                    <>
+                                                        <img src={instance.banner} alt="banner" className="w-full h-full object-cover" />
+                                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                                                            <span className="text-white text-sm font-medium flex items-center gap-1.5">
+                                                                <Icons.Edit className="w-4 h-4" /> เปลี่ยน Banner
+                                                            </span>
+                                                        </div>
+                                                        {/* Remove banner button */}
+                                                        <button
+                                                            type="button"
+                                                            className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 hover:bg-red-500/80 flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100"
+                                                            title="ลบ Banner"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                playClick();
+                                                                onUpdate(instance.id, { banner: undefined });
+                                                                toast.success("ลบ Banner แล้ว");
+                                                            }}
+                                                        >
+                                                            <Icons.Close className="w-3.5 h-3.5 text-white" />
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <div className="w-full h-full flex flex-col items-center justify-center gap-2 opacity-50 group-hover:opacity-80 transition-opacity">
+                                                        <svg className="w-7 h-7" viewBox="0 0 24 24" fill="currentColor" style={{ color: colors.onSurfaceVariant }}>
+                                                            <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+                                                        </svg>
+                                                        <span className="text-xs" style={{ color: colors.onSurfaceVariant }}>คลิกเพื่อเลือก Banner</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 

@@ -9,6 +9,12 @@ import { useState, useEffect, useRef } from "react";
 import toast from "react-hot-toast";
 import { Icons } from "../ui/Icons";
 import { InstanceContentBrowser } from "./InstanceContentBrowser";
+import {
+    CONTENT_SOURCES,
+    ProjectDetailPage,
+    type ContentSource,
+    type ModrinthProject,
+} from "./ExploreTabs";
 import type { GameInstance, LauncherConfig } from "../../types/launcher";
 import { playClick } from "../../lib/sounds";
 import { shouldShowLaunchSpinner, shouldShowStopButton } from "../../lib/launchPolicy";
@@ -16,12 +22,17 @@ import { useTranslation } from "../../hooks/useTranslation";
 import type { DeleteResult } from "../../lib/bulkDelete";
 import bannerImage from "../../assets/banner.png";
 
+type InstalledBrowserContentType = "mod" | "resourcepack" | "shader" | "datapack";
+
 // Import from ModPackTabs
 import {
     ContentTabs,
     ModsList,
     ContentList,
     InstanceSettingsModal,
+    VersionSwitcherModal,
+    type VersionEntry,
+    type VersionSwitcherSource,
     formatPlayTime,
     getLoaderLabel,
     type ModInfo,
@@ -100,7 +111,12 @@ export function InstanceDetail({
 
     // Content browser modal state
     const [showContentBrowser, setShowContentBrowser] = useState(false);
-    const [browserContentType, setBrowserContentType] = useState<"mod" | "resourcepack" | "shader" | "datapack">("mod");
+    const [browserContentType, setBrowserContentType] = useState<InstalledBrowserContentType>("mod");
+    const [installedDetailProject, setInstalledDetailProject] = useState<ModrinthProject | null>(null);
+    const [installedDetailContentType, setInstalledDetailContentType] = useState<InstalledBrowserContentType>("mod");
+    const [installedDetailSource, setInstalledDetailSource] = useState<ContentSource>(CONTENT_SOURCES.MODRINTH);
+    const [isInstallingInstalledVersion, setIsInstallingInstalledVersion] = useState(false);
+    const [installedVersionProgress, setInstalledVersionProgress] = useState<{ stage: string; message: string } | null>(null);
 
     // Check if this instance is currently playing
     // Check playingInstanceId directly as fallback for when isGameRunning hasn't updated yet
@@ -124,6 +140,18 @@ export function InstanceDetail({
     // Drag & drop state
     const [isDragging, setIsDragging] = useState(false);
 
+    // Track which filenames are currently being checked/updated
+    const [updatingFilenames, setUpdatingFilenames] = useState<Set<string>>(new Set());
+
+    // Version switcher modal state
+    const [switcherTarget, setSwitcherTarget] = useState<{
+        item: ModInfo | ContentItem | DatapackItem;
+        contentType: InstalledBrowserContentType;
+        projectId: string;
+        source: VersionSwitcherSource;
+    } | null>(null);
+    const [switcherInstalling, setSwitcherInstalling] = useState(false);
+
     // Get content type name for current tab
     const getContentTypeForTab = (tab: ContentCategory): "mod" | "resourcepack" | "shader" | "datapack" => {
         const map: Record<ContentCategory, "mod" | "resourcepack" | "shader" | "datapack"> = {
@@ -144,6 +172,450 @@ export function InstanceDetail({
             datapacks: [".zip"],
         };
         return map[tab];
+    };
+
+    const refreshContentType = (contentType: InstalledBrowserContentType) => {
+        switch (contentType) {
+            case "mod": return loadMods();
+            case "resourcepack": return loadResourcepacks();
+            case "shader": return loadShaders();
+            case "datapack": return loadDatapacks();
+        }
+    };
+
+    const getInstalledItemName = (item: Partial<ModInfo & ContentItem & DatapackItem>) =>
+        item.displayName || item.name || item.filename?.replace(/\.(jar|zip)$/i, "") || "Project";
+
+    const getInstanceActionId = () => instance.id;
+
+    const slugifyProjectName = (name: string) =>
+        name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "project";
+
+    const normalizeModrinthProject = (
+        raw: any,
+        item: Partial<ModInfo & ContentItem & DatapackItem>,
+        fallbackId?: string,
+    ): ModrinthProject => {
+        const title = raw?.title || raw?.name || getInstalledItemName(item);
+        return {
+            source: "modrinth",
+            slug: raw?.slug || slugifyProjectName(title),
+            title,
+            description: raw?.description || item.description || "",
+            categories: raw?.categories || raw?.display_categories || [],
+            downloads: raw?.downloads || 0,
+            icon_url: raw?.icon_url || raw?.iconUrl || item.icon || null,
+            project_id: String(raw?.project_id || raw?.projectId || raw?.id || fallbackId || slugifyProjectName(title)),
+            author: raw?.author || item.author || "Unknown",
+            versions: raw?.versions || [],
+            game_versions: raw?.game_versions || raw?.gameVersions || raw?.versions || [],
+            loaders: raw?.loaders || [],
+            follows: raw?.follows || raw?.followers || 0,
+            client_side: raw?.client_side || raw?.clientSide,
+            server_side: raw?.server_side || raw?.serverSide,
+            gallery: raw?.gallery || [],
+            featured_gallery: raw?.featured_gallery || raw?.featuredGallery || null,
+            color: raw?.color,
+            body: raw?.body,
+            source_url: raw?.source_url || raw?.sourceUrl,
+            wiki_url: raw?.wiki_url || raw?.wikiUrl,
+            discord_url: raw?.discord_url || raw?.discordUrl,
+            issues_url: raw?.issues_url || raw?.issuesUrl,
+            license: raw?.license,
+            date_created: raw?.published || raw?.date_created || raw?.dateCreated,
+            date_modified: raw?.updated || raw?.date_modified || raw?.dateModified,
+            project_type: raw?.project_type || raw?.projectType,
+        };
+    };
+
+    const normalizeCurseForgeProject = (
+        raw: any,
+        item: Partial<ModInfo & ContentItem & DatapackItem>,
+        fallbackId?: string,
+    ): ModrinthProject => {
+        const cf = raw?.data || raw || {};
+        const title = cf.name || getInstalledItemName(item);
+        return {
+            source: "curseforge",
+            slug: cf.slug || slugifyProjectName(title),
+            title,
+            description: cf.summary || item.description || "",
+            categories: cf.categories?.map((category: any) => category.name) || [],
+            downloads: cf.downloadCount || 0,
+            icon_url: cf.logo?.url || item.icon || null,
+            project_id: String(cf.id || fallbackId || slugifyProjectName(title)),
+            author: cf.authors?.[0]?.name || item.author || "Unknown",
+            versions: cf.latestFiles?.flatMap((file: any) => file.gameVersions || []) || [],
+            follows: cf.thumbsUpCount || 0,
+            client_side: "required",
+            server_side: "optional",
+            gallery: cf.screenshots?.map((shot: any) => shot.url) || [],
+            featured_gallery: cf.screenshots?.[0]?.url || null,
+            date_created: cf.dateCreated,
+            date_modified: cf.dateModified,
+            team_members: cf.authors?.map((author: any) => ({
+                user: { username: author.name, avatar_url: undefined },
+                role: "Author",
+            })) || [],
+        };
+    };
+
+    const searchInstalledProject = async (
+        item: Partial<ModInfo & ContentItem & DatapackItem>,
+        contentType: InstalledBrowserContentType,
+    ) => {
+        const query = getInstalledItemName(item);
+        const facets: string[][] = [];
+        if (instance.minecraftVersion) facets.push([`versions:${instance.minecraftVersion}`]);
+        if (contentType === "mod" && instance.loader !== "vanilla") facets.push([`categories:${instance.loader}`]);
+
+        const modrinthResult = await window.api?.modrinthSearch?.({
+            query,
+            projectType: contentType,
+            sortBy: "relevance",
+            limit: 1,
+            offset: 0,
+            facets: JSON.stringify(facets),
+        });
+        if (modrinthResult?.hits?.[0]) {
+            return {
+                source: CONTENT_SOURCES.MODRINTH,
+                project: normalizeModrinthProject(modrinthResult.hits[0], item),
+            };
+        }
+
+        const modLoaderMapping: Record<string, number> = {
+            forge: 1,
+            fabric: 4,
+            quilt: 5,
+            neoforge: 6,
+        };
+        const curseforgeResult = await window.api?.curseforgeSearch?.({
+            query,
+            projectType: contentType,
+            gameVersion: instance.minecraftVersion || undefined,
+            modLoaderType: contentType === "mod" ? modLoaderMapping[instance.loader?.toLowerCase()] : undefined,
+            sortBy: "relevance",
+            pageSize: 1,
+            index: 0,
+        });
+        if (curseforgeResult?.data?.[0]) {
+            return {
+                source: CONTENT_SOURCES.CURSEFORGE,
+                project: normalizeCurseForgeProject(curseforgeResult.data[0], item),
+            };
+        }
+
+        return null;
+    };
+
+    const handleOpenInstalledProjectDetail = async (
+        item: ModInfo | ContentItem | DatapackItem,
+        contentType: InstalledBrowserContentType,
+    ) => {
+        try {
+            setInstalledDetailContentType(contentType);
+            let detail: { source: ContentSource; project: ModrinthProject } | null = null;
+
+            if (item.modrinthProjectId) {
+                const fullProject = await (window.api as any)?.modrinthGetProject?.(item.modrinthProjectId);
+                detail = {
+                    source: CONTENT_SOURCES.MODRINTH,
+                    project: normalizeModrinthProject(fullProject, item, item.modrinthProjectId),
+                };
+            } else if (item.curseforgeProjectId) {
+                const fullProject = await (window.api as any)?.curseforgeGetProject?.(item.curseforgeProjectId);
+                detail = {
+                    source: CONTENT_SOURCES.CURSEFORGE,
+                    project: normalizeCurseForgeProject(fullProject, item, item.curseforgeProjectId),
+                };
+            } else {
+                detail = await searchInstalledProject(item, contentType);
+            }
+
+            if (!detail) {
+                toast.error(t("search_failed"));
+                return;
+            }
+
+            setInstalledDetailSource(detail.source);
+            setInstalledDetailProject(detail.project);
+        } catch (error) {
+            console.error("[InstanceDetail] Failed to open installed project detail:", error);
+            toast.error(t("search_failed"));
+        }
+    };
+
+    const handleInstallVersionFromInstalledDetail = async (project: ModrinthProject, versionId: string) => {
+        setIsInstallingInstalledVersion(true);
+        setInstalledVersionProgress({ stage: "downloading", message: "Downloading version..." });
+
+        try {
+            const result = await window.api?.contentDownloadToInstance?.({
+                projectId: project.project_id,
+                versionId,
+                instanceId: getInstanceActionId(),
+                contentType: installedDetailContentType,
+                contentSource: installedDetailSource,
+            });
+
+            if (result?.ok) {
+                toast.success(t("install_success_name").replace("{name}", project.title));
+                if (instance.cloudId && result.filename) {
+                    try {
+                        const lockedMods = new Set(instance.lockedMods || []);
+                        if (!lockedMods.has(result.filename)) {
+                            const lockRes = await (window.api as any)?.instanceToggleLock?.(instance.id, result.filename);
+                            if (lockRes?.ok && lockRes.lockedMods) {
+                                onUpdate(instance.id, { lockedMods: lockRes.lockedMods });
+                            }
+                        }
+                    } catch (error) {
+                        console.error("Failed to auto-lock installed version:", error);
+                    }
+                }
+                await refreshContentType(installedDetailContentType);
+            } else {
+                toast.error(result?.error || t("install_failed"));
+            }
+        } catch (error: any) {
+            toast.error(error?.message || t("error_occurred"));
+        } finally {
+            setIsInstallingInstalledVersion(false);
+            setInstalledVersionProgress(null);
+        }
+    };
+
+    const handleUpdateContent = async (
+        item: ModInfo | ContentItem | DatapackItem,
+        contentType: InstalledBrowserContentType,
+    ) => {
+        const filename = item.filename;
+        if (!filename || updatingFilenames.has(filename)) return;
+
+        const markUpdating = (on: boolean) => {
+            setUpdatingFilenames(prev => {
+                const next = new Set(prev);
+                if (on) next.add(filename);
+                else next.delete(filename);
+                return next;
+            });
+        };
+
+        markUpdating(true);
+        try {
+            const mcVersion = instance.minecraftVersion;
+            const loader = instance.loader?.toLowerCase();
+
+            let latestVersionId: string | undefined;
+            let latestVersionNumber: string | undefined;
+            let projectId: string | undefined;
+            let source: ContentSource | undefined;
+
+            let resolvedItem: typeof item = item;
+            if (!resolvedItem.modrinthProjectId && !resolvedItem.curseforgeProjectId) {
+                const detail = await searchInstalledProject(resolvedItem, contentType);
+                if (detail) {
+                    if (detail.source === CONTENT_SOURCES.MODRINTH) {
+                        resolvedItem = { ...resolvedItem, modrinthProjectId: detail.project.project_id };
+                    } else {
+                        resolvedItem = { ...resolvedItem, curseforgeProjectId: detail.project.project_id };
+                    }
+                }
+            }
+
+            if (resolvedItem.modrinthProjectId) {
+                source = CONTENT_SOURCES.MODRINTH;
+                projectId = resolvedItem.modrinthProjectId;
+                const versions = await (window.api as any)?.modrinthGetVersions?.(resolvedItem.modrinthProjectId);
+                if (Array.isArray(versions)) {
+                    const compatible = versions.find((v: any) => {
+                        const gvOk = !mcVersion || (v.game_versions || []).includes(mcVersion);
+                        const loaderOk =
+                            contentType !== "mod" ||
+                            loader === "vanilla" ||
+                            !loader ||
+                            (v.loaders || []).map((l: string) => l.toLowerCase()).includes(loader);
+                        return gvOk && loaderOk;
+                    });
+                    if (compatible) {
+                        latestVersionId = compatible.id;
+                        latestVersionNumber = compatible.version_number;
+                    }
+                }
+            } else if (resolvedItem.curseforgeProjectId) {
+                source = CONTENT_SOURCES.CURSEFORGE;
+                projectId = String(resolvedItem.curseforgeProjectId);
+                const files = await (window.api as any)?.curseforgeGetFiles?.(resolvedItem.curseforgeProjectId, mcVersion);
+                const list = files?.data || files || [];
+                if (Array.isArray(list) && list.length > 0) {
+                    latestVersionId = String(list[0].id);
+                    latestVersionNumber = list[0].displayName || list[0].fileName;
+                }
+            }
+
+            if (!projectId || !latestVersionId || !source) {
+                toast.error(t("search_failed"));
+                return;
+            }
+
+            const currentVersion = (item as any).version || "";
+            if (
+                currentVersion &&
+                latestVersionNumber &&
+                String(latestVersionNumber).trim() === String(currentVersion).trim()
+            ) {
+                toast.success(t("up_to_date" as any) || "Already up to date");
+                return;
+            }
+
+            const result = await window.api?.contentDownloadToInstance?.({
+                projectId,
+                versionId: latestVersionId,
+                instanceId: getInstanceActionId(),
+                contentType,
+                contentSource: source,
+            });
+
+            if (!result?.ok) {
+                toast.error(result?.error || t("install_failed"));
+                return;
+            }
+
+            // Remove the old file if the new install produced a different filename
+            const newFilename: string | undefined = result.filename;
+            if (newFilename && newFilename !== filename) {
+                try {
+                    switch (contentType) {
+                        case "mod":
+                            await (window.api as any)?.instanceDeleteMod?.(instance.id, filename);
+                            break;
+                        case "resourcepack":
+                            await (window.api as any)?.instanceDeleteResourcepack?.(instance.id, filename);
+                            break;
+                        case "shader":
+                            await (window.api as any)?.instanceDeleteShader?.(instance.id, filename);
+                            break;
+                        case "datapack": {
+                            const worldName = (item as DatapackItem).worldName;
+                            if (worldName) {
+                                await (window.api as any)?.instanceDeleteDatapack?.(instance.id, worldName, filename);
+                            }
+                            break;
+                        }
+                    }
+                } catch (err) {
+                    console.warn("[InstanceDetail] Failed to delete old file after update:", err);
+                }
+            }
+
+            toast.success(t("install_success_name").replace("{name}", getInstalledItemName(item)));
+            await refreshContentType(contentType);
+        } catch (error: any) {
+            toast.error(error?.message || t("error_occurred"));
+        } finally {
+            markUpdating(false);
+        }
+    };
+
+    const handleOpenSwitcher = async (
+        item: ModInfo | ContentItem | DatapackItem,
+        contentType: InstalledBrowserContentType,
+    ) => {
+        let projectId: string | null = item.modrinthProjectId
+            ? item.modrinthProjectId
+            : item.curseforgeProjectId
+              ? String(item.curseforgeProjectId)
+              : null;
+        let source: VersionSwitcherSource | null = item.modrinthProjectId
+            ? "modrinth"
+            : item.curseforgeProjectId
+              ? "curseforge"
+              : null;
+
+        if (!projectId || !source) {
+            const toastId = toast.loading(t("loading"));
+            try {
+                const detail = await searchInstalledProject(item, contentType);
+                toast.dismiss(toastId);
+                if (!detail) {
+                    toast.error(t("search_failed"));
+                    return;
+                }
+                projectId = detail.project.project_id;
+                source = detail.source === CONTENT_SOURCES.CURSEFORGE ? "curseforge" : "modrinth";
+            } catch (err) {
+                toast.dismiss(toastId);
+                toast.error(t("search_failed"));
+                return;
+            }
+        }
+
+        setSwitcherTarget({ item, contentType, projectId, source });
+    };
+
+    const handleConfirmSwitchVersion = async (entry: VersionEntry) => {
+        if (!switcherTarget) return;
+        const { item, contentType, projectId, source } = switcherTarget;
+        const filename = item.filename;
+        setSwitcherInstalling(true);
+        try {
+            const result = await window.api?.contentDownloadToInstance?.({
+                projectId,
+                versionId: entry.id,
+                instanceId: getInstanceActionId(),
+                contentType,
+                contentSource: source === "modrinth" ? CONTENT_SOURCES.MODRINTH : CONTENT_SOURCES.CURSEFORGE,
+            });
+
+            if (!result?.ok) {
+                toast.error(result?.error || t("install_failed"));
+                return;
+            }
+
+            // Keep the old file until the replacement is confirmed. If the
+            // downloaded file has the same name, it has already replaced it.
+            const newFilename: string | undefined = result.filename;
+            if (filename && newFilename && newFilename !== filename) {
+                try {
+                    switch (contentType) {
+                        case "mod":
+                            await (window.api as any)?.instanceDeleteMod?.(instance.id, filename);
+                            break;
+                        case "resourcepack":
+                            await (window.api as any)?.instanceDeleteResourcepack?.(instance.id, filename);
+                            break;
+                        case "shader":
+                            await (window.api as any)?.instanceDeleteShader?.(instance.id, filename);
+                            break;
+                        case "datapack": {
+                            const worldName = (item as DatapackItem).worldName;
+                            if (worldName) {
+                                await (window.api as any)?.instanceDeleteDatapack?.(instance.id, worldName, filename);
+                            }
+                            break;
+                        }
+                    }
+                } catch (err) {
+                    console.warn("[VersionSwitch] Failed to delete old file after switch:", err);
+                    toast.error(t("old_version_delete_failed" as any));
+                }
+            }
+
+            // Force cache invalidation before reading the list back.
+            try {
+                await (window.api as any)?.invalidateInstancesListCache?.();
+            } catch {}
+
+            toast.success(t("install_success_name").replace("{name}", entry.versionNumber));
+            await refreshContentType(contentType);
+            setSwitcherTarget(null);
+        } catch (error: any) {
+            console.error("[VersionSwitch] error:", error);
+            toast.error(error?.message || t("error_occurred"));
+        } finally {
+            setSwitcherInstalling(false);
+        }
     };
 
     // Drag handlers
@@ -264,6 +736,8 @@ export function InstanceDetail({
         setResourcepacks([]);
         setShaders([]);
         setDatapacks([]);
+        setInstalledDetailProject(null);
+        setShowContentBrowser(false);
         return () => {
             if (modRefreshDebounceRef.current) {
                 clearTimeout(modRefreshDebounceRef.current);
@@ -276,8 +750,9 @@ export function InstanceDetail({
     // Data Loading
     // ========================================
 
-    const loadMods = async (options?: { silent?: boolean }) => {
+    const loadMods = async (options?: { silent?: boolean; metadataRetry?: number }) => {
         const silent = options?.silent === true;
+        const metadataRetry = options?.metadataRetry ?? 0;
         if (!silent) setModsLoading(true);
 
         try {
@@ -286,6 +761,21 @@ export function InstanceDetail({
             if (result?.ok) {
                 // Show mods immediately (with whatever metadata is currently available)
                 setMods(result.mods);
+                if (result.hasUncached) {
+                    const MAX_RETRIES = result.mods.length > 120 ? 8 : 20;
+                    const retryDelay = result.mods.length > 120 ? 1800 : 600;
+                    if (metadataRetry < MAX_RETRIES) {
+                        if (modRefreshDebounceRef.current) {
+                            clearTimeout(modRefreshDebounceRef.current);
+                        }
+                        modRefreshDebounceRef.current = setTimeout(() => {
+                            loadMods({
+                                silent: true,
+                                metadataRetry: metadataRetry + 1,
+                            });
+                        }, retryDelay);
+                    }
+                }
             } else {
                 if (!silent) toast.error(result?.error || t('load_mods_failed'));
             }
@@ -563,7 +1053,7 @@ export function InstanceDetail({
             {/* Drag indicator */}
             {isDragging && (
                 <div
-                    className="fixed top-20 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-6 py-3 rounded-full shadow-lg pointer-events-none animate-pulse"
+                    className="fixed top-20 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-6 py-3 rounded-full pointer-events-none animate-pulse"
                     style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
                 >
                     <Icons.Folder className="w-6 h-6" />
@@ -572,9 +1062,9 @@ export function InstanceDetail({
             )}
 
             {/* Conditional Header: Hero (if has banner) vs Compact (if no banner) - hidden when content browser is open */}
-            {!showContentBrowser && (instance.banner ? (
+            {!showContentBrowser && !installedDetailProject && (instance.banner ? (
                 /* Hero Header */
-                <div className="rounded-2xl overflow-hidden relative shadow-lg mb-6 border" style={{ borderColor: colors.outline + "30", backgroundColor: colors.surfaceContainer }}>
+                <div className="rounded-2xl overflow-hidden relative mb-6 border" style={{ borderColor: colors.outline + "30", backgroundColor: colors.surfaceContainer }}>
                     <div className="relative h-48 w-full bg-cover bg-center"
                         style={{
                             backgroundColor: colors.surfaceContainerHighest,
@@ -601,7 +1091,7 @@ export function InstanceDetail({
                         </button>
 
                         {/* Floating Icon */}
-                        <div className="absolute -bottom-8 left-8 w-24 h-24 rounded-2xl shadow-2xl p-1 z-10"
+                        <div className="absolute -bottom-8 left-8 w-24 h-24 rounded-2xl p-1 z-10"
                             style={{ backgroundColor: colors.surface }}>
                             <div className="w-full h-full rounded-[14px] bg-cover bg-center overflow-hidden flex items-center justify-center"
                                 style={{
@@ -630,7 +1120,7 @@ export function InstanceDetail({
                                 {instance.totalPlayTime > 0 && (
                                     <div className="flex items-center gap-1.5">
                                         <i className="fa-solid fa-clock text-xs opacity-70"></i>
-                                        <span>{formatPlayTime(instance.totalPlayTime)}</span>
+                                        <span>{formatPlayTime(instance.totalPlayTime, { minutes: t('minutes_unit'), hours: t('hours_unit') })}</span>
                                     </div>
                                 )}
                             </div>
@@ -674,7 +1164,7 @@ export function InstanceDetail({
                             <button
                                 onClick={() => { playClick(); handlePlayStop(); }}
                                 disabled={disablePlayStopButton || isInstallLocked}
-                                className="h-12 px-8 rounded-xl font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50 flex items-center gap-2 shadow-lg hover:shadow-xl"
+                                className="h-12 px-8 rounded-xl font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50 flex items-center gap-2"
                                 style={{
                                     backgroundColor: showStopAction ? "#ef4444" : colors.secondary,
                                     color: showStopAction ? "#ffffff" : "#1a1a1a"
@@ -721,7 +1211,7 @@ export function InstanceDetail({
                         </svg>
                     </button>
 
-                    <div className="w-24 h-24 rounded-2xl flex items-center justify-center text-4xl overflow-hidden shadow-lg shrink-0"
+                    <div className="w-24 h-24 rounded-2xl flex items-center justify-center text-4xl overflow-hidden shrink-0"
                         style={{ backgroundColor: colors.surfaceContainer }}>
                         {instance.icon?.startsWith("data:") || instance.icon?.startsWith("file://") || instance.icon?.startsWith("http") ? (
                             <img src={instance.icon} alt="icon" className="w-full h-full object-cover" />
@@ -742,7 +1232,7 @@ export function InstanceDetail({
                             {instance.totalPlayTime > 0 && (
                                 <div className="flex items-center gap-1.5">
                                     <i className="fa-solid fa-clock text-xs opacity-70"></i>
-                                    <span>{formatPlayTime(instance.totalPlayTime)}</span>
+                                    <span>{formatPlayTime(instance.totalPlayTime, { minutes: t('minutes_unit'), hours: t('hours_unit') })}</span>
                                 </div>
                             )}
                         </div>
@@ -785,7 +1275,7 @@ export function InstanceDetail({
                         <button
                             onClick={() => { playClick(); handlePlayStop(); }}
                             disabled={disablePlayStopButton || isInstallLocked}
-                            className="h-12 px-8 rounded-xl font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50 flex items-center gap-2 shadow-lg hover:shadow-xl"
+                            className="h-12 px-8 rounded-xl font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50 flex items-center gap-2"
                             style={{
                                 backgroundColor: showStopAction ? "#ef4444" : colors.secondary,
                                 color: showStopAction ? "#ffffff" : "#1a1a1a"
@@ -822,7 +1312,21 @@ export function InstanceDetail({
 
 
             {/* Conditional: Content Browser (inline) or Content Tabs + Lists */}
-            {showContentBrowser ? (
+            {installedDetailProject ? (
+                <ProjectDetailPage
+                    colors={colors}
+                    project={installedDetailProject}
+                    projectType={installedDetailContentType as any}
+                    contentSource={installedDetailSource}
+                    isInstallingModpack={isInstallingInstalledVersion}
+                    installProgress={installedVersionProgress}
+                    onBack={() => setInstalledDetailProject(null)}
+                    onInstallModpack={() => {}}
+                    onAddToInstance={() => toast("เลือกเวอร์ชันจากแท็บ versions เพื่อเปลี่ยนไฟล์ใน Instance นี้")}
+                    isInstalledProject={true}
+                    onInstallVersion={handleInstallVersionFromInstalledDetail}
+                />
+            ) : showContentBrowser ? (
                 <InstanceContentBrowser
                     colors={colors}
                     instance={instance}
@@ -871,6 +1375,10 @@ export function InstanceDetail({
                                 onDelete={handleDeleteMod}
                                 onRefresh={loadMods}
                                 onAddMod={() => { setBrowserContentType("mod"); setShowContentBrowser(true); }}
+                                onOpenProjectDetail={(mod) => handleOpenInstalledProjectDetail(mod, "mod")}
+                                onUpdate={(mod) => handleUpdateContent(mod, "mod")}
+                                updatingFilenames={updatingFilenames}
+                                onSwitchVersion={(mod) => handleOpenSwitcher(mod, "mod")}
                                 // Only show lock UI for Cloud/Server instances
                                 lockedMods={new Set(instance.cloudId ? (instance.lockedMods || []) : [])}
                                 isServerManaged={!!instance.cloudId}
@@ -922,6 +1430,10 @@ export function InstanceDetail({
                                 onDelete={handleDeleteResourcepack}
                                 onAddContent={() => { setBrowserContentType("resourcepack"); setShowContentBrowser(true); }}
                                 onRefresh={loadResourcepacks}
+                                onOpenProjectDetail={(item) => handleOpenInstalledProjectDetail(item, "resourcepack")}
+                                onUpdate={(item) => handleUpdateContent(item, "resourcepack")}
+                                updatingFilenames={updatingFilenames}
+                                onSwitchVersion={(item) => handleOpenSwitcher(item, "resourcepack")}
                             />
                         )}
 
@@ -941,6 +1453,10 @@ export function InstanceDetail({
                                 onDelete={handleDeleteDatapack}
                                 onAddContent={() => { setBrowserContentType("datapack"); setShowContentBrowser(true); }}
                                 onRefresh={loadDatapacks}
+                                onOpenProjectDetail={(item) => handleOpenInstalledProjectDetail(item, "datapack")}
+                                onUpdate={(item) => handleUpdateContent(item, "datapack")}
+                                updatingFilenames={updatingFilenames}
+                                onSwitchVersion={(item) => handleOpenSwitcher(item, "datapack")}
                             />
                         )}
 
@@ -960,10 +1476,37 @@ export function InstanceDetail({
                                 onDelete={handleDeleteShader}
                                 onAddContent={() => { setBrowserContentType("shader"); setShowContentBrowser(true); }}
                                 onRefresh={loadShaders}
+                                onOpenProjectDetail={(item) => handleOpenInstalledProjectDetail(item, "shader")}
+                                onUpdate={(item) => handleUpdateContent(item, "shader")}
+                                updatingFilenames={updatingFilenames}
+                                onSwitchVersion={(item) => handleOpenSwitcher(item, "shader")}
                             />
                         )}
                     </div>
                 </>
+            )}
+
+            {/* Version Switcher Modal */}
+            {switcherTarget && (
+                <VersionSwitcherModal
+                    colors={colors}
+                    title={
+                        (switcherTarget.item as any).displayName ||
+                        switcherTarget.item.name ||
+                        switcherTarget.item.filename
+                    }
+                    iconUrl={switcherTarget.item.icon || null}
+                    currentVersion={(switcherTarget.item as any).version}
+                    currentVersionId={(switcherTarget.item as any).installedVersionId}
+                    instanceMcVersion={instance.minecraftVersion}
+                    instanceLoader={instance.loader}
+                    contentType={switcherTarget.contentType}
+                    projectId={switcherTarget.projectId}
+                    source={switcherTarget.source}
+                    isInstalling={switcherInstalling}
+                    onClose={() => { if (!switcherInstalling) setSwitcherTarget(null); }}
+                    onSwitch={handleConfirmSwitchVersion}
+                />
             )}
 
             {/* Settings Modal */}

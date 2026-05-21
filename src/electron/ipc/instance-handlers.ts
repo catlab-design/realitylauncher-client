@@ -53,6 +53,7 @@ import {
   setProgressCallback,
   setGameLogCallback,
 } from "../launcher.js";
+import { preInstallInstance } from "../MinecraftRun/rustLauncher.js";
 import { downloadContentToInstance } from "../content.js";
 import { updateRPC } from "../discord.js";
 import { resolveTelemetryUserIdForSession } from "../telemetry.js";
@@ -122,7 +123,6 @@ import {
   getModCacheKey,
   inspectPackMetadataWithNative,
   modMetadataCache,
-  packFormatToVersion,
   pendingModrinthLookups,
   readUtf8LogTail,
   saveMetadataCache,
@@ -323,6 +323,68 @@ export function registerInstanceHandlers(
     "instances-create",
     async (_event, options: CreateInstanceOptions): Promise<GameInstance> => {
       return await createInstance(options);
+    },
+  );
+
+  // Pre-install Minecraft core files so the instance is ready to play immediately
+  ipcMain.handle(
+    "instances-preinstall",
+    async (_event, id: string): Promise<{ ok: boolean; message?: string }> => {
+      const mainWindow = getMainWindow();
+      const instance = getInstance(id);
+      if (!instance) return { ok: false, message: "Instance not found" };
+
+      const config = getConfig();
+      const sendProgress = createThrottledProgressSender("install-progress");
+
+      // Signal UI to show the install progress modal
+      sendProgress(
+        {
+          type: "download",
+          task: "กำลังเตรียมไฟล์เกม...",
+          percent: 0,
+        },
+        true,
+      );
+
+      const result = await preInstallInstance({
+        version: instance.minecraftVersion,
+        loader:
+          instance.loader !== "vanilla"
+            ? {
+                type: instance.loader,
+                build: instance.loaderVersion || "latest",
+                enable: true,
+              }
+            : undefined,
+        gameDirectory: instance.gameDirectory,
+        instanceId: id,
+        javaPath: instance.javaPath || config.javaPath,
+        onProgress: (progress) => {
+          sendProgress({
+            type: (progress.type as any) || "download",
+            task: progress.task,
+            current: progress.current,
+            total: progress.total,
+            percent: progress.percent,
+          });
+        },
+      });
+
+      // Signal complete so UI hides the modal
+      sendProgress(
+        {
+          type: "complete" as any,
+          task: result.ok
+            ? "เตรียมไฟล์เกมเสร็จสิ้น พร้อมเล่นแล้ว!"
+            : "เตรียมไฟล์เกมล้มเหลว",
+          percent: 100,
+        },
+        true,
+      );
+
+      mainWindow?.webContents.send("instances-updated");
+      return result;
     },
   );
 
@@ -630,7 +692,12 @@ export function registerInstanceHandlers(
       instanceId: id, 
     };
 
-    logger.info(`[Launch] Launch Options:`, { options: launchOptions });
+    logger.info(`[Launch] Launch Options:`, {
+      options: {
+        ...launchOptions,
+        accessToken: launchOptions.accessToken ? "[redacted]" : undefined,
+      },
+    });
 
     const result = await launchGame(launchOptions as any);
 
@@ -753,7 +820,6 @@ export function registerInstanceHandlers(
     dedupeShaders,
     dedupeDatapacks,
     getIconFromCache,
-    packFormatToVersion,
     inspectPackMetadataWithNative,
     fetchIconFromOnline,
     readUtf8LogTail,

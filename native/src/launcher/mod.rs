@@ -13,6 +13,26 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use crate::get_client;
 use std::fs;
+use std::sync::Mutex;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SHA-1 verification cache: maps file path → (size, mtime_secs, sha1_hex)
+// Lets prepare_launch skip re-hashing files whose size+mtime haven't changed.
+// Invalidated automatically when either value differs.
+// ─────────────────────────────────────────────────────────────────────────────
+#[derive(Clone)]
+struct FileVerifyEntry {
+    size: u64,
+    mtime: u64,
+    sha1: String,
+}
+
+static VERIFY_CACHE: std::sync::OnceLock<Mutex<HashMap<String, FileVerifyEntry>>> =
+    std::sync::OnceLock::new();
+
+fn get_verify_cache() -> &'static Mutex<HashMap<String, FileVerifyEntry>> {
+    VERIFY_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 
 // ========================================
@@ -478,6 +498,275 @@ pub async fn get_asset_downloads(
     Ok(downloads)
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// resolve_java_for_launch
+// Replaces the TypeScript getJavaPath() multi-step resolution with a single
+// Rust call.  Returns the best Java executable path for the given MC version.
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[napi(object)]
+pub struct JavaPaths {
+    pub java8: Option<String>,
+    pub java17: Option<String>,
+    pub java21: Option<String>,
+    pub java25: Option<String>,
+}
+
+#[napi]
+pub fn resolve_java_for_launch(
+    mc_version: String,
+    custom_java_path: Option<String>,
+    config_java_paths: Option<JavaPaths>,
+) -> Option<String> {
+    use crate::java::get_recommended_java_version;
+
+    let target = get_recommended_java_version(mc_version);
+
+    let is_valid = |p: &str| -> bool {
+        !p.is_empty() && p != "/path/to/java" && std::path::Path::new(p).exists()
+    };
+
+    // 1. Custom path wins
+    if let Some(ref p) = custom_java_path {
+        if is_valid(p) {
+            return Some(p.clone());
+        }
+    }
+
+    // 2. Configured paths by version
+    if let Some(ref paths) = config_java_paths {
+        let candidates: Vec<Option<&str>> = if target <= 8 {
+            vec![paths.java8.as_deref()]
+        } else if target >= 21 {
+            vec![
+                paths.java21.as_deref(),
+                paths.java25.as_deref(),
+            ]
+        } else {
+            // Java 17 range
+            vec![
+                paths.java17.as_deref(),
+                paths.java21.as_deref(),
+                paths.java25.as_deref(),
+            ]
+        };
+        for c in candidates.into_iter().flatten() {
+            if is_valid(c) {
+                return Some(c.to_string());
+            }
+        }
+    }
+
+    // 3. Auto-detect from system
+    let detected = crate::java::detect_java_installations();
+    let exact = detected.installations.iter()
+        .find(|j| j.is_64bit && j.major_version == target)
+        .map(|j| j.path.clone());
+    if let Some(p) = exact {
+        return Some(p);
+    }
+
+    // Fallback: any version >= target
+    detected.installations.iter()
+        .filter(|j| j.is_64bit && j.major_version >= target)
+        .map(|j| j.path.clone())
+        .next()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// extract_natives_if_needed
+// Replaces the TypeScript fingerprint + extraction loop with a single Rust call.
+// Returns true if extraction was performed, false if cache was reused.
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[napi(object)]
+pub struct ExtractNativesResult {
+    pub extracted: bool,
+    pub reused_cache: bool,
+    pub error: Option<String>,
+}
+
+#[napi]
+pub fn extract_natives_if_needed(
+    version_json: String,
+    libraries_dir: String,
+    natives_dir: String,
+) -> ExtractNativesResult {
+    let version: serde_json::Value = match serde_json::from_str(&version_json) {
+        Ok(v) => v,
+        Err(e) => {
+            return ExtractNativesResult {
+                extracted: false,
+                reused_cache: false,
+                error: Some(format!("Invalid version JSON: {e}")),
+            }
+        }
+    };
+
+    let os_key = if cfg!(windows) {
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "osx"
+    } else {
+        "linux"
+    };
+    let arch_bits = if cfg!(target_arch = "x86_64") || cfg!(target_arch = "aarch64") {
+        "64"
+    } else {
+        "32"
+    };
+
+    let libs_dir = PathBuf::from(&libraries_dir);
+    let nat_dir = PathBuf::from(&natives_dir);
+    let marker_path = nat_dir.join(".extract-meta.json");
+
+    // Build fingerprint from native source jars (path + size + mtime)
+    let mut fingerprint_parts: Vec<String> = Vec::new();
+    let libraries = version["libraries"].as_array().cloned().unwrap_or_default();
+    let mut source_jars: Vec<PathBuf> = Vec::new();
+
+    for lib in &libraries {
+        let classifier_tmpl = lib["natives"][os_key].as_str().unwrap_or("");
+        if classifier_tmpl.is_empty() {
+            continue;
+        }
+        let classifier_key = classifier_tmpl.replace("${arch}", arch_bits);
+        let jar_rel = lib["downloads"]["classifiers"][&classifier_key]["path"]
+            .as_str()
+            .unwrap_or("");
+        if jar_rel.is_empty() {
+            continue;
+        }
+        let jar_path = libs_dir.join(jar_rel);
+        let descriptor = if let Ok(m) = std::fs::metadata(&jar_path) {
+            format!("{}|{}|{}", jar_rel, m.len(), m.modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0))
+        } else {
+            format!("{}|missing", jar_rel)
+        };
+        fingerprint_parts.push(descriptor);
+        source_jars.push(jar_path);
+    }
+
+    fingerprint_parts.sort();
+    let fingerprint = {
+        use sha1::{Sha1, Digest};
+        let mut h = Sha1::new();
+        h.update(fingerprint_parts.join("\n").as_bytes());
+        hex::encode(h.finalize())
+    };
+
+    // Check if cached fingerprint matches
+    let cached_ok = if let Ok(content) = std::fs::read_to_string(&marker_path) {
+        if let Ok(meta) = serde_json::from_str::<serde_json::Value>(&content) {
+            meta["fingerprint"].as_str() == Some(&fingerprint)
+                && meta["platform"].as_str() == Some(if cfg!(windows) { "win32" } else if cfg!(target_os = "macos") { "darwin" } else { "linux" })
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    if cached_ok {
+        return ExtractNativesResult { extracted: false, reused_cache: true, error: None };
+    }
+
+    // Clear and recreate natives dir
+    if nat_dir.exists() {
+        let _ = std::fs::remove_dir_all(&nat_dir);
+    }
+    if let Err(e) = std::fs::create_dir_all(&nat_dir) {
+        return ExtractNativesResult {
+            extracted: false,
+            reused_cache: false,
+            error: Some(format!("Cannot create natives dir: {e}")),
+        };
+    }
+
+    let mut extracted_count = 0usize;
+    for jar_path in &source_jars {
+        if !jar_path.exists() {
+            continue;
+        }
+        if let Ok(result) = crate::extract::extract_zip(
+            jar_path.to_string_lossy().to_string(),
+            nat_dir.to_string_lossy().to_string(),
+            None,
+        ) {
+            if result.success {
+                extracted_count += 1;
+            }
+        }
+    }
+
+    // Remove META-INF
+    let meta_inf = nat_dir.join("META-INF");
+    if meta_inf.exists() {
+        let _ = std::fs::remove_dir_all(&meta_inf);
+    }
+
+    // Write marker
+    let marker = serde_json::json!({
+        "fingerprint": fingerprint,
+        "platform": if cfg!(windows) { "win32" } else if cfg!(target_os = "macos") { "darwin" } else { "linux" },
+        "arch": std::env::consts::ARCH,
+        "extractedAt": chrono::Utc::now().to_rfc3339(),
+        "sourceCount": source_jars.len(),
+    });
+    let _ = std::fs::write(&marker_path, serde_json::to_string(&marker).unwrap_or_default());
+
+    println!("[Rust] Extracted natives from {} jars", extracted_count);
+    ExtractNativesResult { extracted: true, reused_cache: false, error: None }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// create_launch_argfile
+// Writes Java @-argfile to disk and returns path.  Replaces the TypeScript
+// argfile creation logic.
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[napi]
+pub fn create_launch_argfile(
+    args: Vec<String>,
+    game_dir: String,
+    instance_id: String,
+) -> napi::Result<String> {
+    let safe_id: String = instance_id
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect();
+
+    let temp_dir = PathBuf::from(&game_dir).join("temp");
+    std::fs::create_dir_all(&temp_dir)
+        .map_err(|e| napi::Error::from_reason(format!("Cannot create temp dir: {e}")))?;
+
+    let filename = format!("args_{safe_id}.txt");
+    let file_path = temp_dir.join(&filename);
+
+    let content = args
+        .iter()
+        .map(|arg| {
+            let escaped = arg.replace('\\', "\\\\");
+            if escaped.contains(' ') && !escaped.starts_with('"') {
+                format!("\"{}\"", escaped)
+            } else {
+                escaped
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    std::fs::write(&file_path, &content)
+        .map_err(|e| napi::Error::from_reason(format!("Cannot write argfile: {e}")))?;
+
+    Ok(format!("temp/{}", filename))
+}
+
 fn resolve_inheritance(mut version: VersionDetail, game_dir: &str) -> Result<VersionDetail, String> {
     if let Some(parent_id) = &version.inherits_from {
         let parent_path = PathBuf::from(game_dir)
@@ -665,19 +954,53 @@ fn verify_file(path: &PathBuf, expected_sha1: Option<&str>) -> bool {
     if !path.exists() {
         return false;
     }
-    
-    if let Some(expected) = expected_sha1 {
-        if let Ok(data) = std::fs::read(path) {
-            use sha1::{Sha1, Digest};
-            let mut hasher = Sha1::new();
-            hasher.update(&data);
-            let actual = hex::encode(hasher.finalize());
-            return actual.to_lowercase() == expected.to_lowercase();
+
+    let expected = match expected_sha1 {
+        Some(e) if !e.is_empty() => e.to_lowercase(),
+        // No expected hash → just check existence
+        _ => return true,
+    };
+
+    // Fast path: check cache by (size, mtime) — avoids re-reading the file
+    let meta = match std::fs::metadata(path) {
+        Ok(m) => m,
+        Err(_) => return false,
+    };
+    let size = meta.len();
+    let mtime = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let path_key = path.to_string_lossy().to_string();
+    {
+        let cache = get_verify_cache().lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(entry) = cache.get(&path_key) {
+            if entry.size == size && entry.mtime == mtime {
+                return entry.sha1 == expected;
+            }
         }
-        return false;
     }
-    
-    true
+
+    // Slow path: compute SHA-1, then cache the result
+    let data = match std::fs::read(path) {
+        Ok(d) => d,
+        Err(_) => return false,
+    };
+    use sha1::{Sha1, Digest};
+    let mut hasher = Sha1::new();
+    hasher.update(&data);
+    let actual = hex::encode(hasher.finalize());
+    let matches = actual == expected;
+
+    {
+        let mut cache = get_verify_cache().lock().unwrap_or_else(|e| e.into_inner());
+        cache.insert(path_key, FileVerifyEntry { size, mtime, sha1: actual });
+    }
+
+    matches
 }
 
 fn build_jvm_args(version: &VersionDetail, options: &LaunchOptions, classpath: &[String]) -> Vec<String> {

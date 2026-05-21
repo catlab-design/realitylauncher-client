@@ -1,4 +1,4 @@
-/* tslint:disable */
+﻿/* tslint:disable */
 /* eslint-disable */
 /* prettier-ignore */
 
@@ -310,7 +310,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { detectJavaInstallations, validateJavaPath, getRecommendedJavaVersion, findJavaForMinecraft, downloadFile, downloadFiles, verifyFileHash, calculateSha1, calculateSha256, verifyMultipleFileHashes, planServerSyncDownloads, cleanupExtraMods, checkFastModListSync, saveFastModListSyncSnapshot, postInstallModpackFiles, detectModConflictsNative, inspectPackMetadata, LoaderType, getInstancePath, createInstanceDirectories, saveInstanceMeta, loadInstanceMeta, listInstances, deleteInstance, copyInstance, getDirectorySize, listInstanceMods, toggleMod, deleteMod, listInstanceResourcepacks, readLogTail, extractZip, extractFilesFromZip, listZipContents, readFileFromZip, parseModrinthManifest, parseCurseforgeManifest, extractModpackOverrides, modrinthSearch, modrinthGetProject, modrinthGetVersions, curseforgeSearch, curseforgeGetFiles, curseforgeGetDownloadUrl, fetchVersionManifest, fetchVersionDetail, prepareLaunch, launchGame, getAssetDownloads, analyzeCrashLog, ForgeLoaderType, installForge, installFabric, getFabricVersions, installQuilt, getQuiltVersions, isProcessAlive, killProcessTree, saveRunningInstance, removeRunningInstance, getRunningInstances, isInstanceRunning, getInstancePid } = nativeBinding
+const { detectJavaInstallations, validateJavaPath, getRecommendedJavaVersion, findJavaForMinecraft, downloadFile, downloadFiles, verifyFileHash, calculateSha1, calculateSha256, verifyMultipleFileHashes, buildLocalModsListSignatureNative, planServerSyncDownloads, cleanupExtraMods, checkFastModListSync, saveFastModListSyncSnapshot, postInstallModpackFiles, detectModConflictsNative, inspectPackMetadata, LoaderType, getInstancePath, createInstanceDirectories, saveInstanceMeta, loadInstanceMeta, listInstances, deleteInstance, copyInstance, getDirectorySize, listInstanceMods, toggleMod, deleteMod, listInstanceResourcepacks, readLogTail, extractZip, extractFilesFromZip, listZipContents, readFileFromZip, parseModrinthManifest, parseCurseforgeManifest, extractModpackOverrides, modrinthSearch, modrinthGetProject, modrinthGetVersions, curseforgeSearch, curseforgeGetFiles, curseforgeGetDownloadUrl, fetchVersionManifest, fetchVersionDetail, prepareLaunch, launchGame, getAssetDownloads, analyzeCrashLog, ForgeLoaderType, installForge, installFabric, getFabricVersions, installQuilt, getQuiltVersions, isProcessAlive, killProcessTree, saveRunningInstance, removeRunningInstance, getRunningInstances, isInstanceRunning, getInstancePid } = nativeBinding
 
 module.exports.detectJavaInstallations = detectJavaInstallations
 module.exports.validateJavaPath = validateJavaPath
@@ -322,6 +322,7 @@ module.exports.verifyFileHash = verifyFileHash
 module.exports.calculateSha1 = calculateSha1
 module.exports.calculateSha256 = calculateSha256
 module.exports.verifyMultipleFileHashes = verifyMultipleFileHashes
+module.exports.buildLocalModsListSignatureNative = buildLocalModsListSignatureNative
 module.exports.planServerSyncDownloads = planServerSyncDownloads
 module.exports.cleanupExtraMods = cleanupExtraMods
 module.exports.checkFastModListSync = checkFastModListSync

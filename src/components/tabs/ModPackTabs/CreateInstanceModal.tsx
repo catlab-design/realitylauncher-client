@@ -3,7 +3,7 @@
  * ปรับปรุง UX: เพิ่มคำอธิบาย, tooltips, และ preview
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import toast from "react-hot-toast";
 import { Icons } from "../../ui/Icons";
 import minecraftIcon from "../../../assets/minecraft.svg";
@@ -21,8 +21,117 @@ export interface CreateInstanceModalProps {
     colors: any;
     config?: LauncherConfig;
     onClose: () => void;
-    onCreated: () => void;
+    /** Called with the new instance's id after successful creation */
+    onCreated: (instanceId?: string) => void;
     language: "th" | "en";
+}
+
+interface ScrollableSelectProps {
+    value: string;
+    onChange: (value: string) => void;
+    options: { value: string; label: string }[];
+    disabled?: boolean;
+    colors: any;
+    placeholder?: string;
+}
+
+function ScrollableSelect({ value, onChange, options, disabled, colors, placeholder }: ScrollableSelectProps) {
+    const [open, setOpen] = useState(false);
+    const [dropUp, setDropUp] = useState(false);
+    const triggerRef = useRef<HTMLButtonElement>(null);
+    const listRef = useRef<HTMLDivElement>(null);
+
+    const close = useCallback(() => setOpen(false), []);
+
+    useEffect(() => {
+        if (!open) return;
+        // Scroll selected item into view
+        const idx = options.findIndex(o => o.value === value);
+        if (idx >= 0 && listRef.current) {
+            const item = listRef.current.children[idx] as HTMLElement;
+            item?.scrollIntoView({ block: "nearest" });
+        }
+        const handler = (e: MouseEvent) => {
+            if (!triggerRef.current?.contains(e.target as Node) && !listRef.current?.contains(e.target as Node)) {
+                close();
+            }
+        };
+        document.addEventListener("mousedown", handler);
+        return () => document.removeEventListener("mousedown", handler);
+    }, [open, value, options, close]);
+
+    const handleOpen = () => {
+        if (disabled) return;
+        if (!open) {
+            const rect = triggerRef.current?.getBoundingClientRect();
+            if (rect) {
+                const spaceBelow = window.innerHeight - rect.bottom;
+                setDropUp(spaceBelow < 220);
+            }
+        }
+        setOpen(v => !v);
+    };
+
+    const selected = options.find(o => o.value === value);
+
+    return (
+        <div className="relative w-full">
+            <button
+                ref={triggerRef}
+                type="button"
+                onClick={handleOpen}
+                disabled={disabled}
+                className="w-full px-4 py-3.5 rounded-xl border flex items-center justify-between gap-2 transition-colors outline-none disabled:opacity-50"
+                style={{ backgroundColor: colors.surfaceContainer, borderColor: colors.outline, color: colors.onSurface }}
+            >
+                <span className="truncate">{selected?.label ?? placeholder ?? ""}</span>
+                <svg className={`w-4 h-4 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M7 10l5 5 5-5z" />
+                </svg>
+            </button>
+            {open && (
+                <Portal>
+                    {(() => {
+                        const rect = triggerRef.current?.getBoundingClientRect();
+                        if (!rect) return null;
+                        const style: React.CSSProperties = {
+                            position: "fixed",
+                            left: rect.left,
+                            width: rect.width,
+                            zIndex: 9999,
+                            backgroundColor: colors.surfaceContainerHighest,
+                            border: `1px solid ${colors.outline}40`,
+                            ...(dropUp
+                                ? { bottom: window.innerHeight - rect.top + 4, maxHeight: Math.min(rect.top - 16, 240) }
+                                : { top: rect.bottom + 4, maxHeight: Math.min(window.innerHeight - rect.bottom - 16, 240) }),
+                        };
+                        return (
+                            <div
+                                ref={listRef}
+                                className="rounded-xl overflow-y-auto"
+                                style={style}
+                            >
+                                {options.map(opt => (
+                                    <button
+                                        key={opt.value}
+                                        type="button"
+                                        onClick={() => { onChange(opt.value); close(); }}
+                                        className="w-full px-4 py-2.5 text-left text-sm transition-colors hover:bg-white/10"
+                                        style={{
+                                            color: opt.value === value ? colors.secondary : colors.onSurface,
+                                            backgroundColor: opt.value === value ? `${colors.secondary}18` : undefined,
+                                        }}
+                                    >
+                                        {opt.label}
+                                    </button>
+                                ))}
+                            </div>
+                        );
+                    })()}
+                </Portal>
+            )}
+        </div>
+    );
 }
 
 // NOTE: LOADER_INFO uses translations, so build inside component using `t()`
@@ -106,7 +215,7 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
 
         setIsLoading(true);
         try {
-            await window.api?.instancesCreate?.({
+            const created = await window.api?.instancesCreate?.({
                 name: name.trim(),
                 minecraftVersion,
                 loader,
@@ -114,9 +223,10 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
             });
 
             toast.success(t('instance_created_success'));
-            onCreated();
-        } catch (error) {
-            toast.error(t('error_occurred'));
+            onCreated(created?.id);
+        } catch (error: any) {
+            const msg = error?.message || error?.toString?.() || "";
+            toast.error(msg ? `${t('error_occurred')}: ${msg}` : t('error_occurred'));
         } finally {
             setIsLoading(false);
         }
@@ -149,7 +259,7 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
         <Portal>
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
                 <div
-                    className="w-[80%] max-w-4xl rounded-2xl p-8 relative shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto"
+                    className="w-[80%] max-w-4xl rounded-2xl p-8 relative animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto"
                     style={{ backgroundColor: colors.surface }}
                 >
                     {/* Close Button */}
@@ -210,18 +320,15 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
                                     {t('include_snapshots')}
                                 </label>
                             </div>
-                            <select
+                            <ScrollableSelect
                                 value={minecraftVersion}
-                                onChange={(e) => { handleSound(); setMinecraftVersion(e.target.value); }}
-                                className="w-full px-4 py-3.5 rounded-xl border cursor-pointer transition-colors focus:border-primary outline-none"
-                                style={{ backgroundColor: colors.surfaceContainer, borderColor: colors.outline, color: colors.onSurface }}
-                            >
-                                {filteredVersions.map((v) => (
-                                    <option key={v.version} value={v.version}>
-                                        {v.version} {v.version_type !== "release" ? `(${v.version_type})` : ""}
-                                    </option>
-                                ))}
-                            </select>
+                                onChange={(v) => { handleSound(); setMinecraftVersion(v); }}
+                                options={filteredVersions.map(v => ({
+                                    value: v.version,
+                                    label: v.version + (v.version_type !== "release" ? ` (${v.version_type})` : ""),
+                                }))}
+                                colors={colors}
+                            />
                         </div>
 
                         {/* Loader Version Selection (if not vanilla) */}
@@ -234,25 +341,18 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
                                         <span className="text-xs opacity-60 animate-pulse">{t('loading')}</span>
                                     )}
                                 </label>
-                                <select
+                                <ScrollableSelect
                                     value={loaderVersion || ""}
-                                    onChange={(e) => setLoaderVersion(e.target.value)}
+                                    onChange={setLoaderVersion}
                                     disabled={loadingLoaderVersions}
-                                    className="w-full px-4 py-3.5 rounded-xl border cursor-pointer disabled:opacity-50 transition-colors focus:border-primary outline-none"
-                                    style={{
-                                        backgroundColor: colors.surfaceContainer,
-                                        borderColor: colors.outline,
-                                        color: colors.onSurface
-                                    }}
-                                >
-                                    {loadingLoaderVersions && <option>{t('loading')}</option>}
-                                    {!loadingLoaderVersions && loaderVersions.length === 0 && (
-                                        <option value="">{t('no_loader_version_found')} {minecraftVersion}</option>
-                                    )}
-                                    {loaderVersions.map((v) => (
-                                        <option key={v} value={v}>{v}</option>
-                                    ))}
-                                </select>
+                                    options={loadingLoaderVersions
+                                        ? [{ value: "", label: t('loading') }]
+                                        : loaderVersions.length === 0
+                                            ? [{ value: "", label: `${t('no_loader_version_found')} ${minecraftVersion}` }]
+                                            : loaderVersions.map(v => ({ value: v, label: v }))
+                                    }
+                                    colors={colors}
+                                />
                             </div>
                         )}
                     </div>
@@ -301,7 +401,7 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
 
                         {/* Loader Description Box */}
                         <div
-                            className="px-4 py-3 rounded-xl text-sm transition-all border shadow-sm"
+                            className="px-4 py-3 rounded-xl text-sm transition-all border"
                             style={{
                                 backgroundColor: colors.surfaceContainerLow,
                                 borderColor: colors.outlineVariant,
@@ -317,7 +417,7 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
                     <button
                         onClick={() => { handleSound(); handleCreate(); }}
                         disabled={isLoading || !name.trim() || (loader !== "vanilla" && !loaderVersion && loaderVersions.length > 0)}
-                        className="w-full py-4 rounded-2xl font-bold text-lg transition-all shadow-xl active:scale-95 disabled:opacity-50 flex items-center justify-center gap-3"
+                        className="w-full py-4 rounded-2xl font-bold text-lg transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-3"
                         style={{ 
                             backgroundColor: colors.secondary, 
                             color: "#1a1a1a",

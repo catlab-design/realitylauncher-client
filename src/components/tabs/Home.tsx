@@ -71,7 +71,7 @@ const HomeHeader = React.memo(({ session, colors, language }: { session: any, co
              {isHoveringClock && createPortal(
                 <div 
                     ref={tooltipRef}
-                    className="fixed top-0 left-0 z-50 pointer-events-none px-3 py-1.5 rounded-lg text-xs font-bold shadow-xl border animate-in fade-in zoom-in duration-200 transition-none will-change-transform"
+                    className="fixed top-0 left-0 z-50 pointer-events-none px-3 py-1.5 rounded-lg text-xs font-bold border animate-in fade-in zoom-in duration-200 transition-none will-change-transform"
                     style={{ 
                         // Initial position
                         transform: `translate(${mousePos.current.x + 10}px, ${mousePos.current.y + 10}px)`,
@@ -385,7 +385,7 @@ export function Home({
 
                                         {/* Tag Badge */}
                                         <div className="absolute top-4 right-4 z-20">
-                                            <span className="px-3 py-1.5 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-white text-xs font-bold tracking-wide shadow-lg">
+                                            <span className="px-3 py-1.5 rounded-full bg-black/40 backdrop-blur-md border border-white/20 text-white text-xs font-bold tracking-wide">
                                                 {item.tag || "ข่าวสาร"}
                                             </span>
                                         </div>
@@ -489,13 +489,25 @@ export function Home({
                                 <button
                                     key={instance.id}
                                     onClick={() => { setSelectedInstance?.(instance); setActiveTab?.("modpack"); }}
-                                    className="group relative flex items-center gap-4 p-3 rounded-2xl transition-all hover:-translate-y-0.5 hover:shadow-md text-left w-full border"
-                                    style={{ 
+                                    className="group relative flex items-center gap-4 p-3 rounded-2xl transition-all hover:-translate-y-0.5 text-left w-full overflow-hidden"
+                                    style={{
                                         backgroundColor: colors.surfaceContainerLow,
-                                        borderColor: colors.outline + '10'
+                                        minHeight: '72px',
                                     }}
                                 >
-                                    <div className="relative w-14 h-14 rounded-xl overflow-hidden shrink-0 shadow-sm group-hover:shadow-md transition-shadow"
+                                    {/* Banner background */}
+                                    <>
+                                        <img
+                                            src={instance.banner || '/banner.png'}
+                                            alt=""
+                                            className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                                            aria-hidden="true"
+                                        />
+                                        <div className="absolute inset-0 bg-black/55 group-hover:bg-black/45 transition-colors" />
+                                    </>
+
+                                    {/* Icon */}
+                                    <div className="relative z-10 w-14 h-14 rounded-xl overflow-hidden shrink-0"
                                          style={{ backgroundColor: colors.surfaceContainerHighest }}>
                                         {instance.icon ? (
                                             <img src={instance.icon} alt={instance.name} className="w-full h-full object-cover" />
@@ -509,19 +521,20 @@ export function Home({
                                             <Icons.Play className="w-6 h-6 text-white fill-current" />
                                         </div>
                                     </div>
-                                    
-                                    <div className="flex-1 min-w-0">
-                                        <h4 className="font-bold truncate text-sm mb-0.5 group-hover:text-primary transition-colors" 
-                                            style={{ color: colors.onSurface }}>
+
+                                    <div className="relative z-10 flex-1 min-w-0">
+                                        <h4 className="font-bold truncate text-sm mb-0.5 transition-colors"
+                                            style={{ color: '#fff' }}>
                                             {instance.name}
                                         </h4>
-                                        <div className="flex items-center gap-2 text-xs opacity-70" style={{ color: colors.onSurfaceVariant }}>
+                                        <div className="flex items-center gap-2 text-xs opacity-70"
+                                             style={{ color: '#fff' }}>
                                             <span className="truncate">{instance.loader} {instance.minecraftVersion}</span>
                                         </div>
                                     </div>
-                                    
-                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity -translate-x-2 group-hover:translate-x-0 duration-300">
-                                        <Icons.ChevronRight className="w-4 h-4" style={{ color: colors.onSurfaceVariant }} />
+
+                                    <div className="relative z-10 opacity-0 group-hover:opacity-100 transition-opacity -translate-x-2 group-hover:translate-x-0 duration-300">
+                                        <Icons.ChevronRight className="w-4 h-4" style={{ color: '#fff' }} />
                                     </div>
                                 </button>
                             ))
@@ -557,7 +570,7 @@ export function Home({
             {selectedNews && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
                      onClick={() => setSelectedNews(null)}>
-                    <div className="relative w-full max-w-2xl max-h-[80vh] overflow-y-auto rounded-3xl p-8 shadow-2xl animate-in fade-in zoom-in-95 duration-200 border"
+                    <div className="relative w-full max-w-2xl max-h-[80vh] overflow-y-auto rounded-3xl p-8 animate-in fade-in zoom-in-95 duration-200 border"
                          style={{ 
                              backgroundColor: colors.surfaceContainer,
                              borderColor: colors.outline + '40'
@@ -579,7 +592,7 @@ export function Home({
 
                         <div className="mb-8">
                              {selectedNews.imageUrl && (
-                                <div className="w-full aspect-video rounded-2xl overflow-hidden mb-6 shadow-lg border relative group"
+                                <div className="w-full aspect-video rounded-2xl overflow-hidden mb-6 border relative group"
                                      style={{ borderColor: colors.outline + '20' }}>
                                     <div className="absolute inset-0 opacity-60"
                                          style={{ background: `linear-gradient(to top, ${colors.surfaceContainer}, transparent)` }} />

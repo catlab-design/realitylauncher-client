@@ -2,6 +2,10 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import toast from "react-hot-toast";
 import type { GameInstance, Server, AuthSession } from "../types/launcher";
 
+// Module-level cache — shared across all hook instances, survives tab switches
+let _instancesCache: GameInstance[] | null = null;
+let _joinedServersCache: Server[] | null = null;
+
 interface UseInstancesProps {
     session?: AuthSession | null;
     t: any;
@@ -11,12 +15,12 @@ interface UseInstancesProps {
 }
 
 export function useInstances({ session, t, isActive, selectedInstance, setSelectedInstance }: UseInstancesProps) {
-    const [instances, setInstances] = useState<GameInstance[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [instances, setInstances] = useState<GameInstance[]>(_instancesCache ?? []);
+    const [isLoading, setIsLoading] = useState(_instancesCache === null);
     const [playingInstances, setPlayingInstances] = useState<Set<string>>(new Set());
-    const [joinedServers, setJoinedServers] = useState<Server[]>([]);
+    const [joinedServers, setJoinedServers] = useState<Server[]>(_joinedServersCache ?? []);
     const [loadingServers, setLoadingServers] = useState(false);
-    const hasLoadedRef = useRef(false);
+    const hasLoadedRef = useRef(_instancesCache !== null);
     const wasActiveRef = useRef(isActive);
 
     const loadInstances = useCallback(async () => {
@@ -26,6 +30,7 @@ export function useInstances({ session, t, isActive, selectedInstance, setSelect
         try {
             const allInstances = await window.api?.instancesList?.(0, 1000);
             if (allInstances) {
+                _instancesCache = allInstances;
                 setInstances(allInstances);
                 hasLoadedRef.current = true;
             }
@@ -45,6 +50,7 @@ export function useInstances({ session, t, isActive, selectedInstance, setSelect
             if (result?.ok && result.data) {
                 const all = [...(result.data.owned || []), ...(result.data.member || [])];
                 const unique = all.filter((v: Server, i: number, a: Server[]) => a.findIndex(t => t.id === v.id) === i);
+                _joinedServersCache = unique;
                 setJoinedServers(unique);
             } else if (result?.error) {
                 const errMsg = typeof result.error === 'string' ? result.error : '';
@@ -77,10 +83,10 @@ export function useInstances({ session, t, isActive, selectedInstance, setSelect
     
     useEffect(() => {
         if (isActive && !wasActiveRef.current) {
-             if (!selectedInstance) {
+            if (!selectedInstance && !hasLoadedRef.current) {
                 loadInstances();
                 loadJoinedServers();
-             }
+            }
         }
         wasActiveRef.current = isActive;
     }, [isActive, selectedInstance, loadInstances, loadJoinedServers]);
@@ -138,6 +144,7 @@ export function useInstances({ session, t, isActive, selectedInstance, setSelect
     }, []);
 
     const handleDelete = async (id: string) => {
+        _instancesCache = null;
         setInstances(prev => prev.filter(inst => inst.id !== id));
         try {
             const success = await window.api?.instancesDelete?.(id);
@@ -158,6 +165,7 @@ export function useInstances({ session, t, isActive, selectedInstance, setSelect
             const newInstance = await window.api?.instancesDuplicate?.(id);
             if (newInstance) {
                 toast.success(t('instance_created_success'));
+                _instancesCache = null;
                 loadInstances();
             }
         } catch (error) {

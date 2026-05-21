@@ -12,12 +12,16 @@ export function formatSize(bytes: number): string {
 }
 
 /**
- * Format play time in minutes to human readable
+ * Format play time in minutes to human readable. Caller passes the localized
+ * unit strings (typically `t('minutes_unit')` / `t('hours_unit')`).
  */
-export function formatPlayTime(minutes: number): string {
-    if (minutes < 60) return `${minutes} นาที`;
+export function formatPlayTime(
+    minutes: number,
+    units: { minutes: string; hours: string },
+): string {
+    if (minutes < 60) return `${minutes} ${units.minutes}`;
     const hours = Math.floor(minutes / 60);
-    return `${hours} ชั่วโมง`;
+    return `${hours} ${units.hours}`;
 }
 
 /**

@@ -2,7 +2,14 @@
 
 import path from "node:path";
 import { getInstanceDir, getInstance } from "./instances.js";
-import { downloadFile, getVersion, type ModrinthVersion, type DownloadProgress } from "./modrinth.js";
+import {
+    downloadFile,
+    getProject,
+    getVersion,
+    type ModrinthVersion,
+    type DownloadProgress
+} from "./modrinth.js";
+import { saveInstalledContentLink } from "./content-links.js";
 
 
 
@@ -78,8 +85,6 @@ export async function downloadContentToInstance(
 ): Promise<DownloadResult> {
     const { projectId, versionId, instanceId, contentType, contentSource = "modrinth" } = options;
 
-    console.log(`[Content] Downloading ${contentType} from ${contentSource} to instance:`, { projectId, versionId, instanceId });
-
     
     const instance = getInstance(instanceId);
     if (!instance) {
@@ -89,6 +94,7 @@ export async function downloadContentToInstance(
     try {
         let fileUrl: string;
         let filename: string;
+        let iconUrl: string | null = null;
 
         if (contentSource === "curseforge") {
             
@@ -114,7 +120,13 @@ export async function downloadContentToInstance(
                 fileUrl = urlResult.data;
             }
 
-            console.log(`[Content] CurseForge file: ${filename}, URL: ${fileUrl}`);
+            try {
+                const { getCurseForgeProject } = await import("./curseforge-api.js");
+                const projectResult = await getCurseForgeProject(projectId);
+                iconUrl = projectResult?.data?.logo?.url || null;
+            } catch (error) {
+                console.warn(`[Content] Failed to resolve CurseForge icon for ${projectId}:`, error);
+            }
         } else {
             
             const version = await getVersion(versionId);
@@ -137,6 +149,13 @@ export async function downloadContentToInstance(
 
             fileUrl = file.url;
             filename = file.filename;
+
+            try {
+                const project = await getProject(projectId);
+                iconUrl = project?.icon_url || null;
+            } catch (error) {
+                console.warn(`[Content] Failed to resolve Modrinth icon for ${projectId}:`, error);
+            }
         }
 
         
@@ -144,12 +163,18 @@ export async function downloadContentToInstance(
         const targetDir = path.join(instance.gameDirectory, contentFolder);
         const targetPath = path.join(targetDir, filename);
 
-        console.log(`[Content] Downloading to:`, targetPath);
-
         
-        await downloadFile(fileUrl, targetPath, onProgress);
+        // Content version switches happen from an interactive modal. Use the
+        // JS streaming downloader here so a native download cannot block the
+        // Electron main process and make the whole app appear frozen.
+        await downloadFile(fileUrl, targetPath, onProgress, undefined, { preferNative: false });
 
-        console.log(`[Content] Download complete:`, filename);
+        await saveInstalledContentLink(instance.gameDirectory, contentType, filename, {
+            source: contentSource,
+            projectId,
+            versionId,
+            iconUrl,
+        });
 
         return {
             ok: true,

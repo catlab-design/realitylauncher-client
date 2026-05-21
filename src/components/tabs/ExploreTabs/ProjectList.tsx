@@ -53,10 +53,10 @@ export function ProjectList({
             {/* Header Stats */}
             {!isLoading && (
                 <div className="flex items-center justify-between px-1">
-                    <span className="text-xs font-medium" style={{ color: colors.onSurfaceVariant }}>
+                    <span className="text-sm font-medium" style={{ color: colors.onSurfaceVariant }}>
                         {t('items_count').replace('{count}', ((totalHits && totalHits > 0) ? totalHits : results.length).toLocaleString())}
                     </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full"
+                    <span className="text-xs px-2 py-0.5 rounded-full"
                         style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}>
                         {t('page_of').replace('{page}', String(page)).replace('{totalPages}', String(Math.max(1, totalPages)))}
                     </span>
@@ -103,8 +103,8 @@ export function ProjectList({
                         style={{ backgroundColor: colors.surfaceContainerHighest }}>
                         <Icons.Box className="w-8 h-8 opacity-50" style={{ color: colors.onSurfaceVariant }} />
                     </div>
-                    <h3 className="text-sm font-medium mb-1" style={{ color: colors.onSurface }}>{t('no_results')}</h3>
-                    <p className="text-xs opacity-70">{t('try_change_filters')}</p>
+                    <h3 className="text-base font-medium mb-1" style={{ color: colors.onSurface }}>{t('no_results')}</h3>
+                    <p className="text-sm opacity-70">{t('try_change_filters')}</p>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 pb-4">
@@ -136,27 +136,27 @@ export function ProjectList({
                         <button
                             onClick={() => handlePageChange(Math.max(1, page - 1))}
                             disabled={page === 1}
-                            className="px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-1.5"
+                            className="px-3 py-1.5 rounded-md text-sm font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-1.5"
                             style={{ color: colors.onSurface }}
                         >
-                            <i className="fa-solid fa-chevron-left text-[10px]"></i>
+                            <i className="fa-solid fa-chevron-left text-xs"></i>
                                 {t('previous' as any)}
                         </button>
 
                         <div className="px-3 min-w-[80px] text-center" style={{ color: colors.onSurfaceVariant }}>
-                            <span className="text-xs font-bold" style={{ color: colors.onSurface }}>{page}</span>
-                            <span className="text-[10px] opacity-70 mx-1">/</span>
-                            <span className="text-xs opacity-70">{totalPages}</span>
+                            <span className="text-sm font-bold" style={{ color: colors.onSurface }}>{page}</span>
+                            <span className="text-xs opacity-70 mx-1">/</span>
+                            <span className="text-sm opacity-70">{totalPages}</span>
                         </div>
 
                         <button
                             onClick={() => handlePageChange(Math.min(totalPages, page + 1))}
                             disabled={page >= totalPages}
-                            className="px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-1.5"
+                            className="px-3 py-1.5 rounded-md text-sm font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-1.5"
                             style={{ color: colors.onSurface }}
                         >
                             {t('next' as any)}
-                            <i className="fa-solid fa-chevron-right text-[10px]"></i>
+                            <i className="fa-solid fa-chevron-right text-xs"></i>
                         </button>
                     </div>
                 </div>

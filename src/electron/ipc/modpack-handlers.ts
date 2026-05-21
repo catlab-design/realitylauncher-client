@@ -14,7 +14,12 @@ import {
   getProject,
   downloadFile,
 } from "../modrinth.js";
-import { getInstance, getInstanceIconPath } from "../instances.js";
+import {
+  getInstance,
+  getInstanceIconPath,
+  updateInstance,
+  type GameInstance,
+} from "../instances.js";
 import { installCurseForgeModpack } from "../curseforge.js";
 import { getCurseForgeFile, getCurseForgeProject } from "../curseforge-api.js";
 import {
@@ -22,9 +27,135 @@ import {
   cancelExport,
   type ExportOptions,
 } from "../modpack-exporter.js";
+import { preInstallInstance } from "../MinecraftRun/rustLauncher.js";
+import { getConfig } from "../config.js";
 
 
 let activeInstallController: AbortController | null = null;
+
+const IMAGE_MIME_BY_EXT: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+};
+
+function getImageExtension(url: string): string {
+  try {
+    const pathname = new URL(url).pathname;
+    const ext = path.extname(pathname).toLowerCase();
+    return IMAGE_MIME_BY_EXT[ext] ? ext : ".png";
+  } catch {
+    return ".png";
+  }
+}
+
+async function setInstalledModpackBannerFromUrl(
+  instance: GameInstance,
+  imageUrl: string | null | undefined,
+  signal?: AbortSignal,
+): Promise<GameInstance> {
+  if (!imageUrl || signal?.aborted) return instance;
+
+  const ext = getImageExtension(imageUrl);
+  const tempPath = path.join(app.getPath("temp"), `ml-banner-${instance.id}${ext}`);
+
+  try {
+    await downloadFile(imageUrl, tempPath, undefined, signal);
+    const imageBuffer = await fs.promises.readFile(tempPath);
+    const mimeType = IMAGE_MIME_BY_EXT[ext] || "image/png";
+    const banner = `data:${mimeType};base64,${imageBuffer.toString("base64")}`;
+    const updatedInstance = await updateInstance(instance.id, { banner });
+    return updatedInstance || instance;
+  } catch (error) {
+    console.warn("[Modpack] Failed to set installed modpack banner:", error);
+    return instance;
+  } finally {
+    try {
+      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    } catch {}
+  }
+}
+
+function pickModrinthBannerUrl(project: Awaited<ReturnType<typeof getProject>>): string | null {
+  const gallery = Array.isArray(project.gallery) ? project.gallery : [];
+  return (
+    gallery.find((item) => item.featured)?.raw_url ||
+    gallery.find((item) => item.featured)?.url ||
+    gallery[0]?.raw_url ||
+    gallery[0]?.url ||
+    project.icon_url ||
+    null
+  );
+}
+
+function pickCurseForgeBannerUrl(project: Awaited<ReturnType<typeof getCurseForgeProject>>["data"]): string | null {
+  const screenshots = Array.isArray(project.screenshots) ? project.screenshots : [];
+  return screenshots[0]?.url || screenshots[0]?.thumbnailUrl || project.logo?.url || null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper: run pre-install (download Minecraft core files) after a modpack is
+// installed so the user can press Play immediately without waiting.
+// Progress is sent via the same modpack-install-progress channel so the UI
+// keeps showing the install modal seamlessly.
+// ─────────────────────────────────────────────────────────────────────────────
+async function runPreInstallAfterModpack(
+  instanceId: string,
+  mainWindow: BrowserWindow | null,
+): Promise<void> {
+  const instance = getInstance(instanceId);
+  if (!instance) return;
+
+  const config = getConfig();
+
+  const sendModpackProgress = (data: {
+    stage: string;
+    message: string;
+    current?: number;
+    total?: number;
+    percent?: number;
+  }) => {
+    mainWindow?.webContents.send("modpack-install-progress", data);
+  };
+
+  sendModpackProgress({
+    stage: "downloading",
+    message: "กำลังดาวน์โหลดไฟล์ Minecraft...",
+    percent: 0,
+  });
+
+  try {
+    await preInstallInstance({
+      version: instance.minecraftVersion,
+      loader:
+        instance.loader !== "vanilla"
+          ? {
+              type: instance.loader,
+              build: instance.loaderVersion || "latest",
+              enable: true,
+            }
+          : undefined,
+      gameDirectory: instance.gameDirectory,
+      instanceId,
+      javaPath: instance.javaPath || config.javaPath,
+      onProgress: (progress) => {
+        const pct = typeof progress.percent === "number" ? progress.percent : undefined;
+        sendModpackProgress({
+          stage: progress.type === "extract" ? "copying" : "downloading",
+          message: progress.task || "กำลังเตรียมไฟล์เกม...",
+          current: progress.current,
+          total: progress.total,
+          // keep progress within 0-90 so final "complete" bump to 100 is visible
+          percent: pct !== undefined ? Math.round(pct * 0.9) : undefined,
+        });
+      },
+    });
+  } catch (err: any) {
+    console.warn("[Modpack] Pre-install failed (non-fatal):", err?.message);
+  }
+}
 
 export function registerModpackHandlers(
   getMainWindow: () => BrowserWindow | null,
@@ -55,6 +186,12 @@ export function registerModpackHandlers(
       );
 
       activeInstallController = null;
+
+      // Pre-install Minecraft core files so user can play immediately
+      if (result.ok && result.instance) {
+        await runPreInstallAfterModpack(result.instance.id, getMainWindow());
+      }
+
       return result;
     } catch (error: any) {
       console.error("[Modpack] Install error:", error);
@@ -190,10 +327,15 @@ export function registerModpackHandlers(
                   activeInstallController.signal,
                 );
               }
+              result.instance = await setInstalledModpackBannerFromUrl(
+                result.instance,
+                pickModrinthBannerUrl(project),
+                activeInstallController.signal,
+              );
             }
           } catch {}
 
-          
+
           try {
             const mrpackDir = path.dirname(mrpackPath);
             if (fs.existsSync(mrpackPath)) fs.unlinkSync(mrpackPath);
@@ -204,6 +346,9 @@ export function registerModpackHandlers(
               fs.rmdirSync(mrpackDir);
             }
           } catch {}
+
+          // Pre-install Minecraft core files so user can play immediately
+          await runPreInstallAfterModpack(result.instance.id, mainWindow);
         }
 
         return result;
@@ -309,12 +454,19 @@ export function registerModpackHandlers(
                 activeInstallController.signal,
               );
             }
+            result.instance = await setInstalledModpackBannerFromUrl(
+              result.instance,
+              pickCurseForgeBannerUrl(projectResult.data),
+              activeInstallController.signal,
+            );
           } catch {}
 
-          
           try {
             if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
           } catch {}
+
+          // Pre-install Minecraft core files so user can play immediately
+          await runPreInstallAfterModpack(result.instance.id, mainWindow);
         }
 
         return result;

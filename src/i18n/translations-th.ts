@@ -3,6 +3,7 @@ export const thTranslations = {
     home: "หน้าหลัก",
     servers: "เซิร์ฟเวอร์",
     modpacks: "มอดแพ็ก",
+    modpacks_subtitle: "จัดการและเปิดเล่น Mod Pack ของคุณ",
     explore: "สำรวจ",
     settings: "ตั้งค่า",
     about: "เกี่ยวกับ",
@@ -38,10 +39,12 @@ export const thTranslations = {
     wardrobe_variant_classic: "Classic",
     wardrobe_variant_slim: "Slim",
     wardrobe_choose_skin: "เลือกไฟล์สกิน (.png)",
+    wardrobe_clear_preview: "ล้างแคชพรีวิว",
     wardrobe_selected_file: "ไฟล์ที่เลือก",
     wardrobe_no_file_selected: "ยังไม่ได้เลือกไฟล์",
     wardrobe_apply_skin: "ใช้งานสกินนี้",
     wardrobe_applying: "กำลังอัปเดตสกิน...",
+    wardrobe_preview_cleared: "ล้างแคชพรีวิวสกินแล้ว",
     checking_data: "กำลังตรวจสอบไฟล์",
 
     
@@ -651,6 +654,7 @@ export const thTranslations = {
     cancel_install_success: "ยกเลิกการติดตั้งแล้ว",
     extracting_modpack_dot: "กำลังอ่านข้อมูล modpack...",
     install_complete: "ดำเนินการเรียบร้อย",
+    preparing_game_files: "กำลังดาวน์โหลดไฟล์เกม...",
     login_before_use: "กรุณา Login ก่อนใช้งาน",
     cannot_read_file: "ไม่สามารถอ่านไฟล์ได้",
     drag_mrpack_zip: "กรุณาลากไฟล์ .mrpack หรือ .zip",
@@ -988,4 +992,86 @@ export const thTranslations = {
     your_invite_key: "คีย์เชิญของคุณ",
     partner_special_thanks: "Partner (Special Thanks)",
     alliance: "Alliance",
+
+    // Explore — sort
+    sort_by: "เรียงตาม",
+    // sort.* keys already defined above
+
+    // Explore — filter sections
+    filter: "ตัวกรอง",
+    filters: "ตัวกรอง",
+    category: "หมวดหมู่",
+    environment: "สภาพแวดล้อม",
+    // game_version already defined above
+    search_versions_short: "ค้นหาเวอร์ชัน...",
+
+    // Categories
+    "category.adventure": "ผจญภัย",
+    "category.cursed": "สาปแช่ง",
+    "category.decoration": "ตกแต่ง",
+    "category.economy": "เศรษฐกิจ",
+    "category.equipment": "อุปกรณ์",
+    "category.food": "อาหาร",
+    "category.game-mechanics": "กลไกเกม",
+    "category.library": "ไลบรารี",
+    "category.magic": "เวทมนตร์",
+    "category.management": "การจัดการ",
+    "category.minigame": "มินิเกม",
+    "category.mobs": "มอนสเตอร์",
+    "category.optimization": "ปรับปรุงประสิทธิภาพ",
+    "category.social": "สังคม",
+    "category.storage": "เก็บของ",
+    "category.technology": "เทคโนโลยี",
+    "category.transportation": "การขนส่ง",
+    "category.utility": "ยูทิลิตี้",
+    "category.worldgen": "สร้างโลก",
+
+    // Loaders
+    "loader.fabric": "Fabric",
+    "loader.forge": "Forge",
+    "loader.neoforge": "NeoForge",
+    "loader.quilt": "Quilt",
+    "loader.liteloader": "LiteLoader",
+    "loader.modloader": "ModLoader",
+    "loader.rift": "Rift",
+
+    // Environments
+    "environment.client": "ฝั่งเครื่องผู้เล่น",
+    "environment.server": "ฝั่งเซิร์ฟเวอร์",
+
+    // Detail page — most keys already defined above, only add missing ones
+    versions: "เวอร์ชัน",
+    game_version_col: "เวอร์ชันเกม",
+    downloads_col: "ดาวน์โหลด",
+    show_all_versions: "แสดงทั้งหมด",
+    show_less: "แสดงน้อยลง",
+    switch_version_title: "เปลี่ยนเวอร์ชัน",
+    search_version_placeholder: "ค้นหาเวอร์ชันหรือเวอร์ชัน Minecraft",
+    show_incompatible: "แสดงที่ไม่เข้ากัน",
+    show_incompatible_hint: "แสดงเวอร์ชันที่อาจไม่ตรงกับ Instance นี้",
+    current_version_badge: "ปัจจุบัน",
+    latest_version_badge: "ล่าสุด",
+    incompatible_badge: "ไม่เข้ากัน",
+    switch_version_warning: "การเปลี่ยนเวอร์ชันอาจทำให้ Instance มีปัญหา ควรสำรองโลกสำคัญก่อน",
+    switch_to_version: "เปลี่ยนเป็นเวอร์ชันนี้",
+    old_version_delete_failed: "ติดตั้งเวอร์ชันใหม่แล้ว แต่ลบไฟล์เก่าไม่สำเร็จ",
+    update_to_latest: "อัปเดตเป็นเวอร์ชันล่าสุด",
+
+    // Confirm install
+    confirm_install_modpack_title: "ติดตั้ง Modpack ?",
+    confirm_install_modpack_body: 'ต้องการติดตั้ง "{name}" เป็น instance ใหม่หรือไม่ ? อาจดาวน์โหลดหลายร้อย MB',
+    already_installed_modpack: 'พบ instance ที่มาจาก "{name}" อยู่แล้ว ยังต้องการติดตั้งใหม่หรือไม่ ?',
+    install_in_progress_warn: "มีการติดตั้งอื่นกำลังทำงานอยู่ กรุณารอสักครู่",
+    // cancel already defined above
+
+    // Misc
+    items_per_page: "รายการ / หน้า",
+    page_jump_first: "หน้าแรก",
+    page_jump_last: "หน้าสุดท้าย",
+    clear_filter: "ล้างตัวกรอง",
+    clear_all_filters: "ล้างทั้งหมด",
+    click_again_to_open: "คลิกอีกครั้งเพื่อเปิดหน้าเต็ม",
+
+    // Mobile
+    open_filters: "ตัวกรอง",
 };

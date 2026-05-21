@@ -8,7 +8,7 @@ import toast from "react-hot-toast";
 import type { GameInstance, LauncherConfig } from "../../types/launcher";
 import { playClick } from "../../lib/sounds";
 import { useTranslation } from "../../hooks/useTranslation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import type { TranslationKey } from "../../i18n/translations";
 
 // Icons for content sources
@@ -26,6 +26,7 @@ import {
     ImagePreviewModal,
     normalizeImageUrl,
     ProjectDetailPage,
+    FilterMenu,
 } from "./ExploreTabs";
 import { Icons } from "../ui/Icons";
 import bannerImage from "../../assets/banner.png";
@@ -90,9 +91,12 @@ export function InstanceContentBrowser({
     const [contentSource, setContentSource] = useState<ContentSource>(CONTENT_SOURCES.MODRINTH);
 
     // Filter state (like Explore tab)
-    const [mcVersionFilter, setMcVersionFilter] = useState(instance.minecraftVersion || "");
-    const [loaderFilter, setLoaderFilter] = useState(instance.loader !== "vanilla" ? instance.loader : "");
-    const [showFilters, setShowFilters] = useState(false);
+    // Arrays for multi-select. mcVersion/loader are pinned to the instance — the FilterMenu
+    // hides those sections so they stay locked, but we still pass them through for the API.
+    const [mcVersionFilters, setMcVersionFilters] = useState<string[]>(instance.minecraftVersion ? [instance.minecraftVersion] : []);
+    const [loaderFilters, setLoaderFilters] = useState<string[]>(instance.loader && instance.loader !== "vanilla" ? [instance.loader] : []);
+    const [categoryFilters, setCategoryFilters] = useState<string[]>([]);
+    const [environmentFilters, setEnvironmentFilters] = useState<string[]>([]);
 
     // Search state
     const [searchQuery, setSearchQuery] = useState("");
@@ -266,11 +270,15 @@ export function InstanceContentBrowser({
                     'neoforge': 6
                 };
 
+                // CurseForge only takes single gameVersion + single modLoaderType. Since these
+                // are pinned to the instance there's at most one entry anyway.
+                const cfVersion = mcVersionFilters[0];
+                const cfLoader = loaderFilters[0];
                 const result = await window.api?.curseforgeSearch?.({
                     query: searchQuery,
                     projectType: contentType,
-                    gameVersion: mcVersionFilter || undefined,
-                    modLoaderType: loaderFilter ? modLoaderMapping[loaderFilter.toLowerCase()] : undefined,
+                    gameVersion: cfVersion || undefined,
+                    modLoaderType: cfLoader ? modLoaderMapping[cfLoader.toLowerCase()] : undefined,
                     sortBy: sortBy === "downloads" ? "downloads" : sortBy === "updated" ? "updated" : "relevance",
                     pageSize: viewCount,
                     index: (page - 1) * viewCount,
@@ -297,11 +305,13 @@ export function InstanceContentBrowser({
                     setTotalHits(result.pagination?.totalCount || mapped.length);
                 }
             } else {
-                // Build Modrinth facets (like Explore tab)
+                // Build Modrinth facets — multi-select OR within each group.
                 const facets: string[][] = [];
-                facets.push([`project_type:${contentType}`]);
-                if (mcVersionFilter) facets.push([`versions:${mcVersionFilter}`]);
-                if (loaderFilter) facets.push([`categories:${loaderFilter}`]);
+                if (mcVersionFilters.length) facets.push(mcVersionFilters.map(v => `versions:${v}`));
+                if (loaderFilters.length) facets.push(loaderFilters.map(l => `categories:${l}`));
+                if (categoryFilters.length) facets.push(categoryFilters.map(c => `categories:${c}`));
+                if (environmentFilters.includes("client")) facets.push(["client_side:required", "client_side:optional"]);
+                if (environmentFilters.includes("server")) facets.push(["server_side:required", "server_side:optional"]);
 
                 const result = await window.api?.modrinthSearch?.({
                     query: searchQuery,
@@ -342,14 +352,14 @@ export function InstanceContentBrowser({
         } finally {
             setIsLoading(false);
         }
-    }, [searchQuery, contentSource, contentType, sortBy, page, viewCount, mcVersionFilter, loaderFilter, instance]);
+    }, [searchQuery, contentSource, contentType, sortBy, page, viewCount, mcVersionFilters, loaderFilters, categoryFilters, environmentFilters, instance]);
 
     // Fetch full project details for gallery
 
 
     useEffect(() => {
         loadProjects();
-    }, [contentSource, contentType, sortBy, page, viewCount, mcVersionFilter, loaderFilter]);
+    }, [contentSource, contentType, sortBy, page, viewCount, mcVersionFilters, loaderFilters, categoryFilters, environmentFilters]);
 
     // Update preview when results change
     useEffect(() => {
@@ -699,19 +709,19 @@ export function InstanceContentBrowser({
             ) : (
                 <>
                 {/* Toolbar */}
-                <div className="rounded-lg" style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}30` }}>
+                <div className="rounded-2xl" style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}30` }}>
                     {/* Top row: Back + Instance Info + Search + Source */}
-                    <div className="px-4 py-3 flex items-center gap-4 border-b" style={{ borderColor: colors.outline + "30" }}>
+                    <div className="px-3 py-3 sm:px-4 flex flex-col md:flex-row md:items-center gap-3 border-b" style={{ borderColor: colors.outline + "30" }}>
                         <button
                             onClick={() => { playClick(); onClose(); }}
-                            className="flex items-center gap-2 text-sm hover:opacity-80"
+                            className="min-h-11 px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all hover:brightness-95 active:scale-[0.98] whitespace-nowrap"
                             style={{ color: colors.onSurfaceVariant }}
                         >
                             <i className="fa-solid fa-arrow-left" style={{ color: colors.secondary }}></i>
                             {t('back')}
                         </button>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 min-w-0 md:w-[220px]">
                             <span className="font-medium" style={{ color: colors.onSurface }}>{instance.name}</span>
                             <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}>
                                 {instance.minecraftVersion} • {instance.loader}
@@ -719,36 +729,59 @@ export function InstanceContentBrowser({
                         </div>
 
                         {/* Search - flex-1 to fill space */}
-                        <div className="flex-1 relative">
+                        <div className="flex-1 relative min-w-[220px]">
                             <input
                                 type="text"
                                 placeholder={t('search_content_placeholder' as any).replace('{type}', contentType === "mod" ? t('mods') : contentType === "resourcepack" ? t('resourcepacks') : contentType)}
                                 value={searchQuery}
                                 onChange={(e) => handleDebouncedSearch(e.target.value)}
                                 onKeyDown={(e) => e.key === "Enter" && loadProjects()}
-                                className="w-full px-3 py-1.5 pl-8 rounded-md text-sm"
+                                className="w-full min-h-11 px-4 py-2.5 pl-11 rounded-xl text-sm outline-none transition-all focus:ring-2"
                                 style={{
                                     backgroundColor: colors.surface,
                                     border: `1px solid ${colors.outline}40`,
                                     color: colors.onSurface,
+                                    ["--tw-ring-color" as any]: colors.secondary + "55",
                                 }}
                             />
-                            <i className="fa-solid fa-search text-xs absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: colors.onSurfaceVariant }}></i>
+                            <i className="fa-solid fa-search text-sm absolute left-4 top-1/2 -translate-y-1/2" style={{ color: colors.onSurfaceVariant }}></i>
                         </div>
 
+                        {/* Single filter trigger — opens a popover with all sections (loader/version
+                            are locked to the instance and hidden here). */}
+                        <FilterMenu
+                            colors={colors}
+                            sortBy={sortBy}
+                            mcVersionFilters={mcVersionFilters}
+                            loaderFilters={loaderFilters}
+                            categoryFilters={categoryFilters}
+                            environmentFilters={environmentFilters}
+                            onSortChange={(s) => { setSortBy(s); setPage(1); }}
+                            onMcVersionFiltersChange={(v) => { setMcVersionFilters(v); setPage(1); }}
+                            onLoaderFiltersChange={(l) => { setLoaderFilters(l); setPage(1); }}
+                            onCategoryFiltersChange={(c) => { setCategoryFilters(c); setPage(1); }}
+                            onEnvironmentFiltersChange={(e) => { setEnvironmentFilters(e); setPage(1); }}
+                            showCategoryFilter={true}
+                            showEnvironmentFilter={contentType === "mod"}
+                            showLoaderFilter={false}
+                            showVersionFilter={false}
+                        />
+
                         {/* Source Toggle - right side */}
-                        <div className="flex items-center gap-1 shrink-0">
+                        <div className="grid grid-cols-2 gap-2 w-full sm:w-auto md:min-w-[260px]">
                             <button
                                 onClick={() => { playClick(); setContentSource(CONTENT_SOURCES.MODRINTH); setPage(1); }}
-                                className="px-2.5 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all relative group"
+                                className="min-h-11 px-4 py-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all relative group active:scale-[0.98] whitespace-nowrap"
                                 style={{
                                     color: contentSource === CONTENT_SOURCES.MODRINTH ? "#000" : colors.onSurfaceVariant,
+                                    border: `1px solid ${contentSource === CONTENT_SOURCES.MODRINTH ? "transparent" : colors.outline + "25"}`,
+                                    backgroundColor: contentSource === CONTENT_SOURCES.MODRINTH ? "transparent" : colors.surface,
                                 }}
                             >
                                 {contentSource === CONTENT_SOURCES.MODRINTH && (
                                     <motion.div
                                         layoutId="instance-browser-source-indicator"
-                                        className="absolute inset-0 rounded-md shadow-sm"
+                                        className="absolute inset-0 rounded-xl"
                                         style={{ backgroundColor: "#1bd96a" }}
                                         transition={{ type: "spring", stiffness: 400, damping: 30 }}
                                     />
@@ -758,15 +791,17 @@ export function InstanceContentBrowser({
                             </button>
                             <button
                                 onClick={() => { playClick(); setContentSource(CONTENT_SOURCES.CURSEFORGE); setPage(1); }}
-                                className="px-2.5 py-1.5 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all relative group"
+                                className="min-h-11 px-4 py-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all relative group active:scale-[0.98] whitespace-nowrap"
                                 style={{
                                     color: contentSource === CONTENT_SOURCES.CURSEFORGE ? "#fff" : colors.onSurfaceVariant,
+                                    border: `1px solid ${contentSource === CONTENT_SOURCES.CURSEFORGE ? "transparent" : colors.outline + "25"}`,
+                                    backgroundColor: contentSource === CONTENT_SOURCES.CURSEFORGE ? "transparent" : colors.surface,
                                 }}
                             >
                                 {contentSource === CONTENT_SOURCES.CURSEFORGE && (
                                     <motion.div
                                         layoutId="instance-browser-source-indicator"
-                                        className="absolute inset-0 rounded-md shadow-sm"
+                                        className="absolute inset-0 rounded-xl"
                                         style={{ backgroundColor: "#f16436" }}
                                         transition={{ type: "spring", stiffness: 400, damping: 30 }}
                                     />
@@ -778,9 +813,10 @@ export function InstanceContentBrowser({
                     </div>
 
                     {/* Bottom row: Tabs + Filters */}
-                    <div className="px-4 py-1.5 flex items-center gap-2 flex-wrap">
+                    <div className="px-3 py-3 sm:px-4 flex flex-col lg:flex-row lg:items-center gap-3">
                         {/* Type tabs */}
-                        <div className="flex items-center gap-1">
+                        <div className="overflow-x-auto no-scrollbar">
+                        <div className="flex items-center gap-2 min-w-max">
                             {getAvailableTabs(instance.loader).map((tab) => {
                                 const active = contentType === tab.type;
                                 const TabIcon = tab.icon;
@@ -788,15 +824,17 @@ export function InstanceContentBrowser({
                                     <button
                                         key={tab.type}
                                         onClick={() => { playClick(); setContentType(tab.type); setPage(1); }}
-                                        className="px-2.5 py-0.5 rounded-lg text-xs font-medium transition-all relative group flex items-center gap-2 whitespace-nowrap"
+                                        className="min-h-10 px-4 py-2 rounded-xl text-sm font-semibold transition-all relative group flex items-center gap-2 whitespace-nowrap active:scale-[0.98]"
                                         style={{
                                             color: active ? "#000" : colors.onSurfaceVariant,
+                                            border: `1px solid ${active ? "transparent" : colors.outline + "20"}`,
+                                            backgroundColor: active ? "transparent" : colors.surface,
                                         }}
                                     >
                                         {active && (
                                             <motion.div
                                                 layoutId="instance-browser-tabs-indicator"
-                                                className="absolute inset-0 rounded-md"
+                                                className="absolute inset-0 rounded-xl"
                                                 style={{ backgroundColor: colors.secondary }}
                                                 transition={{ type: "spring", stiffness: 400, damping: 30 }}
                                             />
@@ -807,19 +845,21 @@ export function InstanceContentBrowser({
                                 );
                             })}
                         </div>
+                        </div>
 
-                        <div className="flex-1" />
+                        <div className="hidden lg:block flex-1" />
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-between lg:justify-end gap-2 flex-wrap">
                              {/* View Count Select */}
                              <select
                                  value={viewCount}
                                  onChange={(e) => { playClick(); setViewCount(Number(e.target.value)); setPage(1); }}
-                                 className="px-2 py-0.5 rounded-lg text-[11px] transition-all"
+                                 className="min-h-10 px-3 py-2 rounded-xl text-sm font-semibold transition-all outline-none focus:ring-2"
                                  style={{
                                      backgroundColor: colors.surface,
-                                     border: `1px solid #000`,
-                                     color: "#000",
+                                     border: `1px solid ${colors.outline}30`,
+                                     color: colors.onSurface,
+                                     ["--tw-ring-color" as any]: colors.secondary + "55",
                                  }}
                              >
                                  {[10, 20, 50].map((n) => (
@@ -827,104 +867,16 @@ export function InstanceContentBrowser({
                                  ))}
                              </select>
 
-                             {/* Filter toggle button with Popup */}
-                             <div className="relative">
-                                 {(() => {
-                                     const hasActiveFilter = !!(mcVersionFilter || loaderFilter);
-                                     return (
-                                         <>
-                                             <button
-                                                 onClick={() => { playClick(); setShowFilters(!showFilters); }}
-                                                 className="px-2.5 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5 transition-all relative hover:brightness-95 active:scale-95"
-                                                 style={{
-                                                     backgroundColor: (showFilters || hasActiveFilter) ? colors.secondary + '15' : colors.surfaceContainerLow,
-                                                     border: `1px solid #000`,
-                                                     color: "#000",
-                                                 }}
-                                             >
-                                                 <i className="fa-solid fa-sliders text-[10px] text-black"></i>
-                                                 <span>{t('filter' as any)}</span>
-                                                 {hasActiveFilter && (
-                                                     <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                                                 )}
-                                             </button>
-
-                                             <AnimatePresence>
-                                                 {showFilters && (
-                                                     <motion.div 
-                                                         initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                                                         animate={{ opacity: 1, y: 0, scale: 1 }}
-                                                         exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                                         className="absolute right-0 mt-2 p-3 rounded-lg shadow-xl z-50 flex flex-col gap-3 min-w-[180px]"
-                                                         style={{ 
-                                                             backgroundColor: colors.surfaceContainerHigh, 
-                                                             border: `1px solid ${colors.outline}30`,
-                                                             backdropFilter: 'blur(8px)'
-                                                         }}
-                                                     >
-                                                         <div className="flex flex-col gap-1.5">
-                                                             <label className="text-[10px] font-bold uppercase opacity-50 px-1" style={{ color: colors.onSurface }}>{t('minecraft_version' as any)}</label>
-                                                             <select
-                                                                 value={mcVersionFilter}
-                                                                 onChange={(e) => { playClick(); setMcVersionFilter(e.target.value); setPage(1); }}
-                                                                 className="px-2 py-1.5 rounded-md text-xs w-full"
-                                                                 style={{
-                                                                     backgroundColor: colors.surface,
-                                                                     border: `1px solid #000`,
-                                                                     color: "#000",
-                                                                 }}
-                                                             >
-                                                                 <option value="">{t('all_mc_versions' as TranslationKey) !== 'all_mc_versions' ? t('all_mc_versions' as TranslationKey) : 'All Versions'}</option>
-                                                                 {['1.21.5', '1.21.4', '1.21.3', '1.21.2', '1.21.1', '1.21', '1.20.6', '1.20.4', '1.20.2', '1.20.1', '1.20', '1.19.4', '1.19.2', '1.18.2', '1.17.1', '1.16.5', '1.15.2', '1.14.4', '1.12.2', '1.8.9', '1.7.10'].map(v => (
-                                                                     <option key={v} value={v}>{v}</option>
-                                                                 ))}
-                                                             </select>
-                                                         </div>
-
-                                                         <div className="flex flex-col gap-1.5">
-                                                             <label className="text-[10px] font-bold uppercase opacity-50 px-1" style={{ color: colors.onSurface }}>{t('loader' as any)}</label>
-                                                             <select
-                                                                 value={loaderFilter}
-                                                                 onChange={(e) => { playClick(); setLoaderFilter(e.target.value); setPage(1); }}
-                                                                 className="px-2 py-1.5 rounded-md text-xs w-full"
-                                                                 style={{
-                                                                     backgroundColor: colors.surface,
-                                                                     border: `1px solid #000`,
-                                                                     color: "#000",
-                                                                 }}
-                                                             >
-                                                                 <option value="">{t('all_loaders' as TranslationKey) !== 'all_loaders' ? t('all_loaders' as TranslationKey) : 'All Loaders'}</option>
-                                                                 <option value="fabric">Fabric</option>
-                                                                 <option value="forge">Forge</option>
-                                                                 <option value="neoforge">NeoForge</option>
-                                                                 <option value="quilt">Quilt</option>
-                                                             </select>
-                                                         </div>
-
-                                                         <div className="flex flex-col gap-1.5">
-                                                             <label className="text-[10px] font-bold uppercase opacity-50 px-1" style={{ color: colors.onSurface }}>{t('sort_by' as any)}</label>
-                                                             <select
-                                                                 value={sortBy}
-                                                                 onChange={(e) => { playClick(); setSortBy(e.target.value); setPage(1); }}
-                                                                 className="px-2 py-1.5 rounded-md text-xs w-full"
-                                                                 style={{
-                                                                     backgroundColor: colors.surface,
-                                                                     border: `1px solid #000`,
-                                                                     color: "#000",
-                                                                 }}
-                                                             >
-                                                                 {SORT_OPTIONS.map((opt) => (
-                                                                     <option key={opt.value} value={opt.value}>{t(opt.labelKey as any)}</option>
-                                                                 ))}
-                                                             </select>
-                                                         </div>
-                                                     </motion.div>
-                                                 )}
-                                             </AnimatePresence>
-                                         </>
-                                     );
-                                 })()}
-                             </div>
+                             {/* Active filter indicator */}
+                             {!!(mcVersionFilters.length || loaderFilters.length || categoryFilters.length || environmentFilters.length) && (
+                                 <span
+                                     className="text-xs font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1.5"
+                                     style={{ backgroundColor: colors.secondary + "18", color: colors.secondary }}
+                                 >
+                                     <i className="fa-solid fa-filter text-[9px]"></i>
+                                     Filtered
+                                 </span>
+                             )}
 
                              {/* Pagination */}
                              {totalPages > 0 && (
@@ -932,18 +884,18 @@ export function InstanceContentBrowser({
                                      <button
                                          onClick={() => { playClick(); setPage(Math.max(1, page - 1)); }}
                                          disabled={page === 1}
-                                         className="w-[26px] h-[26px] rounded-lg flex items-center justify-center disabled:opacity-40 text-xs transition-all"
+                                         className="min-w-10 h-10 rounded-xl flex items-center justify-center disabled:opacity-40 text-xs transition-all hover:bg-black/5 active:scale-[0.98]"
                                          style={{ backgroundColor: colors.surface, color: colors.onSurface, border: `1px solid ${colors.outline}20` }}
                                      >
                                          <i className="fa-solid fa-chevron-left text-[9px]"></i>
                                      </button>
-                                     <span className="text-[11px] font-medium px-1.5" style={{ color: colors.onSurfaceVariant }}>
+                                     <span className="min-h-10 px-3 rounded-xl text-sm font-semibold flex items-center" style={{ color: colors.onSurfaceVariant, backgroundColor: colors.surface }}>
                                          {page}/{totalPages}
                                      </span>
                                      <button
                                          onClick={() => { playClick(); setPage(Math.min(totalPages, page + 1)); }}
                                          disabled={page >= totalPages}
-                                         className="w-[26px] h-[26px] rounded-lg flex items-center justify-center disabled:opacity-40 text-xs transition-all"
+                                         className="min-w-10 h-10 rounded-xl flex items-center justify-center disabled:opacity-40 text-xs transition-all hover:bg-black/5 active:scale-[0.98]"
                                          style={{ backgroundColor: colors.surface, color: colors.onSurface, border: `1px solid ${colors.outline}20` }}
                                      >
                                          <i className="fa-solid fa-chevron-right text-[9px]"></i>
@@ -955,7 +907,7 @@ export function InstanceContentBrowser({
                 </div>
 
                 {/* Main Content - Grid layout like Explore */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mt-4">
                     {/* Project List */}
                     <div ref={contentListRef} className="lg:col-span-8 xl:col-span-9">
                         <div className="flex flex-col gap-4">
@@ -974,7 +926,7 @@ export function InstanceContentBrowser({
 
                             {/* Grid Content */}
                             {isLoading ? (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3">
                                     {Array.from({ length: 9 }).map((_, i) => (
                                         <div
                                             key={i}
@@ -1016,7 +968,7 @@ export function InstanceContentBrowser({
                                     <p className="text-xs opacity-70">{t('try_change_filters')}</p>
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 pb-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 pb-4">
                                     {results.map((project, index) => (
                                         <div
                                             key={project.project_id}
@@ -1086,7 +1038,7 @@ export function InstanceContentBrowser({
                     {/* Preview Panel */}
                     <div className="lg:col-span-4 xl:col-span-3">
                         {previewProject ? (
-                            <div className="rounded-2xl overflow-hidden sticky top-4 flex flex-col shadow-xl"
+                            <div className="rounded-2xl overflow-hidden sticky top-4 flex flex-col"
                                 style={{
                                     backgroundColor: colors.surfaceContainer,
                                     border: `1px solid ${colors.outline}20`,
@@ -1117,7 +1069,7 @@ export function InstanceContentBrowser({
                                     )}
 
                                     {/* Floating Icon */}
-                                    <div className="absolute -bottom-8 left-6 w-20 h-20 rounded-2xl shadow-2xl p-0.5 z-10"
+                                    <div className="absolute -bottom-8 left-6 w-20 h-20 rounded-2xl p-0.5 z-10"
                                         style={{ backgroundColor: colors.surface }}>
                                         <div className="w-full h-full rounded-[14px] bg-cover bg-center overflow-hidden"
                                             style={{
@@ -1197,7 +1149,7 @@ export function InstanceContentBrowser({
                                             <button
                                                 onClick={() => { playClick(); handleAddToInstance(previewProject); }}
                                                 disabled={isInstalling}
-                                                className="w-full py-3 rounded-xl text-sm font-bold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+                                                className="w-full py-3 rounded-xl text-sm font-bold hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
                                                 style={{
                                                     backgroundColor: colors.secondary,
                                                     color: "#000"

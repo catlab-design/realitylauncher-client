@@ -17,8 +17,15 @@ describe("Java installer vendor defaults", () => {
     expect(utilityHandlersSource).toContain(
       "https://api.azul.com/metadata/v1/zulu/packages/"
     );
-    expect(utilityHandlersSource).toContain('java_package_features: "headful"');
+    expect(utilityHandlersSource).toContain('azulQuery.set("java_package_features", "headful")');
     expect(utilityHandlersSource).toContain("download_url");
+  });
+
+  it("tries Java Runtime first before falling back to broader package searches", () => {
+    expect(utilityHandlersSource).toContain('type: "jre" as const');
+    expect(utilityHandlersSource).toContain('type: "jdk" as const');
+    expect(utilityHandlersSource).toContain("Trying broad Java Runtime search");
+    expect(utilityHandlersSource).toContain("Trying broad Java JDK search");
   });
 
   it("uses Azul Zulu metadata API in native installer", () => {

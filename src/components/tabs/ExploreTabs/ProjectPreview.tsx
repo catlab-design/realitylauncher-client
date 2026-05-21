@@ -118,8 +118,8 @@ export function ProjectPreview({
                     style={{ backgroundColor: `${colors.surfaceContainerHighest}80` }}>
                     <i className="fa-solid fa-eye text-3xl opacity-30" style={{ color: colors.onSurfaceVariant }}></i>
                 </div>
-                <h3 className="text-sm font-medium mb-1" style={{ color: colors.onSurface }}>{t('select_item_to_view')}</h3>
-                <p className="text-xs opacity-60 max-w-[200px]" style={{ color: colors.onSurfaceVariant }}>
+                <h3 className="text-base font-medium mb-1" style={{ color: colors.onSurface }}>{t('select_item_to_view')}</h3>
+                <p className="text-sm opacity-60 max-w-[240px]" style={{ color: colors.onSurfaceVariant }}>
                     {t('click_card_left_to_view')}
                 </p>
             </div>
@@ -146,14 +146,6 @@ export function ProjectPreview({
     };
 
     const heroImage = getImageUrl(heroImageRaw) || bannerImage.src;
-    const accentColor = (() => {
-        if (!project.color) return colors.primary;
-        // Handle string colors that might already be hex
-        if (typeof project.color === 'string') return project.color.startsWith('#') ? project.color : `#${project.color}`;
-        // Handle numeric colors - ensure non-negative
-        const colorNum = Math.max(0, Number(project.color) || 0);
-        return `#${colorNum.toString(16).padStart(6, '0')}`;
-    })();
 
     return (
         <>
@@ -195,11 +187,12 @@ export function ProjectPreview({
                 />
             )}
 
-            <div className="rounded-2xl overflow-hidden sticky top-4 flex flex-col shadow-xl max-h-[calc(100vh-2rem)] overflow-y-auto custom-scrollbar"
+            <div className="rounded-2xl sticky top-4 flex flex-col max-h-[calc(100vh-2rem)] overflow-y-auto custom-scrollbar"
                 style={{
                     backgroundColor: colors.surfaceContainer,
                     border: `1px solid ${colors.outline}20`,
-                    minHeight: "400px" // Ensure minimum height
+                    minHeight: "400px",
+                    isolation: "isolate",
                 }}>
 
                 {/* Hero Header */}
@@ -211,7 +204,7 @@ export function ProjectPreview({
                     <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent" />
 
                     {/* Floating Icon */}
-                    <div className="absolute -bottom-8 left-6 w-20 h-20 rounded-2xl shadow-2xl p-0.5 z-10"
+                    <div className="absolute -bottom-8 left-6 w-20 h-20 rounded-2xl p-0.5 z-10"
                         style={{ backgroundColor: colors.surface }}>
                         <div className="w-full h-full rounded-[14px] bg-cover bg-center overflow-hidden"
                             style={{
@@ -232,21 +225,21 @@ export function ProjectPreview({
                 <div className="pt-10 px-6 pb-6 flex-1 flex flex-col">
                     {/* Header Content */}
                     <div className="mb-4">
-                        <h2 className="text-xl font-bold mb-1 leading-tight" style={{ color: colors.onSurface }}>
+                        <h2 className="text-2xl font-bold mb-1 leading-tight" style={{ color: colors.onSurface }}>
                             {project.title}
                         </h2>
-                        <div className="flex items-center gap-2 text-xs" style={{ color: colors.onSurfaceVariant }}>
+                        <div className="flex items-center gap-2 text-sm" style={{ color: colors.onSurfaceVariant }}>
                             <span>{t('by')} <span className="font-medium" style={{ color: colors.primary }}>{project.author}</span></span>
                             <span>•</span>
                             <div className="flex items-center gap-1">
-                                <i className="fa-solid fa-download text-[10px]"></i>
+                                <i className="fa-solid fa-download text-xs"></i>
                                 {formatNumber(project.downloads)}
                             </div>
                             {showFollows && (
                                 <>
                                     <span>•</span>
                                     <div className="flex items-center gap-1">
-                                        <i className="fa-solid fa-heart text-[10px]"></i>
+                                        <i className="fa-solid fa-heart text-xs"></i>
                                         {formatNumber(project.follows)}
                                     </div>
                                 </>
@@ -259,7 +252,7 @@ export function ProjectPreview({
                         <div className="flex flex-wrap gap-1.5 mb-5">
                             {project.categories.slice(0, 6).map((cat) => (
                                 <span key={cat}
-                                    className="px-2 py-0.5 rounded-md text-[10px] uppercase font-bold tracking-wider"
+                                    className="px-2 py-0.5 rounded-md text-[11px] uppercase font-bold tracking-wider"
                                     style={{ backgroundColor: `${colors.secondary}20`, color: colors.secondary }}>
                                     {cat}
                                 </span>
@@ -289,7 +282,7 @@ export function ProjectPreview({
                         ) : (
                             <button
                                 onClick={handleAction}
-                                className="w-full py-3 rounded-xl text-sm font-bold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 active:scale-95"
+                                className="w-full py-3 rounded-xl text-[15px] font-bold hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 active:scale-95"
                                 style={{
                                     backgroundColor: colors.secondary,
                                     color: "#1a1a1a" // Ensure contrast on bright buttons
@@ -312,10 +305,10 @@ export function ProjectPreview({
 
                     {/* Description */}
                     <div className="mb-6">
-                        <h4 className="text-xs font-bold uppercase tracking-wider mb-2 opacity-70" style={{ color: colors.onSurfaceVariant }}>
+                        <h4 className="text-[13px] font-bold uppercase tracking-wider mb-2 opacity-70" style={{ color: colors.onSurfaceVariant }}>
                             {t('about')}
                         </h4>
-                        <p className="text-xs leading-relaxed opacity-90 whitespace-pre-line" style={{ color: colors.onSurface }}>
+                        <p className="text-sm leading-6 opacity-90 whitespace-pre-line" style={{ color: colors.onSurface }}>
                             {project.description}
                         </p>
                     </div>
@@ -323,7 +316,7 @@ export function ProjectPreview({
                     {/* Gallery Preview (Mini) */}
                     {project.gallery && project.gallery.length > 0 && (
                         <div className="mb-4">
-                            <h4 className="text-xs font-bold uppercase tracking-wider mb-2 opacity-70" style={{ color: colors.onSurfaceVariant }}>
+                            <h4 className="text-[13px] font-bold uppercase tracking-wider mb-2 opacity-70" style={{ color: colors.onSurfaceVariant }}>
                                 {t('gallery')}
                             </h4>
                             <div className="grid grid-cols-2 gap-2">
@@ -353,7 +346,7 @@ export function ProjectPreview({
                     )}
 
                     {/* Footer Info */}
-                    <div className="pt-4 mt-auto border-t flex justify-between items-center text-[10px]"
+                    <div className="pt-4 mt-auto border-t flex justify-between items-center text-xs"
                         style={{ borderColor: `${colors.outline}20`, color: colors.onSurfaceVariant }}>
                         <span>ID: {project.project_id}</span>
                         {project.latest_version && (
@@ -364,7 +357,7 @@ export function ProjectPreview({
 
                     {/* Supported Versions (Footer/Extra) */}
                     {(project.game_versions || project.loaders) && (
-                        <div className="pt-2 text-[10px] opacity-70 flex flex-wrap gap-2" style={{ color: colors.onSurfaceVariant }}>
+                        <div className="pt-2 text-xs opacity-70 flex flex-wrap gap-2" style={{ color: colors.onSurfaceVariant }}>
                             {project.loaders && project.loaders.length > 0 && (
                                 <div className="flex gap-1">
                                     <span className="font-bold">{t('loaders_label')}</span>

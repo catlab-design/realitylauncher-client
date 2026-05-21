@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { Icons } from "../../ui/Icons";
 import { Skeleton } from "../../ui/Skeleton";
+import { Portal } from "../../ui/Portal";
 import { formatSize } from "./helpers";
 import type { ContentItem, DatapackItem } from "./types";
 import { playClick } from "../../../lib/sounds";
@@ -32,6 +33,10 @@ interface ContentListProps {
     onDelete: (filename: string, worldName?: string, options?: { silent?: boolean }) => Promise<DeleteResult>;
     onAddContent: () => void;
     onRefresh?: () => void;
+    onOpenProjectDetail?: (item: ContentItem | DatapackItem) => void;
+    onUpdate?: (item: ContentItem | DatapackItem) => void;
+    updatingFilenames?: Set<string>;
+    onSwitchVersion?: (item: ContentItem | DatapackItem) => void;
 }
 
 export function ContentList({
@@ -48,6 +53,10 @@ export function ContentList({
     onDelete,
     onAddContent,
     onRefresh,
+    onOpenProjectDetail,
+    onUpdate,
+    updatingFilenames,
+    onSwitchVersion,
 }: ContentListProps) {
     const { t } = useTranslation();
     const [searchQuery, setSearchQuery] = useState("");
@@ -127,121 +136,75 @@ export function ContentList({
     return (
         <>
             <div className="flex items-center justify-between gap-4 mb-4 w-full overflow-x-auto no-scrollbar pb-1">
-                {/* Left Side: Title OR Pagination OR Selection Info */}
+                {/* Left Side: Select All & Title OR Pagination */}
                 <div className="flex items-center gap-4 shrink-0">
-                    {selectedFilenames.size > 0 ? (
-                        <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => handleSelectAll(filteredItems)}
+                        className="w-5 h-5 rounded-md flex items-center justify-center transition-all cursor-pointer border-2"
+                        style={{
+                            backgroundColor:
+                                selectedFilenames.size === filteredItems.length &&
+                                filteredItems.length > 0
+                                    ? colors.secondary
+                                    : "transparent",
+                            borderColor:
+                                selectedFilenames.size === filteredItems.length &&
+                                filteredItems.length > 0
+                                    ? colors.secondary
+                                    : colors.onSurfaceVariant,
+                        }}
+                        title={t('select_all' as any) || "Select All"}
+                    >
+                        {selectedFilenames.size === filteredItems.length &&
+                        filteredItems.length > 0 ? (
+                            <Icons.Check className="w-3.5 h-3.5" style={{ color: "#1a1a1a" }} />
+                        ) : (
+                            selectedFilenames.size > 0 && (
+                                <div
+                                    className="w-2 h-0.5 rounded-full bg-current"
+                                    style={{ backgroundColor: colors.secondary }}
+                                />
+                            )
+                        )}
+                    </button>
+
+                    {totalPages > 1 ? (
+                        <div className="flex items-center gap-2">
                             <button
-                                onClick={() => handleSelectAll(filteredItems)}
-                                className="w-5 h-5 rounded-md flex items-center justify-center transition-all cursor-pointer border-2"
-                                style={{
-                                    backgroundColor: selectedFilenames.size === filteredItems.length ? colors.secondary : "transparent",
-                                    borderColor: selectedFilenames.size === filteredItems.length ? colors.secondary : colors.onSurfaceVariant
-                                }}
+                                onClick={() => { playClick(); setPage(p => Math.max(1, p - 1)); }}
+                                disabled={page === 1}
+                                className="min-h-11 flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5 whitespace-nowrap"
+                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                             >
-                                {selectedFilenames.size === filteredItems.length ? (
-                                    <Icons.Check className="w-3.5 h-3.5" style={{ color: "#1a1a1a" }} />
-                                ) : (
-                                    selectedFilenames.size > 0 && <div className="w-2 h-0.5 rounded-full bg-current" />
-                                )}
+                                <i className="fa-solid fa-chevron-left text-xs"></i>
+                                {t('previous')}
                             </button>
-                            <span className="font-bold whitespace-nowrap" style={{ color: colors.secondary }}>
-                                {selectedFilenames.size} {t('selected' as any)}
+
+                            <span className="min-h-11 px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap flex items-center" style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}>
+                                {page} / {totalPages}
                             </span>
 
-                            <div className="h-4 w-px bg-white/10 mx-1" />
-
-                            {(() => {
-                                const selectedItems = items.filter(m => selectedFilenames.has(m.filename));
-                                const hasEnabledItems = selectedItems.some(m => m.enabled);
-                                const hasDisabledItems = selectedItems.some(m => !m.enabled);
-
-                                return (
-                                    <>
-                                        {hasDisabledItems && (
-                                            <button
-                                                onClick={() => handleBulkToggle(true)}
-                                                className="px-3.5 py-1.5 rounded-xl text-sm font-bold transition-all hover:opacity-80 flex items-center gap-2 whitespace-nowrap shadow-sm"
-                                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                                            >
-                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                                                    <circle cx="12" cy="12" r="10"></circle>
-                                                    <path d="M9 12l2 2 4-4"></path>
-                                                </svg>
-                                                Enable
-                                            </button>
-                                        )}
-
-                                        {hasEnabledItems && (
-                                            <button
-                                                onClick={() => handleBulkToggle(false)}
-                                                className="px-3.5 py-1.5 rounded-xl text-sm font-bold transition-all hover:opacity-80 flex items-center gap-2 whitespace-nowrap shadow-sm"
-                                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}
-                                            >
-                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                                                    <circle cx="12" cy="12" r="10"></circle>
-                                                    <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
-                                                </svg>
-                                                Disable
-                                            </button>
-                                        )}
-                                    </>
-                                );
-                            })()}
-
                             <button
-                                onClick={handleBulkDelete}
-                                className="px-3.5 py-1.5 rounded-xl text-sm font-bold transition-all hover:opacity-80 flex items-center gap-2 whitespace-nowrap shadow-sm"
-                                style={{ backgroundColor: "#ff4d6d", color: "#1a1a1a" }}
+                                onClick={() => { playClick(); setPage(p => Math.min(totalPages, p + 1)); }}
+                                disabled={page === totalPages}
+                                className="min-h-11 flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5 whitespace-nowrap"
+                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                             >
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                                    <polyline points="3 6 5 6 21 6"></polyline>
-                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                                    <line x1="10" y1="11" x2="10" y2="17"></line>
-                                    <line x1="14" y1="11" x2="14" y2="17"></line>
-                                </svg>
-                                Remove
+                                {t('next')}
+                                <i className="fa-solid fa-chevron-right text-xs"></i>
                             </button>
                         </div>
                     ) : (
-                        totalPages > 1 ? (
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={() => { playClick(); setPage(p => Math.max(1, p - 1)); }}
-                                    disabled={page === 1}
-                                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5 whitespace-nowrap"
-                                    style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                                >
-                                    <i className="fa-solid fa-chevron-left text-xs"></i>
-                                    {t('previous')}
-                                </button>
-
-                                <span className="px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap" style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}>
-                                    {page} / {totalPages}
-                                </span>
-
-                                <button
-                                    onClick={() => { playClick(); setPage(p => Math.min(totalPages, p + 1)); }}
-                                    disabled={page === totalPages}
-                                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5 whitespace-nowrap"
-                                    style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                                >
-                                    {t('next')}
-                                    <i className="fa-solid fa-chevron-right text-xs"></i>
-                                </button>
-                            </div>
-                        ) : (
-                            <h3 className="text-lg font-medium whitespace-nowrap" style={{ color: colors.onSurface }}>
-                                {labels[contentType].title} {isLoading ? "" : `(${items.length})`}
-                            </h3>
-                        )
+                        <h3 className="text-lg font-medium whitespace-nowrap" style={{ color: colors.onSurface }}>
+                            {labels[contentType].title} {isLoading ? "" : `(${items.length})`}
+                        </h3>
                     )}
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0 max-w-full overflow-hidden">
                     {/* Search */}
                     <div
-                        className="flex items-center gap-2 px-3 lg:px-4 py-2 rounded-xl transition-colors focus-within:ring-1 focus-within:ring-white/20 min-w-0 flex-1 lg:flex-none"
+                        className="min-h-11 flex items-center gap-2 px-4 lg:px-5 py-2.5 rounded-xl transition-colors focus-within:ring-1 focus-within:ring-white/20 min-w-0 flex-1 lg:flex-none"
                         style={{ backgroundColor: colors.surfaceContainerHighest }}
                     >
                         <i className="fa-solid fa-search text-sm shrink-0" style={{ color: colors.onSurfaceVariant }}></i>
@@ -250,14 +213,14 @@ export function ContentList({
                             placeholder={(t('search_content_placeholder' as any) as string).replace('{type}', labels[contentType].title)}
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="bg-transparent outline-none text-sm w-full lg:w-48 placeholder:opacity-70 min-w-0"
+                            className="bg-transparent outline-none text-sm w-full lg:w-56 placeholder:opacity-70 min-w-0"
                             style={{ color: colors.onSurface }}
                         />
                     </div>
 
                     <button
                         onClick={() => { playClick(); onAddContent(); }}
-                        className="px-3.5 lg:px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 transition-all hover:opacity-90 whitespace-nowrap shrink-0"
+                        className="min-h-11 px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all hover:opacity-90 whitespace-nowrap shrink-0"
                         style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
                     >
                         <i className="fa-solid fa-plus text-xs"></i>
@@ -266,7 +229,7 @@ export function ContentList({
                     <button
                         onClick={() => { playClick(); onRefresh && onRefresh(); }}
                         disabled={isLoading}
-                        className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all shrink-0 ${isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10 active:scale-95'}`}
+                        className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all shrink-0 ${isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10 active:scale-95'}`}
                         style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                         title={t('refresh')}
                     >
@@ -307,6 +270,11 @@ export function ContentList({
                                         else next.add(filename);
                                         setSelectedFilenames(next);
                                     }}
+                                    onOpenProjectDetail={onOpenProjectDetail}
+                                    onUpdate={onUpdate}
+                                    isUpdating={updatingFilenames?.has((item as ContentItem).filename)}
+                                    onSwitchVersion={onSwitchVersion}
+                                    instanceMcVersion={minecraftVersion}
                                 />
                             );
                         }
@@ -368,6 +336,85 @@ export function ContentList({
                     </div>
             )}
 
+            {selectedFilenames.size > 0 && (
+                <Portal>
+                    <div
+                        className="fixed bottom-8 left-1/2 -translate-x-1/2 z-9999 flex items-center gap-2 md:gap-3 px-4 py-2.5 md:px-6 rounded-full backdrop-blur-xl border animate-float"
+                        style={{
+                            backgroundColor: `${colors.surfaceContainerHighest}e6`,
+                            borderColor: colors.outlineVariant || 'rgba(128,128,128,0.2)',
+                        }}
+                    >
+                        <span className="font-bold whitespace-nowrap text-sm md:text-base mr-1" style={{ color: colors.onSurface }}>
+                            {selectedFilenames.size} {t('selected' as any)}
+                        </span>
+
+                        <div className="h-6 w-px mx-1 md:mx-2" style={{ backgroundColor: colors.outlineVariant || 'rgba(128,128,128,0.2)' }} />
+
+                        {(() => {
+                            const selectedItems = items.filter(item => selectedFilenames.has(item.filename));
+                            const hasEnabledItems = selectedItems.some(item => item.enabled);
+                            const hasDisabledItems = selectedItems.some(item => !item.enabled);
+
+                            return (
+                                <>
+                                    {hasDisabledItems && (
+                                        <button
+                                            onClick={() => handleBulkToggle(true)}
+                                            className="px-3.5 py-1.5 md:px-4 md:py-2 rounded-2xl text-xs md:text-sm font-bold transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
+                                            style={{ backgroundColor: colors.surface, color: colors.onSurface, border: `1px solid ${colors.outlineVariant || 'rgba(128,128,128,0.1)'}` }}
+                                        >
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                                <circle cx="12" cy="12" r="10"></circle>
+                                                <path d="M9 12l2 2 4-4"></path>
+                                            </svg>
+                                            <span className="hidden sm:inline">{t('action_enable' as any)}</span>
+                                        </button>
+                                    )}
+
+                                    {hasEnabledItems && (
+                                        <button
+                                            onClick={() => handleBulkToggle(false)}
+                                            className="px-3.5 py-1.5 md:px-4 md:py-2 rounded-2xl text-xs md:text-sm font-bold transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
+                                            style={{ backgroundColor: colors.surface, color: colors.onSurfaceVariant, border: `1px solid ${colors.outlineVariant || 'rgba(128,128,128,0.1)'}` }}
+                                        >
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                                <circle cx="12" cy="12" r="10"></circle>
+                                                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+                                            </svg>
+                                            <span className="hidden sm:inline">{t('action_disable' as any)}</span>
+                                        </button>
+                                    )}
+                                </>
+                            );
+                        })()}
+
+                        <div className="h-6 w-px mx-1 hidden md:block" style={{ backgroundColor: colors.outlineVariant || 'rgba(128,128,128,0.2)' }} />
+
+                        <button
+                            onClick={handleBulkDelete}
+                            className="px-3.5 py-1.5 md:px-4 md:py-2 rounded-2xl text-xs md:text-sm font-bold transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
+                            style={{ backgroundColor: "#ff4d6d", color: "#1a1a1a" }}
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                <polyline points="3 6 5 6 21 6"></polyline>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                <line x1="10" y1="11" x2="10" y2="17"></line>
+                                <line x1="14" y1="11" x2="14" y2="17"></line>
+                            </svg>
+                            <span className="hidden sm:inline">{t('action_remove' as any)}</span>
+                        </button>
+
+                        <button
+                            onClick={() => setSelectedFilenames(new Set())}
+                            className="w-8 h-8 md:w-10 md:h-10 ml-1 rounded-full flex items-center justify-center transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+                            title={t('cancel_selection' as any)}
+                        >
+                            <Icons.Close className="w-4 h-4 md:w-5 md:h-5" style={{ color: colors.onSurfaceVariant }} />
+                        </button>
+                    </div>
+                </Portal>
+            )}
 
         </>
     );
@@ -388,10 +435,10 @@ function ContentListItemWrapper({
     if (isLoading) {
         return (
             <div
-                className="flex items-center gap-4 p-4 rounded-xl"
+                className="min-h-[64px] flex items-center gap-4 p-4 rounded-xl"
                 style={{ backgroundColor: colors.surfaceContainer }}
             >
-                <Skeleton className="w-10 h-10 rounded-lg" colors={colors} />
+                <Skeleton className="w-12 h-12 rounded-xl" colors={colors} />
                 <div className="flex-1 space-y-2">
                     <Skeleton className="h-4 w-1/3" colors={colors} />
                     <Skeleton className="h-3 w-1/4" colors={colors} />

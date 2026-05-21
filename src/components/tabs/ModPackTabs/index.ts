@@ -31,6 +31,9 @@ export type { InstanceSettingsModalProps } from "./InstanceSettingsModal";
 export { InstanceHeader } from "./InstanceHeader";
 export type { InstanceHeaderProps } from "./InstanceHeader";
 
+export { VersionSwitcherModal } from "./VersionSwitcherModal";
+export type { VersionEntry, VersionSwitcherSource } from "./VersionSwitcherModal";
+
 export { ContentTabs } from "./ContentTabs";
 export { ModsList } from "./ModsList";
 export { ContentList } from "./ContentList";

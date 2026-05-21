@@ -3,6 +3,7 @@ export const enTranslations = {
     home: "Home",
     servers: "Servers",
     modpacks: "Modpacks",
+    modpacks_subtitle: "Manage and launch your mod packs",
     explore: "Explore",
     settings: "Settings",
     about: "About",
@@ -258,10 +259,12 @@ export const enTranslations = {
     wardrobe_variant_classic: "Classic",
     wardrobe_variant_slim: "Slim",
     wardrobe_choose_skin: "Choose Skin File (.png)",
+    wardrobe_clear_preview: "Clear Preview Cache",
     wardrobe_selected_file: "Selected File",
     wardrobe_no_file_selected: "No file selected",
     wardrobe_apply_skin: "Apply This Skin",
     wardrobe_applying: "Applying skin...",
+    wardrobe_preview_cleared: "Skin preview cache cleared",
     checking_data: "Checking Data",
     tab_appearance: "Appearance",
     tab_game: "Game & Performance",
@@ -569,6 +572,7 @@ export const enTranslations = {
     cancel_install_success: "Installation cancelled",
     extracting_modpack_dot: "Reading modpack info...",
     install_complete: "Completed successfully",
+    preparing_game_files: "Downloading game files...",
     login_before_use: "Please login before use",
     cannot_read_file: "Cannot read file",
     drag_mrpack_zip: "Please drag .mrpack or .zip file",
@@ -966,4 +970,98 @@ export const enTranslations = {
     your_invite_key: "Your Invite Key",
     partner_special_thanks: "Partner (Special Thanks)",
     alliance: "Alliance",
+
+    // Explore — sort
+    sort_by: "Sort by",
+    // sort.* keys already defined above
+
+    // Explore — filter sections
+    filter: "Filter",
+    filters: "Filters",
+    category: "Category",
+    environment: "Environment",
+    game_version: "Game version",
+    search_versions_short: "Search versions...",
+
+    // Categories (Modrinth taxonomy)
+    "category.adventure": "Adventure",
+    "category.cursed": "Cursed",
+    "category.decoration": "Decoration",
+    "category.economy": "Economy",
+    "category.equipment": "Equipment",
+    "category.food": "Food",
+    "category.game-mechanics": "Game Mechanics",
+    "category.library": "Library",
+    "category.magic": "Magic",
+    "category.management": "Management",
+    "category.minigame": "Minigame",
+    "category.mobs": "Mobs",
+    "category.optimization": "Optimization",
+    "category.social": "Social",
+    "category.storage": "Storage",
+    "category.technology": "Technology",
+    "category.transportation": "Transportation",
+    "category.utility": "Utility",
+    "category.worldgen": "World Generation",
+
+    // Loaders
+    "loader.fabric": "Fabric",
+    "loader.forge": "Forge",
+    "loader.neoforge": "NeoForge",
+    "loader.quilt": "Quilt",
+    "loader.liteloader": "LiteLoader",
+    "loader.modloader": "ModLoader",
+    "loader.rift": "Rift",
+
+    // Environments
+    "environment.client": "Client",
+    "environment.server": "Server",
+
+    // Detail page
+    versions: "Versions",
+    no_versions_found: "No versions found",
+    name: "Name",
+    game_version_col: "Game version",
+    platforms: "Platforms",
+    published: "Published",
+    downloads_col: "Downloads",
+    compatibility: "Compatibility",
+    supported_environments: "Environments",
+    links: "Links",
+    creators: "Creators",
+    license: "License",
+    created: "Created",
+    updated: "Updated",
+    all: "All",
+    show_all_versions: "Show all versions",
+    show_less: "Show less",
+    switch_version_title: "Switch version",
+    search_version_placeholder: "Search version or Minecraft version",
+    show_incompatible: "Show incompatible",
+    show_incompatible_hint: "Show versions that may not match this instance",
+    current_version_badge: "Current",
+    latest_version_badge: "Latest",
+    incompatible_badge: "Incompatible",
+    switch_version_warning: "Switching versions can change or break this instance. Back up important worlds first.",
+    switch_to_version: "Switch to version",
+    old_version_delete_failed: "New version installed, but the old file could not be removed.",
+    update_to_latest: "Update to latest",
+
+    // Confirm install
+    confirm_install_modpack_title: "Install Modpack?",
+    confirm_install_modpack_body: 'Install "{name}" as a new instance? This may download several hundred MB.',
+    already_installed_modpack: 'You already have an instance from "{name}". Install again?',
+    install_in_progress_warn: "Another install is already running. Please wait.",
+    // cancel already defined above
+
+    // Misc
+    items_per_page: "Items / page",
+    page_jump_first: "First page",
+    page_jump_last: "Last page",
+    clear_filter: "Clear filter",
+    clear_all_filters: "Clear all",
+    click_again_to_open: "Click again to open full page",
+
+    // Mobile
+    open_filters: "Filters",
 };

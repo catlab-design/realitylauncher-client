@@ -30,6 +30,10 @@ interface ModsListProps {
     minecraftVersion?: string;
     loader?: string;
     instanceName?: string;
+    onOpenProjectDetail?: (mod: ModInfo) => void;
+    onUpdate?: (mod: ModInfo) => void;
+    updatingFilenames?: Set<string>;
+    onSwitchVersion?: (mod: ModInfo) => void;
 }
 
 const MODS_PER_PAGE = 20;
@@ -49,7 +53,11 @@ export function ModsList({
     isServerManaged,
     minecraftVersion,
     loader,
-    instanceName = ""
+    instanceName = "",
+    onOpenProjectDetail,
+    onUpdate,
+    updatingFilenames,
+    onSwitchVersion,
 }: ModsListProps) {
     const { t } = useTranslation();
     const [searchQuery, setSearchQuery] = useState("");
@@ -190,21 +198,21 @@ export function ModsList({
                             <button
                                 onClick={() => { playClick(); setPage(p => Math.max(1, p - 1)); }}
                                 disabled={page === 1}
-                                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5 whitespace-nowrap"
+                            className="min-h-11 flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5 whitespace-nowrap"
                                 style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                             >
                                 <i className="fa-solid fa-chevron-left text-xs"></i>
                                 {t('previous')}
                             </button>
 
-                            <span className="px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap" style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}>
+                            <span className="min-h-11 px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap flex items-center" style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}>
                                 {page} / {totalPages}
                             </span>
 
                             <button
                                 onClick={() => { playClick(); setPage(p => Math.min(totalPages, p + 1)); }}
                                 disabled={page === totalPages}
-                                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5 whitespace-nowrap"
+                                className="min-h-11 flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5 whitespace-nowrap"
                                 style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                             >
                                 {t('next')}
@@ -222,7 +230,7 @@ export function ModsList({
                 <div className="flex items-center gap-2 shrink-0 max-w-full overflow-hidden">
                     {/* Search */}
                     <div
-                        className="flex items-center gap-2 px-3 lg:px-4 py-2 rounded-xl transition-colors focus-within:ring-1 focus-within:ring-white/20 min-w-0 flex-1 lg:flex-none"
+                        className="min-h-11 flex items-center gap-2 px-4 lg:px-5 py-2.5 rounded-xl transition-colors focus-within:ring-1 focus-within:ring-white/20 min-w-0 flex-1 lg:flex-none"
                         style={{ backgroundColor: colors.surfaceContainerHighest }}
                     >
                         <i className="fa-solid fa-search text-sm shrink-0" style={{ color: colors.onSurfaceVariant }}></i>
@@ -231,14 +239,14 @@ export function ModsList({
                             placeholder={t('search_mod_count' as any).replace('{count}', String(mods.length))}
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="bg-transparent outline-none text-sm w-full lg:w-48 placeholder:opacity-70 min-w-0"
+                            className="bg-transparent outline-none text-sm w-full lg:w-56 placeholder:opacity-70 min-w-0"
                             style={{ color: colors.onSurface }}
                         />
                     </div>
 
                     <button
                         onClick={() => { playClick(); onAddMod(); }}
-                        className="px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 transition-all hover:opacity-90 active:scale-95 shadow-lg shrink-0"
+                        className="min-h-11 px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all hover:opacity-90 active:scale-95 shrink-0"
                         style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
                     >
                         <i className="fa-solid fa-plus text-xs"></i>
@@ -248,7 +256,7 @@ export function ModsList({
                     <button
                         onClick={() => { playClick(); onRefresh(); }}
                         disabled={isLoading}
-                        className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all shrink-0 ${isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10 active:scale-95'}`}
+                        className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all shrink-0 ${isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10 active:scale-95'}`}
                         style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                         title={t('refresh')}
                     >
@@ -353,6 +361,12 @@ export function ModsList({
                                 index={index}
                                 isSelected={selectedFilenames.has((mod as ModInfo)?.filename)}
                                 onToggleSelection={handleToggleSelection}
+                                onOpenProjectDetail={onOpenProjectDetail}
+                                onUpdate={onUpdate}
+                                isUpdating={updatingFilenames?.has((mod as ModInfo)?.filename)}
+                                onSwitchVersion={onSwitchVersion}
+                                instanceMcVersion={minecraftVersion}
+                                instanceLoader={loader}
                             />
                         </ModListItemWrapper>
                     ))}
@@ -405,7 +419,7 @@ export function ModsList({
             {selectedFilenames.size > 0 && (
                 <Portal>
                     <div 
-                        className="fixed bottom-8 left-1/2 -translate-x-1/2 z-9999 flex items-center gap-2 md:gap-3 px-4 py-2.5 md:px-6 rounded-full shadow-2xl backdrop-blur-xl border animate-float"
+                        className="fixed bottom-8 left-1/2 -translate-x-1/2 z-9999 flex items-center gap-2 md:gap-3 px-4 py-2.5 md:px-6 rounded-full backdrop-blur-xl border animate-float"
                         style={{ 
                             backgroundColor: `${colors.surfaceContainerHighest}e6`, 
                             borderColor: colors.outlineVariant || 'rgba(128,128,128,0.2)' 
@@ -524,10 +538,10 @@ function ModListItemWrapper({
     if (isLoading) {
         return (
             <div
-                className="flex items-center gap-4 p-4 rounded-xl"
+                className="min-h-[64px] flex items-center gap-4 p-4 rounded-xl"
                 style={{ backgroundColor: colors.surfaceContainer }}
             >
-                <Skeleton className="w-10 h-10 rounded-lg" colors={colors} />
+                <Skeleton className="w-12 h-12 rounded-xl" colors={colors} />
                 <div className="flex-1 space-y-2">
                     <Skeleton className="h-4 w-1/3" colors={colors} />
                     <Skeleton className="h-3 w-1/4" colors={colors} />

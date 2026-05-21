@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import { createIpcLogger } from "../lib/logger.js";
 import { getConfig, getAppDataDir, getMinecraftDir } from "../config.js";
 import { getNativeModule } from "../native.js";
+import { inferVersionFromFilename } from "./version-helpers.js";
 
 const logger = createIpcLogger("Instance");
 
@@ -677,7 +678,7 @@ export async function extractModInfo(
 
       let version = versionMatch?.[1];
       if (version === "${file.jarVersion}") {
-        version = undefined;
+        version = inferVersionFromFilename(path.basename(jarPath));
       }
 
       return {

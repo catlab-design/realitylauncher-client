@@ -6,6 +6,7 @@ import React from "react";
 import { Icons } from "../../ui/Icons";
 import type { GameInstance } from "../../../types/launcher";
 import { useTranslation } from "../../../hooks/useTranslation";
+import { formatPlayTime, getLoaderLabel } from "./helpers";
 
 export interface InstanceHeaderProps {
     colors: any;
@@ -31,23 +32,6 @@ export function InstanceHeader({
     onOpenFolder,
 }: InstanceHeaderProps) {
     const { t } = useTranslation();
-
-    const getLoaderLabel = (loader: string): string => {
-        const labels: Record<string, string> = {
-            vanilla: "Vanilla",
-            fabric: "Fabric",
-            forge: "Forge",
-            neoforge: "NeoForge",
-            quilt: "Quilt",
-        };
-        return labels[loader] || loader;
-    };
-
-    const formatPlayTime = (minutes: number): string => {
-        if (minutes < 60) return `${minutes} ${t("minutes_unit")}`;
-        const hours = Math.floor(minutes / 60);
-        return `${hours} ${t("hours_unit")}`;
-    };
 
     return (
         <div className="flex items-center gap-4 pb-4 border-b" style={{ borderColor: colors.outline + "30" }}>
@@ -80,7 +64,7 @@ export function InstanceHeader({
                 <div className="flex items-center gap-3 text-sm" style={{ color: colors.onSurfaceVariant }}>
                     <span>{getLoaderLabel(instance.loader)} {instance.minecraftVersion}</span>
                     {instance.totalPlayTime > 0 && (
-                        <span>&bull; {formatPlayTime(instance.totalPlayTime)}</span>
+                        <span>&bull; {formatPlayTime(instance.totalPlayTime, { minutes: t("minutes_unit"), hours: t("hours_unit") })}</span>
                     )}
                 </div>
             </div>

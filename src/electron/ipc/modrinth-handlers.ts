@@ -88,7 +88,6 @@ export function registerModrinthHandlers(getMainWindow: () => BrowserWindow | nu
             const cacheKey = getCacheKey("search", filters);
             const cached = getFromCache(searchCache, cacheKey);
             if (cached) {
-                console.log("[Modrinth] Search cache hit:", cacheKey.substring(0, 50));
                 return cached;
             }
 
@@ -104,11 +103,12 @@ export function registerModrinthHandlers(getMainWindow: () => BrowserWindow | nu
                 loader: loader,
                 limit: filters.limit,
                 offset: filters.offset,
-                sortBy: filters.sortBy || filters.index
+                sortBy: filters.sortBy || filters.index,
+                // Pass through caller-supplied facets for multi-select (categories/envs/loaders/versions).
+                facets: filters.facets,
             });
 
             setCache(searchCache, cacheKey, result);
-            console.log("[Modrinth] Search result cached:", result?.hits?.length || 0, "hits");
             return result;
         } catch (error: any) {
             console.error("[Modrinth] Search error:", error);
@@ -126,7 +126,6 @@ export function registerModrinthHandlers(getMainWindow: () => BrowserWindow | nu
 
             const cached = getFromCache(projectCache, idOrSlug);
             if (cached) {
-                console.log("[Modrinth] Project cache hit:", idOrSlug);
                 return cached;
             }
 
@@ -146,16 +145,12 @@ export function registerModrinthHandlers(getMainWindow: () => BrowserWindow | nu
         try {
             const cached = getFromCache(versionsCache, idOrSlug);
             if (cached) {
-                console.log("[Modrinth] Versions cache hit:", idOrSlug);
                 return cached;
             }
 
-            console.log("[Modrinth] Getting versions for project:", idOrSlug);
-            
             const result = await getProjectVersions(idOrSlug);
 
             setCache(versionsCache, idOrSlug, result);
-            console.log("[Modrinth] Got", result?.length || 0, "versions for project:", idOrSlug);
             return result;
         } catch (error: any) {
             console.error("[Modrinth] Get versions error:", error);

@@ -372,15 +372,37 @@ export function buildLockedModsListSignature(lockedMods: string[]): string {
     .join("|");
 }
 
+async function tryBuildLocalModsListSignatureNative(
+  modsDir: string,
+): Promise<string | undefined> {
+  try {
+    const nativeModule = getNativeModule();
+    if (typeof nativeModule?.buildLocalModsListSignatureNative !== "function") {
+      return undefined;
+    }
+
+    const signature = await nativeModule.buildLocalModsListSignatureNative(modsDir);
+    return typeof signature === "string" ? signature : undefined;
+  } catch (error) {
+    console.warn("[Cloud Sync] Native local mods signature failed:", error);
+    return undefined;
+  }
+}
+
 export async function buildLocalModsListSignature(modsDir: string): Promise<string> {
+  const nativeSignature = await tryBuildLocalModsListSignatureNative(modsDir);
+  if (nativeSignature !== undefined) {
+    return nativeSignature;
+  }
+
   if (!fs.existsSync(modsDir)) {
     return "";
   }
 
   const files = await fs.promises.readdir(modsDir).catch(() => []);
   return files
-    .filter((file) => file.endsWith(".jar") || file.endsWith(".jar.disabled"))
     .map((file) => file.replace(/\\/g, "/").trim().toLowerCase())
+    .filter((file) => file.endsWith(".jar") || file.endsWith(".jar.disabled"))
     .map((file) =>
       file.endsWith(".jar.disabled")
         ? file.slice(0, -".disabled".length)

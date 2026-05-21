@@ -713,13 +713,12 @@ fn build_locked_mods_list_signature(locked_mods: Vec<String>) -> String {
     )
 }
 
-fn build_local_mods_list_signature(game_dir: &Path) -> String {
-    let mods_dir = game_dir.join("mods");
+fn build_local_mods_list_signature_from_mods_dir(mods_dir: &Path) -> String {
     if !mods_dir.exists() {
         return String::new();
     }
 
-    let entries = std::fs::read_dir(&mods_dir)
+    let entries = std::fs::read_dir(mods_dir)
         .ok()
         .into_iter()
         .flat_map(|iter| iter.flatten())
@@ -728,6 +727,18 @@ fn build_local_mods_list_signature(game_dir: &Path) -> String {
         .collect::<Vec<String>>();
 
     build_signature_from_entries(entries)
+}
+
+fn build_local_mods_list_signature(game_dir: &Path) -> String {
+    build_local_mods_list_signature_from_mods_dir(&game_dir.join("mods"))
+}
+
+#[napi]
+pub async fn build_local_mods_list_signature_native(mods_dir: String) -> napi::Result<String> {
+    let mods_dir = PathBuf::from(mods_dir);
+    tokio::task::spawn_blocking(move || build_local_mods_list_signature_from_mods_dir(&mods_dir))
+        .await
+        .map_err(|err| napi::Error::from_reason(format!("local mods signature task failed: {err}")))
 }
 
 fn build_fast_mod_list_snapshot(
@@ -1466,6 +1477,22 @@ mod native_migration_tests {
             Some(vec![]),
         );
         assert!(!changed.can_skip);
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn local_mods_list_signature_from_mods_dir_normalizes_entries() {
+        let root = unique_temp_dir("ml_local_mod_signature_test");
+        let mods_dir = root.join("mods");
+        std::fs::create_dir_all(&mods_dir).expect("create mods dir");
+        std::fs::write(mods_dir.join("Beta.JAR"), b"jar-b").expect("write Beta.JAR");
+        std::fs::write(mods_dir.join("alpha.jar.disabled"), b"jar-a")
+            .expect("write alpha.jar.disabled");
+        std::fs::write(mods_dir.join("notes.txt"), b"ignore").expect("write notes.txt");
+
+        let signature = build_local_mods_list_signature_from_mods_dir(&mods_dir);
+        assert_eq!(signature, "mods/alpha.jar|mods/beta.jar");
 
         let _ = std::fs::remove_dir_all(root);
     }

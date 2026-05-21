@@ -37,7 +37,7 @@ export function ImportModpackModal({
     return (
         <Portal>
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-                <div className="w-[80%] max-w-4xl rounded-2xl p-8 shadow-2xl relative z-51" style={{ backgroundColor: colors.surface }}>
+                <div className="w-[80%] max-w-4xl rounded-2xl p-8 relative z-51" style={{ backgroundColor: colors.surface }}>
                     <button
                         onClick={onClose}
                         className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center transition-all hover:bg-gray-500/20 active:scale-90"
@@ -49,7 +49,7 @@ export function ImportModpackModal({
 
                     <div className="flex items-center gap-4 mb-6">
                         <div
-                            className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg"
+                            className="w-12 h-12 rounded-2xl flex items-center justify-center"
                             style={{ backgroundColor: colors.secondary, boxShadow: `0 8px 16px ${colors.secondary}30` }}
                         >
                             <svg className="w-6 h-6" viewBox="0 0 24 24" fill="#1a1a1a">
@@ -85,7 +85,7 @@ export function ImportModpackModal({
                         <p className="text-sm mb-6 opacity-60" style={{ color: colors.onSurfaceVariant }}>{t('or')}</p>
                         <button
                             disabled={isInstalling}
-                            className="px-8 py-3 rounded-xl font-bold transition-all shadow-lg active:scale-95 disabled:opacity-50"
+                            className="px-8 py-3 rounded-xl font-bold transition-all active:scale-95 disabled:opacity-50"
                             style={{ 
                                 backgroundColor: colors.secondary, 
                                 color: "#1a1a1a",
@@ -102,7 +102,7 @@ export function ImportModpackModal({
                             className="p-4 rounded-2xl flex items-center gap-4 transition-all hover:bg-black/5 active:scale-[0.98] cursor-pointer"
                             style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}` }}
                         >
-                            <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 shadow-md" style={{ backgroundColor: "#f16436" }}>
+                            <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: "#f16436" }}>
                                  <img src={curseforgeIcon.src} alt="CurseForge" className="w-7 h-7 brightness-0 invert" />
                             </div>
                             <div>
@@ -114,7 +114,7 @@ export function ImportModpackModal({
                             className="p-4 rounded-2xl flex items-center gap-4 transition-all hover:bg-black/5 active:scale-[0.98] cursor-pointer"
                             style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}` }}
                         >
-                            <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 shadow-md" style={{ backgroundColor: "#1bd96a" }}>
+                            <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: "#1bd96a" }}>
                                 <img src={modrinthIcon.src} alt="Modrinth" className="w-7 h-7 brightness-0 invert" />
                             </div>
                             <div>

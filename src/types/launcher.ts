@@ -187,6 +187,7 @@ export interface UpdateInstanceOptions {
   ramMB?: number;
   javaArguments?: string;
   autoUpdate?: boolean;
+  banner?: string;
 }
 
 export interface InstallProgress {

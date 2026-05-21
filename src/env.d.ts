@@ -85,6 +85,9 @@ interface UpdateInstanceOptions {
   javaPath?: string;
   ramMB?: number;
   javaArguments?: string;
+  autoUpdate?: boolean;
+  banner?: string;
+  lockedMods?: string[];
 }
 
 declare global {
@@ -506,6 +509,7 @@ declare global {
         options: CreateInstanceOptions,
       ) => Promise<GameInstance>;
       instancesGet: (id: string) => Promise<GameInstance | null>;
+      instancesPreInstall: (id: string) => Promise<{ ok: boolean; message?: string }>;
       instancesUpdate: (
         id: string,
         updates: UpdateInstanceOptions,

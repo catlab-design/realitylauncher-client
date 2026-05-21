@@ -133,6 +133,7 @@ export interface NativeModConflict {
   file2?: string | null | undefined
   reason: string
 }
+export declare function buildLocalModsListSignatureNative(modsDir: string): Promise<string>
 export declare function planServerSyncDownloads(gameDir: string, mods: Array<ServerModEntry>): Promise<ServerSyncPlanResult>
 export declare function cleanupExtraMods(gameDir: string, serverFilenames: Array<string>, lockedMods?: Array<string> | undefined | null): Promise<CleanupExtraModsResult>
 export declare function checkFastModListSync(gameDir: string, manifestRevision: string, serverFilenames: Array<string>, lockedMods?: Array<string> | undefined | null): Promise<FastModListSyncCheckResult>
@@ -574,6 +575,20 @@ export declare function prepareLaunch(versionJson: string, options: LaunchOption
 export declare function launchGame(javaPath: string, jvmArgs: Array<string>, mainClass: string, gameArgs: Array<string>, gameDir: string): LaunchResult
 /** Get asset index and return download items for missing assets */
 export declare function getAssetDownloads(assetIndexUrl: string, assetsDir: string): Promise<Array<DownloadItem>>
+export interface JavaPaths {
+  java8?: string
+  java17?: string
+  java21?: string
+  java25?: string
+}
+export declare function resolveJavaForLaunch(mcVersion: string, customJavaPath?: string | undefined | null, configJavaPaths?: JavaPaths | undefined | null): string | null
+export interface ExtractNativesResult {
+  extracted: boolean
+  reusedCache: boolean
+  error?: string
+}
+export declare function extractNativesIfNeeded(versionJson: string, librariesDir: string, nativesDir: string): ExtractNativesResult
+export declare function createLaunchArgfile(args: Array<string>, gameDir: string, instanceId: string): string
 export declare function analyzeCrashLog(stderr: string): string | null
 export const enum ForgeLoaderType {
   Forge = 'Forge',

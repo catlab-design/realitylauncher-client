@@ -2,6 +2,11 @@
 
 import { ipcMain, app, BrowserWindow } from "electron";
 import { isGameRunning } from "../launcher.js";
+import { getConfig } from "../config.js";
+import {
+    MAIN_WINDOW_BOUNDS,
+    resolveMainWindowSize,
+} from "../window-bounds.js";
 
 export function registerWindowHandlers(getMainWindow: () => BrowserWindow | null): void {
     
@@ -45,9 +50,17 @@ export function registerWindowHandlers(getMainWindow: () => BrowserWindow | null
     ipcMain.handle("window-set-main-mode", async (): Promise<void> => {
         const mainWindow = getMainWindow();
         if (mainWindow) {
+            const windowSize = resolveMainWindowSize(getConfig());
             mainWindow.setResizable(true);
-            mainWindow.setMinimumSize(980, 620);
-            mainWindow.setSize(1100, 680);
+            mainWindow.setMinimumSize(
+                MAIN_WINDOW_BOUNDS.minWidth,
+                MAIN_WINDOW_BOUNDS.minHeight,
+            );
+            mainWindow.setMaximumSize(
+                MAIN_WINDOW_BOUNDS.maxWidth,
+                MAIN_WINDOW_BOUNDS.maxHeight,
+            );
+            mainWindow.setSize(windowSize.width, windowSize.height);
             mainWindow.center();
         }
     });

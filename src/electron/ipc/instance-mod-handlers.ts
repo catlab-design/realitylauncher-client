@@ -2,6 +2,8 @@ import type { IpcMain } from "electron";
 import { BrowserWindow } from "electron";
 import * as path from "path";
 import * as fs from "fs-extra";
+import { inferVersionFromFilename } from "./version-helpers.js";
+import { readInstalledContentLinks } from "../content-links.js";
 
 interface InstanceLike {
   gameDirectory: string;
@@ -85,6 +87,95 @@ export function registerInstanceModHandlers(deps: InstanceModHandlersDeps): void
     { mtimeMs: number; mods: any[]; hasUncached: boolean }
   >();
 
+  const isMetadataResolved = (meta?: ModMetadataCache): boolean => {
+    if (!meta) return false;
+    return Boolean(
+      meta.icon ||
+        meta.modrinthProjectId ||
+        meta.curseforgeProjectId ||
+        meta.modrinthId === "checked_missing",
+    );
+  };
+
+  const refreshCachedModsFromMetadata = (
+    instanceId: string,
+    modsDir: string,
+    cachedMods: any[],
+  ) => {
+    let changed = false;
+    let hasUncached = false;
+    let scheduledLookups = 0;
+    const LOOKUP_BATCH_PER_CALL = cachedMods.length > 120 ? 4 : 10;
+
+    const refreshedMods = cachedMods.map((mod) => {
+      const filePath = path.join(modsDir, mod.filename);
+      const cacheKey = getModCacheKey(
+        filePath,
+        mod.size,
+        mod.modifiedAt,
+      );
+      const metadata = modMetadataCache.get(cacheKey);
+
+      const lookupPending = pendingModrinthLookups.has(cacheKey);
+      const needsLookup = !isMetadataResolved(metadata);
+      if (lookupPending || needsLookup) hasUncached = true;
+
+      if (
+        needsLookup &&
+        !lookupPending &&
+        scheduledLookups < LOOKUP_BATCH_PER_CALL
+      ) {
+        scheduledLookups += 1;
+        void ensureModMetadata(
+          filePath,
+          instanceId,
+          mod.size,
+          mod.modifiedAt,
+        ).catch(() => {});
+      }
+
+      if (!metadata) return mod;
+
+      const nextMod = {
+        ...mod,
+        displayName: metadata.displayName || mod.name,
+        author: metadata.author || "",
+        description: metadata.description || "",
+        icon: metadata.icon || null,
+        version: metadata.version || inferVersionFromFilename(mod.filename) || "",
+        modrinthProjectId: metadata.modrinthProjectId,
+        curseforgeProjectId: metadata.curseforgeProjectId,
+      };
+
+      if (
+        nextMod.displayName !== mod.displayName ||
+        nextMod.author !== mod.author ||
+        nextMod.description !== mod.description ||
+        nextMod.icon !== mod.icon ||
+        nextMod.version !== mod.version ||
+        nextMod.modrinthProjectId !== mod.modrinthProjectId ||
+        nextMod.curseforgeProjectId !== mod.curseforgeProjectId
+      ) {
+        changed = true;
+      }
+
+      return nextMod;
+    });
+
+    if (changed || hasUncached !== modListCache.get(instanceId)?.hasUncached) {
+      modListCache.set(instanceId, {
+        mtimeMs: modListCache.get(instanceId)?.mtimeMs || 0,
+        mods: refreshedMods,
+        hasUncached,
+      });
+    }
+
+    return {
+      mods: changed ? refreshedMods : cachedMods,
+      hasUncached,
+    };
+  };
+
   ipcMain.handle("instance-list-mods", async (_event, instanceId: string) => {
     const instance = getInstance(instanceId);
     if (!instance) {
@@ -103,10 +194,46 @@ export function registerInstanceModHandlers(deps: InstanceModHandlersDeps): void
       return { ok: true, mods: [] };
     }
 
-    
+
     const cacheEntry = modListCache.get(instanceId);
     if (cacheEntry && cacheEntry.mtimeMs === stats.mtimeMs) {
-      return { ok: true, mods: cacheEntry.mods, hasUncached: cacheEntry.hasUncached };
+      // Directory mtime only changes on entry add/remove/rename, not when an
+      // existing file is overwritten in place (which is what happens when a
+      // mod is updated to a new version with the same filename). Re-stat each
+      // cached file so an in-place replacement still triggers a fresh scan.
+      let inPlaceChange = false;
+      await Promise.all(
+        cacheEntry.mods.map(async (mod) => {
+          if (inPlaceChange) return;
+          try {
+            const fStats = await fs.promises.stat(path.join(modsDir, mod.filename));
+            if (
+              fStats.size !== mod.size ||
+              fStats.mtime.toISOString() !== mod.modifiedAt
+            ) {
+              inPlaceChange = true;
+            }
+          } catch {
+            inPlaceChange = true;
+          }
+        }),
+      );
+      if (!inPlaceChange) {
+        const refreshed = refreshCachedModsFromMetadata(
+          instanceId,
+          modsDir,
+          cacheEntry.mods,
+        );
+        try {
+          const links = await readInstalledContentLinks(instance.gameDirectory);
+          const modLinks = links.mod || {};
+          for (const mod of refreshed.mods) {
+            const link = modLinks[mod.filename];
+            if (link?.versionId) mod.installedVersionId = link.versionId;
+          }
+        } catch {}
+        return { ok: true, mods: refreshed.mods, hasUncached: refreshed.hasUncached };
+      }
     }
 
     try {
@@ -116,7 +243,12 @@ export function registerInstanceModHandlers(deps: InstanceModHandlersDeps): void
       
       const native = getNativeModule() as any;
       const NATIVE_MOD_SCAN_MAX = 80;
-      const allowNativeSyncModScan = jsModEntries.length <= NATIVE_MOD_SCAN_MAX;
+      // native.listInstanceMods is a synchronous native call. Running it in
+      // Electron's main process can make the whole app show "not responding"
+      // while a freshly switched JAR is being parsed, so keep it opt-in only.
+      const allowNativeSyncModScan =
+        process.env.ENABLE_SYNC_NATIVE_MOD_SCAN === "1" &&
+        jsModEntries.length <= NATIVE_MOD_SCAN_MAX;
       const nativeModMap = new Map<string, any>();
 
       if (allowNativeSyncModScan && typeof native.listInstanceMods === "function") {
@@ -133,8 +265,11 @@ export function registerInstanceModHandlers(deps: InstanceModHandlersDeps): void
       }
 
       const modEntryByFilename = new Map<string, { filename: string }>();
-      for (const filename of nativeModMap.keys()) {
-        modEntryByFilename.set(filename, { filename });
+      const nativeModsPrimary = nativeModMap.size > 0;
+      if (nativeModsPrimary) {
+        for (const filename of nativeModMap.keys()) {
+          modEntryByFilename.set(filename, { filename });
+        }
       }
       for (const entry of jsModEntries) {
         if (!modEntryByFilename.has(entry.filename)) {
@@ -150,11 +285,6 @@ export function registerInstanceModHandlers(deps: InstanceModHandlersDeps): void
       let hasUncached = false;
       let scheduledLookups = 0;
       let cacheTouched = false;
-
-      const isMetadataResolved = (meta?: ModMetadataCache): boolean => {
-        if (!meta) return false;
-        return Boolean(meta.icon || meta.modrinthId);
-      };
 
       const worker = async () => {
         while (true) {
@@ -185,7 +315,10 @@ export function registerInstanceModHandlers(deps: InstanceModHandlersDeps): void
               displayName: seeded.displayName || (typeof nativeMeta?.name === "string" ? nativeMeta.name : name),
               author: seeded.author || (Array.isArray(nativeMeta?.authors) ? nativeMeta?.authors.filter(Boolean).join(", ") : undefined),
               description: seeded.description || nativeMeta?.description,
-              version: seeded.version || nativeMeta?.version,
+              version:
+                seeded.version ||
+                nativeMeta?.version ||
+                inferVersionFromFilename(file),
               icon: seeded.icon || (typeof nativeMeta?.iconBase64 === "string" && nativeMeta.iconBase64.length > 0 ? `data:image/png;base64,${nativeMeta.iconBase64}` : undefined),
             };
 
@@ -194,18 +327,47 @@ export function registerInstanceModHandlers(deps: InstanceModHandlersDeps): void
               cacheTouched = true;
             }
 
-            const hasUsefulLocalMetadata = Boolean(
-              metadata.icon ||
-                (metadata.displayName && metadata.displayName.toLowerCase() !== name.toLowerCase()) ||
-                metadata.version ||
-                metadata.description ||
-                metadata.author,
-            );
+            const inferredVersion = inferVersionFromFilename(file);
+            let resolvedMetadata = metadata;
+            let hydratedVersionSync = false;
+            if (
+              !resolvedMetadata.version &&
+              !inferredVersion &&
+              !resolvedMetadata.modrinthId &&
+              scheduledLookups < LOOKUP_BATCH_PER_CALL
+            ) {
+              scheduledLookups += 1;
+              const hydrated = await ensureModMetadata(
+                filePath,
+                instanceId,
+                fStats.size,
+                mtime,
+              );
+              const cachedAfterHydration = modMetadataCache.get(cacheKey);
+              resolvedMetadata = {
+                ...resolvedMetadata,
+                ...hydrated,
+                ...cachedAfterHydration,
+                version:
+                  hydrated?.version ||
+                  cachedAfterHydration?.version ||
+                  resolvedMetadata.version,
+              };
+              modMetadataCache.set(cacheKey, resolvedMetadata);
+              cacheTouched = true;
+              hydratedVersionSync = true;
+            }
+
             const lookupPending = pendingModrinthLookups.has(cacheKey);
-            const needsLookup = !isMetadataResolved(metadata) && !hasUsefulLocalMetadata;
+            const needsLookup = !isMetadataResolved(resolvedMetadata);
             if (lookupPending || needsLookup) hasUncached = true;
 
-            if (needsLookup && !lookupPending && scheduledLookups < LOOKUP_BATCH_PER_CALL) {
+            if (
+              needsLookup &&
+              !lookupPending &&
+              !hydratedVersionSync &&
+              scheduledLookups < LOOKUP_BATCH_PER_CALL
+            ) {
               scheduledLookups += 1;
               void ensureModMetadata(filePath, instanceId, fStats.size, mtime).catch(() => {});
             }
@@ -213,16 +375,16 @@ export function registerInstanceModHandlers(deps: InstanceModHandlersDeps): void
             mods[idx] = {
               filename: file,
               name,
-              displayName: metadata?.displayName || name,
-              author: metadata?.author || "",
-              description: metadata?.description || "",
-              icon: metadata?.icon || null,
-              version: metadata?.version || "",
+              displayName: resolvedMetadata?.displayName || name,
+              author: resolvedMetadata?.author || "",
+              description: resolvedMetadata?.description || "",
+              icon: resolvedMetadata?.icon || null,
+              version: resolvedMetadata?.version || inferredVersion || "",
               enabled,
               size: fStats.size,
               modifiedAt: mtime,
-              modrinthProjectId: metadata?.modrinthProjectId,
-              curseforgeProjectId: metadata?.curseforgeProjectId,
+              modrinthProjectId: resolvedMetadata?.modrinthProjectId,
+              curseforgeProjectId: resolvedMetadata?.curseforgeProjectId,
             };
           } catch (e) {}
         }
@@ -234,6 +396,19 @@ export function registerInstanceModHandlers(deps: InstanceModHandlersDeps): void
       if (cacheTouched) saveMetadataCache();
 
       modListCache.set(instanceId, { mtimeMs: stats.mtimeMs, mods: validMods, hasUncached });
+
+      // Merge installed versionIds from content-links so the frontend can
+      // compare by ID instead of version string (version strings from the JAR
+      // and from Modrinth often don't match, e.g. "1.21.1" vs "18.6+fabric.1.21.1").
+      try {
+        const links = await readInstalledContentLinks(instance.gameDirectory);
+        const modLinks = links.mod || {};
+        for (const mod of validMods) {
+          const link = modLinks[mod.filename];
+          if (link?.versionId) mod.installedVersionId = link.versionId;
+        }
+      } catch {}
+
       return { ok: true, mods: validMods, hasUncached };
     } catch (error: any) {
       return { ok: false, error: error.message, mods: [] };

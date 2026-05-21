@@ -21,7 +21,6 @@ import {
     // Helpers
     hasValidFilesForType,
     matchesVersion,
-    normalizeImageUrl,
     // Constants
     SEARCH_DEBOUNCE_MS,
     // Components
@@ -31,6 +30,11 @@ import {
     ProjectList,
     ProjectPreview,
     ProjectDetailPage,
+    ConfirmInstallDialog,
+    normalizeModrinthFull,
+    normalizeCurseforgeFull,
+    normalizeModrinthSearchHit,
+    normalizeCurseforgeSearchHit,
 } from "./ExploreTabs";
 
 // ========================================
@@ -89,12 +93,24 @@ export function Explore({ colors, config }: ExploreProps) {
     // Detail page state
     const [detailProject, setDetailProject] = useState<ModrinthProject | null>(null);
 
-    // Filter state
-    const [mcVersionFilter, setMcVersionFilter] = useState("");
-    const [loaderFilter, setLoaderFilter] = useState("");
+    // Filter state — arrays so each filter category supports multi-select. Modrinth handles
+    // multi-value as OR within the same facet group; CurseForge's API is single-value only so
+    // we degrade gracefully (see loadProjects).
+    const [mcVersionFilters, setMcVersionFilters] = useState<string[]>([]);
+    const [loaderFilters, setLoaderFilters] = useState<string[]>([]);
+    const [categoryFilters, setCategoryFilters] = useState<string[]>([]);
+    const [environmentFilters, setEnvironmentFilters] = useState<string[]>([]);
 
     // Debounce timer ref for search
     const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
+    // Race-condition guard for project-detail fetches (preview/list).
+    // Each fetchFullProjectDetails increments this; only the latest reply may update state.
+    const fetchTokenRef = useRef(0);
+    // Latest in-flight project_id whose preview was requested. Used to drop stale responses.
+    const activePreviewIdRef = useRef<string | null>(null);
+
+    // Confirm-install modal state (U1)
+    const [pendingInstall, setPendingInstall] = useState<{ project: ModrinthProject; duplicate: boolean } | null>(null);
 
     // ========================================
     // Data Loading (must be defined before effects that use them)
@@ -133,119 +149,73 @@ export function Explore({ colors, config }: ExploreProps) {
     // Load on mount and when filters change
     useEffect(() => {
         loadProjects();
-    }, [projectType, sortBy, page, viewCount, contentSource, mcVersionFilter, loaderFilter]);
+    }, [projectType, sortBy, page, viewCount, contentSource, mcVersionFilters, loaderFilters, categoryFilters, environmentFilters]);
 
-    // Update preview when results change
+    // Reset preview/detail when switching source or project type (B8)
+    useEffect(() => {
+        setPreviewProject(null);
+        setDetailProject(null);
+        activePreviewIdRef.current = null;
+    }, [contentSource, projectType]);
+
+    // Auto-select first item when results change. Track the id we just promoted so we
+    // don't re-promote it on every fetch tick (avoid B4 loop).
+    const lastAutoSelectedRef = useRef<string | null>(null);
     useEffect(() => {
         if (!results || results.length === 0) {
             setPreviewProject(null);
+            lastAutoSelectedRef.current = null;
             return;
         }
-        if (!previewProject) {
-            handleSelectProject(results[0]);
-            return;
+        const previewId = previewProject?.project_id ?? null;
+        const stillExists = previewId && results.some((p) => p.project_id === previewId);
+        if (!stillExists) {
+            const first = results[0];
+            if (lastAutoSelectedRef.current !== first.project_id) {
+                lastAutoSelectedRef.current = first.project_id;
+                handleSelectProject(first);
+            }
         }
-        const stillExists = results.some((p) => p.project_id === previewProject.project_id);
-        if (!stillExists) handleSelectProject(results[0]);
     }, [results]);
 
     const fetchFullProjectDetails = async (project: ModrinthProject) => {
         // Fetch for both Modrinth and CurseForge
         if (!project.project_id) return;
 
+        // Token-based race guard (B3). Each call gets a new token; only the latest may apply.
+        const myToken = ++fetchTokenRef.current;
+        const myProjectId = project.project_id;
+        activePreviewIdRef.current = myProjectId;
+        const isStale = () =>
+            fetchTokenRef.current !== myToken || activePreviewIdRef.current !== myProjectId;
+
         try {
+            let normalized: ModrinthProject | null = null;
             if (contentSource === CONTENT_SOURCES.MODRINTH) {
                 const fullProject = await window.api?.modrinthGetProject?.(project.project_id);
-
-                if (fullProject) {
-                    // Normalize Modrinth data (camelCase -> snake_case fallback)
-                    // API usually returns snake_case, but we check both just in case
-                    const normalized: ModrinthProject = {
-                        slug: fullProject.slug,
-                        title: fullProject.title,
-                        description: fullProject.description,
-                        categories: fullProject.categories || fullProject.displayCategories || fullProject.display_categories || [],
-                        downloads: fullProject.downloads,
-                        icon_url: normalizeImageUrl(fullProject.icon_url || fullProject.iconUrl || null, 'modrinth'),
-                        project_id: fullProject.project_id || fullProject.projectId || project.project_id,
-                        author: fullProject.author || project.author || t('unknown'),
-                        versions: fullProject.versions || project.versions || [],
-                        game_versions: fullProject.game_versions || fullProject.gameVersions || project.game_versions || [],
-                        loaders: fullProject.loaders || project.loaders || [],
-                        follows: fullProject.followers || fullProject.follows || 0,
-                        client_side: fullProject.clientSide || fullProject.client_side,
-                        server_side: fullProject.serverSide || fullProject.server_side,
-                        gallery: fullProject.gallery || [],
-                        // Preserve existing featured_gallery to prevent flash
-                        featured_gallery: project.featured_gallery || fullProject.featured_gallery || fullProject.featuredGallery || null,
-                    };
-
-                    // Update Preview if matched
-                    setPreviewProject(prev => {
-                        if (prev && prev.project_id === normalized.project_id) {
-                            return normalized;
-                        }
-                        return prev;
-                    });
-
-                    // Update List Results to show icon/colors
-                    setResults(prev => prev.map(p =>
-                        p.project_id === normalized.project_id ? normalized : p
-                    ));
-                }
+                if (isStale()) return;
+                if (fullProject) normalized = normalizeModrinthFull(fullProject, project, t('unknown'));
             } else if (contentSource === CONTENT_SOURCES.CURSEFORGE) {
                 const result = await window.api?.curseforgeGetProject?.(project.project_id);
-                
-                if (result?.data) {
-                    const cf = result.data;
-                    const normalized: ModrinthProject = {
-                        slug: cf.slug || cf.id.toString(),
-                        title: cf.name,
-                        description: cf.summary,
-                        categories: cf.categories?.map((c: any) => c.name) || [],
-                        downloads: cf.downloadCount,
-                        icon_url: normalizeImageUrl(cf.logo?.url || null, 'curseforge'),
-                        project_id: cf.id.toString(),
-                        author: cf.authors?.[0]?.name || t('unknown'),
-                        versions: cf.latestFiles?.flatMap((f: any) => f.gameVersions) || [],
-                        follows: cf.thumbsUpCount || 0,
-                        client_side: "required",
-                        server_side: "optional",
-                        gallery: cf.screenshots?.map((s: any) => ({
-                            url: s.url,
-                            featured: false,
-                            created: "",
-                            ordering: 0
-                        })) || [],
-                        featured_gallery: cf.screenshots?.[0]?.url || null,
-                    };
-
-                    // Update Preview if matched
-                    setPreviewProject(prev => {
-                        if (prev && prev.project_id === normalized.project_id) {
-                            return normalized;
-                        }
-                        return prev;
-                    });
-
-                    // Update List Results
-                    setResults(prev => prev.map(p =>
-                        p.project_id === normalized.project_id ? normalized : p
-                    ));
-                }
+                if (isStale()) return;
+                if (result?.data) normalized = normalizeCurseforgeFull(result.data, project, t('unknown'));
             }
+            if (!normalized) return;
+            const final = normalized;
+            // Only patch in place — don't replace the row if the user has clicked away.
+            setPreviewProject(prev => (prev && prev.project_id === final.project_id ? final : prev));
+            setResults(prev => prev.map(p => (p.project_id === final.project_id ? final : p)));
         } catch (error) {
             console.error("[Explore] Failed to fetch full project details:", error);
         }
     };
 
     const handleSelectProject = (project: ModrinthProject) => {
-        // Two-click navigation: first click = sidebar preview, second click on same project = full detail page
+        // Two-click navigation: first click = sidebar preview, second click on same project = full detail page (U2)
         if (previewProject?.project_id === project.project_id) {
-            // Already previewing this project — open full detail page
             handleOpenDetail(project);
         } else {
-            // First click — show sidebar preview
+            activePreviewIdRef.current = project.project_id;
             setPreviewProject(project);
             fetchFullProjectDetails(project);
         }
@@ -255,56 +225,32 @@ export function Explore({ colors, config }: ExploreProps) {
         setIsLoading(true);
         try {
             if (contentSource === CONTENT_SOURCES.MODRINTH) {
+                // Build facets: each inner array is OR within a category; outer arrays are AND'd.
+                // E.g. selecting Fabric + Forge -> [["categories:fabric","categories:forge"]].
+                const extraFacets: string[][] = [];
+                if (categoryFilters.length) extraFacets.push(categoryFilters.map(c => `categories:${c}`));
+                if (loaderFilters.length) extraFacets.push(loaderFilters.map(l => `categories:${l}`));
+                if (mcVersionFilters.length) extraFacets.push(mcVersionFilters.map(v => `versions:${v}`));
+                if (environmentFilters.includes("client")) extraFacets.push(["client_side:required", "client_side:optional"]);
+                if (environmentFilters.includes("server")) extraFacets.push(["server_side:required", "server_side:optional"]);
+
                 const result = await window.api?.modrinthSearch?.({
                     query: searchQuery,
                     projectType: projectType,
                     sortBy: sortBy,
                     limit: viewCount,
                     offset: (page - 1) * viewCount,
-                    gameVersion: mcVersionFilter || undefined,
-                    loader: loaderFilter || undefined,
+                    // gameVersion/loader on the helper are AND-only single values — leave them
+                    // empty when we have selections; the full OR list goes through `facets`.
+                    facets: extraFacets.length > 0 ? JSON.stringify(extraFacets) : undefined,
                 });
 
                 if (result?.hits) {
-                    // DEBUG: Log Modrinth response to inspect total_hits / totalHits
-                    console.debug('[Explore] modrinthSearch result sample:', {
-                        total_hits: result.total_hits,
-                        totalHits: result.totalHits,
-                        total_hits_type: typeof result.total_hits,
-                        totalHits_type: typeof result.totalHits,
-                        first_hit: result.hits && result.hits.length > 0 ? result.hits[0] : null,
-                    });
-
-                    // Normalize Modrinth data (handle both camelCase from Native and snake_case from JS)
-                    const normalized: ModrinthProject[] = result.hits.map((mr: any) => ({
-                        source: "modrinth",
-                        slug: mr.slug,
-                        title: mr.title,
-                        description: mr.description,
-                        categories: mr.categories || mr.displayCategories || mr.display_categories || [],
-                        downloads: mr.downloads,
-                        icon_url: normalizeImageUrl(mr.iconUrl || mr.icon_url || null, 'modrinth'),
-                        project_id: mr.projectId || mr.project_id,
-                        author: mr.author || t('unknown'),
-                        versions: mr.versions || [],
-                        game_versions: mr.gameVersions || mr.game_versions || [],
-                        loaders: mr.loaders || [],
-                        follows: mr.follows,
-                        client_side: mr.clientSide || mr.client_side,
-                        server_side: mr.serverSide || mr.server_side,
-                        date_created: mr.date_created,
-                        date_modified: mr.date_modified,
-                        license: mr.license ? { id: mr.license, name: mr.license } : undefined,
-                        gallery: mr.gallery?.map((url: string) => ({
-                            url,
-                            featured: false,
-                            created: "",
-                            ordering: 0
-                        })) || [],
-                        featured_gallery: mr.featuredGallery || mr.featured_gallery || null,
-                    }));
+                    const normalized: ModrinthProject[] = result.hits.map((mr: any) =>
+                        normalizeModrinthSearchHit(mr, t('unknown'))
+                    );
                     setResults(normalized);
-                    // Modrinth sometimes uses 'total_hits' (snake_case) or 'totalHits' depending on the source
+                    // Modrinth sometimes returns 'total_hits' (snake_case) or 'totalHits' depending on the source
                     setTotalHits(result.total_hits ?? result.totalHits ?? 0);
                 }
             } else {
@@ -316,91 +262,32 @@ export function Explore({ colors, config }: ExploreProps) {
                     'neoforge': 6
                 };
 
+                // CurseForge search only supports a single gameVersion + single modLoaderType, so
+                // we take the first selection from each array. The user keeps the multi-select UX;
+                // we just degrade quietly on the CF side.
+                const cfLoader = loaderFilters[0];
+                const cfVersion = mcVersionFilters[0];
                 const result = await window.api?.curseforgeSearch?.({
                     query: searchQuery,
                     projectType: projectType,
                     sortBy: sortBy,
                     pageSize: viewCount,
                     index: (page - 1) * viewCount,
-                    gameVersion: mcVersionFilter || undefined,
-                    modLoaderType: loaderFilter ? modLoaderMapping[loaderFilter.toLowerCase()] : undefined,
+                    gameVersion: cfVersion || undefined,
+                    modLoaderType: cfLoader ? modLoaderMapping[cfLoader.toLowerCase()] : undefined,
                 });
 
                 if (result?.data) {
-                    const normalized: ModrinthProject[] = result.data.map((cf: any) => {
-                        const KNOWN_LOADERS = ["fabric", "forge", "neoforge", "quilt"];
-                        const gvs = new Set<string>();
-                        const lds = new Set<string>();
-
-                        const files = cf.latestFiles || cf.latest_files || [];
-                        if (files && Array.isArray(files)) {
-                            for (const file of files) {
-                                if (file.gameVersions) {
-                                    for (const gv of file.gameVersions) {
-                                        const lower = gv.toLowerCase();
-                                        if (KNOWN_LOADERS.includes(lower)) {
-                                            lds.add(lower);
-                                        } else if (gv && !gv.toLowerCase().includes("client") && !gv.toLowerCase().includes("server")) {
-                                            gvs.add(gv);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Also check top-level gameVersions if available
-                        if (cf.gameVersions && Array.isArray(cf.gameVersions)) {
-                            for (const gv of cf.gameVersions) {
-                                const lower = gv.toLowerCase();
-                                if (KNOWN_LOADERS.includes(lower)) {
-                                    lds.add(lower);
-                                } else if (gv && !gv.toLowerCase().includes("client") && !gv.toLowerCase().includes("server")) {
-                                    gvs.add(gv);
-                                }
-                            }
-                        }
-
-                        return {
-                            source: "curseforge",
-                            slug: cf.slug || cf.id.toString(),
-                            title: cf.name,
-                            description: cf.summary,
-                            categories: cf.categories?.map((c: any) => c.name) || [],
-                            downloads: cf.downloadCount,
-                            icon_url: normalizeImageUrl(cf.logo?.url || null, 'curseforge'),
-                            project_id: cf.id.toString(),
-                            author: cf.authors?.[0]?.name || t('unknown'),
-                            team_members: cf.authors?.map((a: any) => ({
-                                user: { username: a.name },
-                                role: "Author"
-                            })) || [],
-                            versions: [], // We'll fetch these in the detail page
-                            game_versions: Array.from(gvs),
-                            loaders: Array.from(lds),
-                            follows: cf.thumbsUpCount || 0,
-                            client_side: "required",
-                            server_side: "optional",
-                            source_url: cf.links?.sourceUrl || undefined,
-                            wiki_url: cf.links?.wikiUrl || undefined,
-                            issues_url: cf.links?.issuesUrl || undefined,
-                            date_created: cf.dateCreated,
-                            date_modified: cf.dateModified,
-                            gallery: cf.screenshots?.map((s: any) => ({
-                                url: s.url,
-                                featured: false,
-                                created: "",
-                                ordering: 0
-                            })) || [],
-                            featured_gallery: cf.screenshots?.[0]?.url || null,
-                        };
-                    });
+                    const normalized: ModrinthProject[] = result.data.map((cf: any) =>
+                        normalizeCurseforgeSearchHit(cf, t('unknown'))
+                    );
                     setResults(normalized);
                     setTotalHits(result.pagination?.totalCount || 0);
                 }
             }
         } catch (error) {
             console.error("[Explore] Load failed:", error);
-            toast.error(t('load_data_failed') + ": " + (error instanceof Error ? error.message : String(error)));
+            toast.error(t('load_data_failed'));
         } finally {
             setIsLoading(false);
         }
@@ -415,16 +302,19 @@ export function Explore({ colors, config }: ExploreProps) {
         loadProjects();
     };
 
+    // Track the last query we actually sent so we skip no-op refetches when the user
+    // types and erases the same characters back to where it was (U7).
+    const lastSentQueryRef = useRef("");
     const handleDebouncedSearch = useCallback((query: string) => {
         setSearchQuery(query);
-        if (searchDebounceRef.current) {
-            clearTimeout(searchDebounceRef.current);
-        }
+        if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
         searchDebounceRef.current = setTimeout(() => {
+            if (query === lastSentQueryRef.current) return;
+            lastSentQueryRef.current = query;
             setPage(1);
             loadProjects();
         }, SEARCH_DEBOUNCE_MS);
-    }, [projectType, sortBy, viewCount, contentSource, mcVersionFilter, loaderFilter]);
+    }, [projectType, sortBy, viewCount, contentSource, mcVersionFilters, loaderFilters, categoryFilters, environmentFilters]);
 
     // ========================================
     // Compatibility Checking
@@ -478,6 +368,24 @@ export function Explore({ colors, config }: ExploreProps) {
     // ========================================
 
     const handleInstallModpack = async (project: ModrinthProject) => {
+        // Concurrent-install guard (U4): block while another modpack install is in flight.
+        if (isInstallingModpack) {
+            toast.error(t('install_in_progress_warn'));
+            return;
+        }
+        // Duplicate-install warning (U3): if an existing instance was created from this
+        // project_id (we don't persist that mapping yet, so fall back to name match) ask
+        // the user to confirm. Always show a confirm dialog on first install too (U1).
+        const duplicate = instances.some(
+            (inst) => inst.name === project.title || inst.name.startsWith(project.title + " ")
+        );
+        setPendingInstall({ project, duplicate });
+    };
+
+    // Open the version-selection modal for a modpack install. Called from the confirm
+    // dialog after the user explicitly accepts.
+    const beginInstallModpack = async (project: ModrinthProject) => {
+        setPendingInstall(null);
         setVersionModalProject(project);
         setVersionModalTitle(t('select_version'));
         setVersionModalTarget("modpack");
@@ -590,7 +498,7 @@ export function Explore({ colors, config }: ExploreProps) {
                 toast.success(t('install_complete'));
                 loadInstances();
             } else {
-                toast.error(result?.error || t('install_failed'));
+                toast.error(t('install_failed_server'));
             }
         } catch (error: any) {
             toast.error(error?.message || t('error_occurred'));
@@ -763,7 +671,7 @@ export function Explore({ colors, config }: ExploreProps) {
                 setSelectedInstanceForDownload(null);
                 setInstanceCompatibility([]);
             } else {
-                toast.error(result?.error || t('download_failed'));
+                toast.error(t('download_failed'));
             }
         } catch (error: any) {
             toast.error(error?.message || t('error_occurred'));
@@ -786,92 +694,27 @@ export function Explore({ colors, config }: ExploreProps) {
         try {
             if (contentSource === CONTENT_SOURCES.MODRINTH) {
                 const fullProject = await window.api?.modrinthGetProject?.(project.project_id);
-                if (fullProject) {
-                    const normalized: ModrinthProject = {
-                        slug: fullProject.slug,
-                        title: fullProject.title,
-                        description: fullProject.description,
-                        categories: fullProject.categories || fullProject.displayCategories || fullProject.display_categories || [],
-                        downloads: fullProject.downloads,
-                        icon_url: normalizeImageUrl(fullProject.icon_url || fullProject.iconUrl || null, 'modrinth'),
-                        project_id: fullProject.project_id || fullProject.projectId || project.project_id,
-                        author: fullProject.author || project.author || t('unknown'),
-                        versions: fullProject.versions || project.versions || [],
-                        game_versions: fullProject.game_versions || fullProject.gameVersions || project.game_versions || [],
-                        loaders: fullProject.loaders || project.loaders || [],
-                        follows: fullProject.followers || fullProject.follows || 0,
-                        client_side: fullProject.clientSide || fullProject.client_side,
-                        server_side: fullProject.serverSide || fullProject.server_side,
-                        gallery: fullProject.gallery || [],
-                        featured_gallery: project.featured_gallery || fullProject.featured_gallery || fullProject.featuredGallery || null,
-                        color: fullProject.color || project.color,
-                        body: fullProject.body || "",
-                        source_url: fullProject.source_url || fullProject.sourceUrl || undefined,
-                        wiki_url: fullProject.wiki_url || fullProject.wikiUrl || undefined,
-                        discord_url: fullProject.discord_url || fullProject.discordUrl || undefined,
-                        issues_url: fullProject.issues_url || fullProject.issuesUrl || undefined,
-                        license: fullProject.license || undefined,
-                        date_created: fullProject.published || fullProject.date_created || fullProject.dateCreated || undefined,
-                        date_modified: fullProject.updated || fullProject.date_modified || fullProject.dateModified || undefined,
-                    };
-
-                    // Fetch team members
-                    try {
-                        const team = await (window.api as any)?.modrinthGetTeam?.(project.project_id);
-                        if (team && Array.isArray(team)) {
-                            normalized.team_members = team.map((m: any) => ({
-                                user: {
-                                    username: m.user?.username || m.user?.name || 'Unknown',
-                                    avatar_url: m.user?.avatar_url || m.user?.avatarUrl || undefined,
-                                },
-                                role: m.role || 'Member',
-                            }));
-                        }
-                    } catch (e) {
-                        // Team fetch is optional
+                if (!fullProject) return;
+                const normalized = normalizeModrinthFull(fullProject, project, t('unknown'));
+                // Team is a separate Modrinth endpoint and optional — don't block the page on it.
+                try {
+                    const team = await (window.api as any)?.modrinthGetTeam?.(project.project_id);
+                    if (Array.isArray(team)) {
+                        normalized.team_members = team.map((m: any) => ({
+                            user: {
+                                username: m.user?.username || m.user?.name || 'Unknown',
+                                avatar_url: m.user?.avatar_url || m.user?.avatarUrl || undefined,
+                            },
+                            role: m.role || 'Member',
+                        }));
                     }
-
-                    setDetailProject(normalized);
-                }
+                } catch {/* team fetch is optional */}
+                setDetailProject(normalized);
             } else if (contentSource === CONTENT_SOURCES.CURSEFORGE) {
                 const result = await window.api?.curseforgeGetProject?.(project.project_id);
-                if (result?.data) {
-                    const cf = result.data;
-                    const descResult = await (window.api as any)?.curseforgeGetDescription?.(project.project_id);
-
-                    const normalized: ModrinthProject = {
-                        slug: cf.slug || cf.id.toString(),
-                        title: cf.name,
-                        description: cf.summary,
-                        categories: cf.categories?.map((c: any) => c.name) || [],
-                        downloads: cf.downloadCount,
-                        icon_url: normalizeImageUrl(cf.logo?.url || null, 'curseforge'),
-                        project_id: cf.id.toString(),
-                        author: cf.authors?.[0]?.name || t('unknown'),
-                        versions: cf.latestFiles?.flatMap((f: any) => f.gameVersions) || [],
-                        follows: cf.thumbsUpCount || 0,
-                        client_side: "required",
-                        server_side: "optional",
-                        gallery: cf.screenshots?.map((s: any) => ({
-                            url: s.url,
-                            featured: false,
-                            created: "",
-                            ordering: 0,
-                        })) || [],
-                        featured_gallery: cf.screenshots?.[0]?.url || null,
-                        body: descResult?.data || "",
-                        source_url: cf.links?.sourceUrl || undefined,
-                        wiki_url: cf.links?.wikiUrl || undefined,
-                        issues_url: cf.links?.issuesUrl || undefined,
-                        date_created: cf.dateCreated || undefined,
-                        date_modified: cf.dateModified || undefined,
-                        team_members: cf.authors?.map((a: any) => ({
-                            user: { username: a.name, avatar_url: undefined },
-                            role: 'Author',
-                        })) || [],
-                    };
-                    setDetailProject(normalized);
-                }
+                if (!result?.data) return;
+                const descResult = await (window.api as any)?.curseforgeGetDescription?.(project.project_id);
+                setDetailProject(normalizeCurseforgeFull(result.data, project, t('unknown'), descResult?.data));
             }
         } catch (error) {
             console.error("[Explore] Failed to fetch full project for detail:", error);
@@ -900,6 +743,17 @@ export function Explore({ colors, config }: ExploreProps) {
 
     return (
         <div className="space-y-4">
+            {/* Confirm-install modal (U1, U3) */}
+            {pendingInstall && (
+                <ConfirmInstallDialog
+                    colors={colors}
+                    project={pendingInstall.project}
+                    duplicate={pendingInstall.duplicate}
+                    onCancel={() => setPendingInstall(null)}
+                    onConfirm={() => beginInstallModpack(pendingInstall.project)}
+                />
+            )}
+
             {/* Instance Selection Modal */}
             {showInstanceModal && selectedProject && (
                 <InstanceSelectModal
@@ -966,26 +820,31 @@ export function Explore({ colors, config }: ExploreProps) {
                         contentSource={contentSource}
                         projectType={projectType}
                         searchQuery={searchQuery}
-                        sortBy={sortBy}
                         viewCount={viewCount}
                         page={page}
                         totalPages={totalPages}
-                        mcVersionFilter={mcVersionFilter}
-                        loaderFilter={loaderFilter}
+                        mcVersionFilters={mcVersionFilters}
+                        loaderFilters={loaderFilters}
+                        categoryFilters={categoryFilters}
+                        environmentFilters={environmentFilters}
+                        sortBy={sortBy}
                         onContentSourceChange={(source) => { setContentSource(source); setPage(1); }}
                         onProjectTypeChange={(type) => { setProjectType(type); setPage(1); }}
                         onSearchChange={handleDebouncedSearch}
                         onSearchSubmit={handleSearch}
-                        onSortChange={(sort) => { setSortBy(sort); setPage(1); }}
                         onViewCountChange={(count) => { setViewCount(count); setPage(1); }}
                         onPageChange={setPage}
-                        onMcVersionFilterChange={(v) => { setMcVersionFilter(v); setPage(1); }}
-                        onLoaderFilterChange={(l) => { setLoaderFilter(l); setPage(1); }}
+                        onSortChange={(s) => { setSortBy(s); setPage(1); }}
+                        onMcVersionFiltersChange={(v) => { setMcVersionFilters(v); setPage(1); }}
+                        onLoaderFiltersChange={(l) => { setLoaderFilters(l); setPage(1); }}
+                        onCategoryFiltersChange={(c) => { setCategoryFilters(c); setPage(1); }}
+                        onEnvironmentFiltersChange={(e) => { setEnvironmentFilters(e); setPage(1); }}
+                        showCategoryFilter={projectType === "mod" || projectType === "modpack"}
+                        showEnvironmentFilter={projectType === "mod"}
                     />
 
-                    {/* Main Layout */}
+                    {/* Main layout: list + preview (sidebar removed, list now takes ~2/3) */}
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mt-4">
-                        {/* List */}
                         <div className="lg:col-span-8 xl:col-span-9">
                             <ProjectList
                                 colors={colors}
@@ -1003,7 +862,6 @@ export function Explore({ colors, config }: ExploreProps) {
                             />
                         </div>
 
-                        {/* Preview Panel */}
                         <div className="lg:col-span-4 xl:col-span-3">
                             <ProjectPreview
                                 colors={colors}
@@ -1013,7 +871,9 @@ export function Explore({ colors, config }: ExploreProps) {
                                 installProgress={installProgress}
                                 onInstallModpack={handleInstallModpack}
                                 onAddToInstance={handleAddToInstance}
-                                isLoading={isLoading}
+                                // Only show preview skeleton during the initial search load — not
+                                // every time fetchFullProjectDetails patches the row (U19).
+                                isLoading={isLoading && !previewProject}
                                 showFollows={contentSource === CONTENT_SOURCES.MODRINTH}
                             />
                         </div>

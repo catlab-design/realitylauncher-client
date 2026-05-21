@@ -17,6 +17,7 @@ export interface ModInfo {
   version?: string;
   modrinthProjectId?: string;
   curseforgeProjectId?: string;
+  installedVersionId?: string;
 }
 
 export interface ContentItem {
@@ -30,6 +31,7 @@ export interface ContentItem {
   version?: string; // Parsed from pack.mcmeta pack_format
   modrinthProjectId?: string; // สำหรับ fallback icon Modrinth
   curseforgeProjectId?: string; // สำหรับ fallback icon CurseForge
+  installedVersionId?: string;
 }
 
 export interface DatapackItem extends ContentItem {

@@ -2,6 +2,16 @@ import type { IpcMain } from "electron";
 import * as path from "path";
 import * as fs from "fs-extra";
 import AdmZip from "adm-zip";
+import {
+  deleteInstalledContentLink,
+  getInstalledContentLink,
+  renameInstalledContentLink,
+  saveInstalledContentLink,
+} from "../content-links.js";
+import {
+  inferVersionFromFilename,
+  packFormatToVersion,
+} from "./version-helpers.js";
 
 type NativePackKind = "resource" | "shader" | "datapack";
 
@@ -29,7 +39,6 @@ export interface InstancePackHandlersDeps {
   dedupeShaders: (items: any[]) => any[];
   dedupeDatapacks: (items: any[]) => any[];
   getIconFromCache: (key: string) => PackIconCacheEntry | undefined;
-  packFormatToVersion: (format: number, type?: "resource" | "data") => string;
   inspectPackMetadataWithNative: (
     filePath: string,
     kind: NativePackKind,
@@ -62,7 +71,6 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
     dedupeShaders,
     dedupeDatapacks,
     getIconFromCache,
-    packFormatToVersion,
     inspectPackMetadataWithNative,
     fetchIconFromOnline,
     readUtf8LogTail,
@@ -71,6 +79,60 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
   } = deps;
   const LATEST_LOG_TAIL_MAX_LINES = latestLogTailMaxLines;
   const LATEST_LOG_TAIL_MAX_BYTES = latestLogTailMaxBytes;
+  const pendingContentLinkBackfills = new Set<string>();
+
+  async function backfillMissingContentLink(
+    gameDirectory: string,
+    contentType: "shader" | "resourcepack",
+    filename: string,
+    displayName: string,
+  ): Promise<void> {
+    const pendingKey = `${contentType}:${gameDirectory}:${filename}`;
+    if (pendingContentLinkBackfills.has(pendingKey)) return;
+
+    pendingContentLinkBackfills.add(pendingKey);
+    try {
+      const existing = await getInstalledContentLink(
+        gameDirectory,
+        contentType,
+        filename,
+      );
+      if (existing?.projectId) return;
+
+      const cacheKey = `${contentType}:${displayName.toLowerCase()}`;
+      const cached = getIconFromCache(cacheKey);
+
+      if (cached?.modrinthId || cached?.curseforgeId) {
+        await saveInstalledContentLink(gameDirectory, contentType, filename, {
+          source: cached.modrinthId ? "modrinth" : "curseforge",
+          projectId: cached.modrinthId || cached.curseforgeId || "",
+          versionId: existing?.versionId,
+          iconUrl: cached.url,
+        });
+        return;
+      }
+
+      const onlineResult = await fetchIconFromOnline(displayName, contentType);
+      if (!onlineResult.modrinthId && !onlineResult.curseforgeId) {
+        return;
+      }
+
+      await saveInstalledContentLink(gameDirectory, contentType, filename, {
+        source: onlineResult.modrinthId ? "modrinth" : "curseforge",
+        projectId: onlineResult.modrinthId || onlineResult.curseforgeId || "",
+        versionId: existing?.versionId,
+        iconUrl: onlineResult.url,
+      });
+    } catch (error) {
+      logger.warn("Content link backfill failed", {
+        contentType,
+        filename,
+        message: String((error as Error)?.message || error),
+      });
+    } finally {
+      pendingContentLinkBackfills.delete(pendingKey);
+    }
+  }
 
 
   ipcMain.handle(
@@ -102,14 +164,19 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
             }>;
 
             if (Array.isArray(scanned)) {
-              const nativeItems = scanned
-                .map((item) => {
+              const nativeItems = (await Promise.all(
+                scanned.map(async (item) => {
                   const filename = String(item?.filename || "");
                   if (!filename) return null;
 
                   const displayName = String(
                     item?.displayName || filename,
                   ).trim();
+                  const linked = await getInstalledContentLink(
+                    instance.gameDirectory,
+                    "resourcepack",
+                    filename,
+                  );
                   const cacheKey = `resourcepack:${displayName.toLowerCase()}`;
                   const cached = getIconFromCache(cacheKey);
                   const nativeIcon =
@@ -117,6 +184,19 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
                     item.iconBase64.length > 0
                       ? `data:image/png;base64,${item.iconBase64}`
                       : null;
+                  const linkedIconUrl = linked?.iconUrl || null;
+                  const linkedModrinthProjectId =
+                    linked?.source === "modrinth" ? linked.projectId : undefined;
+                  const linkedCurseforgeProjectId =
+                    linked?.source === "curseforge" ? linked.projectId : undefined;
+                  if (!linked && !linkedModrinthProjectId && !linkedCurseforgeProjectId) {
+                    void backfillMissingContentLink(
+                      instance.gameDirectory,
+                      "resourcepack",
+                      filename,
+                      displayName,
+                    );
+                  }
 
                   let version =
                     typeof item?.version === "string" && item.version.length > 0
@@ -124,6 +204,9 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
                       : undefined;
                   if (!version && typeof item?.packFormat === "number") {
                     version = packFormatToVersion(item.packFormat, "resource");
+                  }
+                  if (!version) {
+                    version = inferVersionFromFilename(filename);
                   }
 
                   return {
@@ -140,13 +223,16 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
                         ? item.modifiedAt
                         : new Date().toISOString(),
                     enabled: item?.enabled !== false,
-                    icon: cached?.url || nativeIcon,
+                    icon: linkedIconUrl || cached?.url || nativeIcon,
                     version,
-                    modrinthProjectId: cached?.modrinthId,
-                    curseforgeProjectId: cached?.curseforgeId,
+                    modrinthProjectId:
+                      linkedModrinthProjectId || cached?.modrinthId,
+                    curseforgeProjectId:
+                      linkedCurseforgeProjectId || cached?.curseforgeId,
+                    installedVersionId: linked?.versionId,
                   };
-                })
-                .filter((item) => item !== null) as any[];
+                }),
+              )).filter((item) => item !== null) as any[];
 
               return { ok: true, items: dedupeResourcepacks(nativeItems) };
             }
@@ -207,15 +293,39 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
                 filePath,
                 "resource",
               );
+              const linked = await getInstalledContentLink(
+                instance.gameDirectory,
+                "resourcepack",
+                file,
+              );
 
               const cacheKey = `resourcepack:${displayName.toLowerCase()}`;
               const cached = getIconFromCache(cacheKey);
+              const linkedIconUrl = linked?.iconUrl || null;
+              const linkedModrinthProjectId =
+                linked?.source === "modrinth" ? linked.projectId : undefined;
+              const linkedCurseforgeProjectId =
+                linked?.source === "curseforge" ? linked.projectId : undefined;
+              if (
+                !linked &&
+                !linkedModrinthProjectId &&
+                !linkedCurseforgeProjectId
+              ) {
+                void backfillMissingContentLink(
+                  instance.gameDirectory,
+                  "resourcepack",
+                  file,
+                  displayName,
+                );
+              }
 
               
               let icon: string | null =
-                cached?.url || nativeMetadata.icon || null;
-              let modrinthProjectId = cached?.modrinthId;
-              let curseforgeProjectId = cached?.curseforgeId;
+                linkedIconUrl || cached?.url || nativeMetadata.icon || null;
+              let modrinthProjectId =
+                linkedModrinthProjectId || cached?.modrinthId;
+              let curseforgeProjectId =
+                linkedCurseforgeProjectId || cached?.curseforgeId;
               let version: string | undefined =
                 nativeMetadata.version || undefined;
               if (typeof nativeInfo?.packFormat === "number") {
@@ -225,6 +335,9 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
                   nativeMetadata.packFormat,
                   "resource",
                 );
+              }
+              if (!version) {
+                version = inferVersionFromFilename(file);
               }
               if (
                 (!icon || !version) &&
@@ -316,6 +429,12 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
         }
 
         fs.renameSync(filePath, path.join(dir, newFilename));
+        await renameInstalledContentLink(
+          instance.gameDirectory,
+          "resourcepack",
+          filename,
+          newFilename,
+        );
         return { ok: true, newFilename, enabled };
       } catch (error: any) {
         return { ok: false, error: error.message };
@@ -343,6 +462,11 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
         } else {
           fs.rmSync(filePath, { force: true });
         }
+        await deleteInstalledContentLink(
+          instance.gameDirectory,
+          "resourcepack",
+          filename,
+        );
         return { ok: true };
       } catch (error: any) {
         return { ok: false, error: error.message };
@@ -382,20 +506,47 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
             }>;
 
             if (Array.isArray(scanned)) {
-              const mapped = scanned
-                .map((item) => {
+              const mapped = (await Promise.all(
+                scanned.map(async (item) => {
                   const filename = String(item?.filename || "");
                   if (!filename) return null;
                   const name = String(item?.displayName || filename).trim();
+                  const linked = await getInstalledContentLink(
+                    instance.gameDirectory,
+                    "shader",
+                    filename,
+                  );
+                  const cacheKey = `shader:${name.toLowerCase()}`;
+                  const cached = getIconFromCache(cacheKey);
                   const icon =
                     typeof item?.iconBase64 === "string" &&
                     item.iconBase64.length > 0
                       ? `data:image/png;base64,${item.iconBase64}`
                       : null;
-                  const version =
+                  const linkedIconUrl = linked?.iconUrl || cached?.url || null;
+                  const linkedModrinthProjectId =
+                    (linked?.source === "modrinth"
+                      ? linked.projectId
+                      : undefined) || cached?.modrinthId;
+                  const linkedCurseforgeProjectId =
+                    (linked?.source === "curseforge"
+                      ? linked.projectId
+                      : undefined) || cached?.curseforgeId;
+                  if (!linked && !linkedModrinthProjectId && !linkedCurseforgeProjectId) {
+                    void backfillMissingContentLink(
+                      instance.gameDirectory,
+                      "shader",
+                      filename,
+                      name,
+                    );
+                  }
+                  let version =
                     typeof item?.version === "string" && item.version.length > 0
                       ? item.version
                       : undefined;
+                  if (!version) {
+                    version = inferVersionFromFilename(filename);
+                  }
                   return {
                     filename,
                     name,
@@ -407,11 +558,14 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
                         ? item.modifiedAt
                         : new Date().toISOString(),
                     enabled: item?.enabled !== false,
-                    icon,
+                    icon: linkedIconUrl || icon,
                     version,
+                    modrinthProjectId: linkedModrinthProjectId,
+                    curseforgeProjectId: linkedCurseforgeProjectId,
+                    installedVersionId: linked?.versionId,
                   };
-                })
-                .filter((item) => item !== null) as Array<{
+                }),
+              )).filter((item) => item !== null) as Array<{
                 filename: string;
                 name: string;
                 isDirectory: boolean;
@@ -420,45 +574,10 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
                 enabled: boolean;
                 icon: string | null;
                 version?: string;
+                modrinthProjectId?: string;
+                curseforgeProjectId?: string;
               }>;
-
-              const enriched = await Promise.all(
-                mapped.map(async (item) => {
-                  let icon = item.icon;
-                  let version = item.version;
-                  let modrinthProjectId: string | undefined;
-                  let curseforgeProjectId: string | undefined;
-
-                  if (!icon) {
-                    const onlineResult = await fetchIconFromOnline(
-                      item.name,
-                      "shader",
-                    );
-                    icon = onlineResult.url;
-                    modrinthProjectId = onlineResult.modrinthId;
-                    curseforgeProjectId = onlineResult.curseforgeId;
-                  }
-
-                  if (!version) {
-                    const nameMatch = item.name.match(
-                      /[_\-\s]([rv]?\d+(?:\.\d+)+(?:[._\-]\w+)*)$/i,
-                    );
-                    if (nameMatch) {
-                      version = nameMatch[1];
-                    }
-                  }
-
-                  return {
-                    ...item,
-                    icon,
-                    version,
-                    modrinthProjectId,
-                    curseforgeProjectId,
-                  };
-                }),
-              );
-
-              return { ok: true, items: dedupeShaders(enriched as any[]) };
+              return { ok: true, items: dedupeShaders(mapped as any[]) };
             }
           } catch (scanError) {
             logger.warn("Native shader scan failed, fallback to JS", {
@@ -516,12 +635,36 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
         
         const itemsWithIcons = await Promise.all(
           validItems.map(async (item) => {
+            const linked = await getInstalledContentLink(
+              instance.gameDirectory,
+              "shader",
+              item.filename,
+            );
+            const cacheKey = `shader:${item.name.toLowerCase()}`;
+            const cached = getIconFromCache(cacheKey);
             
             const nativeInfo = await inspectPackMetadataWithNative(
               item.filePath,
               "shader",
             );
-            let icon: string | null = nativeInfo.icon;
+            const linkedIconUrl = linked?.iconUrl || cached?.url || null;
+            const linkedModrinthProjectId =
+              (linked?.source === "modrinth"
+                ? linked.projectId
+                : undefined) || cached?.modrinthId;
+            const linkedCurseforgeProjectId =
+              (linked?.source === "curseforge"
+                ? linked.projectId
+                : undefined) || cached?.curseforgeId;
+            if (!linked && !linkedModrinthProjectId && !linkedCurseforgeProjectId) {
+              void backfillMissingContentLink(
+                instance.gameDirectory,
+                "shader",
+                item.filename,
+                item.name,
+              );
+            }
+            let icon: string | null = linkedIconUrl || nativeInfo.icon;
             let version: string | undefined = nativeInfo.version;
 
             if (!icon || !version) {
@@ -605,29 +748,14 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
               } catch {}
             }
 
-            let modrinthProjectId: string | undefined;
-            let curseforgeProjectId: string | undefined;
-
-            
-            if (!icon) {
-              const onlineResult = await fetchIconFromOnline(
-                item.name,
-                "shader",
-              );
-              icon = onlineResult.url;
-              modrinthProjectId = onlineResult.modrinthId;
-              curseforgeProjectId = onlineResult.curseforgeId;
-            }
+            const modrinthProjectId: string | undefined =
+              linkedModrinthProjectId;
+            const curseforgeProjectId: string | undefined =
+              linkedCurseforgeProjectId;
 
             
             if (!version) {
-              
-              const nameMatch = item.name.match(
-                /[_\-\s]([rv]?\d+(?:\.\d+)+(?:[._\-]\w+)*)$/i,
-              );
-              if (nameMatch) {
-                version = nameMatch[1];
-              }
+              version = inferVersionFromFilename(item.filename);
             }
 
             return {
@@ -641,6 +769,7 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
               version,
               modrinthProjectId,
               curseforgeProjectId,
+              installedVersionId: linked?.versionId,
             };
           }),
         );
@@ -680,6 +809,12 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
         }
 
         fs.renameSync(filePath, path.join(dir, newFilename));
+        await renameInstalledContentLink(
+          instance.gameDirectory,
+          "shader",
+          filename,
+          newFilename,
+        );
         return { ok: true, newFilename, enabled };
       } catch (error: any) {
         return { ok: false, error: error.message };
@@ -707,6 +842,11 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
         } else {
           fs.rmSync(filePath, { force: true });
         }
+        await deleteInstalledContentLink(
+          instance.gameDirectory,
+          "shader",
+          filename,
+        );
         return { ok: true };
       } catch (error: any) {
         return { ok: false, error: error.message };
@@ -747,22 +887,38 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
             }>;
 
             if (Array.isArray(scanned)) {
-              const mapped = scanned
-                .map((item) => {
+              const mapped = (await Promise.all(
+                scanned.map(async (item) => {
                   const filename = String(item?.filename || "");
                   if (!filename) return null;
                   const name = String(item?.displayName || filename).trim();
+                  const linked =
+                    worldName === "(Global)"
+                      ? await getInstalledContentLink(
+                          instance.gameDirectory,
+                          "datapack",
+                          filename,
+                        )
+                      : null;
                   const icon =
                     typeof item?.iconBase64 === "string" &&
                     item.iconBase64.length > 0
                       ? `data:image/png;base64,${item.iconBase64}`
                       : null;
+                  const linkedIconUrl = linked?.iconUrl || null;
+                  const linkedModrinthProjectId =
+                    linked?.source === "modrinth" ? linked.projectId : undefined;
+                  const linkedCurseforgeProjectId =
+                    linked?.source === "curseforge" ? linked.projectId : undefined;
                   let version =
                     typeof item?.version === "string" && item.version.length > 0
                       ? item.version
                       : undefined;
                   if (!version && typeof item?.packFormat === "number") {
                     version = packFormatToVersion(item.packFormat, "data");
+                  }
+                  if (!version) {
+                    version = inferVersionFromFilename(filename);
                   }
 
                   return {
@@ -777,11 +933,14 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
                         ? item.modifiedAt
                         : new Date().toISOString(),
                     enabled: item?.enabled !== false,
-                    icon,
+                    icon: linkedIconUrl || icon,
                     version,
+                    modrinthProjectId: linkedModrinthProjectId,
+                    curseforgeProjectId: linkedCurseforgeProjectId,
+                    installedVersionId: linked?.versionId,
                   };
-                })
-                .filter((item) => item !== null);
+                }),
+              )).filter((item) => item !== null);
 
               items.push(...mapped);
               return;
@@ -829,14 +988,30 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
                 displayName = file.replace(".jar", "");
               }
 
+              const linked =
+                worldName === "(Global)"
+                  ? await getInstalledContentLink(
+                      instance.gameDirectory,
+                      "datapack",
+                      file,
+                    )
+                  : null;
               const nativeInfo = await inspectPackMetadataWithNative(
                 filePath,
                 "datapack",
               );
-              let icon: string | null = nativeInfo.icon;
+              const linkedIconUrl = linked?.iconUrl || null;
+              const linkedModrinthProjectId =
+                linked?.source === "modrinth" ? linked.projectId : undefined;
+              const linkedCurseforgeProjectId =
+                linked?.source === "curseforge" ? linked.projectId : undefined;
+              let icon: string | null = linkedIconUrl || nativeInfo.icon;
               let version: string | undefined = nativeInfo.version;
               if (!version && typeof nativeInfo.packFormat === "number") {
                 version = packFormatToVersion(nativeInfo.packFormat, "data");
+              }
+              if (!version) {
+                version = inferVersionFromFilename(file);
               }
               try {
                 if (
@@ -977,6 +1152,9 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
                 enabled,
                 icon,
                 version,
+                modrinthProjectId: linkedModrinthProjectId,
+                curseforgeProjectId: linkedCurseforgeProjectId,
+                installedVersionId: linked?.versionId,
               };
             } catch {
               return null;
@@ -1050,6 +1228,14 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
         }
 
         fs.renameSync(filePath, path.join(dpDir, newFilename));
+        if (worldName === "(Global)") {
+          await renameInstalledContentLink(
+            instance.gameDirectory,
+            "datapack",
+            filename,
+            newFilename,
+          );
+        }
         return { ok: true, newFilename, enabled };
       } catch (error: any) {
         return { ok: false, error: error.message };
@@ -1082,6 +1268,13 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
           fs.rmSync(filePath, { recursive: true, force: true });
         } else {
           fs.rmSync(filePath, { force: true });
+        }
+        if (worldName === "(Global)") {
+          await deleteInstalledContentLink(
+            instance.gameDirectory,
+            "datapack",
+            filename,
+          );
         }
         return { ok: true };
       } catch (error: any) {

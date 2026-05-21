@@ -272,10 +272,10 @@ pub fn detect_java_installations() -> JavaDetectionResult {
     // Sort by major version (descending)
     installations.sort_by(|a, b| b.major_version.cmp(&a.major_version));
 
-    // Find recommended (Java 17 or 21 preferred for modern Minecraft)
+    // Find recommended: prefer Java 21 or 17 for modern Minecraft; also accept 25+
     let recommended = installations.iter()
         .filter(|j| j.is_64bit)
-        .find(|j| j.major_version == 21 || j.major_version == 17)
+        .find(|j| j.major_version == 21 || j.major_version == 17 || j.major_version >= 25)
         .or_else(|| installations.iter().filter(|j| j.is_64bit && j.major_version >= 17).next())
         .or_else(|| installations.iter().filter(|j| j.is_64bit).next())
         .cloned();
@@ -351,22 +351,31 @@ pub fn validate_java_path(path: String) -> Option<JavaInstallation> {
 }
 
 /// Get recommended Java version for a Minecraft version
+/// Must stay in sync with getRequiredJavaVersion() in rustLauncher.ts
 #[napi]
 pub fn get_recommended_java_version(minecraft_version: String) -> u32 {
-    // Parse MC version
+    // Parse MC version (e.g. "1.21.1" or "2.0")
     let parts: Vec<&str> = minecraft_version.split('.').collect();
     let major: u32 = parts.get(0).and_then(|s| s.parse().ok()).unwrap_or(1);
     let minor: u32 = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+    let patch: u32 = parts.get(2).and_then(|s| s.parse().ok()).unwrap_or(0);
 
-    // Minecraft version to Java version mapping
-    if major >= 1 && minor >= 21 {
-        21 // 1.21+ requires Java 21
-    } else if major >= 1 && minor >= 18 {
-        17 // 1.18+ requires Java 17
-    } else if major >= 1 && minor >= 17 {
-        16 // 1.17 requires Java 16
+    // Mirror the logic in rustLauncher.ts → getRequiredJavaVersion()
+    if major > 1 {
+        // 2.x+ → Java 21
+        21
+    } else if minor >= 21 {
+        // 1.21+ → Java 21
+        21
+    } else if minor > 20 || (minor == 20 && patch >= 5) {
+        // 1.20.5+ → Java 21
+        21
+    } else if minor >= 17 {
+        // 1.17–1.20.4 → Java 17  (was incorrectly 16 for 1.17)
+        17
     } else {
-        8 // Older versions use Java 8
+        // <1.17 → Java 8
+        8
     }
 }
 
@@ -400,10 +409,17 @@ fn map_azul_os() -> &'static str {
     }
 }
 
+fn map_azul_archive_type() -> &'static str {
+    if cfg!(windows) { "zip" } else { "tar.gz" }
+}
+
 fn build_azul_package_api_url(major_version: u32) -> String {
+    // Java 25+ may be EA only; use "ea" release status for those versions.
+    let release_status = if major_version >= 25 { "ea" } else { "ga" };
     format!(
-        "https://api.azul.com/metadata/v1/zulu/packages/?java_version={major_version}&os={}&arch=x64&archive_type=zip&java_package_type=jdk&javafx_bundled=false&release_status=ga&availability_types=CA&certifications=tck&java_package_features=headful&latest=true&page=1&page_size=100",
-        map_azul_os()
+        "https://api.azul.com/metadata/v1/zulu/packages/?java_version={major_version}&os={}&arch=x64&archive_type={}&java_package_type=jdk&javafx_bundled=false&release_status={release_status}&availability_types=CA&certifications=tck&java_package_features=headful&latest=true&page=1&page_size=100",
+        map_azul_os(),
+        map_azul_archive_type(),
     )
 }
 

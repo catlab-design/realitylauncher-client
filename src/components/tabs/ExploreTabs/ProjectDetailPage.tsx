@@ -3,9 +3,10 @@
 // Inspired by Modrinth App project detail
 // ========================================
 
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import { useTranslation } from "../../../hooks/useTranslation";
@@ -14,6 +15,7 @@ import { formatNumber } from "./helpers";
 import { ImagePreviewModal } from "./ImagePreviewModal";
 import { Icons } from "../../ui/Icons";
 import { playClick } from "../../../lib/sounds";
+import { normalizeModrinthVersion, normalizeCurseforgeVersion } from "./normalizers";
 import bannerImage from "../../../assets/banner.png";
 import fabricIcon from "../../../assets/fabric.svg";
 import forgeIcon from "../../../assets/forge.svg";
@@ -30,6 +32,7 @@ interface ProjectDetailPageProps {
     contentSource: "modrinth" | "curseforge";
     isInstallingModpack: boolean;
     installProgress: InstallProgress | null;
+    isInstalledProject?: boolean;
     onBack: () => void;
     onInstallModpack: (project: ModrinthProject) => void;
     onAddToInstance: (project: ModrinthProject) => void;
@@ -38,8 +41,27 @@ interface ProjectDetailPageProps {
 
 type DetailTab = "description" | "versions" | "gallery";
 
-// Format file size
-function formatSize(bytes: number): string {
+// Allow common content tags + safe iframes (YouTube embeds) for project descriptions.
+// Strips <script>, on* handlers, javascript: URLs etc. Mitigates B-grade XSS in Electron renderer.
+const markdownSanitizeSchema: any = {
+    ...defaultSchema,
+    tagNames: [...(defaultSchema.tagNames || []), "iframe", "video", "source", "center", "details", "summary"],
+    attributes: {
+        ...defaultSchema.attributes,
+        iframe: ["src", "width", "height", "allow", "allowfullscreen", "frameborder", "title"],
+        img: [...(defaultSchema.attributes?.img || []), "loading", "style"],
+        a: [...(defaultSchema.attributes?.a || []), "target", "rel"],
+        "*": [...(defaultSchema.attributes?.["*"] || []), "align", "className", "id"],
+    },
+    protocols: {
+        ...defaultSchema.protocols,
+        src: ["http", "https"],
+        href: ["http", "https", "mailto"],
+    },
+};
+
+// Format file size (kept for potential future use)
+function _formatSize(bytes: number): string {
     if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
     if (bytes >= 1_000) return `${(bytes / 1_000).toFixed(1)} KB`;
     return `${bytes} B`;
@@ -80,6 +102,7 @@ export function ProjectDetailPage({
     contentSource,
     isInstallingModpack,
     installProgress,
+    isInstalledProject = false,
     onBack,
     onInstallModpack,
     onAddToInstance,
@@ -98,6 +121,7 @@ export function ProjectDetailPage({
     const VERSIONS_PER_PAGE = 20;
 
     const accentColor = colors.secondary;
+    const versionControlColor = colors.onSurface === "#ffffff" ? colors.onSurface : "#000";
     const [fullProject, setFullProject] = useState<ModrinthProject | null>(null);
 
     // Use either fullProject if fetched, or fallback to the initial project from props
@@ -177,14 +201,21 @@ export function ProjectDetailPage({
         return getImageUrl(raw) || bannerImage.src;
     })();
 
-    // Fetch full body (description) when tab switches
+    // Fetch full body (description) when tab switches.
+    // - When the body was already provided by the parent (preloaded), use it directly.
+    // - Otherwise hit the API. Resetting bodyHtml on project change prevents flashing the
+    //   previous project's body during a fast back-forth between detail pages (B6).
     useEffect(() => {
-        if (activeTab === "description" && project.body) {
+        setBodyHtml("");
+    }, [project.project_id, contentSource]);
+    useEffect(() => {
+        if (activeTab !== "description") return;
+        if (project.body) {
             setBodyHtml(project.body);
-        } else if (activeTab === "description" && !project.body) {
-            fetchBody();
+            return;
         }
-    }, [activeTab, project.project_id]);
+        if (!bodyHtml) fetchBody();
+    }, [activeTab, project.project_id, project.body, contentSource]);
 
     // Fetch versions when tab switches
     useEffect(() => {
@@ -203,7 +234,6 @@ export function ProjectDetailPage({
                 }
             } else {
                 const result = await (window.api as any)?.curseforgeGetDescription?.(project.project_id);
-                console.log("[ProjectDetail] CurseForge description result:", result);
                 if (result?.data) {
                     setBodyHtml(result.data);
                 }
@@ -221,60 +251,10 @@ export function ProjectDetailPage({
             let vers: ProjectVersion[] = [];
             if (contentSource === "modrinth") {
                 const result = await (window.api as any)?.modrinthGetVersions?.(project.project_id);
-                if (result) {
-                    vers = result.map((v: any) => ({
-                        id: v.id,
-                        name: v.name || v.versionNumber || v.version_number || "",
-                        version_number: v.versionNumber || v.version_number || v.name || "",
-                        game_versions: v.gameVersions || v.game_versions || [],
-                        loaders: v.loaders || [],
-                        version_type: v.versionType || v.version_type || "release",
-                        downloads: v.downloads || 0,
-                        date_published: v.datePublished || v.date_published || "",
-                        files: (v.files || []).map((f: any) => ({
-                            filename: f.filename,
-                            size: f.size || 0,
-                            primary: f.primary || false,
-                            url: f.url || "",
-                        })),
-                        changelog: v.changelog || "",
-                    }));
-                }
+                if (result) vers = result.map(normalizeModrinthVersion);
             } else {
                 const result = await (window.api as any)?.curseforgeGetFiles?.(project.project_id);
-                if (result?.data) {
-                    const KNOWN_LOADERS = ["fabric", "forge", "neoforge", "quilt"];
-                    vers = result.data.map((f: any) => {
-                        const loaders: string[] = [];
-                        const gameVersions: string[] = [];
-                        if (f.gameVersions) {
-                            for (const gv of f.gameVersions) {
-                                const lower = gv?.toLowerCase();
-                                if (KNOWN_LOADERS.includes(lower)) {
-                                    if (!loaders.includes(lower)) loaders.push(lower);
-                                } else if (gv) {
-                                    gameVersions.push(gv);
-                                }
-                            }
-                        }
-                        return {
-                            id: f.id.toString(),
-                            name: f.displayName || f.fileName,
-                            version_number: f.displayName || f.fileName,
-                            game_versions: gameVersions,
-                            loaders,
-                            version_type: f.releaseType === 2 ? "beta" : f.releaseType === 3 ? "alpha" : "release",
-                            downloads: f.downloadCount || 0,
-                            date_published: f.fileDate || "",
-                            files: [{
-                                filename: f.fileName,
-                                size: f.fileLength || 0,
-                                primary: true,
-                                url: f.downloadUrl || "",
-                            }],
-                        };
-                    });
-                }
+                if (result?.data) vers = result.data.map(normalizeCurseforgeVersion);
             }
             setVersions(vers);
         } catch (error) {
@@ -304,6 +284,7 @@ export function ProjectDetailPage({
     );
 
     const handleAction = () => {
+        if (isInstalledProject) return;
         if (projectType === "modpack") {
             onInstallModpack(project);
         } else {
@@ -361,7 +342,7 @@ export function ProjectDetailPage({
                     {/* Back Button */}
                     <button
                         onClick={() => { playClick(); onBack(); }}
-                        className="absolute top-4 left-4 z-20 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold backdrop-blur-md transition-all hover:scale-105 active:scale-95 shadow-lg group"
+                        className="absolute top-4 left-4 z-20 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold backdrop-blur-md transition-all hover:scale-105 active:scale-95 group"
                         style={{
                             backgroundColor: 'rgba(0,0,0,0.6)',
                             color: '#fff',
@@ -375,7 +356,7 @@ export function ProjectDetailPage({
                     {/* Project Info Overlay */}
                     <div className="absolute bottom-0 left-0 right-0 p-6 flex items-end gap-5 z-10">
                         {/* Icon */}
-                        <div className="w-20 h-20 rounded-2xl shadow-2xl overflow-hidden shrink-0 border-2 border-white/10"
+                        <div className="w-20 h-20 rounded-2xl overflow-hidden shrink-0 border-2 border-white/10"
                             style={{ backgroundColor: colors.surfaceContainerHighest }}>
                             {project.icon_url ? (
                                 <img src={project.icon_url} alt={project.title} className="w-full h-full object-cover" />
@@ -388,7 +369,7 @@ export function ProjectDetailPage({
 
                         {/* Title & Meta */}
                         <div className="flex-1 min-w-0">
-                            <h1 className="text-3xl font-bold text-white mb-1.5 truncate drop-shadow-xl">
+                            <h1 className="text-3xl font-bold text-white mb-1.5 truncate">
                                 {currentProject.title}
                             </h1>
                             <div className="flex items-center gap-4 text-sm text-white/80 flex-wrap font-medium">
@@ -430,11 +411,11 @@ export function ProjectDetailPage({
                             ) : (
                                 <button
                                     onClick={() => { playClick(); handleAction(); }}
-                                    className="px-6 py-3 rounded-xl text-sm font-bold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center gap-2 active:scale-95"
+                                    className={`px-6 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-2 active:scale-95 ${isInstalledProject ? "cursor-default" : "hover:-translate-y-0.5"}`}
                                     style={{ backgroundColor: accentColor, color: "#000" }}
                                 >
-                                    <i className={`fa-solid ${projectType === "modpack" ? "fa-download" : "fa-plus"}`} />
-                                    {projectType === "modpack" ? (t('install_as_new_instance')) : (t('add_to_instance'))}
+                                    <i className={`fa-solid ${isInstalledProject ? "fa-check" : projectType === "modpack" ? "fa-download" : "fa-plus"}`} style={{ color: "#000" }} />
+                                    {isInstalledProject ? (t('installed' as any) || "ติดตั้งแล้ว") : projectType === "modpack" ? (t('install_as_new_instance')) : (t('add_to_instance'))}
                                 </button>
                             )}
                         </div>
@@ -447,7 +428,7 @@ export function ProjectDetailPage({
                         style={{ backgroundColor: colors.surfaceContainer, borderBottom: `1px solid ${colors.outline}15` }}>
                         {currentProject.categories.map((cat) => (
                             <span key={cat}
-                                className="px-3 py-1.5 rounded-lg text-[11px] uppercase font-black tracking-widest shadow-sm"
+                                className="px-3 py-1.5 rounded-lg text-[11px] uppercase font-black tracking-widest"
                                 style={{ backgroundColor: `${accentColor}20`, color: colors.onSurface, border: `1px solid ${accentColor}25` }}>
                                 {cat}
                             </span>
@@ -519,7 +500,7 @@ export function ProjectDetailPage({
                                             }
                                         `}} />
                                         <ReactMarkdown
-                                            rehypePlugins={[rehypeRaw]}
+                                            rehypePlugins={[rehypeRaw, [rehypeSanitize, markdownSanitizeSchema]]}
                                             remarkPlugins={[remarkGfm, remarkBreaks]}
                                             components={{
                                                 h1: ({ node, ...props }: any) => {
@@ -559,7 +540,7 @@ export function ProjectDetailPage({
                                                 li: ({ node, ...props }: any) => <li className="text-base leading-relaxed" style={{ color: `${colors.onSurface}cc` }} {...props} />,
                                                 img: ({ node, ...props }: any) => (
                                                     <img
-                                                        className="max-w-full rounded-lg shadow-md border border-white/5"
+                                                        className="max-w-full rounded-lg border border-white/5"
                                                         alt={props.alt || ''}
                                                         loading="lazy"
                                                         {...props}
@@ -576,7 +557,7 @@ export function ProjectDetailPage({
                                                 center: ({ node, ...props }: any) => <div className="w-full block text-center!" style={{ textAlign: 'center', width: '100%', display: 'block' }} {...props} />,
                                                 iframe: ({ node, width, height, ...props }: any) => (
                                                     <iframe 
-                                                        className="w-full rounded-xl shadow-lg border border-white/10 my-6" 
+                                                        className="w-full rounded-xl border border-white/10 my-6" 
                                                         style={{ aspectRatio: '16/9', height: 'auto' }}
                                                         {...props} 
                                                     />
@@ -665,19 +646,21 @@ export function ProjectDetailPage({
                                             <button
                                                 onClick={() => { playClick(); setVersionsPage(p => Math.max(1, p - 1)); }}
                                                 disabled={versionsPage === 1}
+                                                aria-label="Previous page"
                                                 className="w-8 h-8 rounded-lg flex items-center justify-center disabled:opacity-30 transition-colors hover:bg-white/5"
-                                                style={{ color: accentColor }}
+                                                style={{ color: versionControlColor }}
                                             >
                                                 <i className="fa-solid fa-chevron-left text-[10px]" />
                                             </button>
-                                            <span className="text-[11px] px-2 font-bold tabular-nums" style={{ color: accentColor }}>
+                                            <span className="text-[11px] px-2 font-bold tabular-nums" style={{ color: versionControlColor }}>
                                                 {versionsPage} / {totalVersionPages}
                                             </span>
                                             <button
                                                 onClick={() => { playClick(); setVersionsPage(p => Math.min(totalVersionPages, p + 1)); }}
                                                 disabled={versionsPage >= totalVersionPages}
+                                                aria-label="Next page"
                                                 className="w-8 h-8 rounded-lg flex items-center justify-center disabled:opacity-30 transition-colors hover:bg-white/5"
-                                                style={{ color: accentColor }}
+                                                style={{ color: versionControlColor }}
                                             >
                                                 <i className="fa-solid fa-chevron-right text-[10px]" />
                                             </button>
@@ -783,7 +766,7 @@ export function ProjectDetailPage({
                                                     <button
                                                         onClick={() => { playClick(); onInstallVersion(project, v.id); }}
                                                         className="w-8 h-8 rounded-lg flex items-center justify-center transition-all opacity-60 hover:opacity-100 group-hover:opacity-80 active:scale-90"
-                                                        style={{ backgroundColor: `${accentColor}20`, color: accentColor }}
+                                                        style={{ backgroundColor: `${accentColor}20`, color: versionControlColor }}
                                                         title={t('install' as any) || "Install"}
                                                     >
                                                         <i className="fa-solid fa-download text-xs" />
@@ -845,7 +828,7 @@ export function ProjectDetailPage({
                                         </p>
                                         <div className="flex flex-wrap gap-2">
                                             {currentProject.game_versions.slice().reverse().slice(0, 15).map((v) => (
-                                                <span key={v} className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all hover:bg-white/10 hover:scale-105 cursor-default shadow-sm border"
+                                                <span key={v} className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all hover:bg-white/10 hover:scale-105 cursor-default border"
                                                     style={{ backgroundColor: `${accentColor}10`, color: colors.onSurface, borderColor: `${accentColor}25` }}>
                                                     {v}
                                                 </span>
@@ -879,7 +862,7 @@ export function ProjectDetailPage({
                                                 else if (loaderId.includes('datapack')) { icon = datapackIcon; }
                                                 
                                                 return (
-                                                    <span key={l} className="px-4 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all hover:brightness-110 shadow-lg shadow-black/10"
+                                                    <span key={l} className="px-4 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all hover:brightness-110 shadow-black/10"
                                                         style={{ backgroundColor: `${color}15`, color: colors.onSurface, border: `1px solid ${color}30` }}>
                                                         {icon ? (
                                                             <img src={(icon as any).src || icon} className="w-3.5 h-3.5 object-contain" alt={l} />
@@ -902,14 +885,14 @@ export function ProjectDetailPage({
                                         </p>
                                         <div className="flex flex-wrap gap-2.5">
                                             {currentProject.client_side && (
-                                                <span className="px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-2.5 shadow-sm border"
+                                                <span className="px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-2.5 border"
                                                     style={{ backgroundColor: `${colors.surfaceContainerHighest}`, color: colors.onSurface, borderColor: `${colors.outline}20` }}>
                                                     <i className="fa-solid fa-desktop text-xs" />
                                                     {currentProject.client_side === "required" ? "Client-side" : currentProject.client_side === "optional" ? "Client (optional)" : currentProject.client_side}
                                                 </span>
                                             )}
                                             {currentProject.server_side && (
-                                                <span className="px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-2.5 shadow-sm border"
+                                                <span className="px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-2.5 border"
                                                     style={{ backgroundColor: `${colors.surfaceContainerHighest}`, color: colors.onSurface, borderColor: `${colors.outline}20` }}>
                                                     <i className="fa-solid fa-server text-xs" />
                                                     {currentProject.server_side === "required" ? "Server-side" : currentProject.server_side === "optional" ? "Server (optional)" : currentProject.server_side}
@@ -933,7 +916,7 @@ export function ProjectDetailPage({
                                         <a href={currentProject.issues_url} target="_blank" rel="noopener noreferrer"
                                             className="flex items-center gap-4 text-sm font-bold hover:translate-x-1.5 transition-all group"
                                             style={{ color: colors.onSurface }}>
-                                            <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border transition-all group-hover:scale-110" 
+                                            <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border transition-all group-hover:scale-110" 
                                                 style={{ backgroundColor: `#f43f5e15`, borderColor: `#f43f5e25` }}>
                                                 <i className="fa-solid fa-bug text-sm" style={{ color: '#f43f5e' }} />
                                             </div>
@@ -945,7 +928,7 @@ export function ProjectDetailPage({
                                         <a href={currentProject.source_url} target="_blank" rel="noopener noreferrer"
                                             className="flex items-center gap-4 text-sm font-bold hover:translate-x-1.5 transition-all group"
                                             style={{ color: colors.onSurface }}>
-                                            <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border transition-all group-hover:scale-110" 
+                                            <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border transition-all group-hover:scale-110" 
                                                 style={{ backgroundColor: `#6366f115`, borderColor: `#6366f125` }}>
                                                 <i className="fa-solid fa-code text-sm" style={{ color: '#6366f1' }} />
                                             </div>
@@ -957,7 +940,7 @@ export function ProjectDetailPage({
                                         <a href={currentProject.wiki_url} target="_blank" rel="noopener noreferrer"
                                             className="flex items-center gap-4 text-sm font-bold hover:translate-x-1.5 transition-all group"
                                             style={{ color: colors.onSurface }}>
-                                            <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border transition-all group-hover:scale-110" 
+                                            <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border transition-all group-hover:scale-110" 
                                                 style={{ backgroundColor: `#f59e0b15`, borderColor: `#f59e0b25` }}>
                                                 <i className="fa-solid fa-book text-sm" style={{ color: '#f59e0b' }} />
                                             </div>
@@ -969,7 +952,7 @@ export function ProjectDetailPage({
                                         <a href={currentProject.discord_url} target="_blank" rel="noopener noreferrer"
                                             className="flex items-center gap-4 text-sm font-bold hover:translate-x-1.5 transition-all group"
                                             style={{ color: colors.onSurface }}>
-                                            <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-sm border transition-all group-hover:scale-110" 
+                                            <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border transition-all group-hover:scale-110" 
                                                 style={{ backgroundColor: `#5865f215`, borderColor: `#5865f225` }}>
                                                 <i className="fa-brands fa-discord text-sm" style={{ color: '#5865f2' }} />
                                             </div>
@@ -991,7 +974,7 @@ export function ProjectDetailPage({
                                 <div className="space-y-4">
                                     {(currentProject.team_members && currentProject.team_members.length > 0 ? currentProject.team_members : [{ user: { username: currentProject.author }, role: "Author" }]).map((member, idx) => (
                                         <div key={idx} className="flex items-center gap-4 group">
-                                            <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 shadow-lg border-2 border-transparent group-hover:border-white/20 transition-all"
+                                            <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 border-2 border-transparent group-hover:border-white/20 transition-all"
                                                 style={{ backgroundColor: colors.surfaceContainerHighest }}>
                                                 {member.user.avatar_url ? (
                                                     <img src={member.user.avatar_url} alt="" className="w-full h-full object-cover" />

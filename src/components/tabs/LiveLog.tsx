@@ -196,15 +196,15 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
         <Portal>
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
                 <div
-                    className="w-[90%] max-w-4xl h-[80%] rounded-2xl shadow-2xl flex flex-col overflow-hidden relative z-51"
+                    className="w-[94vw] max-w-[1500px] h-[76vh] min-h-[620px] max-h-[860px] rounded-2xl flex flex-col overflow-hidden relative z-51"
                     style={{ backgroundColor: colors.surfaceContainer }}
                 >
                     {/* Header */}
                     <div
-                        className="flex items-center justify-between px-5 py-4 border-b"
+                        className="flex items-center justify-between gap-4 px-5 py-4 border-b shrink-0"
                         style={{ borderColor: colors.outline }}
                     >
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 shrink-0">
                             <div
                                 className="w-10 h-10 rounded-xl flex items-center justify-center"
                                 style={{ backgroundColor: colors.primary + "20" }}
@@ -223,9 +223,9 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 min-w-0 overflow-x-auto no-scrollbar">
                             {/* Filter buttons */}
-                            <div className="flex rounded-lg overflow-hidden" style={{ backgroundColor: colors.surfaceContainerHighest }}>
+                            <div className="flex rounded-lg overflow-hidden shrink-0" style={{ backgroundColor: colors.surfaceContainerHighest }}>
                                 {(["all", "info", "warn", "error"] as const).map((f) => (
                                     <button
                                         key={f}
@@ -244,7 +244,7 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
                             {/* Control buttons */}
                             <button
                                 onClick={() => setAutoScroll(!autoScroll)}
-                                className="w-9 h-9 rounded-lg flex items-center justify-center transition-all"
+                                className="w-9 h-9 rounded-lg flex items-center justify-center transition-all shrink-0"
                                 style={{
                                     backgroundColor: autoScroll ? colors.primary + "20" : colors.surfaceContainerHighest,
                                     color: autoScroll ? colors.primary : colors.onSurfaceVariant
@@ -256,7 +256,7 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
 
                             <button
                                 onClick={() => setIsPaused(!isPaused)}
-                                className="w-9 h-9 rounded-lg flex items-center justify-center transition-all"
+                                className="w-9 h-9 rounded-lg flex items-center justify-center transition-all shrink-0"
                                 style={{
                                     backgroundColor: isPaused ? "#f59e0b20" : colors.surfaceContainerHighest,
                                     color: isPaused ? "#f59e0b" : colors.onSurfaceVariant
@@ -269,7 +269,7 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
                             <button
                                 onClick={reloadLogs}
                                 disabled={isLoadingFile}
-                                className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:bg-black/10 disabled:opacity-50"
+                                className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:bg-black/10 disabled:opacity-50 shrink-0"
                                 style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}
                                 title={t("reload_logs")}
                             >
@@ -278,7 +278,7 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
 
                             <button
                                 onClick={copyLogs}
-                                className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:bg-black/10"
+                                className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:bg-black/10 shrink-0"
                                 style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}
                                 title={t("copy_logs")}
                             >
@@ -287,7 +287,7 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
 
                             <button
                                 onClick={clearLogs}
-                                className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:bg-black/10"
+                                className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:bg-black/10 shrink-0"
                                 style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}
                                 title={t("clear_logs")}
                             >
@@ -296,7 +296,7 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
 
                             <button
                                 onClick={onClose}
-                                className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:bg-red-500/20 hover:text-red-500"
+                                className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:bg-red-500/20 hover:text-red-500 shrink-0"
                                 style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}
                                 title="Close"
                             >
@@ -327,18 +327,18 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
                             filteredLogs.map((log) => (
                                 <div
                                     key={log.id}
-                                    className="flex gap-2 py-0.5 hover:bg-white/5 rounded px-2 -mx-2"
+                                    className="flex gap-3 py-0.5 hover:bg-white/5 rounded px-2 -mx-2 min-w-max"
                                 >
-                                    <span className="opacity-50 shrink-0" style={{ color: colors.onSurfaceVariant }}>
+                                    <span className="opacity-50 shrink-0 w-20" style={{ color: colors.onSurfaceVariant }}>
                                         {log.timestamp}
                                     </span>
                                     <span
-                                        className="shrink-0 font-semibold w-12"
+                                        className="shrink-0 font-semibold w-16"
                                         style={{ color: getLevelColor(log.level) }}
                                     >
                                         [{log.level.toUpperCase()}]
                                     </span>
-                                    <span style={{ color: colors.onSurface }} className="break-all">
+                                    <span style={{ color: colors.onSurface }} className="whitespace-pre">
                                         {formatLogMessage(log.message)}
                                     </span>
                                 </div>
@@ -348,7 +348,7 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
 
                     {/* Status bar */}
                     <div
-                        className="flex items-center justify-between px-4 py-2 text-xs border-t"
+                        className="flex items-center justify-between px-4 py-2 text-xs border-t shrink-0"
                         style={{ borderColor: colors.outline, backgroundColor: colors.surfaceContainer }}
                     >
                         <span style={{ color: colors.onSurfaceVariant }}>
