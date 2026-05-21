@@ -498,7 +498,7 @@ export function Home({
                                     {/* Banner background */}
                                     <>
                                         <img
-                                            src={instance.banner || '/banner.png'}
+                                            src={instance.banner || './banner.png'}
                                             alt=""
                                             className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                                             aria-hidden="true"

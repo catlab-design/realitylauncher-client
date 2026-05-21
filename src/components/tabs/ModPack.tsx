@@ -30,7 +30,7 @@ import {
 } from "../../lib/installLock";
 import { type AuthSession, type Server, type GameInstance, type LauncherConfig } from "../../types/launcher";
 
-const DEFAULT_MODPACK_BANNER = "/banner.png";
+const DEFAULT_MODPACK_BANNER = "./banner.png";
 
 interface ModPackProps {
     colors: any;

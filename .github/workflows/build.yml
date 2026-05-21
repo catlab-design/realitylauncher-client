@@ -468,7 +468,25 @@ jobs:
           echo "=== Downloaded artifacts ==="
           ls -R artifacts
 
+      - name: Check R2 credentials
+        id: r2
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ] && [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "R2 credentials are configured; CDN upload will run."
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "R2 credentials are missing; skipping CDN upload and creating GitHub Release only."
+          fi
+
       - name: Install wrangler
+        if: steps.r2.outputs.enabled == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -477,6 +495,7 @@ jobs:
 
       
       - name: Verify R2 credentials
+        if: steps.r2.outputs.enabled == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -501,7 +520,7 @@ jobs:
           echo "✓ R2 authentication successful"
 
       - name: Upload Windows build to R2
-        if: ${{ hashFiles('artifacts/reality-launcher-windows/**') != '' }}
+        if: steps.r2.outputs.enabled == 'true' && hashFiles('artifacts/reality-launcher-windows/**') != ''
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -556,7 +575,7 @@ jobs:
           fi
 
       - name: Upload macOS build to R2
-        if: ${{ hashFiles('artifacts/reality-launcher-macos/**') != '' }}
+        if: steps.r2.outputs.enabled == 'true' && hashFiles('artifacts/reality-launcher-macos/**') != ''
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -594,6 +613,7 @@ jobs:
           fi
 
       - name: Upload Linux builds to R2
+        if: steps.r2.outputs.enabled == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -632,9 +652,11 @@ jobs:
           fi
 
       - name: Create latest.json
+        if: steps.r2.outputs.enabled == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ENABLED: ${{ steps.r2.outputs.enabled }}
           INPUT_CHANGELOG: ${{ github.event.inputs.changelog }}
           DISPATCH_CHANGELOG: ${{ github.event.client_payload.changelog }}
         run: |
@@ -705,11 +727,17 @@ jobs:
           echo "=== latest.json ==="
           cat latest.json
           
-          echo "Uploading latest.json..."
-          wrangler r2 object put --remote "$R2_BUCKET/client/latest.json" --file="latest.json" --content-type="application/json"
+          if [ "$R2_ENABLED" = "true" ]; then
+            echo "Uploading latest.json..."
+            wrangler r2 object put --remote "$R2_BUCKET/client/latest.json" --file="latest.json" --content-type="application/json"
           echo "✓ Uploaded latest.json"
 
+          else
+            echo "Skipping latest.json upload because R2 is disabled."
+          fi
+
       - name: Verify R2 upload
+        if: steps.r2.outputs.enabled == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -738,14 +766,20 @@ jobs:
           fail_on_unmatched_files: false
           files: |
             artifacts/reality-launcher-windows/*.exe
+            artifacts/reality-launcher-windows/*.exe.blockmap
+            artifacts/reality-launcher-windows/latest.yml
             artifacts/reality-launcher-windows/**/*.msix
             artifacts/reality-launcher-windows/**/*.msixupload
             artifacts/reality-launcher-macos/*.dmg
+            artifacts/reality-launcher-macos/*.dmg.blockmap
+            artifacts/reality-launcher-macos/latest-mac.yml
             artifacts/reality-launcher-linux/*.AppImage
             artifacts/reality-launcher-linux/*.deb
             artifacts/reality-launcher-linux/*.rpm
             artifacts/reality-launcher-linux/*.flatpak
             artifacts/reality-launcher-linux/*.flatpakref
+            artifacts/reality-launcher-linux/latest-linux.yml
+            latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

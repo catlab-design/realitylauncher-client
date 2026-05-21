@@ -57,6 +57,8 @@ Windows Store release helpers:
 
 ## CI And Release
 - Public CI for PRs runs on GitHub-hosted runners (`.github/workflows/ci.yml`).
+- Installer builds for Linux, macOS, and Windows run from GitHub Actions using
+  `Build and Release`; the generated files are uploaded as Actions artifacts.
 - Release pipeline uses self-hosted runners (`.github/workflows/build.yml`) and publish secrets.
 - macOS self-hosted release runner is opt-in via repo variable `ENABLE_MACOS_RUNNER=true`.
 - GitLab is also supported:
