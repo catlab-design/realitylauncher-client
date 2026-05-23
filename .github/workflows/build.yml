@@ -474,15 +474,16 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ENABLE_R2_RELEASE: ${{ vars.ENABLE_R2_RELEASE }}
         run: |
           set -euo pipefail
 
-          if [ -n "${CLOUDFLARE_API_TOKEN:-}" ] && [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+          if [ "${ENABLE_R2_RELEASE:-false}" = "true" ] && [ -n "${CLOUDFLARE_API_TOKEN:-}" ] && [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
             echo "R2 credentials are configured; CDN upload will run."
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "R2 credentials are missing; skipping CDN upload and creating GitHub Release only."
+            echo "R2 release upload is disabled or credentials are missing; creating GitHub Release only."
           fi
 
       - name: Install wrangler
