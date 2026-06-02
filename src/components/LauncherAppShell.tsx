@@ -4,17 +4,10 @@ import { Toaster } from "react-hot-toast";
 import { Sidebar } from "./layout/Sidebar";
 import { ErrorBoundary as UIErrorBoundary } from "./ui/ErrorBoundary";
 import { LauncherAppTitleBar } from "./LauncherAppTitleBar";
-import { Home, ServerMenu, ModPack, Explore, About, Wardrobe } from "./tabs";
-import { SettingsDialog } from "./SettingsDialog";
-import AdminPanel from "./tabs/AdminPanel";
+import { Home } from "./tabs/Home";
+import { About, AdminPanel, Explore, ModPack, ServerMenu, SettingsDialog, TabLoadingFallback, Wardrobe } from "./LauncherAppLazyTabs";
 import { InstallProgressModal } from "./tabs/ModPackTabs/InstallProgressModal";
-import type {
-  AuthSession,
-  GameInstance,
-  LauncherConfig,
-  NewsItem,
-  Server,
-} from "../types/launcher";
+import type { AuthSession, GameInstance, LauncherConfig, NewsItem, Server } from "../types/launcher";
 import type { TranslationKey } from "../i18n/translations";
 
 type TranslationFn = (
@@ -148,6 +141,11 @@ export function LauncherAppShell({
   operationType,
   handleCancelInstall,
 }: LauncherAppShellProps) {
+  const [shouldRenderSettingsDialog, setShouldRenderSettingsDialog] = React.useState(false);
+  React.useEffect(() => {
+    if (settingsDialogOpen) setShouldRenderSettingsDialog(true);
+  }, [settingsDialogOpen]);
+
   return (
     <>
       <Toaster
@@ -240,95 +238,101 @@ export function LauncherAppShell({
 
           <main className="flex-1 overflow-y-auto overflow-x-hidden pt-3 px-6 pb-6 relative">
             <div className="h-full">
-              {contentTab === "home" && (
-                <Home
-                  session={session}
-                  news={news}
-                  servers={servers}
-                  selectedServer={selectedServer}
-                  setSelectedServer={setSelectedServer}
-                  setSelectedInstance={setSelectedInstance}
-                  colors={colors}
-                  setActiveTab={setActiveTab}
-                  language={config.language}
-                />
-              )}
+              <React.Suspense fallback={<TabLoadingFallback colors={colors} />}>
+                {contentTab === "home" && (
+                  <Home
+                    session={session}
+                    news={news}
+                    servers={servers}
+                    selectedServer={selectedServer}
+                    setSelectedServer={setSelectedServer}
+                    setSelectedInstance={setSelectedInstance}
+                    colors={colors}
+                    setActiveTab={setActiveTab}
+                    language={config.language}
+                  />
+                )}
 
-              {contentTab === "servers" && (
-                <ServerMenu
-                  colors={colors}
-                  servers={servers}
-                  selectedServer={selectedServer}
-                  setSelectedServer={setSelectedServer}
-                  session={session}
-                  setActiveTab={setActiveTab}
-                  refreshTrigger={serverRefreshTrigger}
-                  language={config.language}
-                  config={config}
-                  updateConfig={updateConfig}
-                  setSettingsTab={setSettingsTab}
-                />
-              )}
+                {contentTab === "servers" && (
+                  <ServerMenu
+                    colors={colors}
+                    servers={servers}
+                    selectedServer={selectedServer}
+                    setSelectedServer={setSelectedServer}
+                    session={session}
+                    setActiveTab={setActiveTab}
+                    refreshTrigger={serverRefreshTrigger}
+                    language={config.language}
+                    config={config}
+                    updateConfig={updateConfig}
+                    setSettingsTab={setSettingsTab}
+                  />
+                )}
 
-              {contentTab === "modpack" && (
-                <ModPack
-                  colors={colors}
-                  config={config}
-                  setImportModpackOpen={setImportModpackOpen}
-                  setActiveTab={setActiveTab}
-                  setSettingsTab={setSettingsTab}
-                  onShowConfirm={handleShowConfirm}
-                  isActive={true}
-                  selectedInstance={selectedInstance}
-                  setSelectedInstance={setSelectedInstance}
-                  selectedServer={selectedServer}
-                  session={session}
-                  updateConfig={updateConfig}
-                  language={config.language}
-                />
-              )}
+                {contentTab === "modpack" && (
+                  <ModPack
+                    colors={colors}
+                    config={config}
+                    setImportModpackOpen={setImportModpackOpen}
+                    setActiveTab={setActiveTab}
+                    setSettingsTab={setSettingsTab}
+                    onShowConfirm={handleShowConfirm}
+                    isActive={true}
+                    selectedInstance={selectedInstance}
+                    setSelectedInstance={setSelectedInstance}
+                    selectedServer={selectedServer}
+                    session={session}
+                    updateConfig={updateConfig}
+                    language={config.language}
+                  />
+                )}
 
-              {contentTab === "explore" && (
-                <UIErrorBoundary>
-                  <Explore colors={colors} config={config} />
-                </UIErrorBoundary>
-              )}
+                {contentTab === "explore" && (
+                  <UIErrorBoundary>
+                    <Explore colors={colors} config={config} />
+                  </UIErrorBoundary>
+                )}
 
-              {contentTab === "admin" && isAdmin && adminToken && (
-                <AdminPanel
-                  colors={colors}
-                  adminToken={adminToken}
-                  language={config.language}
-                />
-              )}
+                {contentTab === "admin" && isAdmin && adminToken && (
+                  <AdminPanel
+                    colors={colors}
+                    adminToken={adminToken}
+                    language={config.language}
+                  />
+                )}
 
-              {contentTab === "about" && <About colors={colors} config={config} />}
-              {contentTab === "wardrobe" && <Wardrobe colors={colors} />}
+                {contentTab === "about" && <About colors={colors} config={config} />}
+                {contentTab === "wardrobe" && <Wardrobe colors={colors} />}
+              </React.Suspense>
             </div>
           </main>
         </div>
       </div>
 
-      <SettingsDialog
-        isOpen={settingsDialogOpen}
-        onClose={onCloseSettingsDialog}
-        config={config}
-        updateConfig={updateConfig}
-        colors={colors}
-        setSettingsTab={setSettingsTab}
-        settingsTab={settingsTab}
-        handleBrowseJava={handleBrowseJava}
-        handleBrowseMinecraftDir={handleBrowseMinecraftDir}
-        session={session}
-        accounts={accounts}
-        handleLogout={handleLogout}
-        selectAccount={selectAccount}
-        removeAccount={removeAccountFromList}
-        setLoginDialogOpen={setLoginDialogOpen}
-        handleUnlink={handleUnlink}
-        setLinkCatIDOpen={setLinkCatIDOpen}
-        onLinkMicrosoft={handleLinkMicrosoft}
-      />
+      {shouldRenderSettingsDialog && (
+        <React.Suspense fallback={settingsDialogOpen ? <TabLoadingFallback colors={colors} /> : null}>
+          <SettingsDialog
+            isOpen={settingsDialogOpen}
+            onClose={onCloseSettingsDialog}
+            config={config}
+            updateConfig={updateConfig}
+            colors={colors}
+            setSettingsTab={setSettingsTab}
+            settingsTab={settingsTab}
+            handleBrowseJava={handleBrowseJava}
+            handleBrowseMinecraftDir={handleBrowseMinecraftDir}
+            session={session}
+            accounts={accounts}
+            handleLogout={handleLogout}
+            selectAccount={selectAccount}
+            removeAccount={removeAccountFromList}
+            setLoginDialogOpen={setLoginDialogOpen}
+            handleUnlink={handleUnlink}
+            setLinkCatIDOpen={setLinkCatIDOpen}
+            onLinkMicrosoft={handleLinkMicrosoft}
+          />
+        </React.Suspense>
+      )}
 
       {isExporting && exportProgress && !isExportMinimized && (
         <InstallProgressModal

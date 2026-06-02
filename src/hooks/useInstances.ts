@@ -5,6 +5,7 @@ import type { GameInstance, Server, AuthSession } from "../types/launcher";
 // Module-level cache — shared across all hook instances, survives tab switches
 let _instancesCache: GameInstance[] | null = null;
 let _joinedServersCache: Server[] | null = null;
+const RUNNING_STATUS_CHECK_CONCURRENCY = 8;
 
 interface UseInstancesProps {
     session?: AuthSession | null;
@@ -14,6 +15,63 @@ interface UseInstancesProps {
     setSelectedInstance?: (instance: GameInstance | null | ((prev: GameInstance | null) => GameInstance | null)) => void;
 }
 
+function sameStringArray(a?: string[], b?: string[]) {
+    if (a === b) return true;
+    if (!a || !b || a.length !== b.length) return false;
+    return a.every((value, index) => value === b[index]);
+}
+
+function isSameInstanceSnapshot(a: GameInstance, b: GameInstance) {
+    return (
+        a.id === b.id &&
+        a.name === b.name &&
+        a.icon === b.icon &&
+        a.minecraftVersion === b.minecraftVersion &&
+        a.loader === b.loader &&
+        a.loaderVersion === b.loaderVersion &&
+        a.createdAt === b.createdAt &&
+        a.lastPlayedAt === b.lastPlayedAt &&
+        a.totalPlayTime === b.totalPlayTime &&
+        a.javaPath === b.javaPath &&
+        a.ramMB === b.ramMB &&
+        a.javaArguments === b.javaArguments &&
+        a.gameDirectory === b.gameDirectory &&
+        a.modpackId === b.modpackId &&
+        a.modpackVersionId === b.modpackVersionId &&
+        a.cloudId === b.cloudId &&
+        a.autoUpdate === b.autoUpdate &&
+        a.banner === b.banner &&
+        sameStringArray(a.lockedMods, b.lockedMods)
+    );
+}
+
+async function syncRunningInstanceIds(instances: GameInstance[]) {
+    const api = window.api;
+    if (!api?.isGameRunning || instances.length === 0) {
+        return new Set<string>();
+    }
+
+    const runningIds = new Set<string>();
+    let cursor = 0;
+    const workerCount = Math.min(RUNNING_STATUS_CHECK_CONCURRENCY, instances.length);
+
+    const workers = Array.from({ length: workerCount }, async () => {
+        while (cursor < instances.length) {
+            const instance = instances[cursor++];
+            try {
+                if (await api.isGameRunning(instance.id)) {
+                    runningIds.add(instance.id);
+                }
+            } catch {
+                // Ignore per-instance status errors; launch/stop events keep state fresh.
+            }
+        }
+    });
+
+    await Promise.all(workers);
+    return runningIds;
+}
+
 export function useInstances({ session, t, isActive, selectedInstance, setSelectedInstance }: UseInstancesProps) {
     const [instances, setInstances] = useState<GameInstance[]>(_instancesCache ?? []);
     const [isLoading, setIsLoading] = useState(_instancesCache === null);
@@ -21,6 +79,7 @@ export function useInstances({ session, t, isActive, selectedInstance, setSelect
     const [joinedServers, setJoinedServers] = useState<Server[]>(_joinedServersCache ?? []);
     const [loadingServers, setLoadingServers] = useState(false);
     const hasLoadedRef = useRef(_instancesCache !== null);
+    const hasLoadedJoinedServersRef = useRef(_joinedServersCache !== null);
     const wasActiveRef = useRef(isActive);
 
     const loadInstances = useCallback(async () => {
@@ -42,7 +101,7 @@ export function useInstances({ session, t, isActive, selectedInstance, setSelect
     }, []);
 
     const loadJoinedServers = useCallback(async () => {
-        if (joinedServers.length === 0) {
+        if (!hasLoadedJoinedServersRef.current) {
             setLoadingServers(true);
         }
         try {
@@ -51,8 +110,10 @@ export function useInstances({ session, t, isActive, selectedInstance, setSelect
                 const all = [...(result.data.owned || []), ...(result.data.member || [])];
                 const unique = all.filter((v: Server, i: number, a: Server[]) => a.findIndex(t => t.id === v.id) === i);
                 _joinedServersCache = unique;
+                hasLoadedJoinedServersRef.current = true;
                 setJoinedServers(unique);
             } else if (result?.error) {
+                hasLoadedJoinedServersRef.current = true;
                 const errMsg = typeof result.error === 'string' ? result.error : '';
                 if (errMsg.includes("401") || errMsg.includes("Unauthorized")) {
                     console.warn("[useInstances] Session expired, user needs to re-login");
@@ -62,10 +123,11 @@ export function useInstances({ session, t, isActive, selectedInstance, setSelect
             }
         } catch (e) {
             console.error("Failed to fetch joined servers", e);
+            hasLoadedJoinedServersRef.current = true;
         } finally {
             setLoadingServers(false);
         }
-    }, [joinedServers.length]);
+    }, []);
 
     
     useEffect(() => {
@@ -95,7 +157,7 @@ export function useInstances({ session, t, isActive, selectedInstance, setSelect
     useEffect(() => {
         if (selectedInstance && setSelectedInstance && instances.length > 0) {
             const fresh = instances.find(i => i.id === selectedInstance.id);
-            if (fresh && JSON.stringify(fresh) !== JSON.stringify(selectedInstance)) {
+            if (fresh && !isSameInstanceSnapshot(fresh, selectedInstance)) {
                 console.log("[useInstances] Updating selected instance with fresh data");
                 setSelectedInstance(fresh);
             }
@@ -104,21 +166,21 @@ export function useInstances({ session, t, isActive, selectedInstance, setSelect
 
     
     useEffect(() => {
-        if (instances.length > 0) {
-            const syncStatuses = async () => {
-                const results = await Promise.all(
-                    instances.map(async (inst) => {
-                        try {
-                            const isRunning = await window.api?.isGameRunning?.(inst.id);
-                            return isRunning ? inst.id : null;
-                        } catch { return null; }
-                    })
-                );
-                const runningIds = new Set<string>(results.filter((id): id is string => id !== null));
-                setPlayingInstances(runningIds);
-            };
-            syncStatuses();
+        if (instances.length === 0) {
+            setPlayingInstances(prev => (prev.size === 0 ? prev : new Set()));
+            return;
         }
+
+        let cancelled = false;
+        const syncStatuses = async () => {
+            const runningIds = await syncRunningInstanceIds(instances);
+            if (cancelled) return;
+            setPlayingInstances(runningIds);
+        };
+        syncStatuses();
+        return () => {
+            cancelled = true;
+        };
     }, [instances]);
 
     

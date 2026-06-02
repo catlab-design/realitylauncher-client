@@ -889,7 +889,7 @@ export async function launchGameRust(
     const assetIndex =
       versionData.assetIndex?.id || versionData.assets || version;
 
-    // จำกัด heap ตาม RAM เครื่อง (กัน OOM บนสเปกต่ำ) — ดู rustLauncherSupport.ts
+    // Clamp heap to system RAM (avoids OOM on low-spec) — see rustLauncherSupport.ts
     const { minMb: safeMinMb, maxMb: safeMaxMb } = computeSafeHeapMb(ramMB);
     if (safeMaxMb < ramMB) {
       console.warn(
@@ -914,7 +914,7 @@ export async function launchGameRust(
       ramMaxMb: safeMaxMb,
       extraJvmArgs: [
         ...getPlatformJvmArgs(),
-        ...getOptimizedJvmArgs(),
+        ...getOptimizedJvmArgs(safeMaxMb),
         "-DlauncherName=Reality Launcher",
         `-DlauncherVersion=${app.getVersion()}`,
         "-Dminecraft.launcher.brand=Reality Launcher",
@@ -1048,7 +1048,8 @@ export async function launchGameRust(
         "indexes",
         `${assetIndexId}.json`,
       );
-      // marker บอกว่า assets ของ index นี้เคยตรวจครบแล้ว -> ข้ามการ stat ไฟล์เป็นพันตัวในรอบถัดไป
+      // Marker that this asset index was fully verified, so later launches can
+      // skip stat-ing thousands of asset files.
       const assetVerifiedMarkerPath = path.join(
         assetsDir,
         "indexes",
@@ -1106,7 +1107,7 @@ export async function launchGameRust(
           logPerfStep("asset-download-batch", assetDownloadStartedAt);
         }
 
-        // ตรวจ (และดาวน์โหลดส่วนที่ขาด) ครบแล้ว -> เขียน marker เพื่อข้ามรอบหน้า
+        // Verification (and any missing downloads) complete — write the marker to skip next time.
         try {
           await fs.promises.writeFile(
             assetVerifiedMarkerPath,
@@ -1541,9 +1542,9 @@ export async function launchGameRust(
 export { launchGameRust as launchGame };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// preInstallInstance — ดาวน์โหลดและเตรียมไฟล์ Minecraft ทั้งหมดล่วงหน้า
-// (version JSON, libraries, assets, natives) โดยไม่ spawn game process
-// เรียกใช้หลังจาก createInstance หรือ installModpack เพื่อให้พร้อมเล่นทันที
+// preInstallInstance — download and stage all Minecraft files ahead of time
+// (version JSON, libraries, assets, natives) without spawning the game process.
+// Called after createInstance or installModpack so the instance is ready to play.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface PreInstallOptions {

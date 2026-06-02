@@ -183,34 +183,28 @@ export function registerInstanceCloudHandlers(
   ipcMain.handle("instances-get-joined", async () => {
     try {
       const session = getSession();
-      console.log("[GetJoined] session type:", session?.type, "hasApiToken:", !!session?.apiToken);
       if (!session) {
         return { ok: false, error: "Not logged in" };
       }
 
       let apiToken = getApiToken();
-      console.log("[GetJoined] apiToken from getApiToken():", !!apiToken);
 
+      // Microsoft sessions can outlive their API token; mint a fresh one before failing.
       if (!apiToken && session.type === "microsoft") {
-        console.log("[GetJoined] No apiToken for Microsoft session, attempting refresh...");
         const refreshResult = await refreshTokenIfNeeded();
-        console.log("[GetJoined] refresh result:", refreshResult.ok, "newApiToken:", !!refreshResult.newApiToken, "error:", refreshResult.error);
         if (refreshResult.ok && refreshResult.newApiToken) {
           apiToken = refreshResult.newApiToken;
         }
       }
 
       if (!apiToken) {
-        console.log("[GetJoined] Still no apiToken after refresh attempt");
         return { ok: false, error: "Not logged in or no API token" };
       }
 
-      console.log("[GetJoined] Fetching with apiToken present:", !!apiToken);
       const { fetchJoinedServers } = await import("../cloud-instances.js");
       const data = await fetchJoinedServers(apiToken);
       return { ok: true, data };
     } catch (error: any) {
-      console.error("[GetJoined] Error:", error.message);
       return { ok: false, error: error.message };
     }
   });

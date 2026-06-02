@@ -10,11 +10,13 @@ import {
 
 export function registerWindowHandlers(getMainWindow: () => BrowserWindow | null): void {
 
-    // กด X ตอนเกมกำลังรัน -> ซ่อนหน้าต่างไว้เบื้องหลัง แล้วค่อยปิด launcher จริง
-    // เมื่อเกมปิด (deferred quit). เก็บเป็นค่าในโมดูลเพราะ handler ลงทะเบียนครั้งเดียว
+    // Closing (X) while a game is running hides the window instead of quitting,
+    // then quits for real once the game exits (deferred quit). Kept at module
+    // scope because the handler is registered only once.
     let quitAfterGameExit = false;
 
-    // เมื่อเกมปิด ถ้าผู้ใช้เคยกด X ไว้ระหว่างเกมรัน และไม่มีเกมของ session นี้เหลือแล้ว -> ปิด launcher
+    // On game exit, quit the launcher if the user requested close mid-game and no
+    // game from this session is left.
     ipcMain.on("game-stopped", () => {
         if (quitAfterGameExit && !isSessionGameRunning()) {
             console.log("[Window] Game exited after a close request, quitting launcher");
@@ -45,7 +47,7 @@ export function registerWindowHandlers(getMainWindow: () => BrowserWindow | null
         if (isSessionGameRunning()) {
             if (mainWindow) {
                 quitAfterGameExit = true;
-                // ถ้าหน้าต่างถูกเรียกกลับมาแสดงอีกครั้ง (เช่น เปิดแอปซ้ำ) ให้ยกเลิกการปิดค้างไว้
+                // If the window is shown again (e.g. relaunch), cancel the pending quit.
                 mainWindow.once("show", () => { quitAfterGameExit = false; });
                 mainWindow.hide();
                 console.log("[Window] Game is running, hiding to background (will quit when game exits)");

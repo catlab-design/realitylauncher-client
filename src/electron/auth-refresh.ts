@@ -251,9 +251,9 @@ export async function refreshMicrosoftTokenIfNeeded(
 
     let newApiToken = session.apiToken;
     {
-      // Refresh หรือสร้าง apiToken ใหม่ทุกครั้งที่ Minecraft token ถูก refresh
-      // - มี apiToken อยู่แล้ว (linked หรือ Microsoft standalone) → ต่ออายุผ่าน /auth/microsoft/link
-      // - ไม่มี apiToken → สร้างใหม่ผ่าน /auth/microsoft/login (หรือ fallback /link ไม่ใส่ Auth)
+      // Refresh or mint the apiToken every time the Minecraft token is refreshed:
+      // - Have an apiToken (linked or Microsoft standalone) -> renew via /auth/microsoft/link
+      // - No apiToken -> create one via /auth/microsoft/login (fallback to /link without auth)
       try {
         const accessTokenExpiresAt = Number.isFinite(expiresInSeconds)
           ? new Date(Date.now() + expiresInSeconds * 1000).toISOString()
@@ -271,20 +271,20 @@ export async function refreshMicrosoftTokenIfNeeded(
 
         let apiResponse: Response;
         if (session.apiToken) {
-          // ต่ออายุ session ที่มีอยู่แล้ว (linked หรือ standalone)
+          // Renew an existing session (linked or standalone)
           apiResponse = await fetch(`${ML_API_URL}/auth/microsoft/link`, {
             method: "POST",
             headers: { ...msBaseHeaders, Authorization: `Bearer ${session.apiToken}` },
             body: msBody,
           });
         } else {
-          // ยังไม่มี apiToken → ขอ standalone session ใหม่
+          // No apiToken yet -> request a new standalone session
           apiResponse = await fetch(`${ML_API_URL}/auth/microsoft/login`, {
             method: "POST",
             headers: msBaseHeaders,
             body: msBody,
           });
-          // Fallback: server เก่าที่ยังไม่มี /login
+          // Fallback for older servers without /login
           if (apiResponse.status === 404 || apiResponse.status === 405) {
             apiResponse = await fetch(`${ML_API_URL}/auth/microsoft/link`, {
               method: "POST",

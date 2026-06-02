@@ -873,15 +873,6 @@ function LauncherAppContent() {
   };
 
   useEffect(() => {
-    if (!verificationWaiting || !verificationToken) return;
-
-    const pollInterval = setInterval(async () => {
-    }, 5000);
-
-    return () => clearInterval(pollInterval);
-  }, [verificationWaiting, verificationToken]);
-
-  useEffect(() => {
     if (!verificationWaiting || !verificationExpiresAt) return;
 
     const timeout = setTimeout(() => {

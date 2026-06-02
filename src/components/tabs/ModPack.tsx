@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, type Dispatch, type SetStateAction } from "react";
+import React, { useEffect, useMemo, useState, useRef, type Dispatch, type SetStateAction } from "react";
 import toast from "react-hot-toast";
 import { playClick, toastSuccess, toastError } from "../../lib/sounds";
 import { Icons } from "../ui/Icons";
@@ -791,7 +791,19 @@ export function ModPack({
         );
     };
 
-    const myModPacks = instances.filter(i => !i.cloudId);
+    const myModPacks = useMemo(
+        () => instances.filter(i => !i.cloudId),
+        [instances],
+    );
+    const serverInstancesByCloudId = useMemo(() => {
+        const byCloudId = new Map<string, GameInstance>();
+        for (const instance of instances) {
+            if (instance.cloudId) {
+                byCloudId.set(instance.cloudId, instance);
+            }
+        }
+        return byCloudId;
+    }, [instances]);
 
     return (
         <>
@@ -943,7 +955,7 @@ export function ModPack({
                         ) : joinedServers.length > 0 ? (
                             <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                                 {joinedServers.map(server => {
-                                    const serverInstance = instances.find(i => i.cloudId === server.id);
+                                    const serverInstance = serverInstancesByCloudId.get(server.id);
                                     return serverInstance
                                         ? renderInstalledServerCard(serverInstance, server)
                                         : renderUninstalledServerCard(server);

@@ -274,7 +274,8 @@ export function isTokenExpired(): boolean {
 
 // Switch to a different session (e.g., account switching)
 export function setActiveSession(session: AuthSession): void {
-  console.log("[Auth DEBUG] setActiveSession called with token present:", !!session.apiToken);
+  // Re-activating the same CatID account (e.g. from the account list) can arrive
+  // without an expiry; keep the live token/expiry so we don't drop a valid session.
   if (
     currentSession?.type === "catid" &&
     session.type === "catid" &&

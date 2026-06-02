@@ -630,10 +630,10 @@ export function registerAuthHandlers(
             };
           }
         } else {
-          // Microsoft login โดยตรง (ไม่ได้ link จาก CatID)
-          // ขอ apiToken จาก server ตรง ๆ เพื่อให้ได้ cloud features เหมือน CatID
-          // ลอง endpoint ใหม่ /auth/microsoft/login ก่อน ถ้าไม่มีให้ fallback เป็น
-          // /auth/microsoft/link แบบไม่มี Authorization (server จะสร้าง session ใหม่)
+          // Direct Microsoft login (not linked from CatID). Request an apiToken
+          // straight from the server so it gets the same cloud features as CatID.
+          // Try the newer /auth/microsoft/login first; if missing, fall back to
+          // /auth/microsoft/link without Authorization (server creates a new session).
           try {
             const msLoginBody = JSON.stringify({
               accessToken: mcData.access_token,
@@ -651,7 +651,7 @@ export function registerAuthHandlers(
               body: msLoginBody,
             });
 
-            // ถ้า server ยังไม่มี /auth/microsoft/login ให้ fallback
+            // Fall back if the server doesn't have /auth/microsoft/login yet
             if (msApiResponse.status === 404 || msApiResponse.status === 405) {
               logger.info("Microsoft /login endpoint not found, falling back to /link without Authorization");
               msApiResponse = await fetch(`${ML_API_URL}/auth/microsoft/link`, {

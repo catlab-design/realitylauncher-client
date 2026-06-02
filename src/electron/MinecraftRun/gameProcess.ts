@@ -5,9 +5,9 @@ import { getNativeModule } from "../native.js";
 
 const gameProcesses = new Map<string, ChildProcess>();
 
-// instance ที่ "เรา" สั่งเปิดใน session ปัจจุบันเท่านั้น (in-memory ไม่ persist)
-// ใช้กันเคส running-instances.json ที่ค้างจาก session ก่อน + PID ถูกนำไปใช้ซ้ำ
-// แล้วทำให้ isGameRunning() เป็น false-positive
+// Instances this process launched in the current session (in-memory, not persisted).
+// Guards against a stale running-instances.json from a previous session whose PID
+// got reused, which would make isGameRunning() report a false positive.
 const sessionLaunchedInstances = new Set<string>();
 
 const launchingStates = new Map<string, boolean>();
@@ -186,9 +186,9 @@ export function setGameProcess(instanceId: string, p: ChildProcess | null) {
 }
 
 /**
- * เกมที่ "เรา" เปิดใน session นี้ ยังรันอยู่ไหม (อย่างน้อย 1 ตัว)
- * ต่างจาก isGameRunning() ตรงที่ไม่เชื่อ entry ที่ค้างจาก session ก่อน
- * จึงไม่ false-positive จาก PID reuse — ใช้ตัดสินใจตอนปิดหน้าต่าง
+ * Whether any game this session launched is still running.
+ * Unlike isGameRunning(), it ignores entries left over from a previous session,
+ * so it can't false-positive on PID reuse — used when deciding to close the window.
  */
 export function isSessionGameRunning(): boolean {
     for (const id of sessionLaunchedInstances) {

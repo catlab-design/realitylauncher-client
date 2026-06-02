@@ -45,14 +45,14 @@ describe("content icon regressions", () => {
   });
 
   it("hydrates global datapacks from installed content linkage and keeps that linkage in sync on toggle/delete", () => {
-    expect(instancePackHandlersSource).toContain(
-      'const linked =\n                worldName === "(Global)"',
+    // Match on intent rather than exact indentation so reformatting doesn't break the guard.
+    const normalized = instancePackHandlersSource.replace(/\s+/g, " ");
+    expect(normalized).toContain('const linked = worldName === "(Global)"');
+    expect(normalized).toContain(
+      'await renameInstalledContentLink( instance.gameDirectory, "datapack"',
     );
-    expect(instancePackHandlersSource).toContain(
-      'await renameInstalledContentLink(\n            instance.gameDirectory,\n            "datapack"',
-    );
-    expect(instancePackHandlersSource).toContain(
-      'if (worldName === "(Global)") {\n          await deleteInstalledContentLink(',
+    expect(normalized).toContain(
+      'if (worldName === "(Global)") { await deleteInstalledContentLink(',
     );
   });
 

@@ -304,8 +304,8 @@ export function clearLauncherCaches() {
     }
   }
 
-  // ลบ asset-verified marker เพื่อบังคับให้ตรวจ assets ใหม่ในการเปิดเกมครั้งหน้า
-  // (เป็น escape hatch กรณี assets เสีย — clear cache จะรีเซ็ตการข้ามสแกน)
+  // Remove the asset-verified marker so assets are re-checked on the next launch.
+  // Escape hatch for corrupted assets — clearing the cache resets the scan skip.
   try {
     const assetIndexesDir = path.join(getMinecraftDir(), "assets", "indexes");
     if (existsSync(assetIndexesDir)) {

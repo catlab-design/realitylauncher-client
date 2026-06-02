@@ -3,8 +3,8 @@
  * CurseForge API Client
  * ========================================
  *
- * API client สำหรับค้นหาและดาวน์โหลดจาก CurseForge
- * ใช้ proxy ผ่าน ml-api เพื่อซ่อน API Key
+ * API client for searching and downloading from CurseForge.
+ * Proxied through ml-api to keep the API key hidden.
  */
 
 import { API_URL as ML_API_URL } from "./lib/constants.js";

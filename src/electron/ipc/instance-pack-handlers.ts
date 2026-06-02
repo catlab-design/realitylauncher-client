@@ -1096,8 +1096,11 @@ export function registerInstancePackHandlers(deps: InstancePackHandlersDeps): vo
                   }
                 } else if ((!icon || !version) && isDir) {
                   const packPngPath = path.join(filePath, "pack.png");
-                  if (fs.existsSync(packPngPath)) {
-                    icon = `data:image/png;base64,${fs.readFileSync(packPngPath).toString("base64")}`;
+                  const packPngData = await fs.promises
+                    .readFile(packPngPath)
+                    .catch(() => null);
+                  if (packPngData) {
+                    icon = `data:image/png;base64,${packPngData.toString("base64")}`;
                   } else {
                     
                     const allFiles = await (async function walk(

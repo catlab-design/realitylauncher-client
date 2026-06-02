@@ -189,7 +189,7 @@ export function registerUtilityHandlers(
   getMainWindow: () => BrowserWindow | null,
 ): void {
   /**
-   * open-external - เปิด URL ในเบราว์เซอร์ภายนอก
+   * open-external - open a URL in the external browser
    */
   ipcMain.handle(
     "open-external",
@@ -203,7 +203,7 @@ export function registerUtilityHandlers(
   );
 
   /**
-   * open-folder - เปิดโฟลเดอร์ใน File Explorer
+   * open-folder - open a folder in the system file manager
    */
   ipcMain.handle(
     "open-folder",
@@ -213,14 +213,15 @@ export function registerUtilityHandlers(
   );
 
   /**
-   * browse-java - เปิด dialog เลือกไฟล์ Java
+   * browse-java - open a dialog to pick the Java executable
    */
   ipcMain.handle("browse-java", async (): Promise<string | null> => {
     const win = BrowserWindow.getFocusedWindow() || getMainWindow();
     if (!win) return null;
 
-    // ไฟล์ Java บน Windows คือ java.exe/javaw.exe แต่บน macOS/Linux คือ `java` (ไม่มีนามสกุล)
-    // จึงไม่ใส่ filter เฉพาะ .exe บนแพลตฟอร์มอื่น ไม่งั้นผู้ใช้ Mac/Linux จะเลือกไฟล์ไม่ได้
+    // Java is java.exe/javaw.exe on Windows but a bare `java` (no extension) on
+    // macOS/Linux, so don't apply an .exe-only filter there or those users can't
+    // select the file.
     const isWin = process.platform === "win32";
     const result = await dialog.showOpenDialog(win, {
       title: isWin
@@ -239,7 +240,7 @@ export function registerUtilityHandlers(
   });
 
   /**
-   * browse-directory - เปิด dialog เลือกโฟลเดอร์
+   * browse-directory - open a folder picker dialog
    */
   ipcMain.handle(
     "browse-directory",
@@ -257,7 +258,7 @@ export function registerUtilityHandlers(
   );
 
   /**
-   * browse-modpack - เปิด dialog เลือกไฟล์ modpack
+   * browse-modpack - open a dialog to pick a modpack file
    */
   ipcMain.handle("browse-modpack", async (): Promise<string | null> => {
     const win = BrowserWindow.getFocusedWindow() || getMainWindow();
@@ -276,7 +277,7 @@ export function registerUtilityHandlers(
   });
 
   /**
-   * browse-icon - เปิด dialog เลือกไฟล์รูปภาพ
+   * browse-icon - open a dialog to pick an image file
    */
   ipcMain.handle("browse-icon", async (): Promise<string | null> => {
     const result = await dialog.showOpenDialog({
@@ -313,7 +314,7 @@ export function registerUtilityHandlers(
   });
 
   /**
-   * import-modpack - นำเข้า modpack จากไฟล์
+   * import-modpack - import a modpack from a file
    */
   ipcMain.handle("import-modpack", async (_event, filePath: string) => {
     try {
@@ -342,7 +343,7 @@ export function registerUtilityHandlers(
   });
 
   /**
-   * auto-detect-java - ค้นหา Java อัตโนมัติ
+   * auto-detect-java - auto-detect a Java installation
    */
   ipcMain.handle("auto-detect-java", async (): Promise<string | null> => {
     const native = getNativeJavaModule();
@@ -422,7 +423,7 @@ export function registerUtilityHandlers(
   });
 
   /**
-   * detect-java-installations - ค้นหา Java installations ทั้งหมด
+   * detect-java-installations - find all Java installations
    */
   ipcMain.handle("detect-java-installations", async () => {
     const native = getNativeJavaModule();
@@ -588,7 +589,7 @@ export function registerUtilityHandlers(
   });
 
   /**
-   * test-java-execution - ทดสอบว่า Java path ใช้งานได้
+   * test-java-execution - verify a Java path actually runs
    */
   ipcMain.handle("test-java-execution", async (_event, javaPath: string) => {
     const { spawnSync } = await import("node:child_process");
@@ -635,7 +636,7 @@ export function registerUtilityHandlers(
   });
 
   /**
-   * install-java - ดาวน์โหลดและติดตั้ง Java (with progress events)
+   * install-java - download and install Java (with progress events)
    */
   ipcMain.handle("install-java", async (_event, majorVersion: number) => {
     const https = await import("node:https");
@@ -1098,7 +1099,7 @@ export function registerUtilityHandlers(
   });
 
   /**
-   * delete-java - ลบ Java ที่ติดตั้งโดย launcher
+   * delete-java - remove a Java runtime the launcher installed
    */
   ipcMain.handle("delete-java", async (_event, majorVersion: number) => {
     try {
