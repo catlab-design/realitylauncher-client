@@ -22,7 +22,7 @@ export type LauncherCloseMode = "keep-open" | "hide-reopen" | "close";
 
 
 export interface AuthSession {
-  type: "catid" | "microsoft" | "offline";
+  type: "catid" | "microsoft";
   username: string;
   uuid: string;
   minecraftUuid?: string; 
@@ -35,6 +35,7 @@ export interface AuthSession {
   isAdmin?: boolean;
   apiToken?: string;
   apiTokenExpiresAt?: number;
+  catidLinked?: boolean;
 }
 
 

@@ -5,7 +5,6 @@ import {
   logout,
   getSession,
   isLoggedIn,
-  loginOffline,
   loginCatID,
   setActiveSession,
   updateApiToken,
@@ -591,6 +590,10 @@ export function registerAuthHandlers(
               apiTokenString = linkData.token;
               apiTokenExpiresAt = linkData.expiresAt;
               updateApiToken(linkData.token, linkData.expiresAt);
+              const linkedSession = getSession();
+              if (linkedSession) {
+                setActiveSession({ ...linkedSession, catidLinked: true });
+              }
               linkSwitched = !!linkData.linkSwitched;
               oldCatID = linkData.oldCatID;
               logger.info(" Microsoft linked successfully");
@@ -627,7 +630,64 @@ export function registerAuthHandlers(
             };
           }
         } else {
-          logger.info(" Default Microsoft login (Local only, no API sync)");
+          // Microsoft login โดยตรง (ไม่ได้ link จาก CatID)
+          // ขอ apiToken จาก server ตรง ๆ เพื่อให้ได้ cloud features เหมือน CatID
+          // ลอง endpoint ใหม่ /auth/microsoft/login ก่อน ถ้าไม่มีให้ fallback เป็น
+          // /auth/microsoft/link แบบไม่มี Authorization (server จะสร้าง session ใหม่)
+          try {
+            const msLoginBody = JSON.stringify({
+              accessToken: mcData.access_token,
+              uuid: profileData.id,
+              username: profileData.name,
+            });
+            const msLoginHeaders = {
+              "Content-Type": "application/json",
+              "X-Client-App": "RealityLauncher",
+            };
+
+            let msApiResponse = await fetch(`${ML_API_URL}/auth/microsoft/login`, {
+              method: "POST",
+              headers: msLoginHeaders,
+              body: msLoginBody,
+            });
+
+            // ถ้า server ยังไม่มี /auth/microsoft/login ให้ fallback
+            if (msApiResponse.status === 404 || msApiResponse.status === 405) {
+              logger.info("Microsoft /login endpoint not found, falling back to /link without Authorization");
+              msApiResponse = await fetch(`${ML_API_URL}/auth/microsoft/link`, {
+                method: "POST",
+                headers: msLoginHeaders,
+                body: msLoginBody,
+              });
+            }
+
+            if (msApiResponse.ok) {
+              let msApiData: any;
+              try {
+                msApiData = await msApiResponse.json();
+              } catch {
+                msApiData = {};
+              }
+              if (msApiData.token) {
+                apiTokenString = msApiData.token;
+                apiTokenExpiresAt = msApiData.expiresAt;
+                updateApiToken(msApiData.token, msApiData.expiresAt);
+                const standaloneSession = getSession();
+                if (standaloneSession) {
+                  setActiveSession({ ...standaloneSession, catidLinked: false });
+                }
+                logger.info("Microsoft standalone session created, apiToken acquired");
+              }
+            } else {
+              logger.warn("Microsoft API session request failed — launching without cloud features", {
+                status: msApiResponse.status,
+              });
+            }
+          } catch (msApiError) {
+            logger.warn("Microsoft API session request error — launching without cloud features", {
+              error: String(msApiError),
+            });
+          }
         }
 
         mainWindow?.webContents.send("auth-callback", {
@@ -636,9 +696,9 @@ export function registerAuthHandlers(
           username: profileData.name,
           type: "microsoft",
           apiToken: apiTokenString,
+          catidLinked: isLinking && !!apiTokenString,
         });
 
-        
         if (apiTokenString) {
           const { syncCloudInstances } = await import("../cloud-instances.js");
           syncCloudInstances(apiTokenString).catch((err) =>
@@ -658,6 +718,7 @@ export function registerAuthHandlers(
             expiresIn: msExpiresIn,
             apiToken: apiTokenString,
             apiTokenExpiresAt,
+            catidLinked: isLinking && !!apiTokenString,
           },
         };
       } catch (error: any) {
@@ -757,6 +818,7 @@ export function registerAuthHandlers(
             uuid,
             token: data.token,
             minecraftUuid,
+            expiresAt,
           },
         };
       } catch (error: any) {
@@ -994,15 +1056,21 @@ export function registerAuthHandlers(
                 oldCatID = linkData?.oldCatID;
 
                 
-                if (linkData?.user?.minecraftUuid) {
-                  const currentSess = getSession();
-                  if (currentSess) {
-                    currentSess.minecraftUuid = linkData.user.minecraftUuid;
-                    setActiveSession(currentSess);
-                  }
+                const currentSess = getSession();
+                if (currentSess) {
+                  setActiveSession({
+                    ...currentSess,
+                    minecraftUuid:
+                      linkData?.user?.minecraftUuid || currentSess.minecraftUuid,
+                    catidLinked: true,
+                  });
                 }
               } catch {
                 updateApiToken(data.token);
+                const currentSess = getSession();
+                if (currentSess) {
+                  setActiveSession({ ...currentSess, catidLinked: true });
+                }
               }
               logger.info("Server-side link successful");
             } else {
@@ -1119,6 +1187,7 @@ export function registerAuthHandlers(
               
               delete session.apiToken;
               delete (session as any).apiTokenExpiresAt;
+              delete (session as any).catidLinked;
               delete session.minecraftUuid;
               setActiveSession(session);
             }
@@ -1131,6 +1200,7 @@ export function registerAuthHandlers(
             const updatedAccount = { ...session };
             delete updatedAccount.apiToken;
             delete (updatedAccount as any).apiTokenExpiresAt;
+            delete (updatedAccount as any).catidLinked;
             delete updatedAccount.minecraftUuid;
             cleanupLocalState();
             return {
@@ -1172,6 +1242,7 @@ export function registerAuthHandlers(
             const updatedAccount = { ...session };
             delete updatedAccount.apiToken;
             delete (updatedAccount as any).apiTokenExpiresAt;
+            delete (updatedAccount as any).catidLinked;
             delete updatedAccount.minecraftUuid;
 
             return {
@@ -1185,6 +1256,7 @@ export function registerAuthHandlers(
             const updatedAccount = { ...session };
             delete updatedAccount.apiToken;
             delete (updatedAccount as any).apiTokenExpiresAt;
+            delete (updatedAccount as any).catidLinked;
             delete updatedAccount.minecraftUuid;
             cleanupLocalState();
             return {
@@ -1213,29 +1285,6 @@ export function registerAuthHandlers(
     },
   );
 
-  
-  
-  
-
-  ipcMain.handle("auth-offline-login", async (_event, username: string) => {
-    if (!username || username.trim().length < 1) {
-      return { ok: false, error: "กรุณาใส่ชื่อผู้ใช้" };
-    }
-
-    if (username.length > 16) {
-      return { ok: false, error: "ชื่อผู้ใช้ต้องไม่เกิน 16 ตัวอักษร" };
-    }
-
-    try {
-      const session = loginOffline(username.trim());
-      return {
-        ok: true,
-        session: { username: session.username, uuid: session.uuid },
-      };
-    } catch (error: any) {
-      return { ok: false, error: error.message || "เกิดข้อผิดพลาด" };
-    }
-  });
-
   logger.info("Auth handlers registered");
 }
+

@@ -2,11 +2,14 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const modPackSource = readFileSync(join(import.meta.dir, "ModPack.tsx"), "utf8");
+const modPackSource = readFileSync(
+  join(import.meta.dir, "ModPack.tsx"),
+  "utf8",
+).replace(/\r\n/g, "\n");
 const instanceDetailSource = readFileSync(
   join(import.meta.dir, "InstanceDetail.tsx"),
   "utf8",
-);
+).replace(/\r\n/g, "\n");
 
 describe("modpack install lock", () => {
   it("locks play only for the instance that is currently installing", () => {
@@ -18,7 +21,7 @@ describe("modpack install lock", () => {
       "const isInstallingThisServerInstance = isInstanceInstallLocked(",
     );
     expect(modPackSource).toContain(
-      "disabled={disablePlayButton || isInstallingThisInstance}",
+      "disabled={isInstallingThisInstance}",
     );
     expect(modPackSource).toContain("disabled={isInstallingThisServerInstance}");
   });

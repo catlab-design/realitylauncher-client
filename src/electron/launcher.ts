@@ -15,6 +15,7 @@ export {
 } from "./MinecraftRun/callbacks";
 export {
     isGameRunning,
+    isSessionGameRunning,
     killGame,
     setActiveGameDirectory,
     resetLauncherState,

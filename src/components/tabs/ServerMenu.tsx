@@ -11,6 +11,7 @@ import { ConfirmDialog } from "../ui/ConfirmDialog";
 import toast from "react-hot-toast";
 import { useAuthStore } from "../../store/authStore";
 import { useProgressStore } from "../../store/progressStore";
+import { useLaunchStore } from "../../store/launchStore";
 import { type AuthSession } from "../../types/launcher";
 
 interface ServerMenuProps {
@@ -45,7 +46,7 @@ export function ServerMenu({
     setSettingsTab,
 }: ServerMenuProps) {
     const { t } = useTranslation(language);
-    const { accounts, setSession: setAuthSession, updateAccount } = useAuthStore();
+    const { accounts, setSession: setAuthSession, updateAccount, removeAccount } = useAuthStore();
     const {
         setInstalling,
         setInstallProgress,
@@ -60,7 +61,9 @@ export function ServerMenu({
 
     const [logViewerInstanceId, setLogViewerInstanceId] = useState<string | null>(null);
     const [playingInstances, setPlayingInstances] = useState<Set<string>>(new Set());
-    const [launchingId, setLaunchingId] = useState<string | null>(null);
+    // launchingId อยู่ใน global store เพื่อให้สถานะ "กำลังเปิด" รอดการสลับแท็บ
+    const launchingId = useLaunchStore((s) => s.launchingId);
+    const setLaunchingId = useLaunchStore((s) => s.setLaunchingId);
     const [viewingInstance, setViewingInstance] = useState<Instance | null>(null);
     const [timestamp, setTimestamp] = useState(Date.now());
     const [localInstances, setLocalInstances] = useState<Set<string>>(new Set());
@@ -104,6 +107,26 @@ export function ServerMenu({
     });
 
     // ── Join Submit ────────────────────────────────────────────────────────────
+    const isAuthErrorMessage = (message: string) => (
+        message.includes("401") ||
+        message.includes("Unauthorized") ||
+        message.includes("INVALID_TOKEN") ||
+        message.includes("Session expired") ||
+        message.includes("API token") ||
+        message.includes("Not logged in")
+    );
+
+    const handleInvalidSession = async () => {
+        if (session) {
+            removeAccount(session.uuid, session.type);
+        }
+        setAuthSession(null);
+        try {
+            await window.api?.logout?.();
+        } catch {
+        }
+    };
+
     const handleJoinSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!joinKey.trim()) {
@@ -305,7 +328,12 @@ export function ServerMenu({
                     try {
                         const result = await (window.api as any)?.instancesGetJoinedServers?.();
                         if (result?.ok && result.data) return result.data;
-                        if (result && !result.ok) cloudError = result.error || "API error";
+                        if (result && !result.ok) {
+                            cloudError = result.error || "API error";
+                            if (cloudError && isAuthErrorMessage(cloudError)) {
+                                await handleInvalidSession();
+                            }
+                        }
                     } catch (err: any) { cloudError = err.message || "Network error"; }
                     return { owned: [], member: [] };
                 })(),
@@ -444,6 +472,7 @@ export function ServerMenu({
             : allMyInstances;
 
     const myServerCount = (instances?.owned?.length ?? 0) + (instances?.member?.length ?? 0);
+    const isSessionError = !!apiError && isAuthErrorMessage(apiError);
 
     // ─────────────────────────────────────────────────────────────────────────
     //  RENDER
@@ -709,19 +738,6 @@ export function ServerMenu({
                                 <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>{t('connect_microsoft_desc')}</p>
                             </div>
                         </div>
-                    ) : (session.type === "microsoft" && !session.apiToken) ? (
-                        <div className="flex-1 flex flex-col items-center justify-center gap-5 animate-fade-in">
-                            <div className="w-20 h-20 rounded-3xl flex items-center justify-center" style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                                <svg className="w-10 h-10" style={{ color: colors.secondary }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-                                </svg>
-                            </div>
-                            <div className="text-center">
-                                <h3 className="text-lg font-bold mb-1.5" style={{ color: colors.onSurface }}>{t('connect_catid')}</h3>
-                                <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>{t('connect_catid_desc')}</p>
-                            </div>
-                        </div>
                     ) : (loading || isSearching) ? (
                         /* Loading skeleton */
                         <div className="flex flex-col gap-2 pb-4">
@@ -766,17 +782,19 @@ export function ServerMenu({
                             <div className="text-center">
                                 <h3 className="text-lg font-bold mb-1.5" style={{ color: colors.onSurface }}>
                                     {apiError
-                                        ? (t('api_connection_error') || "ไม่สามารถเชื่อมต่อได้")
+                                        ? isSessionError
+                                            ? (t('session_expired_login_server') || "Session expired, please login again")
+                                            : (t('api_connection_error') || "ไม่สามารถเชื่อมต่อได้")
                                         : showPublic ? t('no_public_servers')
-                                            : session?.type === "offline" ? t('offline_mode')
-                                                : t('no_servers_found_in_list')}
+                                            : t('no_servers_found_in_list')}
                                 </h3>
                                 <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>
                                     {apiError
-                                        ? (t('api_connection_error_desc') || "API อาจล่มหรือเครือข่ายขัดข้อง")
+                                        ? isSessionError
+                                            ? (t('session_expired') || "Session expired - Please login again")
+                                            : (t('api_connection_error_desc') || "API อาจล่มหรือเครือข่ายขัดข้อง")
                                         : showPublic ? t('no_search_results')
-                                            : session?.type === "offline" ? t('use_catid_to_play')
-                                                : t('no_server_invite_desc')}
+                                            : t('no_server_invite_desc')}
                                 </p>
                                 {apiError && (
                                     <button

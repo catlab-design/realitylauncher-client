@@ -29,12 +29,16 @@ interface LauncherConfig {
 }
 
 interface AuthSession {
-  type: "catid" | "microsoft" | "offline";
+  type: "catid" | "microsoft";
   username: string;
   uuid: string;
   accessToken?: string;
   refreshToken?: string;
   expiresAt?: number;
+  tokenExpiresAt?: number;
+  apiToken?: string;
+  apiTokenExpiresAt?: number;
+  catidLinked?: boolean;
   skinUrl?: string;
 }
 
@@ -264,6 +268,7 @@ declare global {
           expiresIn?: number;
           apiToken?: string;
           apiTokenExpiresAt?: number;
+          catidLinked?: boolean;
         };
       }>;
       
@@ -277,6 +282,7 @@ declare global {
           uuid: string;
           token: string;
           minecraftUuid?: string;
+          expiresAt?: string;
         };
         error?: string;
       }>;
@@ -329,14 +335,6 @@ declare global {
         error?: string;
       }>;
       
-      loginOffline: (username: string) => Promise<{
-        ok: boolean;
-        session?: {
-          username: string;
-          uuid: string;
-        };
-        error?: string;
-      }>;
       authRefreshToken: () => Promise<{
         ok: boolean;
         refreshed?: boolean;

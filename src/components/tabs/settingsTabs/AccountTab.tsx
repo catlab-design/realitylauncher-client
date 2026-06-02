@@ -65,7 +65,7 @@ export function AccountTab({
                                     ) : session.type === "microsoft" ? (
                                         <>
                                             <img src={microsoftIcon.src} alt="Microsoft" className="w-5 h-5" />
-                                            {session.apiToken && (
+                                            {session.catidLinked && (
                                                 <span className="inline-flex items-center justify-center w-4 h-4 rounded-full" style={{ backgroundColor: "#fbbf24" }}>
                                                     <Icons.Check className="w-3 h-3 text-white" />
                                                 </span>
@@ -75,8 +75,8 @@ export function AccountTab({
                                 </div>
                                 <div className="text-xs flex items-center gap-2" style={{ color: colors.onSurfaceVariant }}>
                                     {session.type === "microsoft"
-                                        ? (session.apiToken ? t('catid_and_microsoft_account') : t('microsoft_account'))
-                                        : session.type === "catid" ? t('catid_account') : t('offline_mode')}
+                                        ? (session.catidLinked ? t('catid_and_microsoft_account') : t('microsoft_account'))
+                                        : session.type === "catid" ? t('catid_account') : t('user_account')}
                                 </div>
                                     {/* Session status for accounts with API session */}
                                     {(session.type === "catid" || (session.type === "microsoft" && session.apiToken)) && (
@@ -97,7 +97,7 @@ export function AccountTab({
                             <div className="pt-3 border-t flex flex-col gap-2" style={{ borderColor: colors.outline + "20" }}>
                                 <div className="text-xs font-medium" style={{ color: colors.onSurfaceVariant }}>{t('account_connections')}</div>
                                 <div className="flex gap-2">
-                                    {session.apiToken ? (
+                                    {session.catidLinked ? (
                                         <button
                                             onClick={() => handleUnlink("catid")}
                                             className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm transition-all hover:bg-black/5"
@@ -186,7 +186,7 @@ export function AccountTab({
                                         ) : account.type === "microsoft" ? (
                                             <>
                                                 <img src={microsoftIcon.src} alt="Microsoft" className="w-5 h-5" />
-                                                {account.apiToken && (
+                                                {account.catidLinked && (
                                                     <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full flex-shrink-0" style={{ backgroundColor: "#fbbf24" }}>
                                                         <Icons.Check className="w-2.5 h-2.5 text-white" />
                                                     </span>
@@ -196,8 +196,8 @@ export function AccountTab({
                                     </div>
                                     <div className="text-xs flex items-center gap-1" style={{ color: colors.onSurfaceVariant }}>
                                         {account.type === "microsoft"
-                                            ? (account.apiToken ? t('catid_and_microsoft_account') : t('microsoft_account'))
-                                            : account.type === "catid" ? t('catid_account') : t('offline_mode')}
+                                            ? (account.catidLinked ? t('catid_and_microsoft_account') : t('microsoft_account'))
+                                            : account.type === "catid" ? t('catid_account') : t('user_account')}
                                         {/* Show expired warning for CatID accounts only */}
                                         {account.type === "catid" && (() => {
                                             const sevenDays = 7 * 24 * 60 * 60 * 1000;

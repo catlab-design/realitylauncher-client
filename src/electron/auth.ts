@@ -12,7 +12,8 @@ export interface AuthSession {
   tokenExpiresAt?: number;
   apiToken?: string;
   apiTokenExpiresAt?: number;
-  type: "catid" | "microsoft" | "offline";
+  catidLinked?: boolean;
+  type: "catid" | "microsoft";
   createdAt: number;
 }
 
@@ -221,6 +222,11 @@ export function clearApiToken(): boolean {
 
   currentSession.apiToken = undefined;
   currentSession.apiTokenExpiresAt = undefined;
+  currentSession.catidLinked = undefined;
+  if (currentSession.type === "catid") {
+    currentSession.accessToken = undefined;
+    currentSession.tokenExpiresAt = undefined;
+  }
   saveSession();
   console.log("[Auth] API token cleared for:", currentSession.username);
   return true;
@@ -266,37 +272,23 @@ export function isTokenExpired(): boolean {
   return Date.now() > (currentSession.tokenExpiresAt - fiveMinutes);
 }
 
-// Offline login - generates UUID from username using Minecraft's offline algorithm
-export function loginOffline(username: string): AuthSession {
-  const crypto = require('node:crypto');
-  const hash = crypto.createHash('md5').update(`OfflinePlayer:${username}`).digest('hex');
-
-  // Format hash as UUID v3 (offline player UUID format)
-  const uuid = [
-    hash.substring(0, 8),
-    hash.substring(8, 12),
-    '3' + hash.substring(13, 16),
-    ((parseInt(hash.charAt(16), 16) & 0x3) | 0x8).toString(16) + hash.substring(17, 20),
-    hash.substring(20, 32)
-  ].join('-');
-
-  currentSession = {
-    username,
-    uuid,
-    accessToken: "",
-    type: "offline",
-    createdAt: Date.now(),
-  };
-
-  saveSession();
-  console.log("[Auth] Offline login successful:", username, "UUID:", uuid);
-
-  return currentSession;
-}
-
 // Switch to a different session (e.g., account switching)
 export function setActiveSession(session: AuthSession): void {
   console.log("[Auth DEBUG] setActiveSession called with token present:", !!session.apiToken);
+  if (
+    currentSession?.type === "catid" &&
+    session.type === "catid" &&
+    currentSession.accessToken === session.accessToken &&
+    currentSession.tokenExpiresAt &&
+    !session.tokenExpiresAt
+  ) {
+    session = {
+      ...session,
+      tokenExpiresAt: currentSession.tokenExpiresAt,
+      apiToken: session.apiToken ?? currentSession.apiToken,
+      apiTokenExpiresAt: session.apiTokenExpiresAt ?? currentSession.apiTokenExpiresAt,
+    };
+  }
   currentSession = session;
   saveSession();
   console.log("[Auth] Active session switched to:", session.username);

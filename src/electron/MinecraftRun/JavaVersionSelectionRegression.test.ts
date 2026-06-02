@@ -2,7 +2,10 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const rustLauncherSource = readFileSync(join(import.meta.dir, "rustLauncher.ts"), "utf8");
+const rustLauncherSource = readFileSync(
+  join(import.meta.dir, "rustLauncher.ts"),
+  "utf8",
+).replace(/\r\n/g, "\n");
 
 describe("Minecraft Java version selection regressions", () => {
   it("prefers Mojang's version manifest Java requirement when available", () => {

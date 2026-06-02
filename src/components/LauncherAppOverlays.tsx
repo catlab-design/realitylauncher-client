@@ -5,7 +5,6 @@ import { toast } from "react-hot-toast";
 import { ChangelogModal } from "./ui/ChangelogModal";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { LoginModal } from "./auth/LoginModal";
-import { OfflineLoginModal } from "./auth/OfflineLoginModal";
 import { CatIDLoginModal } from "./auth/CatIDLoginModal";
 import { MicrosoftVerificationModal } from "./auth/MicrosoftVerificationModal";
 import { MCHead } from "./ui/MCHead";
@@ -69,8 +68,6 @@ interface LauncherAppOverlaysProps {
   setConfirmDialog: Dispatch<SetStateAction<ConfirmDialogState>>;
   loginDialogOpen: boolean;
   setLoginDialogOpen: (open: boolean) => void;
-  offlineUsernameOpen: boolean;
-  setOfflineUsernameOpen: Dispatch<SetStateAction<boolean>>;
   catIDLoginOpen: boolean;
   setCatIDLoginOpen: Dispatch<SetStateAction<boolean>>;
   deviceCodeModalOpen: boolean;
@@ -80,7 +77,6 @@ interface LauncherAppOverlaysProps {
   setDeviceCodeError: Dispatch<SetStateAction<string | null>>;
   setDeviceCodePolling: Dispatch<SetStateAction<boolean>>;
   setIsLinkingMicrosoft: Dispatch<SetStateAction<boolean>>;
-  handleOfflineLogin: (username: string) => Promise<boolean>;
   handleCatIDLogin: (username: string, password: string) => Promise<boolean>;
   catIDRegisterOpen: boolean;
   setCatIDRegisterOpen: Dispatch<SetStateAction<boolean>>;
@@ -134,8 +130,6 @@ export function LauncherAppOverlays({
   setConfirmDialog,
   loginDialogOpen,
   setLoginDialogOpen,
-  offlineUsernameOpen,
-  setOfflineUsernameOpen,
   catIDLoginOpen,
   setCatIDLoginOpen,
   deviceCodeModalOpen,
@@ -145,7 +139,6 @@ export function LauncherAppOverlays({
   setDeviceCodeError,
   setDeviceCodePolling,
   setIsLinkingMicrosoft,
-  handleOfflineLogin,
   handleCatIDLogin,
   catIDRegisterOpen,
   setCatIDRegisterOpen,
@@ -233,20 +226,6 @@ export function LauncherAppOverlays({
           setLoginDialogOpen(false);
           setCatIDLoginOpen(true);
         }}
-        onOfflineLogin={() => {
-          setLoginDialogOpen(false);
-          setOfflineUsernameOpen(true);
-        }}
-        colors={colors}
-      />
-
-      <OfflineLoginModal
-        isOpen={offlineUsernameOpen}
-        onClose={() => setOfflineUsernameOpen(false)}
-        onLogin={async (username) => {
-          const ok = await handleOfflineLogin(username);
-          if (ok) setOfflineUsernameOpen(false);
-        }}
         colors={colors}
       />
 
@@ -282,7 +261,7 @@ export function LauncherAppOverlays({
       />
 
       {catIDRegisterOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
           <div
             className="flex w-full max-w-2xl h-[520px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden"
             style={{ backgroundColor: colors.surface }}
@@ -481,7 +460,7 @@ export function LauncherAppOverlays({
       )}
 
       {verificationWaiting && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
           <div
             className="w-full max-w-md rounded-4xl shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden p-8"
             style={{ backgroundColor: colors.surface }}
@@ -570,7 +549,7 @@ export function LauncherAppOverlays({
       )}
 
       {forgotPasswordOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
           <div
             className="flex w-full max-w-2xl h-[480px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden"
             style={{ backgroundColor: colors.surface }}
@@ -878,7 +857,7 @@ export function LauncherAppOverlays({
       )}
 
       {linkCatIDOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
           <div
             className="flex w-full max-w-2xl h-[450px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden"
             style={{ backgroundColor: colors.surface }}
@@ -1029,7 +1008,7 @@ export function LauncherAppOverlays({
       )}
 
       {accountManagerOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
           <div
             className="flex w-full max-w-3xl h-[600px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden"
             style={{ backgroundColor: colors.surface }}
@@ -1193,7 +1172,7 @@ export function LauncherAppOverlays({
       )}
 
       {importModpackOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
           <div
             className="flex w-full max-w-3xl h-[520px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden"
             style={{ backgroundColor: colors.surface }}

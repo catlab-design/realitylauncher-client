@@ -1,3 +1,5 @@
+import type { TranslationKey } from "../i18n/translations";
+
 export interface MicrosoftDeviceCodeResult {
   ok: boolean;
   deviceCode?: string;
@@ -15,8 +17,8 @@ export interface MicrosoftDeviceCodeData {
 }
 
 interface ToastLike {
-  loading: (message: string) => unknown;
-  dismiss: (toastId?: unknown) => void;
+  loading: (message: string) => string;
+  dismiss: (toastId?: string) => void;
   error: (message: string) => void;
 }
 
@@ -28,7 +30,7 @@ interface StartMicrosoftLoginFlowOptions {
   setDeviceCodeModalOpen: (open: boolean) => void;
   setDeviceCodePolling: (polling: boolean) => void;
   toast: ToastLike;
-  t: (key: string) => string;
+  t: (key: TranslationKey, params?: Record<string, any>) => string;
   now?: () => number;
   logError?: (...args: unknown[]) => void;
 }

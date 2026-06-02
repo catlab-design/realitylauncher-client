@@ -5,6 +5,11 @@ import { getNativeModule } from "../native.js";
 
 const gameProcesses = new Map<string, ChildProcess>();
 
+// instance ที่ "เรา" สั่งเปิดใน session ปัจจุบันเท่านั้น (in-memory ไม่ persist)
+// ใช้กันเคส running-instances.json ที่ค้างจาก session ก่อน + PID ถูกนำไปใช้ซ้ำ
+// แล้วทำให้ isGameRunning() เป็น false-positive
+const sessionLaunchedInstances = new Set<string>();
+
 const launchingStates = new Map<string, boolean>();
 
 const abortedStates = new Map<string, boolean>();
@@ -175,8 +180,23 @@ export function setGameProcess(instanceId: string, p: ChildProcess | null) {
         gameProcesses.delete(instanceId);
     } else {
         gameProcesses.set(instanceId, p);
+        sessionLaunchedInstances.add(instanceId);
         if (p.pid) lastGamePid = p.pid;
     }
+}
+
+/**
+ * เกมที่ "เรา" เปิดใน session นี้ ยังรันอยู่ไหม (อย่างน้อย 1 ตัว)
+ * ต่างจาก isGameRunning() ตรงที่ไม่เชื่อ entry ที่ค้างจาก session ก่อน
+ * จึงไม่ false-positive จาก PID reuse — ใช้ตัดสินใจตอนปิดหน้าต่าง
+ */
+export function isSessionGameRunning(): boolean {
+    for (const id of sessionLaunchedInstances) {
+        if (isGameRunning(id)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 export function isLaunching(instanceId: string) { return launchingStates.get(instanceId) || false; }
@@ -256,11 +276,13 @@ export function isGameRunning(instanceId?: string): boolean {
 export function resetLauncherState(instanceId?: string) {
     if (instanceId) {
         gameProcesses.delete(instanceId);
+        sessionLaunchedInstances.delete(instanceId);
         launchingStates.delete(instanceId);
         abortedStates.delete(instanceId);
         activeGameDirectories.delete(instanceId);
     } else {
         gameProcesses.clear();
+        sessionLaunchedInstances.clear();
         launchingStates.clear();
         abortedStates.clear();
         activeGameDirectories.clear();

@@ -300,6 +300,13 @@ export const instanceManifestCache = new Map<
     mods: ServerSyncMod[];
   }
 >();
+export const instanceMetadataCache = new Map<
+  string,
+  {
+    etag: string;
+    cachedAt: number;
+  }
+>();
 export const joinedServersInFlight = new Map<
   string,
   Promise<{ owned: any[]; member: any[] }>

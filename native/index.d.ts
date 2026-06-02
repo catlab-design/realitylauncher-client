@@ -21,7 +21,10 @@ export interface JavaDetectionResult {
 export declare function detectJavaInstallations(): JavaDetectionResult
 /** Validate a Java path */
 export declare function validateJavaPath(path: string): JavaInstallation | null
-/** Get recommended Java version for a Minecraft version */
+/**
+ * Get recommended Java version for a Minecraft version
+ * Must stay in sync with getRequiredJavaVersion() in rustLauncher.ts
+ */
 export declare function getRecommendedJavaVersion(minecraftVersion: string): number
 /** Find best Java for a Minecraft version from detected installations */
 export declare function findJavaForMinecraft(minecraftVersion: string): JavaInstallation | null

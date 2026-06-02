@@ -833,6 +833,8 @@ export function registerInstanceHandlers(
   registerInstanceCloudHandlers({
     ipcMain,
     getSession,
+    getApiToken,
+    refreshTokenIfNeeded: () => refreshMicrosoftTokenIfNeeded(logger),
     getMainWindow,
     activeOperations,
   });

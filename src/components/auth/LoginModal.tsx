@@ -2,14 +2,12 @@ import React from "react";
 import { Icons } from "../ui/Icons";
 import { useTranslation } from "../../hooks/useTranslation";
 import { playClick } from "../../lib/sounds";
-import toast from "react-hot-toast";
 
 interface LoginModalProps {
     isOpen: boolean;
     onClose: () => void;
     onMicrosoftLogin: () => void;
     onCatIDLogin: () => void;
-    onOfflineLogin: () => void;
     colors: any;
 }
 
@@ -18,7 +16,6 @@ export function LoginModal({
     onClose,
     onMicrosoftLogin,
     onCatIDLogin,
-    onOfflineLogin,
     colors
 }: LoginModalProps) {
     const { t } = useTranslation();
@@ -26,7 +23,7 @@ export function LoginModal({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-80 flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
             <div className="flex w-full max-w-2xl h-[480px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden"
                 style={{ backgroundColor: colors.surface }}>
 
@@ -114,26 +111,6 @@ export function LoginModal({
                                 <div className="font-black text-base">{t('id_catlab')}</div>
                                 <div className="text-[10px] uppercase font-bold tracking-widest opacity-40">{t('identity_verification')}</div>
                             </div>
-                        </button>
-
-                        {/* Offline Login Button */}
-                        <button
-                            onClick={() => {
-                                playClick();
-                                onOfflineLogin();
-                            }}
-                            className="w-full flex items-center justify-between px-6 py-3.5 rounded-2xl border-2 border-dashed transition-all hover:bg-white/5 group"
-                            style={{ borderColor: colors.outline, color: colors.onSurface }}>
-                            <div className="flex items-center gap-4">
-                                <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center transition-all group-hover:bg-white/10">
-                                    <Icons.Lock className="w-5 h-5 opacity-50" />
-                                </div>
-                                <div className="text-left">
-                                    <div className="font-black text-sm">{t('offline_mode')}</div>
-                                    <div className="text-[10px] uppercase font-bold tracking-widest opacity-40">{t('local_play')}</div>
-                                </div>
-                            </div>
-                            <Icons.ChevronRight className="w-5 h-5 opacity-40 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
                         </button>
                     </div>
                 </div>

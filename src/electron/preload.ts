@@ -187,10 +187,6 @@ const api = {
     ipcRenderer.invoke("auth-reset-password", email, otp, newPassword),
 
   
-  loginOffline: (username: string) =>
-    ipcRenderer.invoke("auth-offline-login", username),
-
-  
   authRefreshToken: () => ipcRenderer.invoke("auth-refresh-token"),
 
   

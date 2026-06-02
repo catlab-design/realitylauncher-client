@@ -250,45 +250,64 @@ export async function refreshMicrosoftTokenIfNeeded(
     );
 
     let newApiToken = session.apiToken;
-    if (session.apiToken) {
+    {
+      // Refresh หรือสร้าง apiToken ใหม่ทุกครั้งที่ Minecraft token ถูก refresh
+      // - มี apiToken อยู่แล้ว (linked หรือ Microsoft standalone) → ต่ออายุผ่าน /auth/microsoft/link
+      // - ไม่มี apiToken → สร้างใหม่ผ่าน /auth/microsoft/login (หรือ fallback /link ไม่ใส่ Auth)
       try {
         const accessTokenExpiresAt = Number.isFinite(expiresInSeconds)
           ? new Date(Date.now() + expiresInSeconds * 1000).toISOString()
           : undefined;
-
-        const linkResponse = await fetch(`${ML_API_URL}/auth/microsoft/link`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${session.apiToken}`,
-            "Content-Type": "application/json",
-            "X-Client-App": "RealityLauncher",
-          },
-          body: JSON.stringify({
-            accessToken: mcData.access_token,
-            uuid: session.uuid,
-            username: session.username,
-            accessTokenExpiresAt,
-          }),
+        const msBody = JSON.stringify({
+          accessToken: mcData.access_token,
+          uuid: session.uuid,
+          username: session.username,
+          accessTokenExpiresAt,
         });
+        const msBaseHeaders = {
+          "Content-Type": "application/json",
+          "X-Client-App": "RealityLauncher",
+        };
 
-        if (linkResponse.ok) {
-          const linkData = await readJsonSafe(linkResponse);
-          if (linkData.token) {
-            const refreshedApiToken = String(linkData.token);
-            newApiToken = refreshedApiToken;
-            updateApiToken(refreshedApiToken, linkData.expiresAt);
+        let apiResponse: Response;
+        if (session.apiToken) {
+          // ต่ออายุ session ที่มีอยู่แล้ว (linked หรือ standalone)
+          apiResponse = await fetch(`${ML_API_URL}/auth/microsoft/link`, {
+            method: "POST",
+            headers: { ...msBaseHeaders, Authorization: `Bearer ${session.apiToken}` },
+            body: msBody,
+          });
+        } else {
+          // ยังไม่มี apiToken → ขอ standalone session ใหม่
+          apiResponse = await fetch(`${ML_API_URL}/auth/microsoft/login`, {
+            method: "POST",
+            headers: msBaseHeaders,
+            body: msBody,
+          });
+          // Fallback: server เก่าที่ยังไม่มี /login
+          if (apiResponse.status === 404 || apiResponse.status === 405) {
+            apiResponse = await fetch(`${ML_API_URL}/auth/microsoft/link`, {
+              method: "POST",
+              headers: msBaseHeaders,
+              body: msBody,
+            });
           }
-        } else if (linkResponse.status === 401 || linkResponse.status === 403) {
-          // API session was revoked; clear stale token to avoid repeated unauthorized calls.
+        }
+
+        if (apiResponse.ok) {
+          const apiData = await readJsonSafe(apiResponse);
+          if (apiData.token) {
+            newApiToken = String(apiData.token);
+            updateApiToken(newApiToken, apiData.expiresAt);
+          }
+        } else if (apiResponse.status === 401 || apiResponse.status === 403) {
           clearApiToken();
           newApiToken = undefined;
         } else {
-          logger?.warn?.("Failed to refresh CatID API token", {
-            status: linkResponse.status,
-          });
+          logger?.warn?.("Failed to refresh Microsoft API token", { status: apiResponse.status });
         }
       } catch (error) {
-        logger?.warn?.("CatID token refresh skipped due to network error", error);
+        logger?.warn?.("Microsoft API token refresh skipped due to network error", error);
       }
     }
 

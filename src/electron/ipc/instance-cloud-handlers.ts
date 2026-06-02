@@ -1,12 +1,15 @@
 import type { BrowserWindow, IpcMain } from "electron";
 
 interface SessionLike {
+  type?: "catid" | "microsoft";
   apiToken?: string | null;
 }
 
 export interface InstanceCloudHandlersDeps {
   ipcMain: IpcMain;
   getSession: () => SessionLike | null;
+  getApiToken: () => string | undefined;
+  refreshTokenIfNeeded: () => Promise<{ ok: boolean; newApiToken?: string; error?: string }>;
   getMainWindow: () => BrowserWindow | null;
   activeOperations: Map<string, AbortController>;
 }
@@ -14,18 +17,19 @@ export interface InstanceCloudHandlersDeps {
 export function registerInstanceCloudHandlers(
   deps: InstanceCloudHandlersDeps,
 ): void {
-  const { ipcMain, getSession, getMainWindow, activeOperations } = deps;
+  const { ipcMain, getSession, getApiToken, refreshTokenIfNeeded, getMainWindow, activeOperations } = deps;
 
 
   ipcMain.handle("instances-cloud-sync", async () => {
     try {
       const session = getSession();
-      if (!session || !session.apiToken) {
+      const apiToken = getApiToken();
+      if (!session || !apiToken) {
         return { ok: false, error: "Not logged in or no API token" };
       }
 
       const { syncCloudInstances } = await import("../cloud-instances.js");
-      await syncCloudInstances(session.apiToken);
+      await syncCloudInstances(apiToken);
 
       
       getMainWindow()?.webContents.send("instances-updated");
@@ -52,7 +56,8 @@ export function registerInstanceCloudHandlers(
 
     try {
       const session = getSession();
-      if (!session || !session.apiToken) {
+      const apiToken = getApiToken();
+      if (!session || !apiToken) {
         return { ok: false, error: "Not logged in or no API token" };
       }
 
@@ -69,7 +74,7 @@ export function registerInstanceCloudHandlers(
       throwIfCancelled();
 
       
-      const data = await fetchJoinedServers(session.apiToken, controller.signal);
+      const data = await fetchJoinedServers(apiToken, controller.signal);
       throwIfCancelled();
       const allInstances = [...data.owned, ...data.member];
 
@@ -99,7 +104,7 @@ export function registerInstanceCloudHandlers(
         try {
           await syncServerMods(
             targetId,
-            session.apiToken,
+            apiToken,
             (progress) => {
               getMainWindow()?.webContents.send("install-progress", progress);
             },
@@ -178,14 +183,34 @@ export function registerInstanceCloudHandlers(
   ipcMain.handle("instances-get-joined", async () => {
     try {
       const session = getSession();
-      if (!session || !session.apiToken) {
+      console.log("[GetJoined] session type:", session?.type, "hasApiToken:", !!session?.apiToken);
+      if (!session) {
+        return { ok: false, error: "Not logged in" };
+      }
+
+      let apiToken = getApiToken();
+      console.log("[GetJoined] apiToken from getApiToken():", !!apiToken);
+
+      if (!apiToken && session.type === "microsoft") {
+        console.log("[GetJoined] No apiToken for Microsoft session, attempting refresh...");
+        const refreshResult = await refreshTokenIfNeeded();
+        console.log("[GetJoined] refresh result:", refreshResult.ok, "newApiToken:", !!refreshResult.newApiToken, "error:", refreshResult.error);
+        if (refreshResult.ok && refreshResult.newApiToken) {
+          apiToken = refreshResult.newApiToken;
+        }
+      }
+
+      if (!apiToken) {
+        console.log("[GetJoined] Still no apiToken after refresh attempt");
         return { ok: false, error: "Not logged in or no API token" };
       }
 
+      console.log("[GetJoined] Fetching with apiToken present:", !!apiToken);
       const { fetchJoinedServers } = await import("../cloud-instances.js");
-      const data = await fetchJoinedServers(session.apiToken);
+      const data = await fetchJoinedServers(apiToken);
       return { ok: true, data };
     } catch (error: any) {
+      console.error("[GetJoined] Error:", error.message);
       return { ok: false, error: error.message };
     }
   });
@@ -193,12 +218,13 @@ export function registerInstanceCloudHandlers(
   ipcMain.handle("instance-leave", async (_event, instanceId: string) => {
     try {
       const session = getSession();
-      if (!session || !session.apiToken) {
+      const apiToken = getApiToken();
+      if (!session || !apiToken) {
         return { ok: false, error: "Not logged in" };
       }
 
       const { leaveInstance } = await import("../cloud-instances.js");
-      return await leaveInstance(instanceId, session.apiToken);
+      return await leaveInstance(instanceId, apiToken);
     } catch (error: any) {
       return { ok: false, error: error.message };
     }
@@ -207,12 +233,13 @@ export function registerInstanceCloudHandlers(
   ipcMain.handle("instance-join-public", async (_event, instanceId: string) => {
     try {
       const session = getSession();
-      if (!session || !session.apiToken) {
+      const apiToken = getApiToken();
+      if (!session || !apiToken) {
         return { ok: false, error: "Not logged in" };
       }
 
       const { joinPublicInstance } = await import("../cloud-instances.js");
-      return await joinPublicInstance(instanceId, session.apiToken);
+      return await joinPublicInstance(instanceId, apiToken);
     } catch (error: any) {
       return { ok: false, error: error.message };
     }

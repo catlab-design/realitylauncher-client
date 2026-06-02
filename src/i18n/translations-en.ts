@@ -645,6 +645,7 @@ export const enTranslations = {
       "Click a card on the left to view more details, images, and versions",
 
     add_to_instance: "Add to Instance",
+    search: "Search",
     search_placeholder: "Search {type}...",
     search_versions: "Search versions...",
     change_version: "Change Version",
@@ -868,10 +869,10 @@ export const enTranslations = {
     about_copyright: "© 2026 Cat Lab_ Design. All rights reserved.",
 
     
-    role_ceo_founder: "CEO & Founder Q-Team",
+    role_ceo_founder: "CEO & Founder CatLab",
     role_designer_dev: "Designer / Developer",
     desc_sam_su: "User Experience Design and System Development of Reality",
-    role_co_ceo: "Co-CEO Q-Team",
+    role_co_ceo: "Co-CEO CatLab",
     desc_jo: "Co-planning and driving the project",
     role_it: "IT Department",
     desc_pumpkins: "Responsible for system development and features",

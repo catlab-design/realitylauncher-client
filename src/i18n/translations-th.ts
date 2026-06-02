@@ -467,6 +467,7 @@ export const thTranslations = {
     add_to_instance: "เพิ่มใน Instance ที่มีอยู่",
 
     
+    search: "ค้นหา",
     search_placeholder: "ค้นหา {type}...",
     search_versions: "ค้นหาเวอร์ชัน...",
     change_version: "เปลี่ยนเวอร์ชัน",
@@ -889,10 +890,10 @@ export const thTranslations = {
     about_copyright: "© 2026 Cat Lab_ Design. สงวนลิขสิทธิ์",
 
     
-    role_ceo_founder: "CEO & ผู้ก่อตั้ง Q-Team",
+    role_ceo_founder: "CEO & ผู้ก่อตั้ง CatLab",
     role_designer_dev: "Designer / Developer",
     desc_sam_su: "ออกแบบ UX และพัฒนาระบบ Reality",
-    role_co_ceo: "Co-CEO Q-Team",
+    role_co_ceo: "Co-CEO CatLab",
     desc_jo: "ร่วมวางแผนและขับเคลื่อนโปรเจกต์",
     role_it: "IT Department",
     desc_pumpkins: "ดูแลระบบและพัฒนาฟีเจอร์ใหม่ๆ",

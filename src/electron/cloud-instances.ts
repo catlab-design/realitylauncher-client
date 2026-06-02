@@ -20,6 +20,7 @@ import {
   fastModListSyncCache,
   fetchServerContentPayload,
   instanceManifestCache,
+  instanceMetadataCache,
   isFreshCloudInstanceSync,
   isValidZipFile,
   joinedServersInFlight,
@@ -40,6 +41,21 @@ interface JoinInstanceResult {
   error?: string;
   message?: string;
   instance?: any;
+}
+
+function isInvalidTokenResponse(response: Response, data?: any): boolean {
+  return (
+    response.status === 401 &&
+    (data?.error?.code === "INVALID_TOKEN" ||
+      data?.error?.message === "Invalid token" ||
+      data?.message === "Invalid token")
+  );
+}
+
+function clearInvalidToken(response: Response, data?: any): void {
+  if (isInvalidTokenResponse(response, data)) {
+    clearApiToken();
+  }
 }
 
 
@@ -88,6 +104,7 @@ export async function joinInstanceByKey(
         errorMsg = data.error.message;
       }
 
+      clearInvalidToken(response, data);
       console.error("[Cloud Instances] Failed to join:", data.error);
       return {
         ok: false,
@@ -140,6 +157,7 @@ export async function joinPublicInstance(
         errorMsg = data.error.message;
       }
 
+      clearInvalidToken(response, data);
       console.error("[Cloud Instances] Failed to join:", data.error);
       return {
         ok: false,
@@ -177,6 +195,7 @@ export async function leaveInstance(
       console.log("[Cloud Instances] Left instance successfully");
       return { ok: true };
     } else {
+      clearInvalidToken(response, data);
       console.error("[Cloud Instances] Failed to leave:", data.error);
 
       let errorMsg = "ไม่สามารถออกจาก instance ได้";
@@ -224,6 +243,9 @@ export async function fetchJoinedServers(
         );
         if (response.status === 401) {
           clearApiToken();
+          if (errBody.includes("INVALID_TOKEN") || errBody.includes("Invalid token")) {
+            throw new Error("INVALID_TOKEN: Session expired, please login again");
+          }
         }
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -392,24 +414,58 @@ export async function syncServerMods(
       instanceManifestCache.delete(manifestCacheKey);
     }
 
+    const metadataCacheKey = instance.cloudId;
+    const cachedMetadata = instanceMetadataCache.get(metadataCacheKey);
+    const metadataCacheValid =
+      !!cachedMetadata &&
+      Date.now() - cachedMetadata.cachedAt <= MANIFEST_CACHE_TTL_MS;
+    if (!metadataCacheValid && cachedMetadata) {
+      instanceMetadataCache.delete(metadataCacheKey);
+    }
+    const metadataHeaders: Record<string, string> = {
+      Authorization: `Bearer ${authToken}`,
+    };
+    if (metadataCacheValid && cachedMetadata?.etag) {
+      metadataHeaders["If-None-Match"] = cachedMetadata.etag;
+    }
+
     const [manifestRes, metaRes] = await Promise.all([
       fetchServerContentPayload(instance.cloudId, authToken, signal, {
         manifestOnly: true,
         ifNoneMatch: manifestCacheValid ? cachedManifest?.revision : undefined,
       }),
       fetch(`${API_URL}/instances/${instance.cloudId}`, {
-        headers: { Authorization: `Bearer ${authToken}` },
+        headers: metadataHeaders,
         signal,
       }),
     ]);
 
     
-    if (metaRes.ok) {
+    if (metaRes.status === 304) {
+      if (cachedMetadata) {
+        instanceMetadataCache.set(metadataCacheKey, {
+          etag: cachedMetadata.etag,
+          cachedAt: Date.now(),
+        });
+      }
+      console.log(
+        `[Cloud Sync] Instance metadata unchanged for ${instance.name}`,
+      );
+    } else if (metaRes.ok) {
       try {
         const metaData = await metaRes.json();
         if (metaData && metaData.id) {
           const { importCloudInstance } = await import("./instances.js");
           await importCloudInstance(metaData);
+          const metadataEtag = metaRes.headers.get("ETag");
+          if (metadataEtag) {
+            instanceMetadataCache.set(metadataCacheKey, {
+              etag: metadataEtag,
+              cachedAt: Date.now(),
+            });
+          } else {
+            instanceMetadataCache.delete(metadataCacheKey);
+          }
           console.log(
             `[Cloud Sync] Updated instance metadata for ${instance.name}`,
           );

@@ -488,7 +488,6 @@ export function InstanceSettingsModal({
                                                             {t('choose_format')} <i className="fa-solid fa-arrow-right ml-1" />
                                                         </div>
                                                     </button>
-
                                                     {/* ZIP Option */}
                                                     <button
                                                         onClick={() => handleFormatSelect('zip')}
@@ -556,7 +555,6 @@ export function InstanceSettingsModal({
                                                     </p>
                                                 </div>
                                             </div>
-
                                             <div className="flex-1 overflow-y-auto pr-2 space-y-6">
                                                 {/* Metadata Section */}
                                                 <div className="space-y-4">
@@ -608,7 +606,6 @@ export function InstanceSettingsModal({
                                                         />
                                                     </div>
                                                 </div>
-
                                                 {/* Files Section */}
                                                 <div className="space-y-4">
                                                     <div className="flex items-center justify-between">
@@ -644,7 +641,6 @@ export function InstanceSettingsModal({
                                                             </button>
                                                         </div>
                                                     </div>
-                                                    
                                                     {loadingFiles ? (
                                                         <div className="flex justify-center p-8">
                                                             <Icons.Spinner className="w-6 h-6 animate-spin opacity-50" />
@@ -659,7 +655,6 @@ export function InstanceSettingsModal({
                                                     )}
                                                 </div>
                                             </div>
-
                                             {/* Action Bar */}
                                             <div className="pt-6 mt-2 border-t flex justify-end gap-3" style={{ borderColor: colors.outline + "15" }}>
                                                 <button
@@ -684,7 +679,6 @@ export function InstanceSettingsModal({
                                     )}
                                 </div>
                             )}
-
                             {settingsTab === "general" && (
                                 <div className="space-y-4">
                                     {/* Name & Icon Row */}
@@ -712,7 +706,6 @@ export function InstanceSettingsModal({
                                                     )}
                                                 </div>
                                             </div>
-
                                             {/* Duplicate & Delete - Internal space reduction */}
                                             <div className="space-y-4 pt-2">
                                                 {!instance.cloudId && (
@@ -734,7 +727,6 @@ export function InstanceSettingsModal({
                                                         </button>
                                                     </div>
                                                 )}
-
                                                 <div>
                                                     <h4 className="text-sm font-medium mb-1" style={{ color: colors.onSurface }}>{t('delete_instance_title')}</h4>
                                                     <p className="text-xs mb-2 opacity-70" style={{ color: colors.onSurfaceVariant }}>
@@ -771,7 +763,6 @@ export function InstanceSettingsModal({
                                                 </div>
                                             </div>
                                         </div>
-
                                         {/* Icon Column */}
                                         <div className="shrink-0">
                                             <label className="block text-sm font-medium mb-1.5" style={{ color: colors.onSurface }}>{t('icon')}</label>
@@ -830,7 +821,6 @@ export function InstanceSettingsModal({
                                             </div>
                                         </div>
                                     </div>
-
                                     {/* Banner Section */}
                                     {!instance.cloudId && (
                                         <div className="mt-5">
@@ -888,7 +878,6 @@ export function InstanceSettingsModal({
                                     )}
                                 </div>
                             )}
-
                             {settingsTab === "installation" && (
                                 <div className="space-y-6">
                                     {/* Currently installed */}
@@ -911,7 +900,6 @@ export function InstanceSettingsModal({
                                             </div>
                                         </div>
                                     </div>
-
                                     {/* Edit Controls - Only for Local Instances */}
                                     {!instance.cloudId ? (
                                         <>
@@ -941,7 +929,6 @@ export function InstanceSettingsModal({
                                                     ))}
                                                 </div>
                                             </div>
-
                                             {/* Game version */}
                                             <div>
                                                 <div className="flex items-center justify-between mb-2">
@@ -973,7 +960,6 @@ export function InstanceSettingsModal({
                                                     ))}
                                                 </select>
                                             </div>
-
                                             {/* Loader Version Selection */}
                                             {editedLoader !== "vanilla" && (
                                                 <div className="mt-4">
@@ -995,7 +981,6 @@ export function InstanceSettingsModal({
                                                     </select>
                                                 </div>
                                             )}
-
                                             {/* Warning about changing settings */}
                                             {hasInstallationChanges && (
                                                 <div className="p-3 rounded-xl text-sm" style={{ backgroundColor: "#f59e0b20", color: "#f59e0b" }}>
@@ -1003,7 +988,6 @@ export function InstanceSettingsModal({
                                                     {t('installation_change_warning')}
                                                 </div>
                                             )}
-
                                             {/* Save button */}
                                             {hasInstallationChanges && (
                                                 <button
@@ -1031,7 +1015,6 @@ export function InstanceSettingsModal({
                                                     </p>
                                                 </div>
                                             </div>
-
                                             {/* Auto Update - Only for Server Instances */}
                                             <div className="p-4 rounded-xl flex items-center justify-between transition-colors" style={{ backgroundColor: colors.surfaceContainerHighest }}>
                                                 <div>
@@ -1053,7 +1036,6 @@ export function InstanceSettingsModal({
                                                     <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
                                                 </label>
                                             </div>
-
                                             {/* Repair Files - Only for Server Instances */}
                                             <div className="p-4 rounded-xl flex items-center justify-between transition-colors" style={{ backgroundColor: colors.surfaceContainerHighest }}>
                                                 <div className="flex-1 mr-4">
@@ -1075,7 +1057,6 @@ export function InstanceSettingsModal({
                                     )}
                                 </div>
                             )}
-
                             {settingsTab === "java" && (
                                 <div className="space-y-6">
                                     {/* Java Path */}
@@ -1117,7 +1098,6 @@ export function InstanceSettingsModal({
                                             {t('leave_empty_to_use_default')}
                                         </p>
                                     </div>
-
                                     {/* RAM */}
                                     <div>
                                         <div className="flex items-center gap-2 mb-4">
@@ -1146,7 +1126,6 @@ export function InstanceSettingsModal({
                                                 {t('custom_memory_allocation' as any)}
                                             </span>
                                         </div>
-
                                         <div className={`transition-all duration-200 space-y-3 ${instance.ramMB === 0 ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
                                             {/* Header & Input */}
                                             <div className="flex items-center justify-between">
@@ -1179,7 +1158,6 @@ export function InstanceSettingsModal({
                                                     <span className="text-xs opacity-70">MB</span>
                                                 </div>
                                             </div>
-                                            
                                             {/* Slider */}
                                             <div className="relative pt-2 pb-1">
                                                 {/* Track */}
@@ -1193,7 +1171,6 @@ export function InstanceSettingsModal({
                                                         }}
                                                     />
                                                 </div>
-
                                                 {/* Tick Marks (20%, 40%, 60%, 80%) */}
                                                 <div className="absolute top-[14px] w-full h-3 pointer-events-none px-[6px]">
                                                     {[0.2, 0.4, 0.6, 0.8].map((tick) => (
@@ -1204,7 +1181,6 @@ export function InstanceSettingsModal({
                                                         />
                                                     ))}
                                                 </div>
-
                                                 {/* Slider Input */}
                                                 <input
                                                     type="range"
@@ -1218,7 +1194,6 @@ export function InstanceSettingsModal({
                                                     className="absolute top-2 left-0 w-full h-3 opacity-0 cursor-pointer"
                                                     style={{ margin: 0 }}
                                                 />
-
                                                 {/* Labels */}
                                                 <div className="flex justify-between text-[10px] mt-2 font-medium px-1" style={{ color: colors.onSurfaceVariant }}>
                                                     <span>512 MB</span>
@@ -1228,7 +1203,6 @@ export function InstanceSettingsModal({
                                                     <span>{maxRamMB ? `${(maxRamMB / 1024).toFixed(1)} GB` : "8.0 GB"}</span>
                                                 </div>
                                             </div>
-
                                             {/* Presets */}
                                             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
                                                 <button
@@ -1240,7 +1214,6 @@ export function InstanceSettingsModal({
                                                         else if (sysRam >= 12000) recommended = 6144;
                                                         else if (sysRam >= 8000) recommended = 4096;
                                                         else recommended = Math.max(2048, sysRam - 2048);
-                                                        
                                                         recommended = Math.min(recommended, sysRam);
                                                         setEditedRam(recommended);
                                                         onUpdate(instance.id, { ramMB: recommended });
@@ -1255,7 +1228,6 @@ export function InstanceSettingsModal({
                                                 >
                                                     <span className="text-xs font-medium mb-0.5"><i className="fa-solid fa-thumbs-up mr-1.5"/>{t('recommended')}</span>
                                                 </button>
-
                                                 {[
                                                     { label: "Lite", value: 2048 },
                                                     { label: "Standard", value: 4096 },
@@ -1288,7 +1260,6 @@ export function InstanceSettingsModal({
                                             </div>
                                         </div>
                                     </div>
-
                                     {/* Java Arguments */}
                                     <div>
                                         <label className="block text-sm font-medium mb-1.5" style={{ color: colors.onSurface }}>
@@ -1313,7 +1284,6 @@ export function InstanceSettingsModal({
                             </div>
                         </div>
                     </div>
-
                 {/* Minimized floating progress widget */}
                 {isExporting && minimized && (
                     <div

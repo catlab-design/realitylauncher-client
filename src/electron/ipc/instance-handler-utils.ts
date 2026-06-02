@@ -1,6 +1,6 @@
 import { app } from "electron";
 import * as path from "path";
-import { existsSync, readFileSync, writeFileSync, rmSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, rmSync, readdirSync } from "fs";
 import * as fs from "fs-extra";
 import crypto from "node:crypto";
 import { createIpcLogger } from "../lib/logger.js";
@@ -302,6 +302,26 @@ export function clearLauncherCaches() {
         message: String(error),
       });
     }
+  }
+
+  // ลบ asset-verified marker เพื่อบังคับให้ตรวจ assets ใหม่ในการเปิดเกมครั้งหน้า
+  // (เป็น escape hatch กรณี assets เสีย — clear cache จะรีเซ็ตการข้ามสแกน)
+  try {
+    const assetIndexesDir = path.join(getMinecraftDir(), "assets", "indexes");
+    if (existsSync(assetIndexesDir)) {
+      for (const name of readdirSync(assetIndexesDir)) {
+        if (name.startsWith(".") && name.endsWith(".verified")) {
+          try {
+            rmSync(path.join(assetIndexesDir, name), { force: true });
+            deletedFiles.push(path.join(assetIndexesDir, name));
+          } catch {}
+        }
+      }
+    }
+  } catch (error) {
+    logger.warn("[Cache] Failed to clear asset-verified markers", {
+      message: String(error),
+    });
   }
 
   return { deletedFiles };

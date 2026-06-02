@@ -55,16 +55,13 @@ export const CATEGORIES: CategoryOption[] = [
     { id: "worldgen", icon: "fa-solid fa-earth-americas" },
 ];
 
-// Loaders with SVG assets where we have them — fabric/forge/neoforge/quilt come from
-// modrinth-style SVGs in /assets. The other three keep their FA glyphs as a fallback.
+// Loaders with SVG assets — fabric/forge/neoforge/quilt come from modrinth-style SVGs in /assets.
+// LiteLoader/ModLoader/Rift ถูกตัดออกจากตัวกรองเพราะเลิกใช้แล้ว (legacy/ไม่รองรับ)
 export const LOADERS: LoaderOption[] = [
     { id: "fabric", svg: (fabricIcon as any).src, icon: "fa-solid fa-diamond", color: "#dbb168" },
     { id: "forge", svg: (forgeIcon as any).src, icon: "fa-solid fa-hammer", color: "#5a7fa0" },
     { id: "neoforge", svg: (neoforgeIcon as any).src, icon: "fa-solid fa-fire", color: "#e07030" },
     { id: "quilt", svg: (quiltIcon as any).src, icon: "fa-solid fa-table-cells", color: "#9966cc" },
-    { id: "liteloader", icon: "fa-solid fa-feather", color: "#88aadd" },
-    { id: "modloader", icon: "fa-solid fa-cubes", color: "#888888" },
-    { id: "rift", icon: "fa-solid fa-circle-half-stroke", color: "#aaaaaa" },
 ];
 
 export const ENVIRONMENTS: EnvironmentOption[] = [

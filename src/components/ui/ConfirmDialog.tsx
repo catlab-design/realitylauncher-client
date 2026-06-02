@@ -55,7 +55,7 @@ export function ConfirmDialog({
 
     return (
         <div
-            className={`fixed inset-0 z-[60] flex items-center justify-center transition-opacity duration-200 ${isAnimating ? 'bg-black/50' : 'bg-black/0'}`}
+            className={`fixed inset-0 z-[110] flex items-center justify-center transition-opacity duration-200 ${isAnimating ? 'bg-black/50' : 'bg-black/0'}`}
             onClick={onClose}
         >
             <div

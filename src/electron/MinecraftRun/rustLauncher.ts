@@ -628,7 +628,12 @@ import {
 import { downloadFileAtomic } from "../modrinth.js";
 
 import { applyModLoader, mergeLibraries } from "./modLoaders.js";
-import { filterGameArgs, getOptimizedJvmArgs } from "./rustLauncherSupport.js";
+import {
+  filterGameArgs,
+  getOptimizedJvmArgs,
+  computeSafeHeapMb,
+  getPlatformJvmArgs,
+} from "./rustLauncherSupport.js";
 
 
 const customRequire = createRequire(__filename);
@@ -884,6 +889,14 @@ export async function launchGameRust(
     const assetIndex =
       versionData.assetIndex?.id || versionData.assets || version;
 
+    // จำกัด heap ตาม RAM เครื่อง (กัน OOM บนสเปกต่ำ) — ดู rustLauncherSupport.ts
+    const { minMb: safeMinMb, maxMb: safeMaxMb } = computeSafeHeapMb(ramMB);
+    if (safeMaxMb < ramMB) {
+      console.warn(
+        `[RustLauncher] Requested ${ramMB}MB exceeds 70% of system RAM; clamping max heap to ${safeMaxMb}MB`,
+      );
+    }
+
     const launchOptions = {
       instanceId,
       versionId: version,
@@ -897,9 +910,10 @@ export async function launchGameRust(
       uuid: sanitizedUuid,
       accessToken: accessToken || "",
       userType: accessToken ? "msa" : "legacy",
-      ramMinMb: Math.min(ramMB, 2048),
-      ramMaxMb: ramMB,
+      ramMinMb: safeMinMb,
+      ramMaxMb: safeMaxMb,
       extraJvmArgs: [
+        ...getPlatformJvmArgs(),
         ...getOptimizedJvmArgs(),
         "-DlauncherName=Reality Launcher",
         `-DlauncherVersion=${app.getVersion()}`,
@@ -1028,56 +1042,80 @@ export async function launchGameRust(
 
     
     if (versionData.assetIndex) {
-      sendProgress({ type: "download", task: "กำลังตรวจสอบ assets..." });
-
+      const assetIndexId = versionData.assetIndex.id;
       const assetIndexPath = path.join(
         assetsDir,
         "indexes",
-        `${versionData.assetIndex.id}.json`,
+        `${assetIndexId}.json`,
+      );
+      // marker บอกว่า assets ของ index นี้เคยตรวจครบแล้ว -> ข้ามการ stat ไฟล์เป็นพันตัวในรอบถัดไป
+      const assetVerifiedMarkerPath = path.join(
+        assetsDir,
+        "indexes",
+        `.${assetIndexId}.verified`,
       );
 
-      if (!(await fileExists(assetIndexPath))) {
-        
-        const assetIndexJson = await native.fetchVersionDetail(
-          versionData.assetIndex.url,
-        );
-        await fs.promises.mkdir(path.dirname(assetIndexPath), {
-          recursive: true,
-        });
-        await fs.promises.writeFile(assetIndexPath, assetIndexJson, "utf-8");
-      }
+      const assetsAlreadyVerified =
+        (await fileExists(assetVerifiedMarkerPath)) &&
+        (await fileExists(assetIndexPath));
 
-      let assetDownloads: DownloadItem[] = [];
-      try {
-        
-        assetDownloads = await native.getAssetDownloads(
-          versionData.assetIndex.url,
-          assetsDir,
-        );
-      } catch (nativeAssetError) {
-        console.warn(
-          "[RustLauncher] Native asset scan failed, falling back to local scan",
-          nativeAssetError,
-        );
-        const localAssetScanStartedAt = Date.now();
-        assetDownloads = await getMissingAssetDownloadsFromIndex(
-          assetIndexPath,
-          assetsDir,
-        );
-        logPerfStep("asset-index-local-scan", localAssetScanStartedAt);
-      }
+      if (!assetsAlreadyVerified) {
+        sendProgress({ type: "download", task: "กำลังตรวจสอบ assets..." });
 
-      if (assetDownloads.length > 0) {
-        sendProgress({
-          type: "download",
-          task: `กำลังดาวน์โหลด assets (${assetDownloads.length} ไฟล์)...`,
-          current: 0,
-          total: assetDownloads.length,
-        });
+        if (!(await fileExists(assetIndexPath))) {
 
-        const assetDownloadStartedAt = Date.now();
-        await native.downloadFiles(assetDownloads, 20);
-        logPerfStep("asset-download-batch", assetDownloadStartedAt);
+          const assetIndexJson = await native.fetchVersionDetail(
+            versionData.assetIndex.url,
+          );
+          await fs.promises.mkdir(path.dirname(assetIndexPath), {
+            recursive: true,
+          });
+          await fs.promises.writeFile(assetIndexPath, assetIndexJson, "utf-8");
+        }
+
+        let assetDownloads: DownloadItem[] = [];
+        try {
+
+          assetDownloads = await native.getAssetDownloads(
+            versionData.assetIndex.url,
+            assetsDir,
+          );
+        } catch (nativeAssetError) {
+          console.warn(
+            "[RustLauncher] Native asset scan failed, falling back to local scan",
+            nativeAssetError,
+          );
+          const localAssetScanStartedAt = Date.now();
+          assetDownloads = await getMissingAssetDownloadsFromIndex(
+            assetIndexPath,
+            assetsDir,
+          );
+          logPerfStep("asset-index-local-scan", localAssetScanStartedAt);
+        }
+
+        if (assetDownloads.length > 0) {
+          sendProgress({
+            type: "download",
+            task: `กำลังดาวน์โหลด assets (${assetDownloads.length} ไฟล์)...`,
+            current: 0,
+            total: assetDownloads.length,
+          });
+
+          const assetDownloadStartedAt = Date.now();
+          await native.downloadFiles(assetDownloads, 20);
+          logPerfStep("asset-download-batch", assetDownloadStartedAt);
+        }
+
+        // ตรวจ (และดาวน์โหลดส่วนที่ขาด) ครบแล้ว -> เขียน marker เพื่อข้ามรอบหน้า
+        try {
+          await fs.promises.writeFile(
+            assetVerifiedMarkerPath,
+            JSON.stringify({ id: assetIndexId, verifiedAt: Date.now() }),
+            "utf-8",
+          );
+        } catch {
+
+        }
       }
     }
 

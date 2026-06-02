@@ -219,12 +219,19 @@ export function registerUtilityHandlers(
     const win = BrowserWindow.getFocusedWindow() || getMainWindow();
     if (!win) return null;
 
+    // ไฟล์ Java บน Windows คือ java.exe/javaw.exe แต่บน macOS/Linux คือ `java` (ไม่มีนามสกุล)
+    // จึงไม่ใส่ filter เฉพาะ .exe บนแพลตฟอร์มอื่น ไม่งั้นผู้ใช้ Mac/Linux จะเลือกไฟล์ไม่ได้
+    const isWin = process.platform === "win32";
     const result = await dialog.showOpenDialog(win, {
-      title: "เลือกไฟล์ Java (java.exe หรือ javaw.exe)",
-      filters: [
-        { name: "Java Executable", extensions: ["exe"] },
-        { name: "All Files", extensions: ["*"] },
-      ],
+      title: isWin
+        ? "เลือกไฟล์ Java (java.exe หรือ javaw.exe)"
+        : "เลือกไฟล์ Java (java)",
+      filters: isWin
+        ? [
+            { name: "Java Executable", extensions: ["exe"] },
+            { name: "All Files", extensions: ["*"] },
+          ]
+        : [{ name: "All Files", extensions: ["*"] }],
       properties: ["openFile"],
     });
 

@@ -101,9 +101,6 @@ function LauncherAppContent() {
   const [isDragging, setIsDragging] = useState(false);
   const [customColorPending, setCustomColorPending] = useState<string | null>(null);
 
-  const [offlineWarningOpen, setOfflineWarningOpen] = useState(false);
-  const [offlineUsernameOpen, setOfflineUsernameOpen] = useState(false);
-
   const [deviceCodeModalOpen, setDeviceCodeModalOpen] = useState(false);
   const [deviceCodeData, setDeviceCodeData] = useState<{
     deviceCode: string;
@@ -311,7 +308,6 @@ function LauncherAppContent() {
 
     const isAnyAuthFlowOpen =
       loginDialogOpen ||
-      offlineUsernameOpen ||
       catIDLoginOpen ||
       deviceCodeModalOpen ||
       catIDRegisterOpen ||
@@ -344,7 +340,6 @@ function LauncherAppContent() {
     isInitialized,
     isLoading,
     loginDialogOpen,
-    offlineUsernameOpen,
     session,
   ]);
 
@@ -714,6 +709,7 @@ function LauncherAppContent() {
               tokenExpiresAt: result.session.expiresIn ? Date.now() + (result.session.expiresIn * 1000) : undefined,
               apiToken: result.session.apiToken,
               apiTokenExpiresAt: result.session.apiTokenExpiresAt ? new Date(result.session.apiTokenExpiresAt).getTime() : undefined,
+              catidLinked: !!result.session.catidLinked,
               type: "microsoft",
               createdAt: Date.now(),
             };
@@ -797,6 +793,9 @@ function LauncherAppContent() {
         uuid: result.session.uuid,
         minecraftUuid: result.session.minecraftUuid,
         accessToken: result.session.token,
+        tokenExpiresAt: result.session.expiresAt
+          ? new Date(result.session.expiresAt).getTime()
+          : undefined,
       };
 
       addAccount(newSession);
@@ -816,42 +815,6 @@ function LauncherAppContent() {
           console.log("[Admin] Could not check admin status");
         }
       }
-      return true;
-    } catch (error: any) {
-      toast.error(error?.message || t('login_failed'));
-      return false;
-    }
-  };
-
-  const handleOfflineLogin = async (username: string) => {
-    try {
-      if (!MINECRAFT_USERNAME_REGEX.test(username)) {
-        toast.error(t('username_invalid_format'));
-        return false;
-      }
-
-      if (!window.api?.loginOffline) {
-        toast.error(t('offline_required_electron'));
-        return false;
-      }
-
-      const result = await window.api.loginOffline(username);
-
-      if (!result.ok || !result.session) {
-        toast.error(result.error || t('login_failed'));
-        return false;
-      }
-
-      const newSession: AuthSession = {
-        type: "offline",
-        username: result.session.username,
-        uuid: result.session.uuid,
-        accessToken: "",
-      };
-
-      addAccount(newSession);
-      setSession(newSession);
-      toast.success(t('welcome_user').replace('{username}', newSession.username));
       return true;
     } catch (error: any) {
       toast.error(error?.message || t('login_failed'));
@@ -1055,8 +1018,15 @@ function LauncherAppContent() {
 
         const updatedSession = await window.api?.getSession?.();
         if (updatedSession) {
-          setSession(updatedSession);
-          updateAccount(updatedSession);
+          const linkedSession = {
+            ...updatedSession,
+            catidLinked:
+              updatedSession.type === "microsoft"
+                ? true
+                : updatedSession.catidLinked,
+          };
+          setSession(linkedSession);
+          updateAccount(linkedSession);
         }
       } else {
         toast.error(res?.error || t('link_failed'), { id: loader });
@@ -1159,8 +1129,6 @@ function LauncherAppContent() {
         setConfirmDialog={setConfirmDialog}
         loginDialogOpen={loginDialogOpen}
         setLoginDialogOpen={setLoginDialogOpen}
-        offlineUsernameOpen={offlineUsernameOpen}
-        setOfflineUsernameOpen={setOfflineUsernameOpen}
         catIDLoginOpen={catIDLoginOpen}
         setCatIDLoginOpen={setCatIDLoginOpen}
         deviceCodeModalOpen={deviceCodeModalOpen}
@@ -1170,7 +1138,6 @@ function LauncherAppContent() {
         setDeviceCodeError={setDeviceCodeError}
         setDeviceCodePolling={setDeviceCodePolling}
         setIsLinkingMicrosoft={setIsLinkingMicrosoft}
-        handleOfflineLogin={handleOfflineLogin}
         handleCatIDLogin={handleCatIDLogin}
         catIDRegisterOpen={catIDRegisterOpen}
         setCatIDRegisterOpen={setCatIDRegisterOpen}

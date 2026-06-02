@@ -24,7 +24,7 @@ function resolveDimension(
   min: number,
   max: number,
 ): number {
-  if (!Number.isFinite(value)) return fallback;
+  if (value === undefined || !Number.isFinite(value)) return fallback;
   return clamp(Math.round(value), min, max);
 }
 

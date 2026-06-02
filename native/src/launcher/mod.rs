@@ -20,7 +20,7 @@ use std::sync::Mutex;
 // Lets prepare_launch skip re-hashing files whose size+mtime haven't changed.
 // Invalidated automatically when either value differs.
 // ─────────────────────────────────────────────────────────────────────────────
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 struct FileVerifyEntry {
     size: u64,
     mtime: u64,
@@ -30,8 +30,41 @@ struct FileVerifyEntry {
 static VERIFY_CACHE: std::sync::OnceLock<Mutex<HashMap<String, FileVerifyEntry>>> =
     std::sync::OnceLock::new();
 
+// โหลด cache จากดิสก์ตอนใช้งานครั้งแรก เพื่อให้การเปิดเกม "ครั้งแรกหลังเปิดแอป"
+// ไม่ต้อง re-hash library/client jar ทุกไฟล์ใหม่ (เดิม cache เป็น in-memory ล้วน)
 fn get_verify_cache() -> &'static Mutex<HashMap<String, FileVerifyEntry>> {
-    VERIFY_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+    VERIFY_CACHE.get_or_init(|| Mutex::new(load_verify_cache_from_disk()))
+}
+
+fn get_verify_cache_file_path() -> PathBuf {
+    let config_dir = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
+    config_dir
+        .join("RealityLauncher")
+        .join("cache")
+        .join("verify-cache.json")
+}
+
+fn load_verify_cache_from_disk() -> HashMap<String, FileVerifyEntry> {
+    let path = get_verify_cache_file_path();
+    match fs::read_to_string(&path) {
+        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+        Err(_) => HashMap::new(),
+    }
+}
+
+// เซฟ snapshot ของ cache ลงดิสก์ (เรียกครั้งเดียวหลัง prepare_launch ตรวจไฟล์เสร็จ)
+fn save_verify_cache_to_disk() {
+    let path = get_verify_cache_file_path();
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let snapshot = {
+        let cache = get_verify_cache().lock().unwrap_or_else(|e| e.into_inner());
+        cache.clone()
+    };
+    if let Ok(content) = serde_json::to_string(&snapshot) {
+        let _ = fs::write(&path, content);
+    }
 }
 
 
@@ -395,10 +428,13 @@ pub async fn prepare_launch(
     
     // Build JVM arguments
     let jvm_args = build_jvm_args(&version, &options, &classpath);
-    
+
     // Build game arguments
     let game_args = build_game_args(&version, &options);
-    
+
+    // เซฟ verify cache ที่เพิ่ง hash ไป เพื่อให้การเปิดครั้งถัด ๆ ไป (รวมถึงหลังรีสตาร์ทแอป) เร็วขึ้น
+    save_verify_cache_to_disk();
+
     Ok(PrepareResult {
         success: true,
         downloads_needed,

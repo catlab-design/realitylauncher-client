@@ -2,7 +2,10 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const modPackSource = readFileSync(join(import.meta.dir, "ModPack.tsx"), "utf8");
+const modPackSource = readFileSync(
+  join(import.meta.dir, "ModPack.tsx"),
+  "utf8",
+).replace(/\r\n/g, "\n");
 
 describe("modpack delete dialog", () => {
   it("closes the confirmation dialog when delete is confirmed", () => {

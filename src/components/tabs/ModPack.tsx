@@ -15,6 +15,7 @@ import {
     getLoaderLabel,
 } from "./ModPackTabs";
 import { useProgressStore } from "../../store/progressStore";
+import { useLaunchStore } from "../../store/launchStore";
 import { useInstances } from "../../hooks/useInstances";
 import { useGameEvents } from "../../hooks/useGameEvents";
 import { useAuthStore } from "../../store/authStore";
@@ -74,7 +75,9 @@ export function ModPack({
     const { accounts, setSession: setAuthSession, updateAccount } = useAuthStore();
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-    const [launchingId, setLaunchingId] = useState<string | null>(null);
+    // launchingId อยู่ใน global store เพื่อให้สถานะ "กำลังเปิด" รอดการสลับแท็บ
+    const launchingId = useLaunchStore((s) => s.launchingId);
+    const setLaunchingId = useLaunchStore((s) => s.setLaunchingId);
     const [showImportModal, setShowImportModal] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const [logViewerInstanceId, setLogViewerInstanceId] = useState<string | null>(null);

@@ -228,8 +228,9 @@ export function LauncherAppTitleBar({
                   alt="Microsoft"
                   className="w-5 h-5"
                 />
-                {session.apiToken && (
+                {session.catidLinked && (
                   <span
+                    title={t("linked_with_catid")}
                     className="inline-flex items-center justify-center w-4 h-4 rounded-full"
                     style={{ backgroundColor: "#fbbf24" }}
                   >
@@ -315,7 +316,7 @@ export function LauncherAppTitleBar({
                               className="w-5 h-5"
                             />
                           ) : null}
-                          {account.type === "microsoft" && account.apiToken && (
+                          {account.type === "microsoft" && account.catidLinked && (
                             <span
                               title={t("linked_with_catid")}
                               className="ml-1 opacity-80 inline-flex items-center justify-center w-4 h-4 rounded-full"
@@ -333,7 +334,7 @@ export function LauncherAppTitleBar({
                             ? "Microsoft"
                             : account.type === "catid"
                               ? "CatID Account"
-                              : "Offline Account"}
+                              : "Account"}
                         </div>
                       </div>
                       <button
@@ -386,7 +387,7 @@ export function LauncherAppTitleBar({
                   <span className="text-sm">{t("add_account")}</span>
                 </button>
 
-                {session && session.type === "microsoft" && !session.apiToken && (
+                {session && session.type === "microsoft" && !session.catidLinked && (
                   <button
                     onClick={() => {
                       setAccountDropdownOpen(false);
