@@ -9,7 +9,7 @@ export function ConnectionsTab({ config, updateConfig, colors }: SettingsTabProp
     const { t } = useTranslation(config.language);
 
     return (
-        <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
+        <div className="rounded-lg overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
             <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "40" }}>
                 <i className="fa-solid fa-wifi text-lg" style={{ color: colors.secondary }}></i>
                 <h3 className="font-medium" style={{ color: colors.onSurface }}>{t('tab_connections')}</h3>
@@ -48,11 +48,11 @@ export function ConnectionsTab({ config, updateConfig, colors }: SettingsTabProp
                                     toast.success(t('discord_rpc_off'));
                                 }
                             }}
-                            className="relative w-11 h-6 bg-black/20 rounded-full transition-all duration-300 shadow-inner"
+                            className="relative w-11 h-6 bg-black/20 rounded-full transition-all duration-300"
                             style={{ backgroundColor: config.discordRPCEnabled ? colors.secondary : undefined }}
                         >
                             <div
-                                className="absolute left-[2px] top-[2px] w-5 h-5 bg-white rounded-full shadow-md transition-transform duration-300"
+                                className="absolute left-[2px] top-[2px] w-5 h-5 bg-white rounded-full transition-transform duration-300"
                                 style={{ transform: config.discordRPCEnabled ? "translateX(20px)" : "translateX(0)" }}
                             />
                         </button>
@@ -79,11 +79,11 @@ export function ConnectionsTab({ config, updateConfig, colors }: SettingsTabProp
                                 updateConfig({ telemetryEnabled: newValue });
                                 toast.success(newValue ? t('telemetry_on') : t('telemetry_off'));
                             }}
-                            className="relative w-11 h-6 bg-black/20 rounded-full transition-all duration-300 shadow-inner"
+                            className="relative w-11 h-6 bg-black/20 rounded-full transition-all duration-300"
                             style={{ backgroundColor: config.telemetryEnabled ? colors.secondary : undefined }}
                         >
                             <div
-                                className="absolute left-[2px] top-[2px] w-5 h-5 bg-white rounded-full shadow-md transition-transform duration-300"
+                                className="absolute left-[2px] top-[2px] w-5 h-5 bg-white rounded-full transition-transform duration-300"
                                 style={{ transform: config.telemetryEnabled ? "translateX(20px)" : "translateX(0)" }}
                             />
                         </button>
@@ -96,7 +96,7 @@ export function ConnectionsTab({ config, updateConfig, colors }: SettingsTabProp
                 <div>
                     <div className="flex items-center justify-between mb-2">
                         <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('limit_download_speed')}</p>
-                        <span className="text-sm font-medium px-3 py-1 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.secondary }}>
+                        <span className="text-sm font-medium px-3 py-1 rounded-md" style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.secondary }}>
                             {config.downloadSpeedLimit === 0 ? t('unlimited') : `${config.downloadSpeedLimit} MB/s`}
                         </span>
                     </div>

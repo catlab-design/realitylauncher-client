@@ -1,5 +1,6 @@
 import React, { type Dispatch, type SetStateAction } from "react";
 import { Toaster } from "react-hot-toast";
+import { AnimatePresence, motion } from "framer-motion";
 
 import { Sidebar } from "./layout/Sidebar";
 import { ErrorBoundary as UIErrorBoundary } from "./ui/ErrorBoundary";
@@ -10,21 +11,8 @@ import { InstallProgressModal } from "./tabs/ModPackTabs/InstallProgressModal";
 import type { AuthSession, GameInstance, LauncherConfig, NewsItem, Server } from "../types/launcher";
 import type { TranslationKey } from "../i18n/translations";
 
-type TranslationFn = (
-  key: TranslationKey,
-  params?: Record<string, any>,
-) => string;
-
-type SettingsTabId =
-  | "account"
-  | "appearance"
-  | "game"
-  | "connections"
-  | "language"
-  | "launcher"
-  | "resources"
-  | "java"
-  | "update";
+type TranslationFn = (key: TranslationKey, params?: Record<string, any>) => string;
+type SettingsTabId = "account" | "appearance" | "game" | "connections" | "language" | "launcher" | "resources" | "java" | "update";
 
 interface LauncherAppShellProps {
   colors: any;
@@ -85,61 +73,7 @@ interface LauncherAppShellProps {
 }
 
 export function LauncherAppShell({
-  colors,
-  titleBarColors,
-  config,
-  session,
-  accounts,
-  selectedInstance,
-  inboxOpen,
-  setInboxOpen,
-  announcements,
-  userNotifications,
-  unreadCount,
-  setInvitations,
-  setServerRefreshTrigger,
-  setNotificationRefreshTrigger,
-  accountDropdownOpen,
-  setAccountDropdownOpen,
-  t,
-  selectAccount,
-  removeAccountFromList,
-  setLoginDialogOpen,
-  setLinkCatIDOpen,
-  handleLinkMicrosoft,
-  handleLogout,
-  updateConfig,
-  contentTab,
-  settingsDialogOpen,
-  onCloseSettingsDialog,
-  news,
-  servers,
-  selectedServer,
-  setSelectedServer,
-  setSelectedInstance,
-  setActiveTab,
-  serverRefreshTrigger,
-  settingsTab,
-  setSettingsTab,
-  setImportModpackOpen,
-  handleShowConfirm,
-  handleBrowseJava,
-  handleBrowseMinecraftDir,
-  handleUnlink,
-  isAdmin,
-  adminToken,
-  isExporting,
-  exportProgress,
-  isExportMinimized,
-  setExportMinimized,
-  handleCancelExport,
-  exportingInstanceId,
-  isInstalling,
-  installProgress,
-  isInstallMinimized,
-  setInstallMinimized,
-  operationType,
-  handleCancelInstall,
+  colors, titleBarColors, config, session, accounts, selectedInstance, inboxOpen, setInboxOpen, announcements, userNotifications, unreadCount, setInvitations, setServerRefreshTrigger, setNotificationRefreshTrigger, accountDropdownOpen, setAccountDropdownOpen, t, selectAccount, removeAccountFromList, setLoginDialogOpen, setLinkCatIDOpen, handleLinkMicrosoft, handleLogout, updateConfig, contentTab, settingsDialogOpen, onCloseSettingsDialog, news, servers, selectedServer, setSelectedServer, setSelectedInstance, setActiveTab, serverRefreshTrigger, settingsTab, setSettingsTab, setImportModpackOpen, handleShowConfirm, handleBrowseJava, handleBrowseMinecraftDir, handleUnlink, isAdmin, adminToken, isExporting, exportProgress, isExportMinimized, setExportMinimized, handleCancelExport, exportingInstanceId, isInstalling, installProgress, isInstallMinimized, setInstallMinimized, operationType, handleCancelInstall,
 }: LauncherAppShellProps) {
   const [shouldRenderSettingsDialog, setShouldRenderSettingsDialog] = React.useState(false);
   React.useEffect(() => {
@@ -151,159 +85,49 @@ export function LauncherAppShell({
       <Toaster
         position="bottom-right"
         gutter={10}
-        containerStyle={{
-          bottom: 24,
-          right: 24,
-        }}
+        containerStyle={{ bottom: 24, right: 24 }}
         toastOptions={{
           duration: 3000,
-          style: {
-            background: colors.surfaceContainer,
-            color: colors.onSurface,
-            borderRadius: "8px",
-            padding: "12px 18px",
-            fontSize: "13px",
-            fontWeight: 500,
-            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4)",
-            maxWidth: "350px",
-            border: "1px solid rgba(255, 255, 255, 0.1)",
-          },
-          success: {
-            style: {
-              background: "#2ecc71",
-              color: "#fff",
-              boxShadow: "0 8px 32px rgba(34, 197, 94, 0.25)",
-            },
-            iconTheme: {
-              primary: "#22c55e",
-              secondary: "#fff",
-            },
-          },
-          error: {
-            style: {
-              background: "#ff3b1f",
-              color: "#fff",
-              boxShadow: "0 8px 32px rgba(239, 68, 68, 0.25)",
-            },
-            iconTheme: {
-              primary: "#ef4444",
-              secondary: "#fff",
-            },
-          },
-          loading: {
-            style: {
-              boxShadow: `0 0 20px ${colors.primary}80, 0 0 40px ${colors.primary}4d`,
-            },
-          },
+          style: { background: colors.surfaceContainer, color: colors.onSurface, borderRadius: "8px", padding: "12px 18px", fontSize: "13px", fontWeight: 500, boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4)", maxWidth: "350px", border: "1px solid rgba(255, 255, 255, 0.1)" },
+          success: { style: { background: "#2ecc71", color: "#fff", boxShadow: "0 8px 32px rgba(34, 197, 94, 0.25)" }, iconTheme: { primary: "#22c55e", secondary: "#fff" } },
+          error: { style: { background: "#ff3b1f", color: "#fff", boxShadow: "0 8px 32px rgba(239, 68, 68, 0.25)" }, iconTheme: { primary: "#ef4444", secondary: "#fff" } },
+          loading: { style: { boxShadow: `0 0 20px ${colors.primary}80, 0 0 40px ${colors.primary}4d` } },
         }}
       />
 
       <div className={`flex-1 flex flex-col overflow-hidden ml-app-shell ${config.rainbowMode ? "rainbow-mode" : ""}`}>
         <LauncherAppTitleBar
-          colors={colors}
-          titleBarColors={titleBarColors}
-          config={config}
-          session={session}
-          accounts={accounts}
-          selectedInstance={selectedInstance}
-          inboxOpen={inboxOpen}
-          setInboxOpen={setInboxOpen}
-          announcements={announcements}
-          userNotifications={userNotifications}
-          unreadCount={unreadCount}
-          setInvitations={setInvitations}
-          setServerRefreshTrigger={setServerRefreshTrigger}
-          setNotificationRefreshTrigger={setNotificationRefreshTrigger}
-          accountDropdownOpen={accountDropdownOpen}
-          setAccountDropdownOpen={setAccountDropdownOpen}
-          t={t}
-          selectAccount={selectAccount}
-          removeAccountFromList={removeAccountFromList}
-          setLoginDialogOpen={setLoginDialogOpen}
-          setLinkCatIDOpen={setLinkCatIDOpen}
-          handleLinkMicrosoft={handleLinkMicrosoft}
-          handleLogout={handleLogout}
-          updateConfig={updateConfig}
+          colors={colors} titleBarColors={titleBarColors} config={config} session={session} accounts={accounts} selectedInstance={selectedInstance} inboxOpen={inboxOpen} setInboxOpen={setInboxOpen} announcements={announcements} userNotifications={userNotifications} unreadCount={unreadCount} setInvitations={setInvitations} setServerRefreshTrigger={setServerRefreshTrigger} setNotificationRefreshTrigger={setNotificationRefreshTrigger} accountDropdownOpen={accountDropdownOpen} setAccountDropdownOpen={setAccountDropdownOpen} t={t} selectAccount={selectAccount} removeAccountFromList={removeAccountFromList} setLoginDialogOpen={setLoginDialogOpen} setLinkCatIDOpen={setLinkCatIDOpen} handleLinkMicrosoft={handleLinkMicrosoft} handleLogout={handleLogout} updateConfig={updateConfig}
         />
 
         <div className="flex-1 flex overflow-hidden">
           <Sidebar
             colors={colors}
-            onTabSelect={(tabId) => {
-              if (tabId === "modpack") {
-                setSelectedInstance(null);
-              }
-            }}
+            onTabSelect={(tabId) => { if (tabId === "modpack") setSelectedInstance(null); }}
           />
 
           <main className="flex-1 overflow-y-auto overflow-x-hidden pt-3 px-6 pb-6 relative">
             <div className="h-full">
-              <React.Suspense fallback={<TabLoadingFallback colors={colors} />}>
-                {contentTab === "home" && (
-                  <Home
-                    session={session}
-                    news={news}
-                    servers={servers}
-                    selectedServer={selectedServer}
-                    setSelectedServer={setSelectedServer}
-                    setSelectedInstance={setSelectedInstance}
-                    colors={colors}
-                    setActiveTab={setActiveTab}
-                    language={config.language}
-                  />
-                )}
-
-                {contentTab === "servers" && (
-                  <ServerMenu
-                    colors={colors}
-                    servers={servers}
-                    selectedServer={selectedServer}
-                    setSelectedServer={setSelectedServer}
-                    session={session}
-                    setActiveTab={setActiveTab}
-                    refreshTrigger={serverRefreshTrigger}
-                    language={config.language}
-                    config={config}
-                    updateConfig={updateConfig}
-                    setSettingsTab={setSettingsTab}
-                  />
-                )}
-
-                {contentTab === "modpack" && (
-                  <ModPack
-                    colors={colors}
-                    config={config}
-                    setImportModpackOpen={setImportModpackOpen}
-                    setActiveTab={setActiveTab}
-                    setSettingsTab={setSettingsTab}
-                    onShowConfirm={handleShowConfirm}
-                    isActive={true}
-                    selectedInstance={selectedInstance}
-                    setSelectedInstance={setSelectedInstance}
-                    selectedServer={selectedServer}
-                    session={session}
-                    updateConfig={updateConfig}
-                    language={config.language}
-                  />
-                )}
-
-                {contentTab === "explore" && (
-                  <UIErrorBoundary>
-                    <Explore colors={colors} config={config} />
-                  </UIErrorBoundary>
-                )}
-
-                {contentTab === "admin" && isAdmin && adminToken && (
-                  <AdminPanel
-                    colors={colors}
-                    adminToken={adminToken}
-                    language={config.language}
-                  />
-                )}
-
-                {contentTab === "about" && <About colors={colors} config={config} />}
-                {contentTab === "wardrobe" && <Wardrobe colors={colors} />}
-              </React.Suspense>
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={contentTab}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.12, ease: "easeInOut" }}
+                  className="h-full"
+                >
+                  <React.Suspense fallback={<TabLoadingFallback colors={colors} />}>
+                    {contentTab === "home" && <Home session={session} news={news} servers={servers} selectedServer={selectedServer} setSelectedServer={setSelectedServer} setSelectedInstance={setSelectedInstance} colors={colors} setActiveTab={setActiveTab} language={config.language} />}
+                    {contentTab === "servers" && <ServerMenu colors={colors} servers={servers} selectedServer={selectedServer} setSelectedServer={setSelectedServer} session={session} setActiveTab={setActiveTab} refreshTrigger={serverRefreshTrigger} language={config.language} config={config} updateConfig={updateConfig} setSettingsTab={setSettingsTab} />}
+                    {contentTab === "modpack" && <ModPack colors={colors} config={config} setImportModpackOpen={setImportModpackOpen} setActiveTab={setActiveTab} setSettingsTab={setSettingsTab} onShowConfirm={handleShowConfirm} isActive={true} selectedInstance={selectedInstance} setSelectedInstance={setSelectedInstance} selectedServer={selectedServer} session={session} updateConfig={updateConfig} language={config.language} />}
+                    {contentTab === "explore" && <UIErrorBoundary><Explore colors={colors} config={config} /></UIErrorBoundary>}
+                    {contentTab === "admin" && isAdmin && adminToken && <AdminPanel colors={colors} adminToken={adminToken} language={config.language} />}
+                    {contentTab === "about" && <About colors={colors} config={config} />}
+                    {contentTab === "wardrobe" && <Wardrobe colors={colors} />}
+                  </React.Suspense>
+                </motion.div>
+              </AnimatePresence>
             </div>
           </main>
         </div>

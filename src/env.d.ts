@@ -26,6 +26,8 @@ interface LauncherConfig {
   closeOnLaunch: LauncherCloseMode;
   downloadSpeedLimit: number;
   discordRPCEnabled: boolean;
+  backgroundImage?: string;
+  backgroundImageOpacity?: number;
 }
 
 interface AuthSession {
@@ -40,6 +42,8 @@ interface AuthSession {
   apiTokenExpiresAt?: number;
   catidLinked?: boolean;
   skinUrl?: string;
+  avatarUrl?: string;
+  avatarSource?: string;
 }
 
 interface LauncherInfo {
@@ -283,6 +287,8 @@ declare global {
           token: string;
           minecraftUuid?: string;
           expiresAt?: string;
+          avatarUrl?: string;
+          avatarSource?: string;
         };
         error?: string;
       }>;
@@ -341,6 +347,13 @@ declare global {
         newAccessToken?: string;
         newApiToken?: string;
         requiresRelogin?: boolean;
+        error?: string;
+      }>;
+      authUpdateAvatarSource: (
+        avatarSource: "catid_avatar" | "minecraft_skin",
+      ) => Promise<{
+        ok: boolean;
+        session?: AuthSession | null;
         error?: string;
       }>;
       minecraftGetProfile: (options?: {

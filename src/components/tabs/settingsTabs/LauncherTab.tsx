@@ -8,7 +8,7 @@ export function LauncherTab({ config, updateConfig, colors }: SettingsTabProps) 
     const { t } = useTranslation(config.language);
 
     return (
-        <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
+        <div className="rounded-xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
             <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "40" }}>
                 <i className="fa-solid fa-rocket text-lg" style={{ color: colors.secondary }}></i>
                 <h3 className="font-medium" style={{ color: colors.onSurface }}>{t("launcher_settings")}</h3>
@@ -30,11 +30,11 @@ export function LauncherTab({ config, updateConfig, colors }: SettingsTabProps) 
                                 const isMaximized = await windowApi.windowIsMaximized();
                                 updateConfig({ fullscreen: isMaximized });
                             }}
-                            className="relative w-11 h-6 rounded-full transition-all duration-300 shadow-inner"
+                            className="relative w-11 h-6 rounded-full transition-all duration-300"
                             style={{ backgroundColor: config.fullscreen ? colors.secondary : colors.outline + "40" }}
                         >
                             <div
-                                className="absolute left-[2px] top-[2px] w-5 h-5 bg-white rounded-full shadow-md transition-transform duration-300"
+                                className="absolute left-[2px] top-[2px] w-5 h-5 bg-white rounded-full transition-transform duration-300"
                                 style={{ transform: config.fullscreen ? "translateX(20px)" : "translateX(0)" }}
                             />
                         </button>
@@ -54,11 +54,11 @@ export function LauncherTab({ config, updateConfig, colors }: SettingsTabProps) 
                             <div className="relative inline-flex items-center cursor-pointer">
                                 <button
                                     onClick={() => updateConfig({ windowAuto: !config.windowAuto })}
-                                    className="relative w-11 h-6 rounded-full transition-all duration-300 shadow-inner"
+                                    className="relative w-11 h-6 rounded-full transition-all duration-300"
                                     style={{ backgroundColor: config.windowAuto ? colors.secondary : colors.outline + "40" }}
                                 >
                                     <div
-                                        className="absolute left-[2px] top-[2px] w-5 h-5 bg-white rounded-full shadow-md transition-transform duration-300"
+                                        className="absolute left-[2px] top-[2px] w-5 h-5 bg-white rounded-full transition-transform duration-300"
                                         style={{ transform: config.windowAuto ? "translateX(20px)" : "translateX(0)" }}
                                     />
                                 </button>
@@ -73,7 +73,7 @@ export function LauncherTab({ config, updateConfig, colors }: SettingsTabProps) 
                                     type="number"
                                     value={config.windowWidth}
                                     onChange={(e) => updateConfig({ windowWidth: Number(e.target.value) })}
-                                    className="w-full px-4 py-2.5 rounded-xl border text-sm"
+                                    className="w-full px-4 py-2.5 rounded-md border text-sm"
                                     style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurface }}
                                 />
                             </div>
@@ -83,7 +83,7 @@ export function LauncherTab({ config, updateConfig, colors }: SettingsTabProps) 
                                     type="number"
                                     value={config.windowHeight}
                                     onChange={(e) => updateConfig({ windowHeight: Number(e.target.value) })}
-                                    className="w-full px-4 py-2.5 rounded-xl border text-sm"
+                                    className="w-full px-4 py-2.5 rounded-md border text-sm"
                                     style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurface }}
                                 />
                             </div>
@@ -107,7 +107,7 @@ export function LauncherTab({ config, updateConfig, colors }: SettingsTabProps) 
                             <button
                                 key={option.value}
                                 onClick={() => updateConfig({ closeOnLaunch: option.value as any })}
-                                className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border"
+                                className="px-3 py-1.5 rounded-md text-xs font-semibold transition-all border"
                                 style={{
                                     backgroundColor: config.closeOnLaunch === option.value ? colors.secondary + "20" : "transparent",
                                     borderColor: config.closeOnLaunch === option.value ? colors.secondary : "transparent",
@@ -146,7 +146,7 @@ export function LauncherTab({ config, updateConfig, colors }: SettingsTabProps) 
                                 }
                             }
                         }}
-                        className="p-2 rounded-xl transition-all hover:bg-red-500/10 text-red-500 hover:text-red-400 group"
+                        className="p-2 rounded-md transition-all hover:bg-red-500/10 text-red-500 hover:text-red-400 group"
                         title={t("reset_settings")}
                     >
                         <Icons.Trash className="w-5 h-5" />

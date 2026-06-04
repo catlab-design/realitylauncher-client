@@ -130,6 +130,8 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
     const { t } = useTranslation(config.language);
 
     const isMicrosoftSession = session?.type === "microsoft";
+    const isLinkedCatidSession = session?.type === "catid" && !!session?.minecraftUuid;
+    const canManageProfile = isMicrosoftSession || isLinkedCatidSession;
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const resetRotationRef = useRef<(() => void) | null>(null);
 
@@ -193,7 +195,7 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
     }, [selectedFileName, selectedSkinDataUrl, session?.username, variant]);
 
     const syncProfile = useCallback(async (options?: { force?: boolean }) => {
-        if (!isMicrosoftSession || !window.api?.minecraftGetProfile) {
+        if (!canManageProfile || !window.api?.minecraftGetProfile) {
             setProfile(null);
             setProfileError(null);
             setProfileFetched(true);
@@ -230,7 +232,7 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
             setIsLoadingProfile(false);
             setProfileFetched(true);
         }
-    }, [isMicrosoftSession, session?.username, t]);
+    }, [canManageProfile, session?.username, t]);
 
     useEffect(() => { syncProfile(); }, [syncProfile]);
 
@@ -271,7 +273,11 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
     }, [t]);
 
     const onApplySkin = useCallback(async () => {
-        if (!isMicrosoftSession) { toast.error(t("wardrobe_microsoft_required")); return; }
+        if (!canManageProfile) {
+            const errorMsg = session?.type === "catid" ? t("wardrobe_catid_link_required") : t("wardrobe_microsoft_required");
+            toast.error(errorMsg);
+            return;
+        }
         if (!selectedSkinDataUrl) { toast.error(t("wardrobe_select_skin_first")); return; }
         if (!window.api?.minecraftUploadSkin) { toast.error(t("wardrobe_feature_not_ready")); return; }
         setIsApplying(true);
@@ -293,7 +299,7 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
         } finally {
             setIsApplying(false);
         }
-    }, [isMicrosoftSession, selectedSkinDataUrl, variant, selectedFileName, t]);
+    }, [canManageProfile, selectedSkinDataUrl, variant, selectedFileName, t]);
 
     const onClearPreview = useCallback(() => {
         clearCachedWardrobePreview(session?.username);
@@ -315,16 +321,23 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors }) => {
         );
     }
 
-    // --- Guard: Not Microsoft ---
-    if (!isMicrosoftSession) {
+    // --- Guard: Not Microsoft / CatID Linked ---
+    if (!canManageProfile) {
+        const guardTitle = session?.type === "catid"
+            ? t("wardrobe_catid_link_required")
+            : t("wardrobe_microsoft_required");
+        const guardDesc = session?.type === "catid"
+            ? t("wardrobe_catid_link_hint")
+            : t("wardrobe_switch_account_hint");
+
         return (
             <div className="h-full flex items-center justify-center p-6">
                 <div className="flex items-center gap-4 p-5 rounded-2xl border max-w-sm"
                     style={{ backgroundColor: colors.surfaceContainer, borderColor: `${colors.outline}33` }}>
                     <Icons.Microsoft className="w-8 h-8 shrink-0" style={{ color: "#00A4EF" }} />
                     <div>
-                        <p className="font-bold text-sm" style={{ color: colors.onSurface }}>{t("wardrobe_microsoft_required")}</p>
-                        <p className="text-xs opacity-60 mt-0.5" style={{ color: colors.onSurfaceVariant }}>{t("wardrobe_switch_account_hint")}</p>
+                        <p className="font-bold text-sm" style={{ color: colors.onSurface }}>{guardTitle}</p>
+                        <p className="text-xs opacity-60 mt-0.5" style={{ color: colors.onSurfaceVariant }}>{guardDesc}</p>
                     </div>
                 </div>
             </div>

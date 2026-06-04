@@ -8,6 +8,8 @@
         "@astrojs/check": "^0.9.6",
         "@astrojs/react": "^4.4.2",
         "@fluentui/react-components": "^9.72.8",
+        "@fontsource-variable/inter": "^5.2.8",
+        "@fontsource/prompt": "^5.2.8",
         "@headlessui/react": "^2.2.9",
         "@tailwindcss/vite": "^4.1.18",
         "@types/adm-zip": "^0.5.7",
@@ -355,6 +357,10 @@
     "@fluentui/react-virtualizer": ["@fluentui/react-virtualizer@9.0.0-alpha.107", "", { "dependencies": { "@fluentui/react-jsx-runtime": "^9.3.3", "@fluentui/react-shared-contexts": "^9.26.0", "@fluentui/react-utilities": "^9.25.4", "@griffel/react": "^1.5.32", "@swc/helpers": "^0.5.1" }, "peerDependencies": { "@types/react": ">=16.14.0 <20.0.0", "@types/react-dom": ">=16.9.0 <20.0.0", "react": ">=16.14.0 <20.0.0", "react-dom": ">=16.14.0 <20.0.0" } }, "sha512-zpTVzJB2BUNv7QdTUlLSBMCbt/EfALRuls/u/8FYaO4PGOFVeS3equytyxSOizz9zJZVhm8sjdp326DEQNiaPA=="],
 
     "@fluentui/tokens": ["@fluentui/tokens@1.0.0-alpha.22", "", { "dependencies": { "@swc/helpers": "^0.5.1" } }, "sha512-i9fgYyyCWFRdUi+vQwnV6hp7wpLGK4p09B+O/f2u71GBXzPuniubPYvrIJYtl444DD6shLjYToJhQ1S6XTFwLg=="],
+
+    "@fontsource-variable/inter": ["@fontsource-variable/inter@5.2.8", "", {}, "sha512-kOfP2D+ykbcX/P3IFnokOhVRNoTozo5/JxhAIVYLpea/UBmCQ/YWPBfWIDuBImXX/15KH+eKh4xpEUyS2sQQGQ=="],
+
+    "@fontsource/prompt": ["@fontsource/prompt@5.2.8", "", {}, "sha512-/ocBE0NMMgfzKXcwTsKDJOppc3UA7dBGl127b9uhNzqUlP0720FCSuUXEp2iJb7uC/jnfHW1da7oZtAHDv3whg=="],
 
     "@gar/promisify": ["@gar/promisify@1.1.3", "", {}, "sha512-k2Ty1JcVojjJFwrg/ThKi2ujJ7XNLYaFGNB/bWT9wGR+oSMJHMa5w+CUq6p/pVrKeNNgA7pCqEcjSnHVoqJQFw=="],
 

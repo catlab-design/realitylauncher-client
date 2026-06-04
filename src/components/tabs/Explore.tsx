@@ -103,6 +103,24 @@ export function Explore({ colors, config }: ExploreProps) {
 
     // Debounce timer ref for search
     const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
+    // Debounce timer ref for filter changes (prevents rapid-fire API calls)
+    const filterDebounceRef = useRef<NodeJS.Timeout | null>(null);
+    // Race-condition guard for search requests. Each loadProjects call increments this;
+    // only the latest request may update results or show error toasts.
+    const searchTokenRef = useRef(0);
+    // Cached parameters of the last successful fetch to prevent redundant API calls
+    const lastFetchedParamsRef = useRef<{
+        query: string;
+        page: number;
+        projectType: string;
+        sortBy: string;
+        viewCount: number;
+        contentSource: string;
+        mcVersionFilters: string[];
+        loaderFilters: string[];
+        categoryFilters: string[];
+        environmentFilters: string[];
+    } | null>(null);
     // Race-condition guard for project-detail fetches (preview/list).
     // Each fetchFullProjectDetails increments this; only the latest reply may update state.
     const fetchTokenRef = useRef(0);
@@ -146,9 +164,22 @@ export function Explore({ colors, config }: ExploreProps) {
         return () => cleanup?.();
     }, []);
 
-    // Load on mount and when filters change
+    // Load on mount and when filters change — debounce to avoid rapid-fire API calls
+    // (e.g. toggling multiple filter checkboxes quickly causes HTTP 520/525 from Cloudflare).
+    const isFirstLoadRef = useRef(true);
     useEffect(() => {
-        loadProjects();
+        if (isFirstLoadRef.current) {
+            isFirstLoadRef.current = false;
+            loadProjects();
+            return;
+        }
+        if (filterDebounceRef.current) clearTimeout(filterDebounceRef.current);
+        filterDebounceRef.current = setTimeout(() => {
+            loadProjects();
+        }, 350);
+        return () => {
+            if (filterDebounceRef.current) clearTimeout(filterDebounceRef.current);
+        };
     }, [projectType, sortBy, page, viewCount, contentSource, mcVersionFilters, loaderFilters, categoryFilters, environmentFilters]);
 
     // Reset preview/detail when switching source or project type (B8)
@@ -221,7 +252,43 @@ export function Explore({ colors, config }: ExploreProps) {
         }
     };
 
-    const loadProjects = async () => {
+    const loadProjects = async (query?: string, overridePage?: number, force = false) => {
+        const activeQuery = query !== undefined ? query : searchQuery;
+        const activePage = overridePage !== undefined ? overridePage : page;
+
+        const params = {
+            query: activeQuery,
+            page: activePage,
+            projectType,
+            sortBy,
+            viewCount,
+            contentSource,
+            mcVersionFilters,
+            loaderFilters,
+            categoryFilters,
+            environmentFilters
+        };
+
+        if (
+            !force &&
+            lastFetchedParamsRef.current &&
+            lastFetchedParamsRef.current.query === params.query &&
+            lastFetchedParamsRef.current.page === params.page &&
+            lastFetchedParamsRef.current.projectType === params.projectType &&
+            lastFetchedParamsRef.current.sortBy === params.sortBy &&
+            lastFetchedParamsRef.current.viewCount === params.viewCount &&
+            lastFetchedParamsRef.current.contentSource === params.contentSource &&
+            JSON.stringify(lastFetchedParamsRef.current.mcVersionFilters) === JSON.stringify(params.mcVersionFilters) &&
+            JSON.stringify(lastFetchedParamsRef.current.loaderFilters) === JSON.stringify(params.loaderFilters) &&
+            JSON.stringify(lastFetchedParamsRef.current.categoryFilters) === JSON.stringify(params.categoryFilters) &&
+            JSON.stringify(lastFetchedParamsRef.current.environmentFilters) === JSON.stringify(params.environmentFilters)
+        ) {
+            return;
+        }
+
+        lastFetchedParamsRef.current = params;
+
+        const myToken = ++searchTokenRef.current;
         setIsLoading(true);
         try {
             if (contentSource === CONTENT_SOURCES.MODRINTH) {
@@ -231,19 +298,26 @@ export function Explore({ colors, config }: ExploreProps) {
                 if (categoryFilters.length) extraFacets.push(categoryFilters.map(c => `categories:${c}`));
                 if (loaderFilters.length) extraFacets.push(loaderFilters.map(l => `categories:${l}`));
                 if (mcVersionFilters.length) extraFacets.push(mcVersionFilters.map(v => `versions:${v}`));
-                if (environmentFilters.includes("client")) extraFacets.push(["client_side:required", "client_side:optional"]);
-                if (environmentFilters.includes("server")) extraFacets.push(["server_side:required", "server_side:optional"]);
+                if (environmentFilters.includes("client")) {
+                    extraFacets.push(["client_side:required", "client_side:optional"]);
+                }
+                if (environmentFilters.includes("server")) {
+                    extraFacets.push(["server_side:required", "server_side:optional"]);
+                }
 
                 const result = await window.api?.modrinthSearch?.({
-                    query: searchQuery,
+                    query: activeQuery,
                     projectType: projectType,
                     sortBy: sortBy,
                     limit: viewCount,
-                    offset: (page - 1) * viewCount,
+                    offset: (activePage - 1) * viewCount,
                     // gameVersion/loader on the helper are AND-only single values — leave them
                     // empty when we have selections; the full OR list goes through `facets`.
                     facets: extraFacets.length > 0 ? JSON.stringify(extraFacets) : undefined,
                 });
+
+                // Stale request — a newer loadProjects has been fired; discard this result.
+                if (searchTokenRef.current !== myToken) return;
 
                 if (result?.hits) {
                     const normalized: ModrinthProject[] = result.hits.map((mr: any) =>
@@ -268,14 +342,17 @@ export function Explore({ colors, config }: ExploreProps) {
                 const cfLoader = loaderFilters[0];
                 const cfVersion = mcVersionFilters[0];
                 const result = await window.api?.curseforgeSearch?.({
-                    query: searchQuery,
+                    query: activeQuery,
                     projectType: projectType,
                     sortBy: sortBy,
                     pageSize: viewCount,
-                    index: (page - 1) * viewCount,
+                    index: (activePage - 1) * viewCount,
                     gameVersion: cfVersion || undefined,
                     modLoaderType: cfLoader ? modLoaderMapping[cfLoader.toLowerCase()] : undefined,
                 });
+
+                // Stale request — discard.
+                if (searchTokenRef.current !== myToken) return;
 
                 if (result?.data) {
                     const normalized: ModrinthProject[] = result.data.map((cf: any) =>
@@ -286,10 +363,15 @@ export function Explore({ colors, config }: ExploreProps) {
                 }
             }
         } catch (error) {
+            // Only show error for the latest request — stale requests fail silently.
+            if (searchTokenRef.current !== myToken) return;
             console.error("[Explore] Load failed:", error);
             toast.error(t('load_data_failed'));
         } finally {
-            setIsLoading(false);
+            // Only clear loading for the latest request.
+            if (searchTokenRef.current === myToken) {
+                setIsLoading(false);
+            }
         }
     };
 
@@ -299,7 +381,7 @@ export function Explore({ colors, config }: ExploreProps) {
 
     const handleSearch = () => {
         setPage(1);
-        loadProjects();
+        loadProjects(searchQuery, 1, true);
     };
 
     // Track the last query we actually sent so we skip no-op refetches when the user
@@ -312,7 +394,7 @@ export function Explore({ colors, config }: ExploreProps) {
             if (query === lastSentQueryRef.current) return;
             lastSentQueryRef.current = query;
             setPage(1);
-            loadProjects();
+            loadProjects(query, 1);
         }, SEARCH_DEBOUNCE_MS);
     }, [projectType, sortBy, viewCount, contentSource, mcVersionFilters, loaderFilters, categoryFilters, environmentFilters]);
 
@@ -841,6 +923,7 @@ export function Explore({ colors, config }: ExploreProps) {
                         onEnvironmentFiltersChange={(e) => { setEnvironmentFilters(e); setPage(1); }}
                         showCategoryFilter={projectType === "mod" || projectType === "modpack"}
                         showEnvironmentFilter={projectType === "mod"}
+                        hideFilterMenu={showInstanceModal || showVersionModal}
                     />
 
                     {/* Main layout: list + preview (sidebar removed, list now takes ~2/3) */}

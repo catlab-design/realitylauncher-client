@@ -91,10 +91,9 @@ export function InstanceContentBrowser({
     const [contentSource, setContentSource] = useState<ContentSource>(CONTENT_SOURCES.MODRINTH);
 
     // Filter state (like Explore tab)
-    // Arrays for multi-select. mcVersion/loader are pinned to the instance — the FilterMenu
-    // hides those sections so they stay locked, but we still pass them through for the API.
-    const [mcVersionFilters, setMcVersionFilters] = useState<string[]>(instance.minecraftVersion ? [instance.minecraftVersion] : []);
-    const [loaderFilters, setLoaderFilters] = useState<string[]>(instance.loader && instance.loader !== "vanilla" ? [instance.loader] : []);
+    // Arrays for multi-select. Start with empty filters by default.
+    const [mcVersionFilters, setMcVersionFilters] = useState<string[]>([]);
+    const [loaderFilters, setLoaderFilters] = useState<string[]>([]);
     const [categoryFilters, setCategoryFilters] = useState<string[]>([]);
     const [environmentFilters, setEnvironmentFilters] = useState<string[]>([]);
 
@@ -127,6 +126,8 @@ export function InstanceContentBrowser({
     // Refs
     const debounceRef = useRef<NodeJS.Timeout | null>(null);
     const contentListRef = useRef<HTMLDivElement | null>(null);
+    // Race-condition guard: stale search requests are silently ignored.
+    const searchTokenRef = useRef(0);
 
     // Lightbox state
     const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
@@ -260,6 +261,7 @@ export function InstanceContentBrowser({
     }, [loadInstalledContent]);
 
     const loadProjects = useCallback(async () => {
+        const myToken = ++searchTokenRef.current;
         setIsLoading(true);
         try {
             if (contentSource === CONTENT_SOURCES.CURSEFORGE) {
@@ -283,6 +285,9 @@ export function InstanceContentBrowser({
                     pageSize: viewCount,
                     index: (page - 1) * viewCount,
                 });
+
+                // Stale request — a newer loadProjects has been fired; discard.
+                if (searchTokenRef.current !== myToken) return;
 
                 if (result?.data) {
                     const mapped: ModrinthProject[] = result.data.map((cf: any) => ({
@@ -310,8 +315,12 @@ export function InstanceContentBrowser({
                 if (mcVersionFilters.length) facets.push(mcVersionFilters.map(v => `versions:${v}`));
                 if (loaderFilters.length) facets.push(loaderFilters.map(l => `categories:${l}`));
                 if (categoryFilters.length) facets.push(categoryFilters.map(c => `categories:${c}`));
-                if (environmentFilters.includes("client")) facets.push(["client_side:required", "client_side:optional"]);
-                if (environmentFilters.includes("server")) facets.push(["server_side:required", "server_side:optional"]);
+                if (environmentFilters.includes("client")) {
+                    facets.push(["client_side:required", "client_side:optional"]);
+                }
+                if (environmentFilters.includes("server")) {
+                    facets.push(["server_side:required", "server_side:optional"]);
+                }
 
                 const result = await window.api?.modrinthSearch?.({
                     query: searchQuery,
@@ -321,6 +330,9 @@ export function InstanceContentBrowser({
                     offset: (page - 1) * viewCount,
                     facets: facets.length > 0 ? JSON.stringify(facets) : undefined,
                 });
+
+                // Stale request — discard.
+                if (searchTokenRef.current !== myToken) return;
 
                 if (result?.hits) {
                     const mapped: ModrinthProject[] = result.hits.map((mr: any) => ({
@@ -347,18 +359,38 @@ export function InstanceContentBrowser({
                 }
             }
         } catch (error) {
+            // Only show error for the latest request — stale requests fail silently.
+            if (searchTokenRef.current !== myToken) return;
             console.error("[ContentBrowser] Search error:", error);
             toast.error(t("search_failed"));
         } finally {
-            setIsLoading(false);
+            // Only clear loading for the latest request.
+            if (searchTokenRef.current === myToken) {
+                setIsLoading(false);
+            }
         }
     }, [searchQuery, contentSource, contentType, sortBy, page, viewCount, mcVersionFilters, loaderFilters, categoryFilters, environmentFilters, instance]);
 
     // Fetch full project details for gallery
 
 
+    // Debounce ref for filter changes
+    const filterDebounceRef = useRef<NodeJS.Timeout | null>(null);
+    const isFirstFilterLoadRef = useRef(true);
+
     useEffect(() => {
-        loadProjects();
+        if (isFirstFilterLoadRef.current) {
+            isFirstFilterLoadRef.current = false;
+            loadProjects();
+            return;
+        }
+        if (filterDebounceRef.current) clearTimeout(filterDebounceRef.current);
+        filterDebounceRef.current = setTimeout(() => {
+            loadProjects();
+        }, 350);
+        return () => {
+            if (filterDebounceRef.current) clearTimeout(filterDebounceRef.current);
+        };
     }, [contentSource, contentType, sortBy, page, viewCount, mcVersionFilters, loaderFilters, categoryFilters, environmentFilters]);
 
     // Update preview when results change
@@ -763,8 +795,8 @@ export function InstanceContentBrowser({
                             onEnvironmentFiltersChange={(e) => { setEnvironmentFilters(e); setPage(1); }}
                             showCategoryFilter={true}
                             showEnvironmentFilter={contentType === "mod"}
-                            showLoaderFilter={false}
-                            showVersionFilter={false}
+                            showLoaderFilter={true}
+                            showVersionFilter={true}
                         />
 
                         {/* Source Toggle - right side */}
@@ -779,11 +811,9 @@ export function InstanceContentBrowser({
                                 }}
                             >
                                 {contentSource === CONTENT_SOURCES.MODRINTH && (
-                                    <motion.div
-                                        layoutId="instance-browser-source-indicator"
+                                    <div
                                         className="absolute inset-0 rounded-xl"
                                         style={{ backgroundColor: "#1bd96a" }}
-                                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
                                     />
                                 )}
                                 <img src={modrinthIcon.src} alt="" className="w-4 h-4 z-10 relative" />
@@ -799,11 +829,9 @@ export function InstanceContentBrowser({
                                 }}
                             >
                                 {contentSource === CONTENT_SOURCES.CURSEFORGE && (
-                                    <motion.div
-                                        layoutId="instance-browser-source-indicator"
+                                    <div
                                         className="absolute inset-0 rounded-xl"
                                         style={{ backgroundColor: "#f16436" }}
-                                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
                                     />
                                 )}
                                 <img src={curseforgeIcon.src} alt="" className="w-4 h-4 z-10 relative" />
@@ -832,11 +860,9 @@ export function InstanceContentBrowser({
                                         }}
                                     >
                                         {active && (
-                                            <motion.div
-                                                layoutId="instance-browser-tabs-indicator"
+                                            <div
                                                 className="absolute inset-0 rounded-xl"
                                                 style={{ backgroundColor: colors.secondary }}
-                                                transition={{ type: "spring", stiffness: 400, damping: 30 }}
                                             />
                                         )}
                                         <TabIcon className="w-3.5 h-3.5 z-10 relative" />

@@ -70,6 +70,13 @@ export function ServerMenu({
 
     // ── Tab state ────────────────────────────────────────────────────────────
     const [activeTab, setActiveTabState] = useState<ActiveTab>("my");
+    const [viewMode, setViewMode] = useState<"tiles" | "table" | "list">(() => {
+        if (typeof window !== "undefined") {
+            return (localStorage.getItem("serverViewMode") as any) || "list";
+        }
+        return "list";
+    });
+    const [viewMenuOpen, setViewMenuOpen] = useState(false);
 
     // Legacy state derived from tab
     const showPublic = activeTab === "explore";
@@ -83,6 +90,7 @@ export function ServerMenu({
     const [mySearchQuery, setMySearchQuery] = useState("");
     const [publicInstances, setPublicInstances] = useState<Instance[]>([]);
     const [isSearching, setIsSearching] = useState(false);
+    const [isExploreJoinedExpanded, setIsExploreJoinedExpanded] = useState(false);
 
     // ── Joined servers (flat list) ────────────────────────────────────────────
     const [joinedServers, setJoinedServers] = useState<any[]>([]);
@@ -342,8 +350,9 @@ export function ServerMenu({
                     : Promise.resolve([])
             ]);
 
-            const owned = cloudData.owned || [];
-            const member = cloudData.member || [];
+            const owned = (cloudData.owned || []).map((inst: any) => ({ ...inst, isOwned: true }));
+            const member = (cloudData.member || []).map((inst: any) => ({ ...inst, isOwned: false }));
+            console.log("[Debug Servers] Owned:", owned, "Member:", member);
             setInstances({ owned, member });
 
             if (cloudError && owned.length === 0 && member.length === 0) setApiError(cloudError);
@@ -378,6 +387,7 @@ export function ServerMenu({
     };
 
     useEffect(() => {
+        setViewMenuOpen(false);
         if (activeTab === "explore") fetchPublicInstances(searchQuery);
     }, [activeTab]);
 
@@ -458,7 +468,7 @@ export function ServerMenu({
     const allMyInstances = [...(instances?.owned || []), ...(instances?.member || [])];
 
     const displayedInstances = showPublic
-        ? publicInstances
+        ? publicInstances.filter((pubInst: any) => !joinedServers.some(joined => joined.id === pubInst.id))
         : mySearchQuery.trim()
             ? allMyInstances.filter((inst: any) => {
                 const q = mySearchQuery.toLowerCase();
@@ -509,7 +519,7 @@ export function ServerMenu({
                 <div className="h-full flex flex-col animate-fade-in">
 
                     {/* ── HEADER ──────────────────────────────────────────── */}
-                    <div className="shrink-0 mb-5 animate-fade-in">
+                    <div className="shrink-0 mb-5 animate-fade-in relative z-20">
                         <div className="flex items-center justify-between gap-3 mb-4">
                             {/* Page Title */}
                             <div>
@@ -579,7 +589,7 @@ export function ServerMenu({
                                 onClick={() => { playClick(); setActiveTabState("my"); }}
                                 className={cn(
                                     "flex-1 flex items-center justify-center gap-2 h-9 rounded-lg text-sm font-semibold transition-all",
-                                    activeTab === "my" ? "shadow-md" : "hover:bg-white/5"
+                                    activeTab === "my" ? "" : "hover:bg-white/5"
                                 )}
                                 style={activeTab === "my"
                                     ? { backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }
@@ -607,7 +617,7 @@ export function ServerMenu({
                                 onClick={() => { playClick(); setActiveTabState("explore"); }}
                                 className={cn(
                                     "flex-1 flex items-center justify-center gap-2 h-9 rounded-lg text-sm font-semibold transition-all",
-                                    activeTab === "explore" ? "shadow-md" : "hover:bg-white/5"
+                                    activeTab === "explore" ? "" : "hover:bg-white/5"
                                 )}
                                 style={activeTab === "explore"
                                     ? { backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }
@@ -619,73 +629,358 @@ export function ServerMenu({
                             </button>
                         </div>
 
-                        {/* ── MY SERVERS SEARCH BAR ─────────────────────────── */}
+                        {/* ── MY SERVERS SEARCH BAR & VIEW SWITCHER ─────────── */}
                         {activeTab === "my" && (
-                            <div className="relative mt-3 animate-fade-in">
-                                <Icons.Search
-                                    className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 opacity-40 pointer-events-none"
-                                    style={{ color: colors.onSurface }}
-                                />
-                                <input
-                                    type="text"
-                                    placeholder={t('search') ? `${t('search')}…` : "ค้นหาเซิร์ฟเวอร์…"}
-                                    value={mySearchQuery}
-                                    onChange={(e) => setMySearchQuery(e.target.value)}
-                                    className="w-full h-10 pl-10 pr-10 rounded-xl outline-none transition-all border"
-                                    style={{
-                                        backgroundColor: colors.surfaceContainerHighest,
-                                        color: colors.onSurface,
-                                        borderColor: "transparent",
-                                    }}
-                                    onFocus={(e) => { e.currentTarget.style.borderColor = colors.primary + "60"; }}
-                                    onBlur={(e) => { e.currentTarget.style.borderColor = "transparent"; }}
-                                />
-                                {mySearchQuery && (
+                            <div className="flex items-center gap-2 mt-3 animate-fade-in">
+                                <div className="relative flex-1">
+                                    <Icons.Search
+                                        className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 opacity-40 pointer-events-none"
+                                        style={{ color: colors.onSurface }}
+                                    />
+                                    <input
+                                        type="text"
+                                        placeholder={t('search') ? `${t('search')}…` : "ค้นหาเซิร์ฟเวอร์…"}
+                                        value={mySearchQuery}
+                                        onChange={(e) => setMySearchQuery(e.target.value)}
+                                        className="w-full h-10 pl-10 pr-10 rounded-xl outline-none transition-all border font-semibold text-sm"
+                                        style={{
+                                            backgroundColor: colors.surfaceContainerHighest,
+                                            color: colors.onSurface,
+                                            borderColor: "transparent",
+                                        }}
+                                        onFocus={(e) => { e.currentTarget.style.borderColor = colors.primary + "60"; }}
+                                        onBlur={(e) => { e.currentTarget.style.borderColor = "transparent"; }}
+                                    />
+                                    {mySearchQuery && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setMySearchQuery("")}
+                                            title="Clear search"
+                                            aria-label="Clear search"
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center opacity-50 hover:opacity-100 transition-opacity"
+                                            style={{ backgroundColor: colors.onSurfaceVariant + "30", color: colors.onSurface }}
+                                        >
+                                            <Icons.Close className="w-3 h-3" />
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* View Switcher Dropdown */}
+                                <div className="relative shrink-0">
                                     <button
                                         type="button"
-                                        onClick={() => setMySearchQuery("")}
-                                        title="Clear search"
-                                        aria-label="Clear search"
-                                        className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center opacity-50 hover:opacity-100 transition-opacity"
-                                        style={{ backgroundColor: colors.onSurfaceVariant + "30", color: colors.onSurface }}
+                                        onClick={() => { playClick(); setViewMenuOpen(!viewMenuOpen); }}
+                                        className="h-10 px-4 rounded-xl flex items-center gap-2 transition-all hover:brightness-110 active:scale-95 font-bold text-sm select-none border border-transparent outline-none focus:outline-none focus:ring-0"
+                                        style={{
+                                            backgroundColor: colors.surfaceContainerHighest,
+                                            color: colors.onSurface,
+                                        }}
                                     >
-                                        <Icons.Close className="w-3 h-3" />
+                                        {viewMode === "tiles" ? (
+                                            <Icons.Grid className="w-4 h-4" />
+                                        ) : viewMode === "table" ? (
+                                            <Icons.Table className="w-4 h-4" />
+                                        ) : (
+                                            <Icons.List className="w-4 h-4" />
+                                        )}
+                                        <span>{t('view_mode') || "View"}</span>
+                                        <Icons.ArrowDown className="w-3.5 h-3.5 opacity-60" />
                                     </button>
-                                )}
+
+                                    {viewMenuOpen && (
+                                        <>
+                                            {/* Click outside backdrop */}
+                                            <div 
+                                                className="fixed inset-0 z-40" 
+                                                onClick={() => setViewMenuOpen(false)}
+                                            />
+                                            {/* Dropdown Menu */}
+                                            <div 
+                                                className="absolute right-0 mt-1.5 z-50 min-w-[140px] rounded-xl shadow-xl border p-1 flex flex-col gap-0.5 animate-fade-in"
+                                                style={{ 
+                                                    backgroundColor: colors.surfaceContainer,
+                                                    borderColor: colors.outline + "15",
+                                                    color: colors.onSurface
+                                                }}
+                                            >
+                                                {/* Tiles option */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        playClick();
+                                                        setViewMode("tiles");
+                                                        localStorage.setItem("serverViewMode", "tiles");
+                                                        setViewMenuOpen(false);
+                                                    }}
+                                                    className="flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold hover:bg-white/5 transition-all w-full text-left"
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <Icons.Grid className="w-3.5 h-3.5 opacity-70" />
+                                                        <span>{t('view_tiles') || "Tiles"}</span>
+                                                    </div>
+                                                    {viewMode === "tiles" && <Icons.Check className="w-3.5 h-3.5 text-emerald-500" />}
+                                                </button>
+
+                                                {/* Table option */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        playClick();
+                                                        setViewMode("table");
+                                                        localStorage.setItem("serverViewMode", "table");
+                                                        setViewMenuOpen(false);
+                                                    }}
+                                                    className="flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold hover:bg-white/5 transition-all w-full text-left"
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <Icons.Table className="w-3.5 h-3.5 opacity-70" />
+                                                        <span>{t('view_table') || "Table"}</span>
+                                                    </div>
+                                                    {viewMode === "table" && <Icons.Check className="w-3.5 h-3.5 text-emerald-500" />}
+                                                </button>
+
+                                                {/* List option */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        playClick();
+                                                        setViewMode("list");
+                                                        localStorage.setItem("serverViewMode", "list");
+                                                        setViewMenuOpen(false);
+                                                    }}
+                                                    className="flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold hover:bg-white/5 transition-all w-full text-left"
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <Icons.List className="w-3.5 h-3.5 opacity-70" />
+                                                        <span>{t('view_list') || "List"}</span>
+                                                    </div>
+                                                    {viewMode === "list" && <Icons.Check className="w-3.5 h-3.5 text-emerald-500" />}
+                                                </button>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
                             </div>
                         )}
 
-                        {/* ── EXPLORE SEARCH BAR ─────────────────────────────── */}
+                        {/* ── EXPLORE SEARCH & FILTER ROW ──────────────────────── */}
                         {activeTab === "explore" && (
-                            <form onSubmit={handleSearchSubmit} className="relative mt-3 group animate-fade-in">
-                                <Icons.Search
-                                    className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 opacity-40 pointer-events-none"
-                                    style={{ color: colors.onSurface }}
-                                />
-                                <input
-                                    type="text"
-                                    placeholder={t('search_public_servers') || "Search servers…"}
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full h-10 pl-10 pr-4 rounded-xl outline-none transition-all border"
-                                    style={{
-                                        backgroundColor: colors.surfaceContainerHighest,
-                                        color: colors.onSurface,
-                                        borderColor: "transparent",
-                                    }}
-                                    onFocus={(e) => e.currentTarget.style.borderColor = colors.primary + "60"}
-                                    onBlur={(e) => e.currentTarget.style.borderColor = "transparent"}
-                                />
-                                {searchQuery && (
+                            <div className="flex flex-col gap-3 mt-3 animate-fade-in">
+                                <div className="flex items-center gap-2">
+                                    <form onSubmit={handleSearchSubmit} className="relative flex-1 group">
+                                        <Icons.Search
+                                            className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 opacity-40 pointer-events-none"
+                                            style={{ color: colors.onSurface }}
+                                        />
+                                        <input
+                                            type="text"
+                                            placeholder={t('search_public_servers') || "Search servers…"}
+                                            value={searchQuery}
+                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                            className="w-full h-10 pl-10 pr-4 rounded-xl outline-none transition-all border"
+                                            style={{
+                                                backgroundColor: colors.surfaceContainerHighest,
+                                                color: colors.onSurface,
+                                                borderColor: "transparent",
+                                            }}
+                                            onFocus={(e) => e.currentTarget.style.borderColor = colors.primary + "60"}
+                                            onBlur={(e) => e.currentTarget.style.borderColor = "transparent"}
+                                        />
+                                        {searchQuery && (
+                                            <button
+                                                type="submit"
+                                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold px-2 py-1 rounded-lg opacity-60 hover:opacity-100 transition-opacity"
+                                                style={{ color: colors.primary }}
+                                            >
+                                                {t('search') || "Go"}
+                                            </button>
+                                        )}
+                                    </form>
+
                                     <button
-                                        type="submit"
-                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold px-2 py-1 rounded-lg opacity-60 hover:opacity-100 transition-opacity"
-                                        style={{ color: colors.primary }}
+                                        type="button"
+                                        onClick={() => { playClick(); setIsExploreJoinedExpanded(!isExploreJoinedExpanded); }}
+                                        className="h-10 px-4 rounded-xl flex items-center gap-2 transition-all hover:brightness-110 active:scale-95 font-bold text-sm select-none shrink-0"
+                                        style={{
+                                            backgroundColor: isExploreJoinedExpanded ? colors.primary : colors.surfaceContainer,
+                                            color: isExploreJoinedExpanded ? colors.onPrimary : colors.onSurface,
+                                            border: `1.5px solid ${colors.outline}12`,
+                                        }}
                                     >
-                                        {t('search') || "Go"}
+                                        <i className="fa-solid fa-circle-check text-base" />
+                                        <span>{t('joined_servers')}</span>
+                                        <span 
+                                            className="px-1.5 py-0.5 rounded-md text-[10px] font-black"
+                                            style={{
+                                                backgroundColor: isExploreJoinedExpanded ? "rgba(0,0,0,0.15)" : colors.surfaceContainerHighest,
+                                                color: isExploreJoinedExpanded ? "#fff" : colors.onSurfaceVariant
+                                            }}
+                                        >
+                                            {joinedServers.filter((inst: any) => !!inst.isPublic).length}
+                                        </span>
                                     </button>
+
+                                    {/* View Switcher Dropdown */}
+                                    <div className="relative shrink-0">
+                                        <button
+                                            type="button"
+                                            onClick={() => { playClick(); setViewMenuOpen(!viewMenuOpen); }}
+                                            className="h-10 px-4 rounded-xl flex items-center gap-2 transition-all hover:brightness-110 active:scale-95 font-bold text-sm select-none border border-transparent outline-none focus:outline-none focus:ring-0"
+                                            style={{
+                                                backgroundColor: colors.surfaceContainerHighest,
+                                                color: colors.onSurface,
+                                            }}
+                                        >
+                                            {viewMode === "tiles" ? (
+                                                <Icons.Grid className="w-4 h-4" />
+                                            ) : viewMode === "table" ? (
+                                                <Icons.Table className="w-4 h-4" />
+                                            ) : (
+                                                <Icons.List className="w-4 h-4" />
+                                            )}
+                                            <span>{t('view_mode') || "View"}</span>
+                                            <Icons.ArrowDown className="w-3.5 h-3.5 opacity-60" />
+                                        </button>
+
+                                        {viewMenuOpen && (
+                                            <>
+                                                {/* Click outside backdrop */}
+                                                <div 
+                                                    className="fixed inset-0 z-40" 
+                                                    onClick={() => setViewMenuOpen(false)}
+                                                />
+                                                {/* Dropdown Menu */}
+                                                <div 
+                                                    className="absolute right-0 mt-1.5 z-50 min-w-[140px] rounded-xl shadow-xl border p-1 flex flex-col gap-0.5 animate-fade-in"
+                                                    style={{ 
+                                                        backgroundColor: colors.surfaceContainer,
+                                                        borderColor: colors.outline + "15",
+                                                        color: colors.onSurface
+                                                    }}
+                                                >
+                                                    {/* Tiles option */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            playClick();
+                                                            setViewMode("tiles");
+                                                            localStorage.setItem("serverViewMode", "tiles");
+                                                            setViewMenuOpen(false);
+                                                        }}
+                                                        className="flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold hover:bg-white/5 transition-all w-full text-left"
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <Icons.Grid className="w-3.5 h-3.5 opacity-70" />
+                                                            <span>{t('view_tiles') || "Tiles"}</span>
+                                                        </div>
+                                                        {viewMode === "tiles" && <Icons.Check className="w-3.5 h-3.5 text-emerald-500" />}
+                                                    </button>
+
+                                                    {/* Table option */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            playClick();
+                                                            setViewMode("table");
+                                                            localStorage.setItem("serverViewMode", "table");
+                                                            setViewMenuOpen(false);
+                                                        }}
+                                                        className="flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold hover:bg-white/5 transition-all w-full text-left"
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <Icons.Table className="w-3.5 h-3.5 opacity-70" />
+                                                            <span>{t('view_table') || "Table"}</span>
+                                                        </div>
+                                                        {viewMode === "table" && <Icons.Check className="w-3.5 h-3.5 text-emerald-500" />}
+                                                    </button>
+
+                                                    {/* List option */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            playClick();
+                                                            setViewMode("list");
+                                                            localStorage.setItem("serverViewMode", "list");
+                                                            setViewMenuOpen(false);
+                                                        }}
+                                                        className="flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold hover:bg-white/5 transition-all w-full text-left"
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <Icons.List className="w-3.5 h-3.5 opacity-70" />
+                                                            <span>{t('view_list') || "List"}</span>
+                                                        </div>
+                                                        {viewMode === "list" && <Icons.Check className="w-3.5 h-3.5 text-emerald-500" />}
+                                                    </button>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Expanded List Content */}
+                                {isExploreJoinedExpanded && (
+                                    <div 
+                                        className={cn(
+                                            "mt-1 pl-2 border-l-2 animate-fade-in",
+                                            viewMode === "tiles" 
+                                                ? "grid grid-cols-1 md:grid-cols-2 gap-4 content-start" 
+                                                : "flex flex-col gap-2"
+                                        )} 
+                                        style={{ borderColor: colors.outline + "15" }}
+                                    >
+                                        {viewMode === "table" && joinedServers.filter((inst: any) => !!inst.isPublic).length > 0 && (
+                                            <div 
+                                                className="flex items-center px-6 py-2 text-xs font-black uppercase tracking-wider opacity-50 shrink-0 select-none border-b mb-2" 
+                                                style={{ color: colors.onSurface, borderColor: colors.outline + "15" }}
+                                            >
+                                                <div className="w-2/5">{t('server') || "Server"}</div>
+                                                <div className="w-1/5">{t('minecraft_version_label') || "Version"}</div>
+                                                <div className="w-1/5">{t('status') || "Status / IP"}</div>
+                                                <div className="w-1/5 text-right">{t('account_management') || "Actions"}</div>
+                                            </div>
+                                        )}
+                                        {joinedServers.filter((inst: any) => !!inst.isPublic).length > 0 ? (
+                                            joinedServers.filter((inst: any) => !!inst.isPublic).map((instance: any, index: number) => {
+                                                const targetId = instance.storagePath || instance.id;
+                                                const isInstalled = localInstances.has(targetId);
+                                                return (
+                                                    <ServerItem
+                                                        key={`joined-${instance.id}`}
+                                                        index={index}
+                                                        instance={instance}
+                                                        colors={colors}
+                                                        isSelected={selectedServer?.id === instance.id}
+                                                        isInstalled={isInstalled}
+                                                        isMember={true}
+                                                        showPublic={false}
+                                                        isPlaying={playingInstances.has(instance.id)}
+                                                        isLaunching={launchingId === instance.id}
+                                                        getWithTimestamp={getWithTimestamp}
+                                                        viewMode={viewMode}
+                                                        onSelect={(inst) => {
+                                                            handleInstanceClick(inst);
+                                                        }}
+                                                        onViewDetail={(inst) => {
+                                                            handleInstanceClick(inst);
+                                                            setViewingInstance(inst);
+                                                        }}
+                                                        onPlay={handlePlayServer}
+                                                        onStop={handleStopServer}
+                                                        onJoin={handleJoinServer}
+                                                        onInstall={handleInstall}
+                                                        onLeave={handleLeaveServer}
+                                                        t={t}
+                                                    />
+                                                );
+                                            })
+                                        ) : (
+                                            <div className="py-3 text-center text-xs font-semibold" style={{ color: colors.onSurfaceVariant, opacity: 0.6 }}>
+                                                {t('no_joined_public_servers')}
+                                            </div>
+                                        )}
+                                    </div>
                                 )}
-                            </form>
+                            </div>
                         )}
 
                         {/* ── JOIN FORM ───────────────────────────────────────── */}
@@ -810,40 +1105,59 @@ export function ServerMenu({
                         </div>
                     ) : (
                         /* Server Grid */
-                        <div className="flex flex-col gap-2 pb-4 overflow-y-auto animate-fade-in">
-                            {displayedInstances.map((instance: any, index: number) => {
-                                const targetId = instance.storagePath || instance.id;
-                                const isInstalled = localInstances.has(targetId);
-                                const isMember = joinedServers.some(s => s.id === instance.id);
-                                return (
-                                    <ServerItem
-                                        key={instance.id}
-                                        index={index}
-                                        instance={instance}
-                                        colors={colors}
-                                        isSelected={selectedServer?.id === instance.id}
-                                        isInstalled={isInstalled}
-                                        isMember={isMember}
-                                        showPublic={showPublic}
-                                        isPlaying={playingInstances.has(instance.id)}
-                                        isLaunching={launchingId === instance.id}
-                                        getWithTimestamp={getWithTimestamp}
-                                        onSelect={(inst) => {
-                                            handleInstanceClick(inst);
-                                        }}
-                                        onViewDetail={(inst) => {
-                                            handleInstanceClick(inst);
-                                            setViewingInstance(inst);
-                                        }}
-                                        onPlay={handlePlayServer}
-                                        onStop={handleStopServer}
-                                        onJoin={handleJoinServer}
-                                        onInstall={handleInstall}
-                                        onLeave={handleLeaveServer}
-                                        t={t}
-                                    />
-                                );
-                            })}
+                        <div className="flex-1 flex flex-col min-h-0">
+                            {viewMode === "table" && (
+                                <div 
+                                    className="flex items-center px-6 py-2 text-xs font-black uppercase tracking-wider opacity-50 shrink-0 select-none border-b mb-2" 
+                                    style={{ color: colors.onSurface, borderColor: colors.outline + "15" }}
+                                >
+                                    <div className="w-2/5">{t('server') || "Server"}</div>
+                                    <div className="w-1/5">{t('minecraft_version_label') || "Version"}</div>
+                                    <div className="w-1/5">{t('status') || "Status / IP"}</div>
+                                    <div className="w-1/5 text-right">{t('account_management') || "Actions"}</div>
+                                </div>
+                            )}
+                            <div className={cn(
+                                "pb-24 overflow-y-auto flex-1 min-h-0",
+                                viewMode === "tiles" 
+                                    ? "grid grid-cols-1 md:grid-cols-2 gap-4 content-start" 
+                                    : "flex flex-col gap-2"
+                            )}>
+                                {displayedInstances.map((instance: any, index: number) => {
+                                    const targetId = instance.storagePath || instance.id;
+                                    const isInstalled = localInstances.has(targetId);
+                                    const isMember = joinedServers.some(s => s.id === instance.id);
+                                    return (
+                                        <ServerItem
+                                            key={instance.id}
+                                            index={index}
+                                            instance={instance}
+                                            colors={colors}
+                                            isSelected={selectedServer?.id === instance.id}
+                                            isInstalled={isInstalled}
+                                            isMember={isMember}
+                                            showPublic={showPublic}
+                                            isPlaying={playingInstances.has(instance.id)}
+                                            isLaunching={launchingId === instance.id}
+                                            getWithTimestamp={getWithTimestamp}
+                                            viewMode={viewMode}
+                                            onSelect={(inst) => {
+                                                handleInstanceClick(inst);
+                                            }}
+                                            onViewDetail={(inst) => {
+                                                handleInstanceClick(inst);
+                                                setViewingInstance(inst);
+                                            }}
+                                            onPlay={handlePlayServer}
+                                            onStop={handleStopServer}
+                                            onJoin={handleJoinServer}
+                                            onInstall={handleInstall}
+                                            onLeave={handleLeaveServer}
+                                            t={t}
+                                        />
+                                    );
+                                })}
+                            </div>
                         </div>
                     )}
 

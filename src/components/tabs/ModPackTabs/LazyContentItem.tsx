@@ -251,7 +251,7 @@ export function LazyContentItem({
                 <img
                     src={iconUrl}
                     alt={cleanName(currentItem.name)}
-                    className="w-12 h-12 rounded-xl object-cover shrink-0 bg-white"
+                    className="w-12 h-12 rounded-xl object-contain shrink-0"
                 />
             ) : (
                 <div

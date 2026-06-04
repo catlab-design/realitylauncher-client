@@ -151,10 +151,20 @@ jobs:
           fi
 
       - name: Build Rust native module
+        shell: bash
         run: |
           cd native
           bun install
-          bun run build
+          if [ "${{ matrix.platform }}" = "mac" ]; then
+            # macos runners are Apple Silicon; `napi build --platform` alone would
+            # only emit the arm64 .node, leaving Intel macs with no native binary.
+            # Build both darwin targets so the dmg works on x64 and arm64.
+            rustup target add x86_64-apple-darwin aarch64-apple-darwin
+            bunx napi build --platform --release --target aarch64-apple-darwin
+            bunx napi build --platform --release --target x86_64-apple-darwin
+          else
+            bun run build
+          fi
         env:
           CARGO_TERM_COLOR: always
 

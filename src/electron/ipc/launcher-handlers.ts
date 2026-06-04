@@ -128,6 +128,7 @@ export function registerLauncherHandlers(getMainWindow: () => BrowserWindow | nu
                     "C:\\Program Files\\Java",
                     "C:\\Program Files\\Eclipse Adoptium",
                     "C:\\Program Files\\Zulu",
+                    "C:\\Program Files\\Amazon Corretto",
                 ];
 
                 for (const basePath of commonPaths) {

@@ -3,17 +3,15 @@
 //! Handles:
 //! - Auto-detection of installed Java versions
 //! - Java version validation
-//! - Azul Zulu Java downloads
+//! - Amazon Corretto Java downloads
 //! - Java path management
 
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Command;
-use serde_json::Value;
 use crate::download::download_file;
 use crate::extract::extract_zip;
-use crate::get_client;
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -399,7 +397,7 @@ pub fn find_java_for_minecraft(minecraft_version: String) -> Option<JavaInstalla
         })
 }
 
-fn map_azul_os() -> &'static str {
+fn map_corretto_os() -> &'static str {
     if cfg!(windows) {
         "windows"
     } else if cfg!(target_os = "macos") {
@@ -409,45 +407,36 @@ fn map_azul_os() -> &'static str {
     }
 }
 
-fn map_azul_archive_type() -> &'static str {
+fn map_corretto_arch() -> &'static str {
+    if cfg!(target_arch = "aarch64") {
+        "aarch64"
+    } else {
+        "x64"
+    }
+}
+
+fn corretto_archive_ext() -> &'static str {
     if cfg!(windows) { "zip" } else { "tar.gz" }
 }
 
-fn build_azul_package_api_url(major_version: u32) -> String {
-    // Java 25+ may be EA only; use "ea" release status for those versions.
-    let release_status = if major_version >= 25 { "ea" } else { "ga" };
+// Corretto has no metadata API; the /latest/ endpoint 302-redirects to the
+// newest build for the given major/arch/os, so we build the URL directly.
+fn build_corretto_download_url(major_version: u32) -> String {
     format!(
-        "https://api.azul.com/metadata/v1/zulu/packages/?java_version={major_version}&os={}&arch=x64&archive_type={}&java_package_type=jdk&javafx_bundled=false&release_status={release_status}&availability_types=CA&certifications=tck&java_package_features=headful&latest=true&page=1&page_size=100",
-        map_azul_os(),
-        map_azul_archive_type(),
+        "https://corretto.aws/downloads/latest/amazon-corretto-{major_version}-{}-{}-jdk.{}",
+        map_corretto_arch(),
+        map_corretto_os(),
+        corretto_archive_ext(),
     )
 }
 
-fn extract_zulu_package(payload: &Value) -> Option<(String, String)> {
-    let entries = payload.as_array()?;
-    let entry = entries
-        .iter()
-        .find(|item| item.get("latest").and_then(|v| v.as_bool()) == Some(true)
-            && item.get("download_url").and_then(|v| v.as_str()).is_some())
-        .or_else(|| {
-            entries
-                .iter()
-                .find(|item| item.get("download_url").and_then(|v| v.as_str()).is_some())
-        })?;
-
-    let download_url = entry.get("download_url")?.as_str()?.to_string();
-    let inferred_name = download_url
-        .split('/')
-        .last()
-        .map(|name| name.split('?').next().unwrap_or(name).to_string())
-        .unwrap_or_else(|| "java-runtime.zip".to_string());
-    let file_name = entry
-        .get("name")
-        .and_then(|v| v.as_str())
-        .map(|name| name.to_string())
-        .unwrap_or(inferred_name);
-
-    Some((download_url, file_name))
+fn corretto_file_name(major_version: u32) -> String {
+    format!(
+        "amazon-corretto-{major_version}-{}-{}-jdk.{}",
+        map_corretto_arch(),
+        map_corretto_os(),
+        corretto_archive_ext(),
+    )
 }
 
 fn java_executable_name() -> &'static str {
@@ -470,24 +459,8 @@ pub async fn install_java_runtime(major_version: u32, install_root: String) -> n
         return Ok(java_path.to_string_lossy().to_string());
     }
 
-    let api_url = build_azul_package_api_url(major_version);
-
-    let client = get_client();
-    let response = client
-        .get(&api_url)
-        .send()
-        .await
-        .map_err(|e| napi::Error::from_reason(format!("Failed to fetch Java metadata: {e}")))?;
-
-    let payload: Value = response
-        .json()
-        .await
-        .map_err(|e| napi::Error::from_reason(format!("Invalid Java metadata response: {e}")))?;
-
-    let (download_url, file_name) = extract_zulu_package(&payload)
-        .ok_or_else(|| napi::Error::from_reason(format!(
-            "No Azul Zulu runtime found for version {major_version}"
-        )))?;
+    let download_url = build_corretto_download_url(major_version);
+    let file_name = corretto_file_name(major_version);
 
     let zip_path = install_root_path.join(file_name);
     let download_result = download_file(

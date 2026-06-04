@@ -1091,7 +1091,7 @@ export function LauncherAppOverlays({
                         <MCHead
                           username={account.username}
                           size={54}
-                          className="rounded-2xl shadow-lg border-2 border-white/5"
+                          className="rounded-full shadow-lg border-2 border-white/5"
                         />
                         {isActive && (
                           <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-green-500 border-4 border-[#1e1e2e] flex items-center justify-center shadow-lg">

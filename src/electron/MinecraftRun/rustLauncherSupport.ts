@@ -1,4 +1,29 @@
 import os from "os";
+import fs from "fs";
+import path from "path";
+
+// Diagnostic: snapshot the resourcepacks folder so we can pinpoint when/where a
+// user-added pack disappears (reported: pack vanishes after relaunching a cloud
+// instance). Bracketing the launch flow tells us whether the launcher removed it
+// or it was already gone before launch.
+export function logResourcePacksState(label: string, gameDir: string): void {
+  try {
+    const rpDir = path.join(gameDir, "resourcepacks");
+    let files: string[] = [];
+    try {
+      files = fs.readdirSync(rpDir).filter((f) => !f.startsWith("."));
+    } catch {
+      /* dir may not exist yet */
+    }
+    console.log(
+      `[RustLauncher][RP] ${label}: ${files.length} pack(s)` +
+        (files.length ? ` -> ${files.join(", ")}` : "") +
+        ` @ ${rpDir}`,
+    );
+  } catch {
+    /* never let diagnostics break launch */
+  }
+}
 
 export function filterGameArgs(args: any[]): any[] {
   const result: any[] = [];
@@ -22,12 +47,14 @@ export function filterGameArgs(args: any[]): any[] {
 /**
  * Resolve the heap size handed to the JVM.
  *
- * Xms is pinned to Xmx so the JVM commits the whole heap up front and never
- * resizes it mid-session. A growing heap is the classic cause of in-game
- * stutter while walking/loading chunks, so we trade a slightly slower launch
- * for steady frametimes. The max is still capped at 70% of system RAM as a
- * main-process safety net against OOM/swap on low-spec machines, regardless of
- * what the UI requests.
+ * Xms is a small initial heap that the JVM grows lazily toward Xmx, mirroring
+ * how Modrinth launches: nothing is committed or touched up front, so the game
+ * window appears quickly instead of stalling while the whole heap is allocated.
+ * Pinning Xms to Xmx (together with AlwaysPreTouch) was the previous behaviour
+ * and the main reason large-RAM launches felt slow.
+ *
+ * Xmx is still capped at 70% of system RAM as a main-process safety net against
+ * OOM/swap on low-spec machines, regardless of what the UI requests.
  */
 export function computeSafeHeapMb(requestedMb: number): {
   minMb: number;
@@ -38,25 +65,42 @@ export function computeSafeHeapMb(requestedMb: number): {
     1024,
     Math.min(requestedMb, Math.floor(totalSystemMb * 0.7)),
   );
-  return { minMb: maxMb, maxMb };
+  // Small initial heap; pages are committed on demand as the game grows it.
+  const minMb = Math.min(512, maxMb);
+  return { minMb, maxMb };
 }
 
 /**
  * Platform-specific JVM args.
- * macOS (LWJGL3/GLFW) requires -XstartOnFirstThread or it crashes when the
- * window opens. Added defensively; a duplicate is harmless if the native core
- * already supplies it.
+ * macOS (LWJGL3/GLFW) requires -XstartOnFirstThread for legacy versions (< 1.13),
+ * but modern versions (1.13+) crash or hang if it is passed.
  */
-export function getPlatformJvmArgs(): string[] {
-  return process.platform === "darwin" ? ["-XstartOnFirstThread"] : [];
+export function getPlatformJvmArgs(mcVersion?: string): string[] {
+  if (process.platform !== "darwin") return [];
+
+  if (mcVersion) {
+    const match = mcVersion.trim().match(/^(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
+    if (match) {
+      const major = Number.parseInt(match[1] || "", 10);
+      const minor = Number.parseInt(match[2] || "0", 10);
+      if (major > 1 || (major === 1 && minor >= 13)) {
+        // LWJGL 3 (1.13+) does not need -XstartOnFirstThread and it causes startup hangs on macOS
+        return [];
+      }
+    }
+  }
+
+  return ["-XstartOnFirstThread"];
 }
 
 /**
  * G1GC tuning derived from Aikar's flags, adapted for the client.
  *
- * Paired with Xms == Xmx and AlwaysPreTouch, this keeps frametimes steady:
- * the heap is fully committed at startup so chunk loading no longer triggers
- * heap growth or first-touch page faults, and a 200ms pause target avoids the
+ * These only shape G1's pause behaviour at runtime — they don't commit or touch
+ * the heap up front, so they keep frametimes steady without slowing launch. We
+ * deliberately dropped -XX:+AlwaysPreTouch (and the pinned Xms == Xmx, see
+ * computeSafeHeapMb) because pre-touching the whole heap was the dominant cause
+ * of slow startup on large-RAM configs; the 200ms pause target still avoids the
  * over-frequent young GCs an aggressive target would cause.
  */
 export function getOptimizedJvmArgs(maxHeapMb: number): string[] {
@@ -73,7 +117,6 @@ export function getOptimizedJvmArgs(maxHeapMb: number): string[] {
     "-XX:MaxGCPauseMillis=200",
     "-XX:+UnlockExperimentalVMOptions",
     "-XX:+DisableExplicitGC",
-    "-XX:+AlwaysPreTouch",
     "-XX:G1NewSizePercent=30",
     "-XX:G1MaxNewSizePercent=40",
     ...bigHeapRegion,

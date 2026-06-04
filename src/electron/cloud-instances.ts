@@ -497,7 +497,20 @@ export async function syncServerMods(
       }
     }
 
-    const validServerMods = normalizeServerMods(manifestData.mods);
+    const isFreshCloudInstance = await isFreshCloudInstanceSync(
+      instance.gameDirectory,
+    );
+
+    let validServerMods = normalizeServerMods(manifestData.mods);
+    
+    // On subsequent updates (not fresh install), only sync files under mods/ directory,
+    // leaving config, resourcepacks, shaderpacks, and datapacks completely untouched.
+    if (!isFreshCloudInstance) {
+      validServerMods = validServerMods.filter((mod) =>
+        mod.filename.replace(/\\/g, "/").toLowerCase().startsWith("mods/")
+      );
+    }
+
     const nativeModule = getNativeModule() as any;
     const serverModFilenames = validServerMods.map((mod) => mod.filename);
 
@@ -506,9 +519,6 @@ export async function syncServerMods(
     if (!fs.existsSync(modsDir)) {
       await fs.promises.mkdir(modsDir, { recursive: true });
     }
-    const isFreshCloudInstance = await isFreshCloudInstanceSync(
-      instance.gameDirectory,
-    );
     const serverModsSignature = buildServerModsListSignature(validServerMods);
     const lockedModsSignature = buildLockedModsListSignature(
       instance.lockedMods || [],
@@ -566,7 +576,7 @@ export async function syncServerMods(
       emitProgress(
         {
           type: "sync-check",
-          task: "เธ•เธฃเธงเธเธชเธญเธเน€เธชเธฃเนเธเธชเธดเนเธ",
+          task: "ตรวจสอบเสร็จสิ้น",
           current: 1,
           total: 1,
           percent: 100,
@@ -576,7 +586,7 @@ export async function syncServerMods(
       emitProgress(
         {
           type: "sync-complete",
-          task: "เธเธดเธเธเนเธเนเธญเธกเธนเธฅเธชเธณเน€เธฃเนเธ",
+          task: "ซิงค์ข้อมูลสำเร็จ",
           percent: 100,
         },
         true,
@@ -1169,6 +1179,22 @@ export async function syncServerMods(
     if (!isFreshCloudInstance) {
       throwIfAborted(signal);
     emitProgress({ type: "sync-clean", task: "กำลังลบไฟล์ส่วนเกิน..." }, true);
+
+    // Diagnostic: cloud-sync cleanup only targets mods/, but log resourcepacks
+    // here too so we can confirm sync never removes user-added packs (reported:
+    // packs vanish after relaunching a cloud instance).
+    try {
+      const rpDir = path.join(instance.gameDirectory, "resourcepacks");
+      const rpFiles = fs.existsSync(rpDir)
+        ? fs.readdirSync(rpDir).filter((f) => !f.startsWith("."))
+        : [];
+      console.log(
+        `[Cloud Sync][RP] at cleanup: ${rpFiles.length} pack(s)` +
+          (rpFiles.length ? ` -> ${rpFiles.join(", ")}` : ""),
+      );
+    } catch {
+      /* diagnostics only */
+    }
 
     let cleanedByNative = false;
     if (typeof nativeModule.cleanupExtraMods === "function") {

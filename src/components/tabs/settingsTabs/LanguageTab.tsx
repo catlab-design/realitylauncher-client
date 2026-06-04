@@ -1,16 +1,35 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import type { SettingsTabProps } from "./AccountTab";
 import { useTranslation } from "../../../hooks/useTranslation";
-import { LanguageEditorModal } from "../../modals/LanguageEditorModal";
-import { Icons } from "../../ui/Icons";
+import { playClick } from "../../../lib/sounds";
 
 export function LanguageTab({ config, updateConfig, colors }: SettingsTabProps) {
     const { t } = useTranslation(config.language);
-    const [editorOpen, setEditorOpen] = useState(false);
+    const [isOpen, setIsOpen] = useState(false);
+    const [hoveredValue, setHoveredValue] = useState<string | null>(null);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Close when clicking outside
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    const languages = [
+        { value: "th", label: t("language_thai") },
+        { value: "en", label: t("language_english") }
+    ];
+
+    const currentLanguage = languages.find(l => l.value === config.language) || languages[0];
 
     return (
-        <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
-            <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "40" }}>
+        <div className="rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
+            <div className="px-4 py-3 border-b flex items-center gap-3 rounded-t-xl" style={{ borderColor: colors.outline + "40" }}>
                 <i className="fa-solid fa-language text-lg" style={{ color: colors.secondary }}></i>
                 <h3 className="font-medium" style={{ color: colors.onSurface }}>{t("language")}</h3>
             </div>
@@ -20,60 +39,88 @@ export function LanguageTab({ config, updateConfig, colors }: SettingsTabProps) 
                         <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t("language")}</p>
                         <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t("select_language")}</p>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="relative" ref={dropdownRef}>
                         <button
-                            onClick={() => setEditorOpen(true)}
-                            className="p-2 rounded-lg transition-all hover:bg-white/10 text-xs font-semibold flex items-center gap-2 border border-dashed"
-                            style={{
-                                color: colors.onSurfaceVariant,
-                                borderColor: colors.outline,
+                            type="button"
+                            onClick={() => {
+                                playClick();
+                                setIsOpen(!isOpen);
                             }}
-                            title={t("edit_translations")}
+                            className="h-10 px-4 rounded-md text-sm font-semibold transition-all outline-none border flex items-center justify-between cursor-pointer select-none w-80"
+                            style={{
+                                backgroundColor: colors.surfaceContainerHighest,
+                                borderColor: isOpen ? colors.secondary : colors.outline + "30",
+                                color: colors.onSurface
+                            }}
                         >
-                            <Icons.Edit className="w-3.5 h-3.5" />
-                            <span>{t("edit")}</span>
+                            <span>{currentLanguage.label}</span>
+                            <svg
+                                className={`w-4 h-4 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+                                style={{ color: colors.onSurfaceVariant }}
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                                strokeWidth="2.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                             >
+                                <polyline points="6 9 12 15 18 9" />
+                            </svg>
                         </button>
 
-                        <div className="flex gap-2">
-                            <button
-                                onClick={() => updateConfig({ language: "th" })}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${config.language === "th"
-                                    ? "bg-primary/20 border-primary text-primary"
-                                    : "bg-transparent border-transparent hover:bg-white/5"
-                                    }`}
+                        {isOpen && (
+                            <div
+                                className="absolute right-0 mt-2 rounded-md border overflow-hidden z-50 w-80 py-1 animate-in fade-in slide-in-from-top-2 duration-150"
                                 style={{
-                                    backgroundColor: config.language === "th" ? colors.secondary + "20" : "transparent",
-                                    borderColor: config.language === "th" ? colors.secondary : "transparent",
-                                    color: config.language === "th" ? colors.secondary : colors.onSurfaceVariant,
+                                    backgroundColor: colors.surfaceContainerHigh,
+                                    borderColor: colors.outline + "30",
                                 }}
                             >
-                                {t("language_thai")}
-                            </button>
-                            <button
-                                onClick={() => updateConfig({ language: "en" })}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${config.language === "en"
-                                    ? "bg-primary/20 border-primary text-primary"
-                                    : "bg-transparent border-transparent hover:bg-white/5"
-                                    }`}
-                                style={{
-                                    backgroundColor: config.language === "en" ? colors.secondary + "20" : "transparent",
-                                    borderColor: config.language === "en" ? colors.secondary : "transparent",
-                                    color: config.language === "en" ? colors.secondary : colors.onSurfaceVariant,
-                                }}
-                            >
-                                {t("language_english")}
-                            </button>
-                        </div>
+                                {languages.map((lang) => {
+                                    const isSelected = lang.value === config.language;
+                                    return (
+                                        <button
+                                            key={lang.value}
+                                            onClick={() => {
+                                                playClick();
+                                                updateConfig({ language: lang.value as "th" | "en" });
+                                                setIsOpen(false);
+                                            }}
+                                            className="w-full h-10 px-4 flex items-center justify-between text-sm font-medium transition-colors text-left"
+                                            style={{
+                                                backgroundColor: isSelected 
+                                                    ? colors.secondary + "20" 
+                                                    : hoveredValue === lang.value 
+                                                        ? colors.surfaceContainerHighest 
+                                                        : "transparent",
+                                                color: colors.onSurface,
+                                            }}
+                                            onMouseEnter={() => setHoveredValue(lang.value)}
+                                            onMouseLeave={() => setHoveredValue(null)}
+                                        >
+                                            <span>{lang.label}</span>
+                                            {isSelected && (
+                                                <svg
+                                                    className="w-4 h-4"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    style={{ color: colors.secondary }}
+                                                    viewBox="0 0 24 24"
+                                                    strokeWidth="3"
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                >
+                                                    <polyline points="20 6 9 17 4 12" />
+                                                </svg>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
-
-            <LanguageEditorModal
-                isOpen={editorOpen}
-                onClose={() => setEditorOpen(false)}
-                colors={colors}
-                currentLanguage={config.language}
-            />
         </div>
     );
 }

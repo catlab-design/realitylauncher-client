@@ -79,7 +79,7 @@ export function registerInstanceContentFileHandlers(
       if (!allowed.includes(ext)) {
         return {
           ok: false,
-          error: `เนเธเธฅเน ${ext} เนเธกเนเธฃเธญเธเธฃเธฑเธเธชเธณเธซเธฃเธฑเธ ${contentType}\nเธฃเธญเธเธฃเธฑเธ: ${allowed.join(", ")}`,
+          error: `ไฟล์ ${ext} ไม่รองรับสำหรับ ${contentType}\nรองรับ: ${allowed.join(", ")}`,
         };
       }
 
@@ -105,7 +105,7 @@ export function registerInstanceContentFileHandlers(
 
         
         if (fs.existsSync(targetPath)) {
-          return { ok: false, error: `เนเธเธฅเน ${fileName} เธกเธตเธญเธขเธนเนเนเธฅเนเธง` };
+          return { ok: false, error: `ไฟล์ ${fileName} มีอยู่แล้ว` };
         }
 
         

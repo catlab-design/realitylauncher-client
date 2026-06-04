@@ -796,6 +796,8 @@ function LauncherAppContent() {
         tokenExpiresAt: result.session.expiresAt
           ? new Date(result.session.expiresAt).getTime()
           : undefined,
+        avatarUrl: result.session.avatarUrl,
+        avatarSource: result.session.avatarSource,
       };
 
       addAccount(newSession);
@@ -1101,6 +1103,22 @@ function LauncherAppContent() {
     }
   };
 
+  useEffect(() => {
+    if (!config.rainbowMode) {
+      document.documentElement.style.removeProperty('--secondary-color');
+      return;
+    }
+    let hue = 0;
+    const interval = setInterval(() => {
+      hue = (hue + 2) % 360;
+      document.documentElement.style.setProperty('--secondary-color', `hsl(${hue}, 90%, 65%)`);
+    }, 100);
+    return () => {
+      clearInterval(interval);
+      document.documentElement.style.removeProperty('--secondary-color');
+    };
+  }, [config.rainbowMode]);
+
   if (isLoading) {
     return <LoadingScreen onComplete={() => {
         setIsLoading(false);
@@ -1109,7 +1127,16 @@ function LauncherAppContent() {
   }
 
   return (
-    <div ref={rootRef} className="h-screen flex flex-col overflow-hidden bg-surface" style={{ backgroundColor: colors.surface }}>
+    <div ref={rootRef} className="h-screen flex flex-col overflow-hidden bg-surface relative z-0" style={{ backgroundColor: colors.surface }}>
+      {config.backgroundImage && (
+        <div 
+          className="absolute inset-0 -z-10 pointer-events-none bg-cover bg-center transition-all duration-500"
+          style={{ 
+            backgroundImage: `url(${config.backgroundImage})`,
+            opacity: config.backgroundImageOpacity ?? 0.15 
+          }}
+        />
+      )}
       <LauncherAppOverlays
         colors={colors}
         t={t}

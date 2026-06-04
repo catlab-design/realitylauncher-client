@@ -57,7 +57,7 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
         <>
             {/* Version Info Card */}
             <div
-                className="rounded-lg overflow-hidden"
+                className="rounded-xl overflow-hidden"
                 style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}30` }}
             >
                 <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "30" }}>
@@ -67,7 +67,7 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
                 <div className="p-4">
                     <div className="flex items-center gap-4">
                         <div
-                            className="w-12 h-12 rounded-lg flex items-center justify-center"
+                            className="w-12 h-12 rounded-md flex items-center justify-center"
                             style={{ backgroundColor: colors.secondary }}
                         >
                             <img src={rIcon.src} alt="Reality" className="w-7 h-7 object-contain" />
@@ -197,7 +197,7 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
             )}
 
             {/* Update Settings */}
-            <div className="rounded-lg overflow-hidden mt-3" style={{ backgroundColor: colors.surfaceContainer }}>
+            <div className="rounded-xl overflow-hidden mt-3" style={{ backgroundColor: colors.surfaceContainer }}>
                 <div className="p-4 space-y-4">
                     {/* Auto Update Toggle */}
                     <div className="flex items-center justify-between">
@@ -215,7 +215,7 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
                             style={{ backgroundColor: config.autoUpdateEnabled ? colors.secondary : colors.surfaceContainerHighest }}
                         >
                             <div
-                                className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all shadow-sm"
+                                className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all"
                                 style={{ left: config.autoUpdateEnabled ? "calc(100% - 18px)" : "2px" }}
                             />
                         </button>

@@ -4,6 +4,8 @@ import { Icons } from "../../ui/Icons";
 import { MCHead } from "../../ui/MCHead";
 import microsoftIcon from "../../../assets/microsoft_icon.svg";
 import { useTranslation } from "../../../hooks/useTranslation";
+import { useAuthStore } from "../../../store/authStore";
+import { toast } from "react-hot-toast";
 
 export interface SettingsTabProps {
     config: LauncherConfig;
@@ -37,10 +39,39 @@ export function AccountTab({
     setLinkCatIDOpen,
     onLinkMicrosoft,
 }: AccountTabProps) {
+    const { updateAccount } = useAuthStore();
+    const [isUpdatingAvatarSource, setIsUpdatingAvatarSource] = useState(false);
+
+    const handleAvatarSourceChange = async (source: "catid_avatar" | "minecraft_skin") => {
+        if (!session || !window.api?.authUpdateAvatarSource) return;
+        const isLinked = session.type === "catid" ? !!session.minecraftUuid : !!session.catidLinked;
+        if (!isLinked) return;
+        setIsUpdatingAvatarSource(true);
+        const toastId = toast.loading(t('saving') || "กำลังบันทึก...");
+        try {
+            const result = await window.api.authUpdateAvatarSource(source);
+            toast.dismiss(toastId);
+            if (result.ok && result.session) {
+                updateAccount(result.session);
+                toast.success(t('save_success') || "บันทึกสำเร็จ");
+                
+                // Refresh cached avatar
+                window.dispatchEvent(new CustomEvent("minecraft-skin-updated", { detail: { username: session.username } }));
+            } else {
+                toast.error(result.error || "เกิดข้อผิดพลาด");
+            }
+        } catch (error: any) {
+            toast.dismiss(toastId);
+            toast.error(error?.message || "เกิดข้อผิดพลาด");
+        } finally {
+            setIsUpdatingAvatarSource(false);
+        }
+    };
+
     const { t, language } = useTranslation(config.language);
 
     return (
-        <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
+        <div className="rounded-xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
             <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "40" }}>
                 <i className="fa-solid fa-user text-lg" style={{ color: colors.secondary }}></i>
                 <h3 className="font-medium" style={{ color: colors.onSurface }}>{t('user_account')}</h3>
@@ -48,9 +79,9 @@ export function AccountTab({
             <div className="p-4 space-y-3">
                 {/* Current Account */}
                 {session ? (
-                    <div className="p-3 rounded-xl space-y-4" style={{ backgroundColor: colors.surfaceContainerHigh }}>
+                    <div className="p-3 rounded-md space-y-4" style={{ backgroundColor: colors.surfaceContainerHigh }}>
                         <div className="flex items-center gap-3">
-                            <MCHead username={session.username} size={48} className="rounded-xl" />
+                            <MCHead username={session.username} size={48} className="rounded-full" />
                             <div className="flex-1">
                                 <div className="font-medium flex items-center gap-1" style={{ color: colors.onSurface }}>
                                     {session.username}
@@ -85,7 +116,7 @@ export function AccountTab({
                                 </div>
                                 <button
                                     onClick={handleLogout}
-                                className="px-3 py-1.5 rounded-lg text-sm transition-all hover:scale-105"
+                                className="px-3 py-1.5 rounded-md text-sm transition-all hover:bg-red-500/10"
                                 style={{ backgroundColor: "#ef444420", color: "#ef4444" }}
                             >
                                 {t('logout')}
@@ -100,7 +131,7 @@ export function AccountTab({
                                     {session.catidLinked ? (
                                         <button
                                             onClick={() => handleUnlink("catid")}
-                                            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm transition-all hover:bg-black/5"
+                                            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm transition-all hover:bg-black/5"
                                             style={{ backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
                                         >
                                             <Icons.Check className="w-4 h-4" style={{ color: colors.secondary }} />
@@ -109,7 +140,7 @@ export function AccountTab({
                                     ) : (
                                         <button
                                             onClick={() => setLinkCatIDOpen(true)}
-                                            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm transition-all hover:bg-black/5"
+                                            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm transition-all hover:bg-black/5"
                                             style={{ backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
                                         >
                                             <span className="inline-flex items-center justify-center w-5 h-5 rounded-full" style={{ backgroundColor: "#fbbf24" }}>
@@ -119,18 +150,51 @@ export function AccountTab({
                                         </button>
                                     )}
                                 </div>
+
+                                {/* Avatar display selector - Only show if linked to CatID */}
+                                {session.catidLinked && (
+                                    <div className="pt-2 border-t flex flex-col gap-2" style={{ borderColor: colors.outline + "10" }}>
+                                        <div className="text-xs font-medium" style={{ color: colors.onSurfaceVariant }}>{t('avatar_display')}</div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <button
+                                                onClick={() => handleAvatarSourceChange("catid_avatar")}
+                                                disabled={isUpdatingAvatarSource}
+                                                className="px-3 py-2 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition-all hover:opacity-90 disabled:opacity-50"
+                                                style={{
+                                                    backgroundColor: session.avatarSource !== "minecraft_skin" ? colors.secondary : colors.surfaceContainer,
+                                                    color: session.avatarSource !== "minecraft_skin" ? "#000000" : colors.onSurface,
+                                                }}
+                                            >
+                                                <i className="fa-solid fa-circle-user text-sm"></i>
+                                                <span>{t('avatar_source_catid')}</span>
+                                            </button>
+                                            <button
+                                                onClick={() => handleAvatarSourceChange("minecraft_skin")}
+                                                disabled={isUpdatingAvatarSource}
+                                                className="px-3 py-2 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition-all hover:opacity-90 disabled:opacity-50"
+                                                style={{
+                                                    backgroundColor: session.avatarSource === "minecraft_skin" ? colors.secondary : colors.surfaceContainer,
+                                                    color: session.avatarSource === "minecraft_skin" ? "#000000" : colors.onSurface,
+                                                }}
+                                            >
+                                                <i className="fa-solid fa-gamepad text-sm"></i>
+                                                <span>{t('avatar_source_minecraft')}</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 
                         {/* CatID Account: Link/Status for Microsoft */}
                         {session.type === "catid" && (
-                            <div className="pt-3 border-t flex flex-col gap-2" style={{ borderColor: colors.outline + "20" }}>
+                            <div className="pt-3 border-t flex flex-col gap-3" style={{ borderColor: colors.outline + "20" }}>
                                 <div className="text-xs font-medium" style={{ color: colors.onSurfaceVariant }}>{t('account_connections')}</div>
                                 <div className="flex gap-2">
                                     {session.minecraftUuid ? (
                                         <div
-                                            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm"
-                                            style={{ backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
+                                            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm border"
+                                            style={{ backgroundColor: colors.surfaceContainer, color: colors.onSurface, borderColor: `${colors.outline}20` }}
                                         >
                                             <img src={microsoftIcon.src} alt="Microsoft" className="w-4 h-4" />
                                             <Icons.Check className="w-4 h-4" style={{ color: "#22c55e" }} />
@@ -139,7 +203,7 @@ export function AccountTab({
                                     ) : (
                                         <button
                                             onClick={() => onLinkMicrosoft()}
-                                            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm transition-all hover:bg-black/5"
+                                            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm transition-all hover:bg-black/5"
                                             style={{ backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
                                         >
                                             <img src={microsoftIcon.src} alt="Microsoft" className="w-4 h-4" />
@@ -147,11 +211,44 @@ export function AccountTab({
                                         </button>
                                     )}
                                 </div>
+
+                                {/* Avatar display selector - Only show if linked to Microsoft */}
+                                {session.minecraftUuid && (
+                                    <div className="pt-2 border-t flex flex-col gap-2" style={{ borderColor: colors.outline + "10" }}>
+                                        <div className="text-xs font-medium" style={{ color: colors.onSurfaceVariant }}>{t('avatar_display')}</div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <button
+                                                onClick={() => handleAvatarSourceChange("catid_avatar")}
+                                                disabled={isUpdatingAvatarSource}
+                                                className="px-3 py-2 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition-all hover:opacity-90 disabled:opacity-50"
+                                                style={{
+                                                    backgroundColor: session.avatarSource !== "minecraft_skin" ? colors.secondary : colors.surfaceContainer,
+                                                    color: session.avatarSource !== "minecraft_skin" ? "#000000" : colors.onSurface,
+                                                }}
+                                            >
+                                                <i className="fa-solid fa-circle-user text-sm"></i>
+                                                <span>{t('avatar_source_catid')}</span>
+                                            </button>
+                                            <button
+                                                onClick={() => handleAvatarSourceChange("minecraft_skin")}
+                                                disabled={isUpdatingAvatarSource}
+                                                className="px-3 py-2 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition-all hover:opacity-90 disabled:opacity-50"
+                                                style={{
+                                                    backgroundColor: session.avatarSource === "minecraft_skin" ? colors.secondary : colors.surfaceContainer,
+                                                    color: session.avatarSource === "minecraft_skin" ? "#000000" : colors.onSurface,
+                                                }}
+                                            >
+                                                <i className="fa-solid fa-gamepad text-sm"></i>
+                                                <span>{t('avatar_source_minecraft')}</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
                 ) : (
-                    <div className="p-4 rounded-xl text-center" style={{ backgroundColor: colors.surfaceContainerHigh }}>
+                    <div className="p-4 rounded-md text-center" style={{ backgroundColor: colors.surfaceContainerHigh }}>
                         <Icons.Person className="w-10 h-10 mx-auto mb-2" style={{ color: colors.onSurfaceVariant }} />
                         <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>{t('not_logged_in')}</p>
                     </div>
@@ -165,13 +262,13 @@ export function AccountTab({
                             <div
                                 key={index}
                                 onClick={() => selectAccount(acc)}
-                                className="flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors"
+                                className="flex items-center gap-3 p-2 rounded-md cursor-pointer transition-colors"
                                 style={{
                                     backgroundColor: account.uuid === session?.uuid ? colors.secondary + "20" : "transparent",
                                     border: account.uuid === session?.uuid ? `1px solid ${colors.secondary}` : `1px solid ${colors.outline}20`
                                 }}
                             >
-                                <MCHead username={account.username} size={32} className="rounded-lg" />
+                                <MCHead username={account.username} size={32} className="rounded-full" />
                                 <div className="flex-1">
                                     <div className="text-sm font-medium flex items-center gap-1" style={{ color: colors.onSurface }}>
                                         {account.username}
@@ -231,7 +328,7 @@ export function AccountTab({
 
                 <button
                     onClick={() => setLoginDialogOpen(true)}
-                    className="w-full py-2.5 rounded-xl text-sm font-medium border border-dashed transition-all hover:bg-opacity-10"
+                    className="w-full py-2.5 rounded-md text-sm font-medium border border-dashed transition-all hover:bg-opacity-10"
                     style={{
                         borderColor: colors.secondary,
                         color: colors.secondary,

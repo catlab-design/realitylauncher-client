@@ -160,10 +160,10 @@ export function ServerDetailView({
                         <img
                             src={getWithTimestamp(instance.iconUrl)}
                             alt={t("server_icon_alt")}
-                            className="w-16 h-16 rounded-xl object-cover border-2 border-white/20 shrink-0 shadow-xl"
+                            className="w-16 h-16 rounded-xl object-contain shrink-0 shadow-xl"
                         />
                     ) : (
-                        <div className="w-16 h-16 rounded-xl flex items-center justify-center bg-white/10 border-2 border-white/20 shrink-0">
+                        <div className="w-16 h-16 rounded-xl flex items-center justify-center bg-white/10 shrink-0">
                             <span className="text-2xl font-black text-white">
                                 {instance.name?.[0]?.toUpperCase()}
                             </span>

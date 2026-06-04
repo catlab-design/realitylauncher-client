@@ -106,7 +106,7 @@ const HomeHeader = React.memo(({ session, colors, language }: { session: any, co
                         <div className="relative group shrink-0">
                             {/* Avatar */}
                             {session ? (
-                                    <div className="relative transform transition-transform duration-500 rounded-2xl"
+                                    <div className="relative transform transition-transform duration-500 rounded-full"
                                          style={{ 
                                             backgroundColor: colors.surfaceContainerHighest,
                                             border: `2px solid ${colors.outline}60` 
@@ -114,7 +114,7 @@ const HomeHeader = React.memo(({ session, colors, language }: { session: any, co
                                     <MCHead
                                         username={session.username}
                                         size={80}
-                                        className="rounded-2xl"
+                                        className="rounded-full"
                                     />
                                     {/* Status Dot */}
                                     <div className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full border-4 flex items-center justify-center bg-[#10B981]"

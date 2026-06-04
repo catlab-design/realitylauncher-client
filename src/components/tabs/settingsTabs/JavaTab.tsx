@@ -53,7 +53,7 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                     type="text"
                     value={config.javaPaths?.[pathKey] || "/path/to/java"}
                     readOnly
-                    className="w-full px-4 py-2.5 rounded-xl border text-sm mb-2"
+                    className="w-full px-4 py-2.5 rounded-md border text-sm mb-2"
                     style={{
                         borderColor: colors.outline,
                         backgroundColor: colors.surface,
@@ -97,7 +97,7 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                             finally { setInstallingJava(null); }
                         }}
                         disabled={isInstallingThis}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-opacity"
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-opacity"
                         style={{
                             backgroundColor: colors.secondary,
                             color: "#1a1a1a",
@@ -123,7 +123,7 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                             finally { setIsDetectingJava(false); }
                         }}
                         disabled={isDetectingJava}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium"
                         style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                     >
                         <i className="fa-solid fa-magnifying-glass"></i>
@@ -138,7 +138,7 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                                 toast.success(t('java_configured_successfully').replace('{version}', label));
                             }
                         }}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium"
                         style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                     >
                         <i className="fa-solid fa-folder-open"></i>
@@ -164,7 +164,7 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                             finally { setTestingJavaPath(null); }
                         }}
                         disabled={testingJavaPath === config.javaPaths?.[pathKey]}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium"
                         style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                     >
                         <i className={`fa-solid ${testingJavaPath === config.javaPaths?.[pathKey] ? "fa-spinner fa-spin" : "fa-play"}`}></i>
@@ -188,7 +188,7 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                                 }
                             }}
                             disabled={deletingJava === version}
-                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
+                            className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium"
                             style={{ backgroundColor: "#ef444420", color: "#ef4444" }}
                         >
                             <i className={`fa-solid ${deletingJava === version ? "fa-spinner fa-spin" : "fa-trash"}`}></i>
@@ -201,7 +201,7 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
     };
 
     return (
-        <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
+        <div className="rounded-xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
             <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "40" }}>
                 <i className="fa-brands fa-java text-lg" style={{ color: colors.secondary }}></i>
                 <h3 className="font-medium" style={{ color: colors.onSurface }}>{t('tab_java')}</h3>
@@ -222,7 +222,7 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.95 }}
                             transition={{ duration: 0.15, ease: "easeOut" }}
-                            className="w-full max-w-4xl rounded-2xl flex flex-col overflow-hidden shadow-2xl"
+                            className="w-full max-w-4xl rounded-lg flex flex-col overflow-hidden"
                             style={{ backgroundColor: colors.surface, border: `1px solid ${colors.outline}40` }}
                         >
                             <div className="px-5 py-4 flex items-center justify-between border-b" style={{ borderColor: `${colors.outline}40` }}>
@@ -266,7 +266,7 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                                                                 setDetectedJavasForModal(null);
                                                             }}
                                                             disabled={isSelected}
-                                                            className="px-4 py-1.5 rounded-lg font-medium text-xs transition-colors whitespace-nowrap flex items-center justify-center gap-2 ml-auto"
+                                                            className="px-4 py-1.5 rounded-md font-medium text-xs transition-colors whitespace-nowrap flex items-center justify-center gap-2 ml-auto"
                                                             style={{
                                                                 backgroundColor: isSelected ? "transparent" : colors.surfaceContainerHighest,
                                                                 color: isSelected ? colors.onSurfaceVariant : colors.onSurface,
@@ -287,7 +287,7 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                             <div className="px-5 py-4 flex justify-end" style={{ backgroundColor: colors.surfaceContainer, borderTop: `1px solid ${colors.outline}40` }}>
                                 <button
                                     onClick={() => { if (config.clickSoundEnabled) playClick(); setDetectedJavasForModal(null); }}
-                                    className="px-5 py-2 rounded-xl text-sm font-medium transition-colors"
+                                    className="px-5 py-2 rounded-md text-sm font-medium transition-colors"
                                     style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                                 >
                                     Cancel

@@ -503,7 +503,7 @@ export async function downloadFile(
     let currentResponse: any = null;
     let dataTimeout: NodeJS.Timeout | null = null;
     let onAbort: (() => void) | null = null;
-    const TIMEOUT_MS = 60000; 
+    const TIMEOUT_MS = 300000; 
 
     const cleanup = () => {
       if (dataTimeout) clearTimeout(dataTimeout);

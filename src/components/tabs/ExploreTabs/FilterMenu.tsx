@@ -165,8 +165,8 @@ export function FilterMenu({
                                 <button
                                     type="button"
                                     onClick={clearAll}
-                                    className="text-[11px] font-bold px-2 py-0.5 rounded-md transition-colors hover:brightness-110"
-                                    style={{ color: colors.secondary, backgroundColor: colors.secondary + "18" }}
+                                    className="text-xs font-bold px-2.5 py-1 rounded-md transition-colors hover:brightness-110"
+                                    style={{ color: "#1a1a1a", backgroundColor: colors.secondary }}
                                 >
                                     {t("clear_all_filters" as TranslationKey)}
                                 </button>

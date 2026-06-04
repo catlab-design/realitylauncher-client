@@ -89,8 +89,10 @@ export function LauncherAppTitleBar({
 }: LauncherAppTitleBarProps) {
   return (
     <header
-      className="h-10 flex items-center justify-between pr-0 drag-region"
-      style={{ background: titleBarColors.background }}
+      className="h-10 flex items-center justify-between pr-0 drag-region transition-all duration-300"
+      style={{
+        background: config.backgroundImage ? "transparent" : titleBarColors.background,
+      }}
     >
       <div className="flex items-center h-full">
         <div
@@ -378,12 +380,10 @@ export function LauncherAppTitleBar({
                   className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all hover:bg-gray-500/10"
                   style={{ color: colors.onSurface }}
                 >
-                  <span
-                    className="flex items-center justify-center w-5 h-5 text-lg"
+                  <Icons.UserPlus
+                    className="w-5 h-5"
                     style={{ color: colors.secondary }}
-                  >
-                    +
-                  </span>
+                  />
                   <span className="text-sm">{t("add_account")}</span>
                 </button>
 
@@ -435,9 +435,10 @@ export function LauncherAppTitleBar({
                   className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all hover:bg-gray-500/10"
                   style={{ color: colors.onSurface }}
                 >
-                  <span className="w-5 h-5 flex items-center justify-center text-lg">
-                    {"\u2190"}
-                  </span>
+                  <Icons.Logout
+                    className="w-5 h-5"
+                    style={{ color: colors.onSurfaceVariant }}
+                  />
                   <span className="text-sm">{t("logout")}</span>
                 </button>
               </div>

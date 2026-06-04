@@ -237,8 +237,13 @@ export const enTranslations = {
     wardrobe_upload_hint:
       "Upload a PNG skin file and apply it to your Microsoft account",
     wardrobe_microsoft_required: "Microsoft account is required to change skin",
+    wardrobe_catid_link_required: "Microsoft account must be linked to CatID to change skin",
     wardrobe_switch_account_hint:
       "Switch to your Microsoft (premium) account before uploading a skin",
+    wardrobe_catid_link_hint: "Please link your Microsoft account in the User Account settings tab",
+    avatar_display: "Avatar Display",
+    avatar_source_catid: "CatID Avatar",
+    avatar_source_minecraft: "Minecraft Head",
     wardrobe_profile_load_failed: "Failed to load Minecraft profile",
     wardrobe_preview_failed: "Failed to render skin preview",
     wardrobe_only_png: "Only PNG files are supported",
@@ -408,6 +413,16 @@ export const enTranslations = {
     click_sound_desc: "Play sound when clicking buttons",
     notification_sound: "Notification Sound",
     notification_sound_desc: "Play sound on new activities",
+    background_image: "Background Image",
+    choose_background: "Choose Background Image",
+    select_image: "Select Image",
+    remove_image: "Remove Image",
+    preview: "Preview Background",
+    no_background: "No Background Image",
+    background_opacity: "Background Opacity",
+    background_updated: "Background image updated successfully",
+    background_removed: "Background image removed successfully",
+    background_desc: "Supports PNG, JPG, JPEG, WEBP, GIF files",
 
     
     import: "Import",
@@ -485,6 +500,11 @@ export const enTranslations = {
     checking_update_label: "Checking for updates...",
     explore_servers: "Explore Server",
     server_list: "Server List",
+    view_mode: "View",
+    view_tiles: "Tiles",
+    view_table: "Table",
+    view_list: "List",
+    server: "Server",
     explore_community_desc: "Find interesting servers from the community",
     select_server_desc: "Select the server you want to play",
     search_public_servers: "Search public servers...",
@@ -511,6 +531,8 @@ export const enTranslations = {
     owner_badge: "OWNER",
     public_badge: "PUBLIC",
     member_badge: "MEMBER",
+    joined_servers: "Joined Servers",
+    no_joined_public_servers: "No joined public servers",
     my_servers: "My Servers",
     cloud_instance: "Cloud Instance",
     local_instance: "Local Instance",
@@ -729,6 +751,7 @@ export const enTranslations = {
     minecraft_version_label: "Game Version",
 
     saving: "Saving...",
+    save_success: "Saved successfully",
     duplicate: "Duplicate",
 
     

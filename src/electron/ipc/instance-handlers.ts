@@ -28,6 +28,58 @@ import { createIpcLogger } from "../lib/logger.js";
 
 
 const logger = createIpcLogger("Instance");
+
+// Write Minecraft's servers.dat NBT file so the server list is pre-populated on launch.
+// Format: TAG_Compound > TAG_List("servers") > TAG_Compound[] with "ip", "name", "acceptTextures".
+function writeServersDat(gameDirectory: string, serverIps: string[], serverName: string): void {
+  const nbtString = (name: string, value: string): Buffer => {
+    const nameBytes = Buffer.from(name, "utf8");
+    const valueBytes = Buffer.from(value, "utf8");
+    const buf = Buffer.allocUnsafe(1 + 2 + nameBytes.length + 2 + valueBytes.length);
+    let offset = 0;
+    buf.writeUInt8(8, offset++); // TAG_String id
+    buf.writeUInt16BE(nameBytes.length, offset); offset += 2;
+    nameBytes.copy(buf, offset); offset += nameBytes.length;
+    buf.writeUInt16BE(valueBytes.length, offset); offset += 2;
+    valueBytes.copy(buf, offset);
+    return buf;
+  };
+
+  const nbtByte = (name: string, value: number): Buffer => {
+    const nameBytes = Buffer.from(name, "utf8");
+    const buf = Buffer.allocUnsafe(1 + 2 + nameBytes.length + 1);
+    let offset = 0;
+    buf.writeUInt8(1, offset++); // TAG_Byte id
+    buf.writeUInt16BE(nameBytes.length, offset); offset += 2;
+    nameBytes.copy(buf, offset); offset += nameBytes.length;
+    buf.writeInt8(value, offset);
+    return buf;
+  };
+
+  const serverEntries: Buffer[] = serverIps.map((ip) => {
+    const parts = [nbtString("ip", ip), nbtString("name", serverName), nbtByte("acceptTextures", 1)];
+    // TAG_Compound: concat parts + TAG_End (0)
+    return Buffer.concat([...parts, Buffer.from([0])]);
+  });
+
+  // TAG_List("servers", type=TAG_Compound=10, length)
+  const serversNameBytes = Buffer.from("servers", "utf8");
+  const listHeader = Buffer.allocUnsafe(1 + 2 + serversNameBytes.length + 1 + 4);
+  let off = 0;
+  listHeader.writeUInt8(9, off++); // TAG_List id
+  listHeader.writeUInt16BE(serversNameBytes.length, off); off += 2;
+  serversNameBytes.copy(listHeader, off); off += serversNameBytes.length;
+  listHeader.writeUInt8(10, off++); // element type = TAG_Compound
+  listHeader.writeInt32BE(serverEntries.length, off);
+
+  // Root TAG_Compound("") wrapping the list + TAG_End
+  const rootHeader = Buffer.from([10, 0, 0]); // TAG_Compound id + name length 0
+  const rootEnd = Buffer.from([0]); // TAG_End
+
+  const dat = Buffer.concat([rootHeader, listHeader, ...serverEntries, rootEnd]);
+  const outPath = path.join(gameDirectory, "servers.dat");
+  writeFileSync(outPath, dat);
+}
 import { dedupeResourcepacks, dedupeShaders, dedupeDatapacks } from "./dedupe";
 import {
   getInstances,
@@ -467,13 +519,13 @@ export function registerInstanceHandlers(
     if (launchInProgress.has(id)) {
       return {
         ok: false,
-        message: "Instance เธเธตเนเธเธณเธฅเธฑเธเน€เธ•เธฃเธตเธขเธกเน€เธเธดเธ”เธญเธขเธนเน เธเธฃเธธเธ“เธฒเธฃเธญเธชเธฑเธเธเธฃเธนเน",
+        message: "Instance นี้กำลังเตรียมเปิดอยู่ กรุณารอสักครู่",
       };
     }
     if (activeOperations.has(id)) {
       return {
         ok: false,
-        message: "Instance เธเธตเนเธกเธตเธเธฒเธเธเธดเธเธเน/เธ•เธดเธ”เธ•เธฑเนเธเธเธณเธฅเธฑเธเธ—เธณเธเธฒเธเธญเธขเธนเน",
+        message: "Instance นี้มีงานซิงก์/ติดตั้งกำลังทำงานอยู่",
       };
     }
 
@@ -489,7 +541,7 @@ export function registerInstanceHandlers(
     const launchPolicy = getLaunchPolicyForInstance(instance, options);
 
     let session = getSession();
-    if (!session) return { ok: false, message: "เธเธฃเธธเธ“เธฒ login เธเนเธญเธ" };
+    if (!session) return { ok: false, message: "กรุณา login ก่อน" };
 
     const refreshResult = await refreshMicrosoftTokenIfNeeded(logger);
     if (!refreshResult.ok) {
@@ -510,13 +562,13 @@ export function registerInstanceHandlers(
     ) {
       sendLaunchProgress({
         type: "sync-warning",
-        task: "เธเธธเธ“เธฅเนเธญเธเธญเธดเธเธ”เนเธงเธข CatID เธซเธฒเธเน€เธเธดเธฃเนเธเน€เธงเธญเธฃเนเน€เธเธดเธ”เนเธ—เน (online-mode) เธเธธเธ“เธญเธฒเธเธ–เธนเธเน€เธ•เธฐเธญเธญเธ (Invalid session)",
+        task: "คุณล็อคอินด้วย CatID หากเซิร์ฟเวอร์เปิดแท้ (online-mode) คุณอาจถูกเตะออก (Invalid session)",
       }, true);
       await new Promise((r) => setTimeout(r, 3000));
     }
 
     if (isGameRunning(id))
-      return { ok: false, message: "Instance เธเธตเนเธเธณเธฅเธฑเธเธ—เธณเธเธฒเธเธญเธขเธนเน" };
+      return { ok: false, message: "Instance นี้กำลังทำงานอยู่" };
 
     void updateRPC("launching", instance.name, instance.icon);
 
@@ -553,7 +605,7 @@ export function registerInstanceHandlers(
           
           sendLaunchProgress({
             type: "sync-start",
-            task: "เธเธณเธฅเธฑเธเธ•เธฃเธงเธเธชเธญเธเธญเธฑเธเน€เธ”เธ•...",
+            task: "กำลังตรวจสอบอัปเดต...",
           }, true);
 
           let syncTimeout: NodeJS.Timeout | null = null;
@@ -591,7 +643,7 @@ export function registerInstanceHandlers(
           if (error.message === "Cancelled") {
             sendLaunchProgress({
               type: "sync-error",
-              task: "เธขเธเน€เธฅเธดเธเธเธฒเธฃเน€เธเนเธฒเน€เธฅเนเธเนเธฅเนเธง",
+              task: "ยกเลิกการเข้าเล่นแล้ว",
             }, true);
             return { ok: false, message: "Game launch cancelled" };
           }
@@ -601,7 +653,7 @@ export function registerInstanceHandlers(
           
           sendLaunchProgress({
             type: "sync-warning",
-            task: "เนเธกเนเธชเธฒเธกเธฒเธฃเธ–เธญเธฑเธเน€เธ”เธ•เนเธ”เน (เน€เธฅเนเธเนเธเธ Offline)",
+            task: "ไม่สามารถอัปเดตได้ (เล่นแบบ Offline)",
           }, true);
           await new Promise((r) => setTimeout(r, 1000)); 
         }
@@ -612,7 +664,7 @@ export function registerInstanceHandlers(
         );
         sendLaunchProgress({
           type: "sync-warning",
-          task: "เนเธกเนเธชเธฒเธกเธฒเธฃเธ–เธ•เธฃเธงเธเธชเธญเธเธญเธฑเธเน€เธ”เธ•เนเธ”เน (เธเธฃเธธเธ“เธฒ login เนเธซเธกเน)",
+          task: "ไม่สามารถตรวจสอบอัปเดตได้ (กรุณา login ใหม่)",
         }, true);
         await new Promise((r) => setTimeout(r, 2000));
       }
@@ -699,6 +751,28 @@ export function registerInstanceHandlers(
       },
     });
 
+    // Fetch fresh serverIps from cloud (local instance.json may not have them yet)
+    if (launchPolicy.isServerBacked && instance.cloudId) {
+      try {
+        const { fetchJoinedServers } = await import("../cloud-instances.js");
+        const { getApiToken } = await import("../auth.js");
+        const apiToken = getApiToken();
+        if (apiToken) {
+          const cloudData = await fetchJoinedServers(apiToken);
+          const cloudId = instance.cloudId;
+          const cloudInst = [...(cloudData.owned || []), ...(cloudData.member || [])]
+            .find((i: any) => i.id === cloudId || i.storagePath === instance.id);
+          const serverIps: string[] = Array.isArray(cloudInst?.serverIps) ? cloudInst.serverIps : [];
+          if (serverIps.length > 0) {
+            writeServersDat(instance.gameDirectory, serverIps, instance.name);
+            logger.info(`[Launch] Wrote servers.dat with ${serverIps.length} IP(s)`);
+          }
+        }
+      } catch (err) {
+        logger.warn("[Launch] Failed to write servers.dat:", err as any);
+      }
+    }
+
     const result = await launchGame(launchOptions as any);
 
     setProgressCallback(null);
@@ -769,12 +843,12 @@ export function registerInstanceHandlers(
     const session = getSession();
 
     if (!session) {
-      return { ok: false, error: "เธเธฃเธธเธ“เธฒ login เธเนเธญเธ" };
+      return { ok: false, error: "กรุณา login ก่อน" };
     }
 
     const apiToken = getApiToken();
     if (!apiToken) {
-      return { ok: false, error: "เนเธกเนเธกเธต API token - เธเธฃเธธเธ“เธฒ login เนเธซเธกเน" };
+      return { ok: false, error: "ไม่มี API token - กรุณา login ใหม่" };
     }
 
     const result = await joinInstanceByKey(key, apiToken);

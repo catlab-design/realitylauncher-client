@@ -69,7 +69,7 @@ export function registerInstanceCloudHandlers(
       console.log(`[Instances] Manually installing cloud instance: ${id}`);
       getMainWindow()?.webContents.send("install-progress", {
         type: "start",
-        task: "เธเธณเธฅเธฑเธเธ•เธฃเธงเธเธชเธญเธเธเนเธญเธกเธนเธฅ...",
+        task: "กำลังตรวจสอบข้อมูล...",
       });
       throwIfCancelled();
 
@@ -128,7 +128,7 @@ export function registerInstanceCloudHandlers(
         console.log(`[Instances] Installed successfully: ${target.name}`);
         getMainWindow()?.webContents.send("install-progress", {
           type: "complete",
-          task: "เธ•เธดเธ”เธ•เธฑเนเธเน€เธชเธฃเนเธเธชเธดเนเธ",
+          task: "ติดตั้งเสร็จสิ้น",
           percent: 100,
         });
         return { ok: true };
@@ -170,7 +170,7 @@ export function registerInstanceCloudHandlers(
       }
 
       console.error("[IPC] Cloud install failed:", error);
-      return { ok: false, error: error?.message || "เธเธฒเธฃเธ•เธดเธ”เธ•เธฑเนเธเธฅเนเธกเน€เธซเธฅเธง" };
+      return { ok: false, error: error?.message || "การติดตั้งล้มเหลว" };
     } finally {
       activeOperations.delete(id);
       if (mappedCancelId && mappedCancelId !== id) {

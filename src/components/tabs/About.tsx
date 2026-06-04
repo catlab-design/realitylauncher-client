@@ -245,7 +245,7 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
                                     <MCHead
                                         username={member.userGame}
                                         size={52}
-                                        className="relative ring-2 ring-white/5 group-hover:ring-primary/40 transition-all duration-500"
+                                        className="relative rounded-full ring-2 ring-white/5 group-hover:ring-primary/40 transition-all duration-500"
                                     />
                                 </div>
                                 <div className="space-y-1.5 min-w-0">

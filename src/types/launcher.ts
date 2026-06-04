@@ -36,6 +36,8 @@ export interface AuthSession {
   apiToken?: string;
   apiTokenExpiresAt?: number;
   catidLinked?: boolean;
+  avatarUrl?: string;
+  avatarSource?: string;
 }
 
 
@@ -121,6 +123,8 @@ export interface LauncherConfig {
   clickSoundEnabled: boolean; 
   notificationSoundEnabled: boolean; 
   rainbowMode: boolean; 
+  backgroundImage?: string;
+  backgroundImageOpacity?: number;
 }
 
 

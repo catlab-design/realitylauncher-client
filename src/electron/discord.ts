@@ -70,8 +70,19 @@ function resolveLargeImageKey(icon?: string): string | undefined {
 }
 
 
-function getPlayerHeadUrl(uuid?: string): string | undefined {
-  if (!uuid) return undefined;
+function getPlayerAvatarUrl(
+  uuid?: string,
+  avatarUrl?: string,
+  avatarSource?: string
+): string | undefined {
+  if (avatarSource === "catid_avatar" && avatarUrl) {
+    return avatarUrl;
+  }
+
+  if (!uuid || uuid.startsWith("catid-")) {
+    if (avatarUrl) return avatarUrl;
+    return undefined;
+  }
 
   return `https://crafatar.com/avatars/${uuid}`;
 }
@@ -151,16 +162,29 @@ function resolveEffectiveActivity(activity: {
 
 let playerUuid: string | undefined;
 let playerUsername: string | undefined;
+let playerAvatarUrl: string | undefined;
+let playerAvatarSource: string | undefined;
 
-
-
-
-
-
-export function setPlayerInfo(uuid?: string, username?: string): void {
+export function setPlayerInfo(
+  uuid?: string,
+  username?: string,
+  avatarUrl?: string,
+  avatarSource?: string
+): void {
   playerUuid = uuid;
   playerUsername = username;
-  console.log("[Discord RPC] Player info set:", { uuid, username });
+  playerAvatarUrl = avatarUrl;
+  playerAvatarSource = avatarSource;
+  console.log("[Discord RPC] Player info set:", { uuid, username, avatarUrl, avatarSource });
+
+  if (pendingActivity) {
+    void updateRPC(
+      pendingActivity.status,
+      pendingActivity.serverName,
+      pendingActivity.serverIcon,
+      pendingActivity.serverSocialUrl
+    );
+  }
 }
 
 
@@ -262,17 +286,18 @@ export async function updateRPC(
     };
 
     const resolvedIcon = resolveLargeImageKey(effectiveActivity.serverIcon);
-    const headUrl = getPlayerHeadUrl(playerUuid);
+    const headUrl = getPlayerAvatarUrl(playerUuid, playerAvatarUrl, playerAvatarSource);
+
+    if (headUrl) {
+      activity.smallImageKey = headUrl;
+      activity.smallImageText = playerUsername || "Player";
+    }
 
     switch (effectiveActivity.status) {
       case "idle":
         
         activity.largeImageKey = DEFAULT_LARGE_IMAGE_KEY;
         activity.largeImageText = DEFAULT_LARGE_IMAGE_TEXT;
-        if (headUrl) {
-          activity.smallImageKey = headUrl;
-          activity.smallImageText = playerUsername || "Player";
-        }
         activity.details = "On Main Menu";
         activity.state = "Choosing a server...";
         break;

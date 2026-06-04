@@ -633,6 +633,7 @@ import {
   getOptimizedJvmArgs,
   computeSafeHeapMb,
   getPlatformJvmArgs,
+  logResourcePacksState,
 } from "./rustLauncherSupport.js";
 
 
@@ -648,7 +649,20 @@ function getNative() {
       `Critical Error: Native module not found at ${nativePath}. Please reinstall the application.`,
     );
   }
-  nativeModuleCache = customRequire(nativePath);
+  try {
+    nativeModuleCache = customRequire(nativePath);
+  } catch (err) {
+    // index.cjs is present but the platform-specific .node binary failed to load.
+    // Usually means the build shipped without a binary for this OS/arch — e.g. an
+    // Intel-mac (x64) build missing the darwin-x64 .node, or a Windows-only build
+    // run on macOS. Surface a clear, actionable message instead of napi's cryptic
+    // "Failed to load native binding".
+    throw new Error(
+      `Native module failed to load for ${process.platform}-${process.arch}. ` +
+        `This build is likely missing the native binary for your system. ` +
+        `Original error: ${(err as Error).message}`,
+    );
+  }
   return nativeModuleCache;
 }
 
@@ -717,6 +731,7 @@ export async function launchGameRust(
   const nativesDir = path.join(gameDir, "natives", version);
 
   setActiveGameDirectory(instanceId, gameDir);
+  logResourcePacksState("launch-start", gameDir);
 
   const progressCallback = getProgressCallback();
   let lastProgressSentAt = 0;
@@ -913,7 +928,7 @@ export async function launchGameRust(
       ramMinMb: safeMinMb,
       ramMaxMb: safeMaxMb,
       extraJvmArgs: [
-        ...getPlatformJvmArgs(),
+        ...getPlatformJvmArgs(version),
         ...getOptimizedJvmArgs(safeMaxMb),
         "-DlauncherName=Reality Launcher",
         `-DlauncherVersion=${app.getVersion()}`,
@@ -1237,6 +1252,8 @@ export async function launchGameRust(
       }
     }
 
+    logResourcePacksState("pre-spawn", gameDir);
+
     const child = spawn(javaPath, spawnArgs, {
       cwd: gameDir,
       env: { ...process.env },
@@ -1401,7 +1418,13 @@ export async function launchGameRust(
     
     const windows = BrowserWindow.getAllWindows();
     for (const win of windows) {
-      win.webContents.send("game-started", { instanceId, pid: child.pid });
+      if (!win.isDestroyed() && win.webContents && !win.webContents.isDestroyed()) {
+        try {
+          win.webContents.send("game-started", { instanceId, pid: child.pid });
+        } catch (e) {
+          console.warn("[RustLauncher] Failed to send game-started to window:", e);
+        }
+      }
     }
 
     
@@ -1496,11 +1519,17 @@ export async function launchGameRust(
       
       const windows = BrowserWindow.getAllWindows();
       for (const win of windows) {
-        win.webContents.send("game-stopped", {
-          instanceId,
-          exitCode: code,
-          runDuration,
-        });
+        if (!win.isDestroyed() && win.webContents && !win.webContents.isDestroyed()) {
+          try {
+            win.webContents.send("game-stopped", {
+              instanceId,
+              exitCode: code,
+              runDuration,
+            });
+          } catch (e) {
+            console.warn("[RustLauncher] Failed to send game-stopped to window:", e);
+          }
+        }
       }
 
       

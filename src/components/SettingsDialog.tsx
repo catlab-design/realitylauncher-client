@@ -61,7 +61,7 @@ export function SettingsDialog({
             role="dialog"
             aria-modal="true"
             aria-label={t("settings")}
-            className="flex h-[min(80vh,760px)] w-full max-w-[1520px] flex-col overflow-hidden rounded-[2.25rem] border border-white/10 shadow-[0_36px_100px_rgba(0,0,0,0.58)]"
+            className="flex h-[min(80vh,760px)] w-full max-w-[1520px] flex-col overflow-hidden rounded-2xl border border-white/10"
             style={{ backgroundColor: colors.surface }}
             onClick={stopPropagation}
             initial={{ opacity: 0, y: 28, scale: 0.975 }}
@@ -70,11 +70,10 @@ export function SettingsDialog({
             transition={{ type: "spring", stiffness: 260, damping: 28, mass: 0.9 }}
           >
             <motion.div
-              className="flex items-center justify-between border-b px-6 py-4 sm:px-7"
+              className="flex items-center justify-between border-b px-6 py-3.5 sm:px-7"
               style={{
-                borderColor: `${colors.onSurface}12`,
-                background:
-                  "linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02))",
+                borderColor: `${colors.onSurface}10`,
+                backgroundColor: colors.surfaceContainerLow || colors.surfaceContainer,
               }}
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -83,23 +82,23 @@ export function SettingsDialog({
             >
               <div className="flex items-center gap-4">
                 <div
-                  className="flex h-12 w-12 items-center justify-center rounded-2xl"
+                  className="flex h-10 w-10 items-center justify-center rounded-md"
                   style={{
                     backgroundColor: colors.secondary,
                     color: "#1a1a1a",
                   }}
                 >
-                  <Icons.Settings className="h-6 w-6" />
+                  <Icons.Settings className="h-5.5 w-5.5" />
                 </div>
                 <div>
                   <h2
-                    className="text-xl font-black tracking-tight"
+                    className="text-lg font-black tracking-tight"
                     style={{ color: colors.onSurface }}
                   >
                     {t("settings")}
                   </h2>
                   <p
-                    className="text-sm"
+                    className="text-xs opacity-75"
                     style={{ color: colors.onSurfaceVariant }}
                   >
                     {t("launcher_settings")}
@@ -110,14 +109,14 @@ export function SettingsDialog({
               <button
                 type="button"
                 onClick={handleClose}
-                className="flex items-center gap-2 rounded-2xl border px-4 py-2 text-sm font-semibold transition-transform hover:scale-[1.02] active:scale-[0.98]"
+                className="flex items-center gap-2 rounded-md border px-3.5 py-1.5 text-xs font-bold transition-all hover:bg-white/5"
                 style={{
                   color: colors.onSurface,
-                  borderColor: `${colors.onSurface}12`,
+                  borderColor: `${colors.onSurface}15`,
                   backgroundColor: colors.surfaceContainer,
                 }}
               >
-                <Icons.Close className="h-4 w-4" />
+                <Icons.Close className="h-3.5 w-3.5" />
                 <span>{t("close")}</span>
               </button>
             </motion.div>

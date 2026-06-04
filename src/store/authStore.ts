@@ -33,14 +33,23 @@ export const useAuthStore = create<AuthState>()(
         
 
         let filteredAccounts = accounts.filter((a) => {
-          
+          // Same provider account — replace the stale copy
           if (a.uuid === account.uuid && a.type === account.type) return false;
 
-          
+          // Re-login of the same provider + username — replace
+          if (a.type === account.type && a.username === account.username) {
+            return false;
+          }
+
+          // Absorb a standalone (unlinked) CatID only when the incoming
+          // Microsoft account is explicitly linked to it. Don't merge across
+          // providers just because the display name happens to match.
           if (
-            a.username === account.username &&
-            (a.type === account.type ||
-              (a.type === "catid" && !a.minecraftUuid))
+            account.type === "microsoft" &&
+            account.catidLinked &&
+            a.type === "catid" &&
+            !a.minecraftUuid &&
+            a.username === account.username
           ) {
             return false;
           }
@@ -76,9 +85,17 @@ export const useAuthStore = create<AuthState>()(
               return false;
 
             if (
-              a.username === updatedAccount.username &&
-              (a.type === updatedAccount.type ||
-                (a.type === "catid" && !a.minecraftUuid))
+              a.type === updatedAccount.type &&
+              a.username === updatedAccount.username
+            )
+              return false;
+
+            if (
+              updatedAccount.type === "microsoft" &&
+              updatedAccount.catidLinked &&
+              a.type === "catid" &&
+              !a.minecraftUuid &&
+              a.username === updatedAccount.username
             )
               return false;
 

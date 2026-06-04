@@ -15,6 +15,8 @@ export interface AuthSession {
   catidLinked?: boolean;
   type: "catid" | "microsoft";
   createdAt: number;
+  avatarUrl?: string;
+  avatarSource?: string;
 }
 
 // Global session storage - shared across module instances for Electron multi-process
@@ -138,7 +140,9 @@ export function loginCatID(
   uuid: string,
   token: string,
   minecraftUuid?: string,
-  expiresAt?: string
+  expiresAt?: string,
+  avatarUrl?: string,
+  avatarSource?: string
 ): AuthSession {
   currentSession = {
     username,
@@ -148,10 +152,12 @@ export function loginCatID(
     type: "catid",
     createdAt: Date.now(),
     tokenExpiresAt: expiresAt ? new Date(expiresAt).getTime() : undefined,
+    avatarUrl,
+    avatarSource,
   };
 
   saveSession();
-  console.log("[Auth] CatID login successful:", username, "UUID:", uuid, "MC:", minecraftUuid, "Expires:", expiresAt);
+  console.log("[Auth] CatID login successful:", username, "UUID:", uuid, "MC:", minecraftUuid, "Expires:", expiresAt, "Avatar:", avatarUrl);
 
   return currentSession;
 }
@@ -288,6 +294,8 @@ export function setActiveSession(session: AuthSession): void {
       tokenExpiresAt: currentSession.tokenExpiresAt,
       apiToken: session.apiToken ?? currentSession.apiToken,
       apiTokenExpiresAt: session.apiTokenExpiresAt ?? currentSession.apiTokenExpiresAt,
+      avatarUrl: session.avatarUrl ?? currentSession.avatarUrl,
+      avatarSource: session.avatarSource ?? currentSession.avatarSource,
     };
   }
   currentSession = session;
@@ -297,7 +305,12 @@ export function setActiveSession(session: AuthSession): void {
   // Update Discord RPC with new player info
   try {
     const { setPlayerInfo } = require("./discord.js");
-    setPlayerInfo(session.minecraftUuid || session.uuid, session.username);
+    setPlayerInfo(
+      session.minecraftUuid || session.uuid,
+      session.username,
+      session.avatarUrl,
+      session.avatarSource
+    );
   } catch {
     // Discord module may not be loaded yet
   }

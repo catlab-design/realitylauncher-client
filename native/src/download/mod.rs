@@ -85,6 +85,7 @@ async fn download_file_internal(
 ) -> Result<(), String> {
     let client = reqwest::Client::builder()
         .user_agent("RealityLauncher/0.2.0")
+        .connect_timeout(std::time::Duration::from_secs(20))
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -135,11 +136,20 @@ async fn do_download(
     let mut sha1_hasher = sha1.map(|_| Sha1::new());
     let mut sha256_hasher = sha256.map(|_| Sha256::new());
 
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| e.to_string())?;
-        file.write_all(&chunk).await.map_err(|e| e.to_string())?;
-        if let Some(ref mut h) = sha1_hasher { h.update(&chunk); }
-        if let Some(ref mut h) = sha256_hasher { h.update(&chunk); }
+    loop {
+        match tokio::time::timeout(std::time::Duration::from_secs(30), stream.next()).await {
+            Ok(Some(chunk)) => {
+                let chunk = chunk.map_err(|e| e.to_string())?;
+                file.write_all(&chunk).await.map_err(|e| e.to_string())?;
+                if let Some(ref mut h) = sha1_hasher { h.update(&chunk); }
+                if let Some(ref mut h) = sha256_hasher { h.update(&chunk); }
+            }
+            Ok(None) => break,
+            Err(_) => {
+                let _ = tokio::fs::remove_file(&temp_path).await;
+                return Err("Download stalled (timeout)".to_string());
+            }
+        }
     }
     file.flush().await.map_err(|e| e.to_string())?;
     drop(file);

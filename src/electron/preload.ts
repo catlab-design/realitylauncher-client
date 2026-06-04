@@ -188,6 +188,8 @@ const api = {
 
   
   authRefreshToken: () => ipcRenderer.invoke("auth-refresh-token"),
+  authUpdateAvatarSource: (avatarSource: "catid_avatar" | "minecraft_skin") =>
+    ipcRenderer.invoke("auth-update-avatar-source", avatarSource),
 
   
   minecraftGetProfile: () => ipcRenderer.invoke("minecraft-get-profile"),

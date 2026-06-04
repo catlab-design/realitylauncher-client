@@ -113,8 +113,13 @@ export function createLogger(prefix: string) {
       error?: Error | unknown,
       data?: Record<string, unknown>
     ) => {
-      const err = error instanceof Error ? error : undefined;
-      return log("error", message, err, data);
+      if (error instanceof Error) {
+        return log("error", message, error, data);
+      }
+      // A non-Error second arg is structured data — fall back to it so it
+      // actually gets logged instead of being silently dropped.
+      const dataArg = (error as Record<string, unknown> | undefined) ?? data;
+      return log("error", message, dataArg);
     },
   };
 }

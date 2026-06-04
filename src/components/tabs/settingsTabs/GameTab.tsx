@@ -59,7 +59,7 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
     }
 
     return (
-        <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
+        <div className="rounded-xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
             {/* Header */}
             <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "20" }}>
                 <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: colors.secondary + "20" }}>
@@ -81,7 +81,7 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
                                 {t('ram_description').replace('{gb}', (systemRamMB / 1024).toFixed(0))}
                             </p>
                         </div>
-                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-colors focus-within:ring-2"
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-md border transition-colors focus-within:ring-2"
                              style={{ 
                                  backgroundColor: colors.surface, 
                                  borderColor: colors.outline + "40",
@@ -150,9 +150,9 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
                                 toast.success(`${t('recommended')}: ${formatRam(recommended)}`);
                             }}
                             className={`
-                                px-2 py-2 rounded-lg text-xs font-medium transition-all duration-200 border
+                                px-2 py-2 rounded-md text-xs font-medium transition-all duration-200 border
                                 flex flex-col items-center gap-0.5 justify-center
-                                hover:brightness-105 active:scale-95
+                                hover:brightness-105
                             `}
                             style={{
                                 backgroundColor: colors.primaryContainer,
@@ -176,14 +176,13 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
                                     key={preset.label}
                                     onClick={() => updateConfig({ ramMB: preset.value })}
                                     className={`
-                                        px-2 py-2 rounded-lg text-xs font-medium transition-all duration-200 border
+                                        px-2 py-2 rounded-md text-xs font-medium transition-all duration-200 border
                                         flex flex-col items-center gap-0.5 justify-center
                                     `}
                                     style={{
                                         backgroundColor: isActive ? colors.secondaryContainer : colors.surface,
                                         borderColor: isActive ? colors.secondary : colors.outline + "30",
                                         color: isActive ? colors.onSecondaryContainer : colors.onSurface,
-                                        transform: isActive ? 'scale(1.02)' : 'scale(1)'
                                     }}
                                 >
                                     <span>{preset.label}</span>
@@ -210,7 +209,7 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
                                     type="text"
                                     value={config.minecraftDir || t('use_default')}
                                     readOnly
-                                    className="w-full pl-3 pr-3 py-2.5 rounded-xl border text-xs transition-colors"
+                                    className="w-full pl-3 pr-3 py-2.5 rounded-md border text-xs transition-colors"
                                     style={{ 
                                         borderColor: colors.outline + "40", 
                                         backgroundColor: colors.surface, 
@@ -220,7 +219,7 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
                             </div>
                             <button
                                 onClick={handleBrowseMinecraftDir}
-                                className="px-4 py-2.5 rounded-xl text-xs font-medium hover:brightness-110 active:scale-95 transition-all shadow-sm"
+                                className="px-4 py-2.5 rounded-md text-xs font-medium hover:brightness-110 transition-all"
                                 style={{ backgroundColor: colors.secondary, color: colors.onSecondary }}
                             >
                                 {t('select')}
@@ -244,7 +243,7 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
                             value={config.javaArguments}
                             onChange={(e) => updateConfig({ javaArguments: e.target.value })}
                             placeholder={t('java_args_placeholder')}
-                            className="w-full px-3 py-2.5 rounded-xl border text-xs transition-colors focus:ring-2 focus:ring-opacity-50 focus:outline-none"
+                            className="w-full px-3 py-2.5 rounded-md border text-xs transition-colors focus:ring-2 focus:ring-opacity-50 focus:outline-none"
                             style={{ 
                                 borderColor: colors.outline + "40", 
                                 backgroundColor: colors.surface, 

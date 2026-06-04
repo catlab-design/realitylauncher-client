@@ -13,6 +13,9 @@ import { getMinecraftDir, getAppDataDir, getConfig, setConfig } from "../config.
 import { getSession } from "../auth.js";
 import { refreshMicrosoftTokenIfNeeded } from "../auth-refresh.js";
 import { getNativeModule } from "../native.js";
+import { API_URL } from "../lib/constants.js";
+
+const ML_API_URL = process.env.ML_API_URL || API_URL;
 
 type SkinVariant = "classic" | "slim";
 
@@ -405,6 +408,7 @@ export function registerUtilityHandlers(
       "C:\\Program Files (x86)\\Java",
       "C:\\Program Files\\Eclipse Adoptium",
       "C:\\Program Files\\Zulu",
+      "C:\\Program Files\\Amazon Corretto",
       "C:\\Program Files\\Microsoft",
     ];
 
@@ -480,6 +484,8 @@ export function registerUtilityHandlers(
             vendor = "Eclipse Adoptium";
           else if (line.includes("Zulu")) vendor = "Azul Zulu";
           else if (line.includes("Microsoft")) vendor = "Microsoft";
+          else if (line.includes("Corretto") || line.includes("Amazon"))
+            vendor = "Amazon Corretto";
           else if (line.includes("Oracle")) vendor = "Oracle";
           else if (line.includes("OpenJDK")) vendor = "OpenJDK";
         }
@@ -512,6 +518,7 @@ export function registerUtilityHandlers(
             "C:\\Program Files\\Java",
             "C:\\Program Files\\Eclipse Adoptium",
             "C:\\Program Files\\Zulu",
+            "C:\\Program Files\\Amazon Corretto",
             "C:\\Program Files\\Microsoft\\jdk",
           ]
         : [
@@ -596,7 +603,7 @@ export function registerUtilityHandlers(
     const native = getNativeJavaModule();
 
     if (!fs.existsSync(javaPath)) {
-      return { ok: false, error: "��辺��� Java" };
+      return { ok: false, error: "ไม่พบ Java" };
     }
 
     if (native && typeof native.validateJavaPath === "function") {
@@ -643,7 +650,6 @@ export function registerUtilityHandlers(
     const { createWriteStream } = await import("node:fs");
     const { spawn } = await import("node:child_process");
     const native = getNativeModule() as any;
-    const METADATA_TIMEOUT_MS = 15_000;
     const DOWNLOAD_IDLE_TIMEOUT_MS = 30_000;
 
     console.log(`[Java] Starting installation of Java ${majorVersion}`);
@@ -703,145 +709,25 @@ export function registerUtilityHandlers(
         }
       }
 
-      sendProgress("fetch", 0, "กำลังดึงข้อมูล...");
+      sendProgress("fetch", 5, "กำลังค้นหาแพ็กเกจ Java...");
       console.log(
-        `[Java] Fetching Azul Zulu metadata for Java ${featureVersion}...`,
+        `[Java] Resolving Amazon Corretto download for Java ${featureVersion}...`,
       );
 
-      const azulOs =
+      // Corretto has no metadata API; the /latest/ endpoint 302-redirects to the
+      // newest build for the given major/arch/os, so we build the URL directly.
+      const correttoOs =
         process.platform === "win32"
           ? "windows"
           : process.platform === "darwin"
             ? "macos"
             : "linux";
-      const azulArch =
-        process.arch === "arm64"
-          ? "aarch64"
-          : process.arch === "ia32"
-            ? "x86"
-            : "x64";
-      const getAzulApiUrl = (
-        javaPackageType: "jre" | "jdk",
-        options: { features?: boolean; certified?: boolean } = {},
-      ): string => {
-        const includeFeatures = options.features !== false;
-        const includeCertified = options.certified !== false;
-        // Java 25+ may only be available as EA (early access); try ga first then ea
-        const releaseStatus = featureVersion >= 25 ? "ea" : "ga";
-        const azulQuery = new URLSearchParams({
-          java_version: `${featureVersion}`,
-          os: azulOs,
-          arch: azulArch,
-          archive_type: archiveType,
-          java_package_type: javaPackageType,
-          javafx_bundled: "false",
-          release_status: releaseStatus,
-          latest: "true",
-          page: "1",
-          page_size: "3",
-        });
-        if (includeFeatures) azulQuery.set("java_package_features", "headful");
-        if (includeCertified) {
-          azulQuery.set("availability_types", "CA");
-          azulQuery.set("certifications", "tck");
-        }
-        return `https://api.azul.com/metadata/v1/zulu/packages/?${azulQuery.toString()}`;
-      };
-      const fetchJsonWithTimeout = async (url: string): Promise<any> =>
-        await new Promise<any>((resolve, reject) => {
-          const request = https.get(url, (res) => {
-            let data = "";
-            res.on("data", (chunk) => (data += chunk));
-            res.on("end", () => {
-              if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
-                reject(new Error(`Java metadata API returned HTTP ${res.statusCode}`));
-                return;
-              }
-
-              try {
-                resolve(JSON.parse(data));
-              } catch (e) {
-                reject(
-                  new Error(`Invalid API response: ${data.substring(0, 200)}`),
-                );
-              }
-            });
-          });
-
-          request.setTimeout(METADATA_TIMEOUT_MS, () => {
-            request.destroy(
-              new Error(
-                "Java metadata request timed out. Please check your internet connection and try again.",
-              ),
-            );
-          });
-          request.on("error", reject);
-        });
-
-      sendProgress("fetch", 5, "กำลังค้นหาแพ็กเกจ Java...");
-      const pickZuluPackage = (apiResponse: any): any | null => {
-        if (!Array.isArray(apiResponse)) return null;
-        const downloadable = apiResponse.filter((entry: any) => entry?.download_url);
-        return (
-          downloadable.find((entry: any) => entry?.latest && !String(entry?.name || "").includes("-crac-")) ??
-          downloadable.find((entry: any) => !String(entry?.name || "").includes("-crac-")) ??
-          downloadable.find((entry: any) => entry?.latest) ??
-          downloadable[0] ??
-          null
-        );
-      };
-
-      const packageAttempts = [
-        { type: "jre" as const, features: true, certified: true, message: "Finding Java Runtime..." },
-        { type: "jre" as const, features: true, certified: false, message: "Trying fallback Java Runtime..." },
-        { type: "jre" as const, features: false, certified: false, message: "Trying broad Java Runtime search..." },
-        { type: "jdk" as const, features: true, certified: true, message: "Trying Java JDK package..." },
-        { type: "jdk" as const, features: false, certified: false, message: "Trying broad Java JDK search..." },
-      ];
-      // For Java 25+ (EA), also try without certification/features since EA builds
-      // may not be tagged as certified or headful in the Azul metadata API.
-      if (featureVersion >= 25) {
-        packageAttempts.push(
-          { type: "jdk" as const, features: false, certified: false, message: "Trying EA JDK (no filter)..." } as any,
-        );
-      }
-
-      let zuluPackage: any | null = null;
-      for (let i = 0; i < packageAttempts.length; i++) {
-        const attempt = packageAttempts[i];
-        sendProgress("fetch", Math.min(5 + i * 3, 18), attempt.message);
-        const apiResponse = await fetchJsonWithTimeout(
-          getAzulApiUrl(attempt.type, {
-            features: attempt.features,
-            certified: attempt.certified,
-          }),
-        );
-        zuluPackage = pickZuluPackage(apiResponse);
-        if (zuluPackage) break;
-      }
-      if (!zuluPackage) {
-        console.log(
-          `[Java] No Java ${majorVersion} found in Azul Zulu metadata`,
-        );
-        return {
-          ok: false,
-          error: `Java ${majorVersion} not found from Azul Zulu`,
-        };
-      }
-
-      const downloadUrl = zuluPackage.download_url;
-      const fileName =
-        zuluPackage.name ||
-        (typeof downloadUrl === "string"
-          ? downloadUrl.split("/").pop()?.split("?")[0]
-          : undefined);
-      const fileSize =
-        zuluPackage.size ||
-        zuluPackage.download_size ||
-        zuluPackage.filesize ||
-        0;
-      if (!downloadUrl || !fileName)
-        return { ok: false, error: "ไม่พบ download URL" };
+      const correttoArch = process.arch === "arm64" ? "aarch64" : "x64";
+      const fileName = `amazon-corretto-${featureVersion}-${correttoArch}-${correttoOs}-jdk.${archiveType}`;
+      const downloadUrl = `https://corretto.aws/downloads/latest/${fileName}`;
+      // Size is unknown until the redirect resolves; the download loop falls back
+      // to the content-length header for progress reporting.
+      const fileSize = 0;
 
       const fileSizeMB = Math.round(fileSize / 1024 / 1024);
       sendProgress(
@@ -1135,39 +1021,92 @@ export function registerUtilityHandlers(
     async (_event, options?: { forceRefresh?: boolean }) => {
       try {
         const session = getSession();
-        if (!session || session.type !== "microsoft") {
-          return { ok: false, error: "Microsoft account is required." };
+        if (!session) {
+          return { ok: false, error: "Not logged in" };
         }
 
-        const forceRefresh = !!options?.forceRefresh;
-        const sessionKey = getMinecraftProfileCacheKey(session);
-        if (!forceRefresh) {
-          const cachedProfile = getCachedMinecraftProfile(sessionKey);
-          if (cachedProfile) {
-            return { ok: true, profile: cachedProfile.profile };
+        // If Microsoft-only session, use standard direct Mojang API profile fetch
+        if (session.type === "microsoft") {
+          const forceRefresh = !!options?.forceRefresh;
+          const sessionKey = getMinecraftProfileCacheKey(session);
+          if (!forceRefresh) {
+            const cachedProfile = getCachedMinecraftProfile(sessionKey);
+            if (cachedProfile) {
+              return { ok: true, profile: cachedProfile.profile };
+            }
           }
+
+          const refreshResult = await refreshMicrosoftTokenIfNeeded();
+          if (!refreshResult.ok) {
+            return {
+              ok: false,
+              error: refreshResult.error || "Could not refresh Microsoft token.",
+              requiresRelogin: refreshResult.requiresRelogin || false,
+            };
+          }
+
+          const accessToken =
+            refreshResult.session?.accessToken || session.accessToken;
+          if (!accessToken) {
+            return { ok: false, error: "Microsoft access token not found." };
+          }
+
+          const profileResult = await fetchMinecraftProfile(accessToken);
+          if (profileResult.ok && profileResult.profile) {
+            setCachedMinecraftProfile(sessionKey, profileResult.profile);
+          }
+          return profileResult;
         }
 
-        const refreshResult = await refreshMicrosoftTokenIfNeeded();
-        if (!refreshResult.ok) {
-          return {
-            ok: false,
-            error: refreshResult.error || "Could not refresh Microsoft token.",
-            requiresRelogin: refreshResult.requiresRelogin || false,
-          };
+        // If CatID session but linked to Microsoft (it has minecraftUuid)
+        if (session.type === "catid" && session.minecraftUuid) {
+          const forceRefresh = !!options?.forceRefresh;
+          const sessionKey = `catid-ms-${session.minecraftUuid}`;
+          if (!forceRefresh) {
+            const cachedProfile = getCachedMinecraftProfile(sessionKey);
+            if (cachedProfile) {
+              return { ok: true, profile: cachedProfile.profile };
+            }
+          }
+
+          const apiToken = session.accessToken; // CatID API token
+          
+          const profileResponse = await fetch(`${ML_API_URL}/profile/${session.minecraftUuid}`, {
+            headers: {
+              ...(apiToken ? { Authorization: `Bearer ${apiToken}` } : {}),
+            }
+          });
+
+          if (!profileResponse.ok) {
+            return { ok: false, error: `Failed to fetch profile: ${profileResponse.statusText}` };
+          }
+
+          const result = await profileResponse.json() as any;
+          if (result.ok && result.profile) {
+            // Map response format to match what Wardrobe expects
+            const activeSkin =
+              result.profile.skins?.find((skin: any) => skin?.state === "ACTIVE") ||
+              result.profile.skins?.[0] ||
+              null;
+            
+            const profile = {
+              id: result.profile.id,
+              name: result.profile.name,
+              skins: result.profile.skins || [],
+              capes: result.profile.capes || [],
+              activeSkin,
+              skinUrl: activeSkin?.url || null,
+              variant: (activeSkin?.variant || "CLASSIC").toLowerCase(),
+            };
+
+            setCachedMinecraftProfile(sessionKey, profile);
+            return { ok: true, profile };
+          }
+
+          return { ok: false, error: "Invalid profile data from server." };
         }
 
-        const accessToken =
-          refreshResult.session?.accessToken || session.accessToken;
-        if (!accessToken) {
-          return { ok: false, error: "Microsoft access token not found." };
-        }
-
-        const profileResult = await fetchMinecraftProfile(accessToken);
-        if (profileResult.ok && profileResult.profile) {
-          setCachedMinecraftProfile(sessionKey, profileResult.profile);
-        }
-        return profileResult;
+        return { ok: false, error: "Microsoft account is required." };
       } catch (error: any) {
         return {
           ok: false,
@@ -1184,23 +1123,8 @@ export function registerUtilityHandlers(
     ) => {
       try {
         const session = getSession();
-        if (!session || session.type !== "microsoft") {
-          return { ok: false, error: "Microsoft account is required." };
-        }
-
-        const refreshResult = await refreshMicrosoftTokenIfNeeded();
-        if (!refreshResult.ok) {
-          return {
-            ok: false,
-            error: refreshResult.error || "Could not refresh Microsoft token.",
-            requiresRelogin: refreshResult.requiresRelogin || false,
-          };
-        }
-
-        const accessToken =
-          refreshResult.session?.accessToken || session.accessToken;
-        if (!accessToken) {
-          return { ok: false, error: "Microsoft access token not found." };
+        if (!session) {
+          return { ok: false, error: "Not logged in" };
         }
 
         const skinData = parsePngDataUrl(payload.dataUrl || "");
@@ -1214,50 +1138,150 @@ export function registerUtilityHandlers(
         const variant: SkinVariant =
           payload.variant === "slim" ? "slim" : "classic";
         const skinBytes = Uint8Array.from(skinData);
-        const form = new FormData();
-        form.append("variant", variant);
-        form.append(
-          "file",
-          new Blob([skinBytes], { type: "image/png" }),
-          payload.fileName || "skin.png",
-        );
 
-        const uploadResponse = await fetch(
-          "https://api.minecraftservices.com/minecraft/profile/skins",
-          {
+        // If CatID session but linked to Microsoft (it has minecraftUuid)
+        if (session.type === "catid" && session.minecraftUuid) {
+          const apiToken = session.accessToken; // CatID API token
+          const form = new FormData();
+          form.append("variant", variant);
+          form.append(
+            "file",
+            new Blob([skinBytes], { type: "image/png" }),
+            payload.fileName || "skin.png",
+          );
+
+          const uploadResponse = await fetch(`${ML_API_URL}/profile/skin`, {
             method: "POST",
             headers: {
-              Authorization: `Bearer ${accessToken}`,
+              ...(apiToken ? { Authorization: `Bearer ${apiToken}` } : {}),
             },
             body: form,
-          },
-        );
+          });
 
-        if (!uploadResponse.ok) {
-          let errorText = `Skin upload failed (${uploadResponse.status})`;
-          try {
-            const errorData = await uploadResponse.json();
-            errorText =
-              errorData?.errorMessage || errorData?.error || errorText;
-          } catch {}
-          return { ok: false, error: errorText };
+          if (!uploadResponse.ok) {
+            let errorText = `Skin upload failed (${uploadResponse.status})`;
+            try {
+              const errorData = await uploadResponse.json() as any;
+              errorText = errorData?.error || errorText;
+            } catch {}
+            return { ok: false, error: errorText };
+          }
+
+          const result = await uploadResponse.json() as any;
+          if (result.ok) {
+            // Re-fetch profile to get the updated skin
+            const sessionKey = `catid-ms-${session.minecraftUuid}`;
+            
+            // Delete cache
+            const cache = loadMinecraftProfileCache();
+            delete cache[sessionKey];
+            saveMinecraftProfileCache(cache);
+
+            // Fetch updated profile
+            const profileResponse = await fetch(`${ML_API_URL}/profile/${session.minecraftUuid}`, {
+              headers: {
+                ...(apiToken ? { Authorization: `Bearer ${apiToken}` } : {}),
+              }
+            });
+
+            if (!profileResponse.ok) {
+              return { ok: false, error: `Failed to fetch updated profile: ${profileResponse.statusText}` };
+            }
+
+            const updatedResult = await profileResponse.json() as any;
+            if (updatedResult.ok && updatedResult.profile) {
+              const activeSkin =
+                updatedResult.profile.skins?.find((skin: any) => skin?.state === "ACTIVE") ||
+                updatedResult.profile.skins?.[0] ||
+                null;
+              
+              const profile = {
+                id: updatedResult.profile.id,
+                name: updatedResult.profile.name,
+                skins: updatedResult.profile.skins || [],
+                capes: updatedResult.profile.capes || [],
+                activeSkin,
+                skinUrl: activeSkin?.url || null,
+                variant: (activeSkin?.variant || "CLASSIC").toLowerCase(),
+              };
+
+              setCachedMinecraftProfile(sessionKey, profile);
+
+              return {
+                ok: true,
+                profile,
+                message: "Skin updated successfully.",
+              };
+            }
+          }
+
+          return { ok: false, error: "Failed to parse upload result from server." };
         }
 
-        const profileResult = await fetchMinecraftProfile(accessToken);
-        if (!profileResult.ok) {
-          return profileResult;
+        // If Microsoft-only session, use standard direct Mojang API skin upload
+        if (session.type === "microsoft") {
+          const refreshResult = await refreshMicrosoftTokenIfNeeded();
+          if (!refreshResult.ok) {
+            return {
+              ok: false,
+              error: refreshResult.error || "Could not refresh Microsoft token.",
+              requiresRelogin: refreshResult.requiresRelogin || false,
+            };
+          }
+
+          const accessToken =
+            refreshResult.session?.accessToken || session.accessToken;
+          if (!accessToken) {
+            return { ok: false, error: "Microsoft access token not found." };
+          }
+
+          const form = new FormData();
+          form.append("variant", variant);
+          form.append(
+            "file",
+            new Blob([skinBytes], { type: "image/png" }),
+            payload.fileName || "skin.png",
+          );
+
+          const uploadResponse = await fetch(
+            "https://api.minecraftservices.com/minecraft/profile/skins",
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+              },
+              body: form,
+            },
+          );
+
+          if (!uploadResponse.ok) {
+            let errorText = `Skin upload failed (${uploadResponse.status})`;
+            try {
+              const errorData = await uploadResponse.json();
+              errorText =
+                errorData?.errorMessage || errorData?.error || errorText;
+            } catch {}
+            return { ok: false, error: errorText };
+          }
+
+          const profileResult = await fetchMinecraftProfile(accessToken);
+          if (!profileResult.ok) {
+            return profileResult;
+          }
+
+          setCachedMinecraftProfile(
+            getMinecraftProfileCacheKey(session),
+            profileResult.profile,
+          );
+
+          return {
+            ok: true,
+            profile: profileResult.profile,
+            message: "Skin updated successfully.",
+          };
         }
 
-        setCachedMinecraftProfile(
-          getMinecraftProfileCacheKey(session),
-          profileResult.profile,
-        );
-
-        return {
-          ok: true,
-          profile: profileResult.profile,
-          message: "Skin updated successfully.",
-        };
+        return { ok: false, error: "Microsoft account is required." };
       } catch (error: any) {
         return { ok: false, error: error?.message || "Failed to upload skin." };
       }

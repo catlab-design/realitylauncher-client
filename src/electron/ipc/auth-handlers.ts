@@ -70,18 +70,24 @@ async function syncCatIDSessionIdentity(
     return session;
   }
 
-  const data = (await response.json()) as { user?: CatIDUserPayload };
+  const data = (await response.json()) as {
+    user?: CatIDUserPayload & { avatarUrl?: string; avatarSource?: string };
+  };
   const user = data.user;
   const normalizedUsername = getCatIDDisplayName(user, session.username);
   const normalizedUuid = getCatIDSessionUuid(user, session.uuid);
   const normalizedMinecraftUuid = user
     ? user.minecraftUuid || undefined
     : session.minecraftUuid;
+  const normalizedAvatarUrl = user?.avatarUrl || undefined;
+  const normalizedAvatarSource = user?.avatarSource || undefined;
 
   if (
     normalizedUsername === session.username &&
     normalizedUuid === session.uuid &&
-    normalizedMinecraftUuid === session.minecraftUuid
+    normalizedMinecraftUuid === session.minecraftUuid &&
+    normalizedAvatarUrl === session.avatarUrl &&
+    normalizedAvatarSource === session.avatarSource
   ) {
     return session;
   }
@@ -91,22 +97,70 @@ async function syncCatIDSessionIdentity(
     username: normalizedUsername,
     uuid: normalizedUuid,
     minecraftUuid: normalizedMinecraftUuid || undefined,
+    avatarUrl: normalizedAvatarUrl,
+    avatarSource: normalizedAvatarSource,
   };
 }
 
 
+// Minecraft's login_with_xbox endpoint returns transient 503/5xx (and
+// occasional 429) even when the account is fine. Retry those with backoff
+// instead of failing the whole login.
+const TRANSIENT_HTTP_STATUS = new Set([429, 500, 502, 503, 504]);
+
+function parseRetryAfterMs(header: string | null): number | null {
+  if (!header) return null;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds)) return seconds * 1000;
+  const date = Date.parse(header);
+  return Number.isNaN(date) ? null : Math.max(0, date - Date.now());
+}
+
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  { retries = 3, baseDelayMs = 800 }: { retries?: number; baseDelayMs?: number } = {},
+): Promise<Response> {
+  let lastResponse: Response | undefined;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const response = await fetch(url, init);
+    if (response.ok || !TRANSIENT_HTTP_STATUS.has(response.status)) {
+      return response;
+    }
+    lastResponse = response;
+    if (attempt < retries) {
+      // Honor Retry-After when present (mainly for 429); otherwise exponential
+      // backoff with jitter. Back off harder on 429 so we don't worsen the
+      // rate limit by hammering.
+      const retryAfter = parseRetryAfterMs(response.headers.get("retry-after"));
+      const factor = response.status === 429 ? 4 : 1;
+      const backoff = baseDelayMs * factor * 2 ** attempt + Math.random() * 300;
+      const delay = Math.min(retryAfter ?? backoff, 20_000);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  return lastResponse!;
+}
+
 async function fetchOAuthConfig(): Promise<boolean> {
   try {
     const response = await fetch(`${ML_API_URL}/oauth/config`);
-    if (response.ok) {
-      const data = (await response.json()) as {
-        microsoftDeviceClientId?: string;
-      };
-      if (data.microsoftDeviceClientId) {
-        MICROSOFT_CLIENT_ID = data.microsoftDeviceClientId;
-        logger.info("Fetched Microsoft Device Client ID from API");
-        return true;
-      }
+    
+    if (!response.ok) {
+      logger.error("OAuth config request failed", {
+        status: response.status,
+        statusText: response.statusText,
+      });
+      return false;
+    }
+    
+    const data = (await response.json()) as {
+      microsoftDeviceClientId?: string;
+    };
+    if (data.microsoftDeviceClientId) {
+      MICROSOFT_CLIENT_ID = data.microsoftDeviceClientId;
+      logger.info("Fetched Microsoft Device Client ID from API");
+      return true;
     }
   } catch (error) {
     logger.error("Could not fetch OAuth config from API", error);
@@ -180,6 +234,52 @@ export function registerAuthHandlers(
 
     return session;
   });
+
+  ipcMain.handle(
+    "auth-update-avatar-source",
+    async (_event, avatarSource: "catid_avatar" | "minecraft_skin"): Promise<{ ok: boolean; error?: string; session?: AuthSession | null }> => {
+      try {
+        const session = getSession();
+        if (!session) {
+          return { ok: false, error: "Not logged in" };
+        }
+
+        const apiToken = session.type === "catid" ? session.accessToken : session.apiToken;
+        if (!apiToken) {
+          return { ok: false, error: "CatID account connection required" };
+        }
+
+        const response = await fetch(`${ML_API_URL}/auth/session/profile`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiToken}`,
+          },
+          body: JSON.stringify({ avatarSource }),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json() as any;
+          return { ok: false, error: errData.message || "Failed to update avatar source" };
+        }
+
+        const data = await response.json() as any;
+        if (data.user) {
+          const updatedSession: AuthSession = {
+            ...session,
+            avatarSource: data.user.avatarSource,
+            avatarUrl: data.user.avatarUrl,
+          };
+          setActiveSession(updatedSession);
+          return { ok: true, session: getSession() };
+        }
+
+        return { ok: false, error: "Invalid response from server" };
+      } catch (err: any) {
+        return { ok: false, error: err.message || "Network error" };
+      }
+    }
+  );
 
   ipcMain.handle("auth-is-logged-in", async (): Promise<boolean> => {
     return isLoggedIn();
@@ -343,10 +443,15 @@ export function registerAuthHandlers(
 
   ipcMain.handle("auth-device-code-start", async () => {
     try {
-      await fetchOAuthConfig();
-
+      // Ensure we have the latest OAuth config
+      const configFetched = await fetchOAuthConfig();
+      
       if (!MICROSOFT_CLIENT_ID) {
-        return { ok: false, error: "Device Client ID ยังไม่ได้ตั้งค่า" };
+        const errorMsg = configFetched 
+          ? "Microsoft Client ID is not configured on server" 
+          : "Device Client ID ยังไม่ได้ตั้งค่า (failed to fetch config)";
+        logger.error("Device code flow initialization failed", { errorMsg });
+        return { ok: false, error: errorMsg };
       }
 
       logger.info("Starting device code flow", { clientIdLength: MICROSOFT_CLIENT_ID.length });
@@ -372,7 +477,12 @@ export function registerAuthHandlers(
           errorDescription: data.error_description,
           errorCodes: data.error_codes,
         });
-        return { ok: false, error: data.error_description || data.error };
+        return { ok: false, error: data.error_description || data.error || "Device code request failed" };
+      }
+
+      if (!data.device_code || !data.user_code) {
+        logger.error("Device code response missing required fields", { data });
+        return { ok: false, error: "Invalid device code response from Microsoft" };
       }
 
       logger.info("Device code received", { userCode: data.user_code });
@@ -387,6 +497,7 @@ export function registerAuthHandlers(
         message: data.message,
       };
     } catch (error: any) {
+      logger.error("Device code flow error", { error: error.message });
       return { ok: false, error: error.message || "Network error" };
     }
   });
@@ -456,9 +567,18 @@ export function registerAuthHandlers(
             }),
           },
         );
-        const xblData = (await xblResponse.json()) as any;
-        if (!xblData.Token)
+        if (!xblResponse.ok) {
+          logger.error("Xbox Live auth failed", undefined, {
+            status: xblResponse.status,
+            statusText: xblResponse.statusText,
+          });
           return { status: "error", error: "Xbox Live auth failed" };
+        }
+        const xblData = (await xblResponse.json()) as any;
+        if (!xblData.Token) {
+          logger.error("Xbox Live response missing token", undefined, { xblData });
+          return { status: "error", error: "Xbox Live auth failed" };
+        }
 
         const userHash = xblData.DisplayClaims?.xui?.[0]?.uhs;
         if (!userHash) return { status: "error", error: "User hash not found" };
@@ -479,6 +599,13 @@ export function registerAuthHandlers(
             }),
           },
         );
+        if (!xstsResponse.ok) {
+          logger.error("XSTS auth failed", undefined, {
+            status: xstsResponse.status,
+            statusText: xstsResponse.statusText,
+          });
+          return { status: "error", error: "XSTS auth failed" };
+        }
         const xstsData = (await xstsResponse.json()) as any;
 
         if (!xstsData.Token) {
@@ -490,7 +617,7 @@ export function registerAuthHandlers(
         }
 
         
-        const mcResponse = await fetch(
+        const mcResponse = await fetchWithRetry(
           "https://api.minecraftservices.com/authentication/login_with_xbox",
           {
             method: "POST",
@@ -500,23 +627,51 @@ export function registerAuthHandlers(
             }),
           },
         );
+        if (!mcResponse.ok) {
+          const mcErrorBody = await mcResponse.text().catch(() => "");
+          // Pass details as the 3rd (data) arg — logger drops a plain object
+          // passed as the 2nd arg unless it's an Error instance.
+          logger.error("Minecraft auth request failed", undefined, {
+            status: mcResponse.status,
+            statusText: mcResponse.statusText,
+            body: mcErrorBody.slice(0, 500),
+          });
+          const detail =
+            mcResponse.status === 429
+              ? "Minecraft auth ถูกจำกัดชั่วคราว (rate limit) — รอสักครู่แล้วลองใหม่"
+              : TRANSIENT_HTTP_STATUS.has(mcResponse.status)
+                ? `เซิร์ฟเวอร์ Minecraft ไม่พร้อมใช้งานชั่วคราว (HTTP ${mcResponse.status}) — ลองใหม่อีกครั้ง`
+                : `Minecraft auth failed (HTTP ${mcResponse.status})`;
+          return { status: "error", error: detail };
+        }
         const mcData = (await mcResponse.json()) as any;
-        if (!mcData.access_token)
+        if (!mcData.access_token) {
+          logger.error("Minecraft response missing access token", undefined, { mcData });
           return { status: "error", error: "Minecraft auth failed" };
+        }
 
         
-        const entitlementResponse = await fetch(
+        const entitlementResponse = await fetchWithRetry(
           "https://api.minecraftservices.com/entitlements/mcstore",
           {
             headers: { Authorization: `Bearer ${mcData.access_token}` },
           },
         );
+        if (!entitlementResponse.ok) {
+          logger.error("Entitlement check failed", undefined, {
+            status: entitlementResponse.status,
+            statusText: entitlementResponse.statusText,
+          });
+          return { status: "error", error: "ตรวจสอบ Minecraft ล้มเหลว" };
+        }
         const entitlementData = (await entitlementResponse.json()) as any;
-        if (!entitlementData.items?.length)
+        if (!entitlementData.items?.length) {
+          logger.warn("User has no Minecraft entitlements", { entitlementData });
           return { status: "error", error: "ไม่มี Minecraft" };
+        }
 
         
-        const profileResponse = await fetch(
+        const profileResponse = await fetchWithRetry(
           "https://api.minecraftservices.com/minecraft/profile",
           {
             headers: { Authorization: `Bearer ${mcData.access_token}` },
@@ -793,8 +948,10 @@ export function registerAuthHandlers(
         const uuid = getCatIDSessionUuid(data.user, `catid-${Date.now()}`);
         const minecraftUuid = data.user?.minecraftUuid; 
         const expiresAt = data.expiresAt; 
+        const avatarUrl = data.user?.avatarUrl;
+        const avatarSource = data.user?.avatarSource;
 
-        loginCatID(displayName, uuid, data.token, minecraftUuid, expiresAt);
+        loginCatID(displayName, uuid, data.token, minecraftUuid, expiresAt, avatarUrl, avatarSource);
 
         getMainWindow()?.webContents.send("auth-callback", {
           token: data.token,
@@ -803,6 +960,8 @@ export function registerAuthHandlers(
           type: "catid",
           minecraftUuid,
           expiresAt,
+          avatarUrl,
+          avatarSource,
         });
 
         
@@ -819,6 +978,8 @@ export function registerAuthHandlers(
             token: data.token,
             minecraftUuid,
             expiresAt,
+            avatarUrl,
+            avatarSource,
           },
         };
       } catch (error: any) {
@@ -1150,6 +1311,8 @@ export function registerAuthHandlers(
         uuid,
         accessToken: token,
         minecraftUuid: data.user.minecraftUuid,
+        avatarUrl: data.user.avatarUrl || undefined,
+        avatarSource: data.user.avatarSource || undefined,
         createdAt: Date.now(),
       };
 

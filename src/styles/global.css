@@ -13,6 +13,16 @@
 /* Tailwind CSS */
 @import "tailwindcss";
 
+/* Self-hosted fonts — bundled into the app so Thai always renders even with no
+   network / blocked Google Fonts / a Linux system that ships no Thai font.
+   Prompt covers Thai; Inter (Latin) is used for titles. */
+@import "@fontsource/prompt/300.css";
+@import "@fontsource/prompt/400.css";
+@import "@fontsource/prompt/500.css";
+@import "@fontsource/prompt/600.css";
+@import "@fontsource/prompt/700.css";
+@import "@fontsource-variable/inter/index.css";
+
 /* ========================================
    Base Styles
    ======================================== */
@@ -68,7 +78,6 @@
   position: relative;
   outline: 2px solid var(--secondary-color) !important;
   outline-offset: -2px;
-  animation: rainbow-accent-cycle 5s linear infinite !important;
   will-change: outline-color;
   /* Add backface-visibility for GPU acceleration */
   backface-visibility: hidden;
@@ -88,7 +97,7 @@ body {
   height: 100vh;
   overflow: hidden;
   user-select: none;
-  font-family: "Prompt", sans-serif;
+  font-family: "Prompt", "Noto Sans Thai", "Leelawadee UI", "Tahoma", "Thonburi", "Segoe UI", system-ui, sans-serif;
   color: var(--on-surface);
   /* Global fix for visual artifacts (dotted lines) when Hardware Acceleration is enabled */
   backface-visibility: hidden;
@@ -104,9 +113,15 @@ body {
   /* พื้นหลังสีเข้ม */
   background: var(--color-bg);
   color: var(--color-text);
-  /* Font - Prompt (Thai) */
+  /* Font - Prompt (Thai), with system Thai fonts as fallback if Prompt is
+     unavailable: Noto Sans Thai (Linux), Leelawadee UI/Tahoma (Windows),
+     Thonburi (macOS). Keeps Thai readable instead of falling back to .notdef. */
   font-family:
     "Prompt",
+    "Noto Sans Thai",
+    "Leelawadee UI",
+    "Tahoma",
+    "Thonburi",
     "Segoe UI",
     system-ui,
     -apple-system,

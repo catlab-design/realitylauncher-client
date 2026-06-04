@@ -44,6 +44,8 @@ interface ExploreToolbarProps {
     showCategoryFilter?: boolean;
     /** Hide the environment section (e.g. modpacks). */
     showEnvironmentFilter?: boolean;
+    /** Hide the filter menu entirely (e.g. when adding content to an instance). */
+    hideFilterMenu?: boolean;
 }
 
 export function ExploreToolbar({
@@ -72,6 +74,7 @@ export function ExploreToolbar({
     onEnvironmentFiltersChange,
     showCategoryFilter = true,
     showEnvironmentFilter = true,
+    hideFilterMenu = false,
 }: ExploreToolbarProps) {
     const { t } = useTranslation();
     const currentTab = PROJECT_TABS.find((p) => p.id === projectType);
@@ -117,22 +120,24 @@ export function ExploreToolbar({
                     <i className="fa-solid fa-search text-sm absolute left-4 top-1/2 -translate-y-1/2" style={{ color: colors.onSurfaceVariant }}></i>
                 </div>
 
-                {/* Single "ตัวกรอง" trigger — opens a popover with all 4 filter sections. */}
-                <FilterMenu
-                    colors={colors}
-                    sortBy={sortBy}
-                    mcVersionFilters={mcVersionFilters}
-                    loaderFilters={loaderFilters}
-                    categoryFilters={categoryFilters}
-                    environmentFilters={environmentFilters}
-                    onSortChange={onSortChange}
-                    onMcVersionFiltersChange={onMcVersionFiltersChange}
-                    onLoaderFiltersChange={onLoaderFiltersChange}
-                    onCategoryFiltersChange={onCategoryFiltersChange}
-                    onEnvironmentFiltersChange={onEnvironmentFiltersChange}
-                    showCategoryFilter={showCategoryFilter}
-                    showEnvironmentFilter={showEnvironmentFilter}
-                />
+                {/* Single "ตัวกรอง" trigger — opens a popover with all 4 filter sections. Hidden when adding content to instance. */}
+                {!hideFilterMenu && (
+                    <FilterMenu
+                        colors={colors}
+                        sortBy={sortBy}
+                        mcVersionFilters={mcVersionFilters}
+                        loaderFilters={loaderFilters}
+                        categoryFilters={categoryFilters}
+                        environmentFilters={environmentFilters}
+                        onSortChange={onSortChange}
+                        onMcVersionFiltersChange={onMcVersionFiltersChange}
+                        onLoaderFiltersChange={onLoaderFiltersChange}
+                        onCategoryFiltersChange={onCategoryFiltersChange}
+                        onEnvironmentFiltersChange={onEnvironmentFiltersChange}
+                        showCategoryFilter={showCategoryFilter}
+                        showEnvironmentFilter={showEnvironmentFilter}
+                    />
+                )}
 
                 {/* Source buttons */}
                 <div className="grid grid-cols-2 gap-2 w-full sm:w-auto md:min-w-[260px]">

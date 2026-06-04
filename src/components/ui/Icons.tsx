@@ -356,5 +356,19 @@ export const Icons = {
             <path d="M21 10.12h-6.78l2.74-2.82c-2.73-2.7-7.15-2.8-9.88-.1-2.73 2.71-2.73 7.08 0 9.79 2.73 2.71 7.15 2.71 9.88 0C18.32 15.65 19 14.08 19 12.1h2c0 1.98-.88 4.55-2.64 6.29-3.51 3.48-9.21 3.48-12.72 0-3.51-3.47-3.51-9.11 0-12.58 3.51-3.47 9.21-3.47 12.72 0l2.72-2.82z"/>
         </svg>
     ),
+    Grid: (props: IconProps) => (
+        <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+            <path d="M4 11h6V4H4v7zm0 9h6v-7H4v7zm8-9h6V4h-6v7zm0 9h6v-7h-6v7z" />
+        </svg>
+    ),
+    Table: (props: IconProps) => (
+        <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+            <path d="M4 3h16a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm0 4h16V5H4v2zm0 5h16V9H4v3zm0 5h16v-3H4v3z" />
+        </svg>
+    ),
+    List: (props: IconProps) => (
+        <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+            <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z" />
+        </svg>
+    ),
 };
-

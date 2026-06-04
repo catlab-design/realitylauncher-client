@@ -3,7 +3,6 @@ import { persist } from 'zustand/middleware';
 import { type LauncherConfig } from '../types/launcher';
 
 interface ConfigState extends LauncherConfig {
-    
     setConfig: (config: Partial<LauncherConfig>) => void;
     resetConfig: () => void;
     setTheme: (theme: LauncherConfig['theme']) => void;
@@ -26,6 +25,8 @@ const defaultConfig: LauncherConfig = {
     clickSoundEnabled: true,
     notificationSoundEnabled: true,
     rainbowMode: false,
+    backgroundImage: "",
+    backgroundImageOpacity: 0.15,
     fullscreen: false,
     javaArguments: "",
     maxConcurrentDownloads: 8,

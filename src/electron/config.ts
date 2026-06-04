@@ -1,13 +1,7 @@
-
-
 import { app } from "electron";
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
-
-
-
-
 
 export type ColorTheme =
   | "yellow"
@@ -20,13 +14,11 @@ export type ColorTheme =
 export type LauncherCloseMode = "keep-open" | "hide-reopen" | "close";
 
 export interface LauncherConfig {
-  
   theme: "light" | "dark" | "oled" | "auto";
   colorTheme: ColorTheme;
   customColor?: string;
   language: "th" | "en";
 
-  
   selectedVersion: string;
   minRamMB: number;
   ramMB: number;
@@ -40,45 +32,30 @@ export interface LauncherConfig {
   javaArguments: string;
   customMinecraftDir?: string;
 
-  
   maxConcurrentDownloads: number;
   downloadSpeedLimit: number; 
   cacheDir?: string;
 
-  
   windowAutoSize: boolean;
   windowWidth: number;
   windowHeight: number;
 
-  
   discordRPCEnabled: boolean;
 
-  
   telemetryEnabled: boolean;
   clientId?: string; 
   hasLaunchedBefore?: boolean; 
 
-  
   autoUpdateEnabled: boolean; 
 
-  
   clickSoundEnabled: boolean; 
   notificationSoundEnabled: boolean; 
   rainbowMode: boolean; 
-
-  
-  
-  
-  
+  backgroundImage?: string;
+  backgroundImageOpacity?: number;
   closeOnLaunch: LauncherCloseMode;
-
-  
   ignoredCloudIds?: string[];
 }
-
-
-
-
 
 export const COLOR_THEMES: ColorTheme[] = [
   "yellow",
@@ -110,19 +87,16 @@ const DEFAULT_CONFIG: LauncherConfig = {
   clickSoundEnabled: true, 
   notificationSoundEnabled: true, 
   rainbowMode: false, 
+  backgroundImage: "",
+  backgroundImageOpacity: 0.15,
   closeOnLaunch: "keep-open", 
 };
-
-
-
-
 
 let currentConfig: LauncherConfig = { ...DEFAULT_CONFIG };
 let configLoaded = false;
 const CONFIG_SAVE_DEBOUNCE_MS = 150;
 let saveConfigTimer: NodeJS.Timeout | null = null;
 let pendingConfigSnapshot: LauncherConfig | null = null;
-
 
 export function getAppDataDir(): string {
   const platform = process.platform;
@@ -276,6 +250,5 @@ export function validateJavaPath(javaPath: string): boolean {
     return false;
   }
 }
-
 
 

@@ -184,6 +184,15 @@ export async function refreshMicrosoftTokenIfNeeded(
       },
     );
 
+    if (!xblResponse.ok) {
+      return {
+        ok: false,
+        refreshed: false,
+        session: getSession(),
+        error: `Xbox Live authentication failed (${xblResponse.status})`,
+      };
+    }
+
     const xblData = await readJsonSafe(xblResponse);
     const userHash = xblData.DisplayClaims?.xui?.[0]?.uhs;
     if (!xblData.Token || !userHash) {
@@ -211,6 +220,15 @@ export async function refreshMicrosoftTokenIfNeeded(
       },
     );
 
+    if (!xstsResponse.ok) {
+      return {
+        ok: false,
+        refreshed: false,
+        session: getSession(),
+        error: `XSTS failed (${xstsResponse.status})`,
+      };
+    }
+
     const xstsData = await readJsonSafe(xstsResponse);
     if (!xstsData.Token) {
       return {
@@ -231,6 +249,15 @@ export async function refreshMicrosoftTokenIfNeeded(
         }),
       },
     );
+
+    if (!mcResponse.ok) {
+      return {
+        ok: false,
+        refreshed: false,
+        session: getSession(),
+        error: `Minecraft auth failed (${mcResponse.status})`,
+      };
+    }
 
     const mcData = await readJsonSafe(mcResponse);
     if (!mcData.access_token) {

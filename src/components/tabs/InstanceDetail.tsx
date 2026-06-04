@@ -1045,7 +1045,7 @@ export function InstanceDetail({
 
     return (
         <div
-            className="space-y-4 relative w-full"
+            className="space-y-4 relative w-full animate-fade-in"
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}

@@ -42,6 +42,7 @@ export interface GameInstance {
   autoUpdate?: boolean;
   banner?: string;
   lockedMods?: string[];
+  serverIps?: string[];
 }
 
 export interface CreateInstanceOptions {
@@ -386,6 +387,7 @@ export async function importCloudInstance(
     autoUpdate:
       existingIndex !== -1 ? instances[existingIndex].autoUpdate : true,
     banner: cloudData.bannerUrl || cloudData.image,
+    serverIps: Array.isArray(cloudData.serverIps) ? cloudData.serverIps : undefined,
   };
 
   if (existingIndex !== -1) {
