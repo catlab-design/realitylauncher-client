@@ -4,7 +4,6 @@ import { useTranslation } from "../../hooks/useTranslation";
 import { Icons } from "../ui/Icons";
 import { MCHead } from "../ui/MCHead";
 
-import rBackground from "../../assets/r_background.svg";
 import rdcwLogo from "../../assets/rdcw_logo_transparent.webp";
 import blueMemoryLogo from "../../assets/icon.webp";
 
@@ -39,38 +38,7 @@ const TEAM: TeamMember[] = [
 ];
 
 const BackgroundDecorations = ({ colors }: { colors: any }) => {
-    return (
-        <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10 opacity-30">
-            <motion.div
-                animate={{
-                    x: [0, 50, -30, 0],
-                    y: [0, -40, 60, 0],
-                    scale: [1, 1.2, 0.9, 1],
-                }}
-                transition={{
-                    duration: 15,
-                    repeat: Infinity,
-                    ease: "linear"
-                }}
-                className="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] blur-[120px] rounded-full opacity-60"
-                style={{ backgroundColor: colors.primary }}
-            />
-            <motion.div
-                animate={{
-                    x: [0, -60, 40, 0],
-                    y: [0, 80, -50, 0],
-                    scale: [1, 1.1, 1.3, 1],
-                }}
-                transition={{
-                    duration: 20,
-                    repeat: Infinity,
-                    ease: "linear"
-                }}
-                className="absolute -bottom-[10%] -right-[10%] w-[50%] h-[50%] blur-[150px] rounded-full opacity-40"
-                style={{ backgroundColor: colors.secondary || colors.primary }}
-            />
-        </div>
-    );
+    return null;
 };
 
 export function About({ colors, config }: { colors: any; config?: { language?: "th" | "en" } }) {
@@ -136,7 +104,7 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
         <div
             ref={containerRef}
             className="relative h-full flex flex-col p-8 overflow-y-auto custom-scrollbar no-drag"
-            style={{ fontFamily: fontStack, backgroundColor: colors.surface }}
+            style={{ fontFamily: fontStack, backgroundColor: "transparent" }}
         >
             <BackgroundDecorations colors={colors} />
 
@@ -149,7 +117,7 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
                 {/* Original Horizontal Header */}
                 <motion.div variants={itemVariants} className="flex items-center gap-6 pt-4">
                     <img
-                        src={rBackground.src}
+                        src="/r.png"
                         alt="Reality"
                         className="w-14 h-14 rounded-2xl border border-white/10"
                     />

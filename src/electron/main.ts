@@ -360,7 +360,17 @@ app.whenReady().then(async () => {
   // Initialize delayed services after UI is ready
   setTimeout(async () => {
     if (config.discordRPCEnabled) {
-      const { initDiscordRPC } = await import("./discord.js");
+      const { initDiscordRPC, setPlayerInfo } = await import("./discord.js");
+      const { getSession } = await import("./auth.js");
+      const session = getSession();
+      if (session) {
+        setPlayerInfo(
+          session.minecraftUuid || session.uuid,
+          session.username,
+          session.avatarUrl,
+          session.avatarSource
+        );
+      }
       initDiscordRPC().catch(err => logger.error("Discord RPC error", err));
     }
 

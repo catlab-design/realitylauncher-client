@@ -1,4 +1,5 @@
 import React from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { Icons } from "../ui/Icons";
 import { useTranslation } from "../../hooks/useTranslation";
 import { playClick } from "../../lib/sounds";
@@ -20,101 +21,122 @@ export function LoginModal({
 }: LoginModalProps) {
     const { t } = useTranslation();
 
-    if (!isOpen) return null;
+    const handleClose = () => {
+        playClick();
+        onClose();
+    };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
-            <div className="flex w-full max-w-2xl h-[480px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden"
-                style={{ backgroundColor: colors.surface }}>
-
-                {/* Left Branding Side */}
-                <div className="w-[35%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5"
-                    style={{ backgroundColor: `${colors.secondary}10` }}>
-                    <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-yellow-500/10 to-transparent pointer-events-none" />
-                    <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-yellow-500/30 z-10"
-                        style={{ backgroundColor: colors.secondary }}>
-                        <Icons.Login className="w-10 h-10" style={{ color: "#1a1a1a" }} />
-                    </div>
-                    <h2 className="text-2xl font-black tracking-tighter text-center z-10" style={{ color: colors.onSurface }}>
-                        {t('login')}
-                    </h2>
-                    <div className="mt-2 px-3 py-1 rounded-full bg-yellow-500/20 text-[10px] font-black uppercase tracking-widest z-10"
-                        style={{ color: colors.secondary }}>
-                        {t('access_point')}
-                    </div>
-                    <p className="mt-8 text-xs font-bold opacity-30 text-center leading-relaxed z-10"
-                        style={{ color: colors.onSurface }}
-                        dangerouslySetInnerHTML={{ __html: t('login_method_desc') }}
-                    />
-                </div>
-
-                {/* Right Side - Buttons */}
-                <div className="flex-1 p-10 flex flex-col relative">
-                    {/* Close Button */}
-                    <button
-                        onClick={() => {
-                            playClick();
-                            onClose();
-                        }}
-                        className="absolute top-6 right-6 w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors z-20"
-                        style={{ color: colors.onSurfaceVariant }}
+        <AnimatePresence>
+            {isOpen && (
+                <motion.div
+                    className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5"
+                    onClick={handleClose}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0, transition: { duration: 0.18, ease: "easeInOut" } }}
+                    transition={{ duration: 0.24, ease: "easeOut" }}
+                >
+                    <motion.div
+                        role="dialog"
+                        aria-modal="true"
+                        className="flex w-full max-w-[480px] flex-col overflow-hidden rounded-2xl border border-white/10"
+                        style={{ backgroundColor: colors.surface }}
+                        onClick={(e) => e.stopPropagation()}
+                        initial={{ opacity: 0, y: 28, scale: 0.975 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 18, scale: 0.985 }}
+                        transition={{ type: "spring", stiffness: 260, damping: 28, mass: 0.9 }}
                     >
-                        <Icons.Close className="w-6 h-6" />
-                    </button>
-
-                    <div className="mb-8">
-                        <h3 className="text-2xl font-black tracking-tight" style={{ color: colors.onSurface }}>
-                            {t('login')}
-                        </h3>
-                        <p className="text-sm font-medium opacity-60" style={{ color: colors.onSurfaceVariant }}>
-                            {t('login_subtitle')}
-                        </p>
-                    </div>
-
-                    <div className="space-y-3.5 flex-1">
-                        {/* Microsoft Login Button */}
-                        <button
-                            onClick={() => {
-                                playClick();
-                                onMicrosoftLogin();
+                        {/* Header */}
+                        <div
+                            className="flex items-center justify-between border-b px-6 py-4"
+                            style={{
+                                borderColor: `${colors.onSurface}10`,
+                                backgroundColor: colors.surfaceContainerLow || colors.surfaceContainer,
                             }}
-                            className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all hover:scale-[1.02] active:scale-[0.98] border border-white/5 shadow-lg group"
-                            style={{ backgroundColor: "#2f2f2f", color: "#ffffff" }}
                         >
-                            <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center">
-                                <svg className="w-6 h-6" viewBox="0 0 21 21" fill="currentColor">
-                                    <rect x="1" y="1" width="9" height="9" fill="#F25022" />
-                                    <rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
-                                    <rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
-                                    <rect x="11" y="11" width="9" height="9" fill="#FFB900" />
-                                </svg>
+                            <div className="flex items-center gap-4">
+                                <div
+                                    className="flex h-10 w-10 items-center justify-center rounded-md"
+                                    style={{
+                                        backgroundColor: colors.secondary,
+                                        color: "#1a1a1a",
+                                    }}
+                                >
+                                    <Icons.Login className="h-5.5 w-5.5" />
+                                </div>
+                                <div>
+                                    <h2 className="text-base font-black tracking-tight" style={{ color: colors.onSurface }}>
+                                        {t('login')}
+                                    </h2>
+                                    <p className="text-xs opacity-75" style={{ color: colors.onSurfaceVariant }}>
+                                        {t('login_subtitle')}
+                                    </p>
+                                </div>
                             </div>
-                            <div className="text-left">
-                                <div className="font-black text-base">{t('ms_account')}</div>
-                                <div className="text-[10px] uppercase font-bold tracking-widest opacity-40">{t('premium_authentic')}</div>
-                            </div>
-                        </button>
 
-                        {/* CatID Login Button */}
-                        <button
-                            onClick={() => {
-                                playClick();
-                                onCatIDLogin();
-                            }}
-                            className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl transition-all hover:scale-[1.02] active:scale-[0.98] border border-white/5 shadow-lg group"
-                            style={{ backgroundColor: "#8b5cf6", color: "#ffffff" }}
-                        >
-                            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
-                                <Icons.Person className="w-6 h-6 text-white" />
-                            </div>
-                            <div className="text-left">
-                                <div className="font-black text-base">{t('id_catlab')}</div>
-                                <div className="text-[10px] uppercase font-bold tracking-widest opacity-40">{t('identity_verification')}</div>
-                            </div>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
+                            <button
+                                type="button"
+                                onClick={handleClose}
+                                className="flex h-10 w-10 items-center justify-center rounded-full border transition-all hover:bg-white/10"
+                                style={{
+                                    color: colors.onSurface,
+                                    borderColor: `${colors.onSurface}15`,
+                                    backgroundColor: colors.surfaceContainer,
+                                }}
+                                aria-label={t('close')}
+                            >
+                                <Icons.Close className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="px-6 py-6 flex flex-col gap-4">
+                            {/* Microsoft Login Button */}
+                            <button
+                                onClick={() => {
+                                    playClick();
+                                    onMicrosoftLogin();
+                                }}
+                                className="w-full flex items-center gap-4 px-5 py-4 rounded-xl transition-all hover:scale-[1.01] active:scale-[0.99] border border-white/5 shadow-md hover:brightness-110"
+                                style={{ backgroundColor: "#2f2f2f", color: "#ffffff" }}
+                            >
+                                <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
+                                    <svg className="w-5.5 h-5.5" viewBox="0 0 21 21" fill="currentColor">
+                                        <rect x="1" y="1" width="9" height="9" fill="#F25022" />
+                                        <rect x="11" y="1" width="9" height="9" fill="#7FBA00" />
+                                        <rect x="1" y="11" width="9" height="9" fill="#00A4EF" />
+                                        <rect x="11" y="11" width="9" height="9" fill="#FFB900" />
+                                    </svg>
+                                </div>
+                                <div className="text-left">
+                                    <div className="font-black text-sm">{t('ms_account')}</div>
+                                    <div className="text-[9px] uppercase font-bold tracking-widest opacity-40">{t('premium_authentic')}</div>
+                                </div>
+                            </button>
+
+                            {/* CatID Login Button */}
+                            <button
+                                onClick={() => {
+                                    playClick();
+                                    onCatIDLogin();
+                                }}
+                                className="w-full flex items-center gap-4 px-5 py-4 rounded-xl transition-all hover:scale-[1.01] active:scale-[0.99] border border-white/5 shadow-md hover:brightness-110"
+                                style={{ backgroundColor: "#8b5cf6", color: "#ffffff" }}
+                            >
+                                <div className="w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+                                    <Icons.Person className="w-5.5 h-5.5 text-white" />
+                                </div>
+                                <div className="text-left">
+                                    <div className="font-black text-sm">{t('id_catlab')}</div>
+                                    <div className="text-[9px] uppercase font-bold tracking-widest opacity-40">{t('identity_verification')}</div>
+                                </div>
+                            </button>
+                        </div>
+                    </motion.div>
+                </motion.div>
+            )}
+        </AnimatePresence>
     );
 }

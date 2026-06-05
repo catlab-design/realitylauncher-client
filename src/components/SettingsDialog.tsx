@@ -109,15 +109,15 @@ export function SettingsDialog({
               <button
                 type="button"
                 onClick={handleClose}
-                className="flex items-center gap-2 rounded-md border px-3.5 py-1.5 text-xs font-bold transition-all hover:bg-white/5"
+                className="flex h-10 w-10 items-center justify-center rounded-full border transition-all hover:bg-white/10"
                 style={{
                   color: colors.onSurface,
                   borderColor: `${colors.onSurface}15`,
                   backgroundColor: colors.surfaceContainer,
                 }}
+                aria-label={t("close")}
               >
-                <Icons.Close className="h-3.5 w-3.5" />
-                <span>{t("close")}</span>
+                <Icons.Close className="h-5 w-5" />
               </button>
             </motion.div>
 

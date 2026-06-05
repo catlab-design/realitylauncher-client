@@ -261,184 +261,156 @@ export function LauncherAppOverlays({
       />
 
       {catIDRegisterOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5 animate-in fade-in duration-300">
           <div
-            className="flex w-full max-w-2xl h-[520px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden"
+            className="flex w-full max-w-[480px] flex-col overflow-hidden rounded-2xl border border-white/10"
             style={{ backgroundColor: colors.surface }}
           >
+            {/* Header */}
             <div
-              className="w-[35%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5"
-              style={{ backgroundColor: `${"#8b5cf6"}10` }}
+              className="flex items-center justify-between border-b px-6 py-4"
+              style={{
+                borderColor: `${colors.onSurface}10`,
+                backgroundColor: colors.surfaceContainerLow || colors.surfaceContainer,
+              }}
             >
-              <div className="absolute top-0 left-0 w-full h-full bg-linear-to-b from-purple-500/10 to-transparent pointer-events-none" />
-              <div
-                className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-purple-500/30 z-10"
-                style={{ backgroundColor: "#8b5cf6" }}
-              >
-                <svg className="w-10 h-10" viewBox="0 0 24 24" fill="#ffffff">
-                  <path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-                </svg>
+              <div className="flex items-center gap-4">
+                <div
+                  className="flex h-10 w-10 items-center justify-center rounded-md"
+                  style={{
+                    backgroundColor: "#8b5cf6",
+                    color: "#ffffff",
+                  }}
+                >
+                  <svg className="w-5.5 h-5.5" viewBox="0 0 24 24" fill="#ffffff">
+                    <path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+                  </svg>
+                </div>
+                <div>
+                  <h2 className="text-base font-black tracking-tight" style={{ color: colors.onSurface }}>
+                    {t("create_new_account")}
+                  </h2>
+                  <p className="text-xs opacity-75" style={{ color: colors.onSurfaceVariant }}>
+                    {t("start_new_journey")}
+                  </p>
+                </div>
               </div>
-              <h2
-                className="text-2xl font-black tracking-tighter text-center z-10"
-                style={{ color: colors.onSurface }}
+
+              <button
+                type="button"
+                onClick={() => setCatIDRegisterOpen(false)}
+                className="flex h-10 w-10 items-center justify-center rounded-full border transition-all hover:bg-white/10"
+                style={{
+                  color: colors.onSurface,
+                  borderColor: `${colors.onSurface}15`,
+                  backgroundColor: colors.surfaceContainer,
+                }}
+                aria-label={t("close")}
               >
-                {t("join_the_journey")}
-              </h2>
-              <div
-                className="mt-2 px-3 py-1 rounded-full bg-purple-500/20 text-[10px] font-black uppercase tracking-widest z-10"
-                style={{ color: "#8b5cf6" }}
-              >
-                {t("create_new_id")}
-              </div>
-              <p
-                className="mt-8 text-xs font-bold opacity-30 text-center leading-relaxed z-10"
-                style={{ color: colors.onSurface }}
-              >
-                {t("create_your_identity_catlab")}
-              </p>
+                <Icons.Close className="w-5 h-5" />
+              </button>
             </div>
 
-            <div className="flex-1 p-10 flex flex-col relative">
-              <button
-                onClick={() => setCatIDRegisterOpen(false)}
-                className="absolute top-6 right-6 w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors z-20"
-                style={{ color: colors.onSurfaceVariant }}
-              >
-                <Icons.Close className="w-6 h-6" />
-              </button>
-
-              <div className="mb-6">
-                <h3
-                  className="text-2xl font-black tracking-tight"
-                  style={{ color: colors.onSurface }}
-                >
-                  {t("create_new_account")}
-                </h3>
-                <p
-                  className="text-sm font-medium opacity-60"
-                  style={{ color: colors.onSurfaceVariant }}
-                >
-                  {t("start_new_journey")}
-                </p>
-              </div>
-
-              <div className="space-y-3.5 flex-1">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <label
-                      className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider"
-                      style={{ color: colors.onSurface }}
-                    >
-                      {t("username")}
-                    </label>
-                    <input
-                      id="catid-reg-username"
-                      type="text"
-                      placeholder={t("username_placeholder")}
-                      className="w-full px-4 py-3 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-purple-500/10"
-                      style={{
-                        borderColor: "transparent",
-                        backgroundColor: colors.surfaceContainer,
-                        color: colors.onSurface,
-                      }}
-                      value={catIDRegisterData.username}
-                      onChange={(e) =>
-                        setCatIDRegisterData((prev) => ({
-                          ...prev,
-                          username: e.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label
-                      className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider"
-                      style={{ color: colors.onSurface }}
-                    >
-                      {t("email")}
-                    </label>
-                    <input
-                      id="catid-reg-email"
-                      type="email"
-                      placeholder={t("email")}
-                      className="w-full px-4 py-3 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-purple-500/10"
-                      style={{
-                        borderColor: "transparent",
-                        backgroundColor: colors.surfaceContainer,
-                        color: colors.onSurface,
-                      }}
-                      value={catIDRegisterData.email}
-                      onChange={(e) =>
-                        setCatIDRegisterData((prev) => ({
-                          ...prev,
-                          email: e.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                </div>
-
+            {/* Content */}
+            <div className="px-6 py-6 flex flex-col gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label
-                    className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider"
-                    style={{ color: colors.onSurface }}
-                  >
-                    {t("password")}
+                  <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>
+                    {t("username")}
                   </label>
                   <input
-                    id="catid-reg-password"
-                    type="password"
-                    placeholder={t("password")}
-                    className="w-full px-5 py-3 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-purple-500/10"
+                    id="catid-reg-username"
+                    type="text"
+                    placeholder={t("username_placeholder")}
+                    className="w-full px-4 py-3 rounded-xl border border-white/5 transition-all outline-none focus:ring-2 focus:ring-purple-500/30"
                     style={{
-                      borderColor: "transparent",
                       backgroundColor: colors.surfaceContainer,
                       color: colors.onSurface,
                     }}
-                    value={catIDRegisterData.password}
+                    value={catIDRegisterData.username}
                     onChange={(e) =>
                       setCatIDRegisterData((prev) => ({
                         ...prev,
-                        password: e.target.value,
+                        username: e.target.value,
                       }))
                     }
                   />
                 </div>
-
                 <div className="space-y-1.5">
-                  <label
-                    className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider"
-                    style={{ color: colors.onSurface }}
-                  >
-                    {t("confirm_password")}
+                  <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>
+                    {t("email")}
                   </label>
                   <input
-                    id="catid-reg-confirm"
-                    type="password"
-                    placeholder={t("confirm_password")}
-                    className="w-full px-5 py-3 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-purple-500/10"
+                    id="catid-reg-email"
+                    type="email"
+                    placeholder={t("email")}
+                    className="w-full px-4 py-3 rounded-xl border border-white/5 transition-all outline-none focus:ring-2 focus:ring-purple-500/30"
                     style={{
-                      borderColor: "transparent",
                       backgroundColor: colors.surfaceContainer,
                       color: colors.onSurface,
                     }}
-                    value={catIDRegisterData.confirmPassword}
+                    value={catIDRegisterData.email}
                     onChange={(e) =>
                       setCatIDRegisterData((prev) => ({
                         ...prev,
-                        confirmPassword: e.target.value,
+                        email: e.target.value,
                       }))
                     }
                   />
                 </div>
               </div>
 
-              <div className="flex flex-col gap-3 mt-8">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>
+                  {t("password")}
+                </label>
+                <input
+                  id="catid-reg-password"
+                  type="password"
+                  placeholder={t("password")}
+                  className="w-full px-4 py-3 rounded-xl border border-white/5 transition-all outline-none focus:ring-2 focus:ring-purple-500/30"
+                  style={{
+                    backgroundColor: colors.surfaceContainer,
+                    color: colors.onSurface,
+                  }}
+                  value={catIDRegisterData.password}
+                  onChange={(e) =>
+                    setCatIDRegisterData((prev) => ({
+                      ...prev,
+                      password: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>
+                  {t("confirm_password")}
+                </label>
+                <input
+                  id="catid-reg-confirm"
+                  type="password"
+                  placeholder={t("confirm_password")}
+                  className="w-full px-4 py-3 rounded-xl border border-white/5 transition-all outline-none focus:ring-2 focus:ring-purple-500/30"
+                  style={{
+                    backgroundColor: colors.surfaceContainer,
+                    color: colors.onSurface,
+                  }}
+                  value={catIDRegisterData.confirmPassword}
+                  onChange={(e) =>
+                    setCatIDRegisterData((prev) => ({
+                      ...prev,
+                      confirmPassword: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+
+              <div className="flex flex-col gap-2 mt-4">
                 <button
                   onClick={() => void handleCatIDRegister()}
                   disabled={isRegistering}
-                  className="w-full py-4 rounded-2xl font-black text-lg transition-all hover:scale-[1.02] shadow-lg shadow-purple-500/20 disabled:opacity-50"
+                  className="w-full py-3.5 rounded-xl font-black text-sm transition-all hover:scale-[1.01] active:scale-[0.99] shadow-md disabled:opacity-50"
                   style={{ backgroundColor: "#8b5cf6", color: "#ffffff" }}
                 >
                   {t("register_now")}
@@ -448,7 +420,7 @@ export function LauncherAppOverlays({
                     setCatIDRegisterOpen(false);
                     setCatIDLoginOpen(true);
                   }}
-                  className="w-full py-3 rounded-2xl font-bold opacity-60 hover:opacity-100 transition-all text-sm"
+                  className="w-full py-2.5 rounded-xl font-bold opacity-60 hover:opacity-100 transition-all text-xs"
                   style={{ color: colors.onSurface }}
                 >
                   {t("already_have_account")}
@@ -460,73 +432,82 @@ export function LauncherAppOverlays({
       )}
 
       {verificationWaiting && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5 animate-in fade-in duration-300">
           <div
-            className="w-full max-w-md rounded-4xl shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden p-8"
+            className="flex w-full max-w-[480px] flex-col overflow-hidden rounded-2xl border border-white/10"
             style={{ backgroundColor: colors.surface }}
           >
-            <div className="flex-1 p-10 flex flex-col items-center justify-center text-center">
-              <div
-                className="w-20 h-20 rounded-4xl flex items-center justify-center mb-8 relative"
-                style={{ backgroundColor: `${colors.secondary}20` }}
-              >
-                <Icons.Email
-                  className="w-10 h-10 animate-bounce"
-                  style={{ color: colors.secondary }}
-                />
+            {/* Header */}
+            <div
+              className="flex items-center justify-between border-b px-6 py-4"
+              style={{
+                borderColor: `${colors.onSurface}10`,
+                backgroundColor: colors.surfaceContainerLow || colors.surfaceContainer,
+              }}
+            >
+              <div className="flex items-center gap-4">
                 <div
-                  className="absolute -top-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center animate-pulse"
-                  style={{ backgroundColor: colors.secondary }}
+                  className="flex h-10 w-10 items-center justify-center rounded-md animate-pulse"
+                  style={{
+                    backgroundColor: `${colors.secondary}20`,
+                    color: colors.secondary,
+                  }}
                 >
-                  <Icons.Timer
-                    className="w-3.5 h-3.5"
-                    style={{ color: "#1a1a1a" }}
-                  />
+                  <Icons.Email className="h-5.5 w-5.5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-black tracking-tight" style={{ color: colors.onSurface }}>
+                    {t("verification_waiting")}
+                  </h2>
+                  <p className="text-xs opacity-75" style={{ color: colors.onSurfaceVariant }}>
+                    {t("verification_check_email")}
+                  </p>
                 </div>
               </div>
 
-              <h3
-                className="text-3xl font-black tracking-tight mb-4"
-                style={{ color: colors.onSurface }}
+              <button
+                type="button"
+                onClick={() => {
+                  setVerificationWaiting(false);
+                  setVerificationToken(null);
+                }}
+                className="flex h-10 w-10 items-center justify-center rounded-full border transition-all hover:bg-white/10"
+                style={{
+                  color: colors.onSurface,
+                  borderColor: `${colors.onSurface}15`,
+                  backgroundColor: colors.surfaceContainer,
+                }}
+                aria-label={t("close")}
               >
-                {t("verification_waiting")}
-              </h3>
+                <Icons.Close className="w-5 h-5" />
+              </button>
+            </div>
 
-              <div className="space-y-4 max-w-sm">
-                <p
-                  className="text-base font-medium opacity-80"
-                  style={{ color: colors.onSurface }}
-                >
-                  {t("verification_check_email")}
-                </p>
-                <div className="px-4 py-3 rounded-2xl bg-white/5 border border-white/5">
-                  <span
-                    className="text-sm font-black opacity-40 mr-2"
-                    style={{ color: colors.onSurface }}
-                  >
-                    EMAIL:
-                  </span>
-                  <span
-                    className="text-sm font-bold"
-                    style={{ color: colors.secondary }}
-                  >
-                    {verificationEmail}
-                  </span>
-                </div>
-                <p
-                  className="text-xs opacity-50 leading-relaxed"
-                  style={{ color: colors.onSurfaceVariant }}
-                >
-                  {t("verification_spam_hint")}
-                </p>
+            {/* Content */}
+            <div className="px-6 py-6 flex flex-col items-center text-center gap-4">
+              <p className="text-sm font-medium opacity-80" style={{ color: colors.onSurface }}>
+                {t("verification_check_email")}
+              </p>
+              
+              <div className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/5 flex items-center justify-center gap-2">
+                <span className="text-xs font-black opacity-40 uppercase" style={{ color: colors.onSurface }}>
+                  EMAIL:
+                </span>
+                <span className="text-xs font-black" style={{ color: colors.secondary }}>
+                  {verificationEmail}
+                </span>
               </div>
+              
+              <p className="text-xs opacity-50 leading-relaxed max-w-xs" style={{ color: colors.onSurfaceVariant }}>
+                {t("verification_spam_hint")}
+              </p>
 
-              <div className="w-full h-px my-10 bg-white/5" />
+              <div className="w-full h-px my-2" style={{ backgroundColor: `${colors.onSurface}10` }} />
 
-              <div className="flex flex-col gap-3 w-full">
+              <div className="flex flex-col gap-2 w-full">
                 <button
                   onClick={() => void handleManualVerificationCheck()}
-                  className="w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xl shadow-yellow-500/10"
+                  className="w-full py-3.5 rounded-xl font-black text-sm uppercase tracking-widest transition-all hover:scale-[1.01] active:scale-[0.99] shadow-md"
                   style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
                 >
                   {t("verification_confirm_btn")}
@@ -537,7 +518,7 @@ export function LauncherAppOverlays({
                     setVerificationWaiting(false);
                     setVerificationToken(null);
                   }}
-                  className="w-full py-4 rounded-2xl font-bold text-sm opacity-50 hover:opacity-100 hover:bg-white/5 transition-all"
+                  className="w-full py-2.5 rounded-xl font-bold text-xs opacity-50 hover:opacity-100 hover:bg-white/5 transition-all"
                   style={{ color: colors.onSurface }}
                 >
                   {t("cancel")}
@@ -549,52 +530,49 @@ export function LauncherAppOverlays({
       )}
 
       {forgotPasswordOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5 animate-in fade-in duration-300">
           <div
-            className="flex w-full max-w-2xl h-[480px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden"
+            className="flex w-full max-w-[480px] flex-col overflow-hidden rounded-2xl border border-white/10"
             style={{ backgroundColor: colors.surface }}
           >
+            {/* Header */}
             <div
-              className="w-[38%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5"
-              style={{ backgroundColor: `${colors.secondary}10` }}
+              className="flex items-center justify-between border-b px-6 py-4"
+              style={{
+                borderColor: `${colors.onSurface}10`,
+                backgroundColor: colors.surfaceContainerLow || colors.surfaceContainer,
+              }}
             >
-              <div className="absolute top-0 left-0 w-full h-full bg-linear-to-b from-yellow-500/10 to-transparent pointer-events-none" />
-              <div
-                className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-yellow-500/30 z-10"
-                style={{ backgroundColor: colors.secondary }}
-              >
-                {forgotPasswordStep === "email" ? (
-                  <Icons.Info className="w-10 h-10 text-black" />
-                ) : (
-                  <Icons.Key className="w-10 h-10 text-black" />
-                )}
+              <div className="flex items-center gap-4">
+                <div
+                  className="flex h-10 w-10 items-center justify-center rounded-md"
+                  style={{
+                    backgroundColor: colors.secondary,
+                    color: "#1a1a1a",
+                  }}
+                >
+                  {forgotPasswordStep === "email" ? (
+                    <Icons.Info className="h-5.5 w-5.5" />
+                  ) : (
+                    <Icons.Key className="h-5.5 w-5.5" />
+                  )}
+                </div>
+                <div>
+                  <h2 className="text-base font-black tracking-tight" style={{ color: colors.onSurface }}>
+                    {forgotPasswordStep === "email"
+                      ? t("recovery_id")
+                      : t("reset_password")}
+                  </h2>
+                  <p className="text-xs opacity-75" style={{ color: colors.onSurfaceVariant }}>
+                    {forgotPasswordStep === "email"
+                      ? t("forgot_password_desc")
+                      : t("check_email_otp")}
+                  </p>
+                </div>
               </div>
-              <h2
-                className="text-2xl font-black tracking-tighter text-center z-10"
-                style={{ color: colors.onSurface }}
-              >
-                {forgotPasswordStep === "email"
-                  ? t("recovery_id")
-                  : t("reset_password")}
-              </h2>
-              <div
-                className="mt-2 px-3 py-1 rounded-full bg-yellow-500/20 text-[10px] font-black uppercase tracking-widest z-10"
-                style={{ color: colors.secondary }}
-              >
-                {t("support_team")}
-              </div>
-              <p
-                className="mt-8 text-xs font-bold opacity-30 text-center leading-relaxed z-10"
-                style={{ color: colors.onSurface }}
-              >
-                {forgotPasswordStep === "email"
-                  ? t("forgot_password_desc")
-                  : t("check_email_otp")}
-              </p>
-            </div>
 
-            <div className="flex-1 p-10 flex flex-col relative justify-center">
               <button
+                type="button"
                 onClick={() => {
                   setForgotPasswordOpen(false);
                   setForgotPasswordStep("email");
@@ -602,35 +580,25 @@ export function LauncherAppOverlays({
                   setForgotPasswordOtp("");
                   setForgotPasswordNewPassword("");
                 }}
-                className="absolute top-6 right-6 w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors z-20"
-                style={{ color: colors.onSurfaceVariant }}
+                className="flex h-10 w-10 items-center justify-center rounded-full border transition-all hover:bg-white/10"
+                style={{
+                  color: colors.onSurface,
+                  borderColor: `${colors.onSurface}15`,
+                  backgroundColor: colors.surfaceContainer,
+                }}
+                aria-label={t("close")}
               >
-                <Icons.Close className="w-6 h-6" />
+                <Icons.Close className="w-5 h-5" />
               </button>
+            </div>
 
+            {/* Content */}
+            <div className="px-6 py-6 flex flex-col gap-4">
               {forgotPasswordStep === "email" ? (
                 <>
-                  <div className="mb-6">
-                    <h3
-                      className="text-2xl font-black tracking-tight"
-                      style={{ color: colors.onSurface }}
-                    >
-                      {t("forgot_password_title")}
-                    </h3>
-                    <p
-                      className="text-sm font-medium opacity-60"
-                      style={{ color: colors.onSurfaceVariant }}
-                    >
-                      {t("enter_email_recovery")}
-                    </p>
-                  </div>
-
                   <div className="space-y-4 w-full">
                     <div className="space-y-1.5">
-                      <label
-                        className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider"
-                        style={{ color: colors.onSurface }}
-                      >
+                      <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>
                         {t("email")}
                       </label>
                       <input
@@ -638,9 +606,8 @@ export function LauncherAppOverlays({
                         value={forgotPasswordEmail}
                         onChange={(e) => setForgotPasswordEmail(e.target.value)}
                         placeholder={t("email_placeholder")}
-                        className="w-full px-5 py-3.5 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-yellow-500/10"
+                        className="w-full px-4 py-3 rounded-xl border border-white/5 transition-all outline-none focus:ring-2 focus:ring-yellow-500/30"
                         style={{
-                          borderColor: "transparent",
                           backgroundColor: colors.surfaceContainer,
                           color: colors.onSurface,
                         }}
@@ -671,10 +638,10 @@ export function LauncherAppOverlays({
                         }
                       }}
                       disabled={isForgotPasswordLoading}
-                      className="w-full py-4 rounded-2xl font-black text-lg transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-yellow-500/20 disabled:opacity-50"
+                      className="w-full py-3.5 rounded-xl font-black text-sm transition-all hover:scale-[1.01] active:scale-[0.99] shadow-md disabled:opacity-50"
                       style={{
                         backgroundColor: colors.secondary,
-                        color: colors.onPrimary,
+                        color: "#1a1a1a",
                       }}
                     >
                       {isForgotPasswordLoading ? t("sending") : t("send_otp")}
@@ -685,7 +652,7 @@ export function LauncherAppOverlays({
                         setForgotPasswordOpen(false);
                         setCatIDLoginOpen(true);
                       }}
-                      className="w-full py-2 font-bold opacity-60 hover:opacity-100 transition-all text-sm"
+                      className="w-full py-2.5 rounded-xl font-bold opacity-60 hover:opacity-100 transition-all text-xs"
                       style={{ color: colors.onSurface }}
                     >
                       {t("back_to_login")}
@@ -694,30 +661,9 @@ export function LauncherAppOverlays({
                 </>
               ) : (
                 <>
-                  <div className="mb-4">
-                    <h3
-                      className="text-xl font-black tracking-tight"
-                      style={{ color: colors.onSurface }}
-                    >
-                      {t("set_new_password")}
-                    </h3>
-                    <p
-                      className="text-xs font-medium opacity-60"
-                      style={{ color: colors.onSurfaceVariant }}
-                    >
-                      {t("sent_to")}{" "}
-                      <span style={{ color: colors.secondary }}>
-                        {forgotPasswordEmail}
-                      </span>
-                    </p>
-                  </div>
-
                   <div className="space-y-3 w-full">
                     <div className="space-y-1">
-                      <label
-                        className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider"
-                        style={{ color: colors.onSurface }}
-                      >
+                      <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>
                         OTP Code (6 Digits)
                       </label>
                       <input
@@ -729,9 +675,8 @@ export function LauncherAppOverlays({
                           )
                         }
                         placeholder="######"
-                        className="w-full px-5 py-3 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-yellow-500/10 tracking-widest font-mono text-center text-xl"
+                        className="w-full px-4 py-2.5 rounded-xl border border-white/5 transition-all outline-none focus:ring-2 focus:ring-yellow-500/30 tracking-widest font-mono text-center text-lg font-black"
                         style={{
-                          borderColor: "transparent",
                           backgroundColor: colors.surfaceContainer,
                           color: colors.secondary,
                         }}
@@ -739,10 +684,7 @@ export function LauncherAppOverlays({
                     </div>
 
                     <div className="space-y-1">
-                      <label
-                        className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider"
-                        style={{ color: colors.onSurface }}
-                      >
+                      <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>
                         {t("new_password")}
                       </label>
                       <input
@@ -752,9 +694,8 @@ export function LauncherAppOverlays({
                           setForgotPasswordNewPassword(e.target.value)
                         }
                         placeholder={t("password_placeholder")}
-                        className="w-full px-5 py-3 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-yellow-500/10"
+                        className="w-full px-4 py-3 rounded-xl border border-white/5 transition-all outline-none focus:ring-2 focus:ring-yellow-500/30"
                         style={{
-                          borderColor: "transparent",
                           backgroundColor: colors.surfaceContainer,
                           color: colors.onSurface,
                         }}
@@ -762,10 +703,7 @@ export function LauncherAppOverlays({
                     </div>
 
                     <div className="space-y-1">
-                      <label
-                        className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider"
-                        style={{ color: colors.onSurface }}
-                      >
+                      <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>
                         {t("confirm_password")}
                       </label>
                       <input
@@ -775,9 +713,8 @@ export function LauncherAppOverlays({
                           setForgotPasswordConfirmNewPassword(e.target.value)
                         }
                         placeholder={t("confirm_password")}
-                        className="w-full px-5 py-3 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-yellow-500/10"
+                        className="w-full px-4 py-3 rounded-xl border border-white/5 transition-all outline-none focus:ring-2 focus:ring-yellow-500/30"
                         style={{
-                          borderColor: "transparent",
                           backgroundColor: colors.surfaceContainer,
                           color: colors.onSurface,
                         }}
@@ -830,10 +767,10 @@ export function LauncherAppOverlays({
                         }
                       }}
                       disabled={isForgotPasswordLoading}
-                      className="w-full py-4 rounded-2xl font-black text-lg transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-yellow-500/20 disabled:opacity-50 mt-2"
+                      className="w-full py-3.5 rounded-xl font-black text-sm transition-all hover:scale-[1.01] active:scale-[0.99] shadow-md disabled:opacity-50 mt-2"
                       style={{
                         backgroundColor: colors.secondary,
-                        color: colors.onPrimary,
+                        color: "#1a1a1a",
                       }}
                     >
                       {isForgotPasswordLoading
@@ -843,7 +780,7 @@ export function LauncherAppOverlays({
 
                     <button
                       onClick={() => setForgotPasswordStep("email")}
-                      className="w-full py-1 font-bold opacity-60 hover:opacity-100 transition-all text-xs"
+                      className="w-full py-1 font-bold opacity-60 hover:opacity-100 transition-all text-[11px]"
                       style={{ color: colors.onSurface }}
                     >
                       {t("wrong_email")}
@@ -857,121 +794,99 @@ export function LauncherAppOverlays({
       )}
 
       {linkCatIDOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5 animate-in fade-in duration-300">
           <div
-            className="flex w-full max-w-2xl h-[450px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden"
+            className="flex w-full max-w-[480px] flex-col overflow-hidden rounded-2xl border border-white/10"
             style={{ backgroundColor: colors.surface }}
           >
+            {/* Header */}
             <div
-              className="w-[38%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5"
-              style={{ backgroundColor: `${colors.secondary}10` }}
+              className="flex items-center justify-between border-b px-6 py-4"
+              style={{
+                borderColor: `${colors.onSurface}10`,
+                backgroundColor: colors.surfaceContainerLow || colors.surfaceContainer,
+              }}
             >
-              <div className="absolute top-0 left-0 w-full h-full bg-linear-to-b from-yellow-500/10 to-transparent pointer-events-none" />
-              <div
-                className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-yellow-500/30 z-10"
-                style={{ backgroundColor: colors.secondary }}
-              >
-                <Icons.Refresh
-                  className="w-10 h-10"
-                  style={{ color: colors.onPrimary }}
-                />
+              <div className="flex items-center gap-4">
+                <div
+                  className="flex h-10 w-10 items-center justify-center rounded-md"
+                  style={{
+                    backgroundColor: colors.secondary,
+                    color: "#1a1a1a",
+                  }}
+                >
+                  <Icons.Refresh className="h-5.5 w-5.5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-black tracking-tight" style={{ color: colors.onSurface }}>
+                    {t("connect_account")}
+                  </h2>
+                  <p className="text-xs opacity-75" style={{ color: colors.onSurfaceVariant }}>
+                    {t("sync_account")}
+                  </p>
+                </div>
               </div>
-              <h2
-                className="text-2xl font-black tracking-tighter text-center z-10"
-                style={{ color: colors.onSurface }}
+
+              <button
+                type="button"
+                onClick={() => setLinkCatIDOpen(false)}
+                className="flex h-10 w-10 items-center justify-center rounded-full border transition-all hover:bg-white/10"
+                style={{
+                  color: colors.onSurface,
+                  borderColor: `${colors.onSurface}15`,
+                  backgroundColor: colors.surfaceContainer,
+                }}
+                aria-label={t("close")}
               >
-                {t("connect_account")}
-              </h2>
-              <div
-                className="mt-2 px-3 py-1 rounded-full bg-yellow-500/20 text-[10px] font-black uppercase tracking-widest z-10"
-                style={{ color: colors.secondary }}
-              >
-                {t("sync_account")}
-              </div>
-              <p
-                className="mt-8 text-xs font-bold opacity-30 text-center leading-relaxed z-10"
-                style={{ color: colors.onSurface }}
-              >
-                {t("sync_progress")}
-              </p>
+                <Icons.Close className="w-5 h-5" />
+              </button>
             </div>
 
-            <div className="flex-1 p-10 flex flex-col relative">
-              <button
-                onClick={() => setLinkCatIDOpen(false)}
-                className="absolute top-6 right-6 w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors z-20"
-                style={{ color: colors.onSurfaceVariant }}
-              >
-                <Icons.Close className="w-6 h-6" />
-              </button>
-
-              <div className="mb-8">
-                <h3
-                  className="text-2xl font-black tracking-tight"
-                  style={{ color: colors.onSurface }}
-                >
-                  {t("connect_with_catid")}
-                </h3>
-                <p
-                  className="text-sm font-medium opacity-60"
-                  style={{ color: colors.onSurfaceVariant }}
-                >
-                  {t("enter_catid_password_to_connect")}
-                </p>
+            {/* Content */}
+            <div className="px-6 py-6 flex flex-col gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>
+                  {t("catid_username")}
+                </label>
+                <input
+                  id="link-catid-username"
+                  type="text"
+                  placeholder={t("catid_username")}
+                  className="w-full px-4 py-3 rounded-xl border border-white/5 transition-all outline-none focus:ring-2 focus:ring-yellow-500/30"
+                  style={{
+                    backgroundColor: colors.surfaceContainer,
+                    color: colors.onSurface,
+                  }}
+                />
               </div>
 
-              <div className="space-y-4 flex-1">
-                <div className="space-y-1.5">
-                  <label
-                    className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider"
-                    style={{ color: colors.onSurface }}
-                  >
-                    {t("catid_username")}
-                  </label>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>
+                  {t("password")}
+                </label>
+                <div className="relative">
                   <input
-                    id="link-catid-username"
-                    type="text"
-                    placeholder={t("catid_username")}
-                    className="w-full px-5 py-3.5 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-yellow-500/10"
+                    id="link-catid-password"
+                    type={showLinkPassword ? "text" : "password"}
+                    placeholder={t("password")}
+                    className="w-full px-4 py-3 rounded-xl border border-white/5 transition-all outline-none focus:ring-2 focus:ring-yellow-500/30 pr-12"
                     style={{
-                      borderColor: "transparent",
                       backgroundColor: colors.surfaceContainer,
                       color: colors.onSurface,
                     }}
                   />
-                </div>
-                <div className="space-y-1.5">
-                  <label
-                    className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider"
+                  <button
+                    type="button"
+                    onClick={() => setShowLinkPassword(!showLinkPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-all hover:bg-white/5 opacity-50 hover:opacity-100"
                     style={{ color: colors.onSurface }}
                   >
-                    {t("password")}
-                  </label>
-                  <div className="relative">
-                    <input
-                      id="link-catid-password"
-                      type={showLinkPassword ? "text" : "password"}
-                      placeholder={t("password")}
-                      className="w-full px-5 py-3.5 rounded-2xl border-2 transition-all outline-none focus:ring-4 focus:ring-yellow-500/10 pr-12"
-                      style={{
-                        borderColor: "transparent",
-                        backgroundColor: colors.surfaceContainer,
-                        color: colors.onSurface,
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowLinkPassword(!showLinkPassword)}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-all hover:bg-white/5 opacity-50 hover:opacity-100"
-                      style={{ color: colors.onSurface }}
-                    >
-                      {showLinkPassword ? (
-                        <Icons.EyeOff className="w-4 h-4" />
-                      ) : (
-                        <Icons.Eye className="w-4 h-4" />
-                      )}
-                    </button>
-                  </div>
+                    {showLinkPassword ? (
+                      <Icons.EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Icons.Eye className="w-4 h-4" />
+                    )}
+                  </button>
                 </div>
               </div>
 
@@ -994,10 +909,10 @@ export function LauncherAppOverlays({
                   }
                   await handleLinkCatID(username, password);
                 }}
-                className="w-full py-4 rounded-2xl font-black text-lg transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-yellow-500/20 mt-8"
+                className="w-full py-3.5 rounded-xl font-black text-sm transition-all hover:scale-[1.01] active:scale-[0.99] shadow-md mt-4"
                 style={{
                   backgroundColor: colors.secondary,
-                  color: colors.onPrimary,
+                  color: "#1a1a1a",
                 }}
               >
                 {t("connect_now")}
@@ -1008,70 +923,57 @@ export function LauncherAppOverlays({
       )}
 
       {accountManagerOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5 animate-in fade-in duration-300">
           <div
-            className="flex w-full max-w-3xl h-[600px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden"
+            className="flex w-full max-w-[540px] flex-col overflow-hidden rounded-2xl border border-white/10"
             style={{ backgroundColor: colors.surface }}
           >
+            {/* Header */}
             <div
-              className="w-[30%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5"
-              style={{ backgroundColor: `${colors.secondary}10` }}
+              className="flex items-center justify-between border-b px-6 py-4"
+              style={{
+                borderColor: `${colors.onSurface}10`,
+                backgroundColor: colors.surfaceContainerLow || colors.surfaceContainer,
+              }}
             >
-              <div className="absolute top-0 left-0 w-full h-full bg-linear-to-b from-yellow-500/10 to-transparent pointer-events-none" />
-              <div
-                className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-yellow-500/30 z-10"
-                style={{ backgroundColor: colors.secondary }}
-              >
-                <Icons.Person
-                  className="w-10 h-10"
-                  style={{ color: "#1a1a1a" }}
-                />
+              <div className="flex items-center gap-4">
+                <div
+                  className="flex h-10 w-10 items-center justify-center rounded-md"
+                  style={{
+                    backgroundColor: colors.secondary,
+                    color: "#1a1a1a",
+                  }}
+                >
+                  <Icons.Person className="h-5.5 w-5.5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-black tracking-tight" style={{ color: colors.onSurface }}>
+                    {t("account_manager")}
+                  </h2>
+                  <p className="text-xs opacity-75" style={{ color: colors.onSurfaceVariant }}>
+                    {t("account_management")}
+                  </p>
+                </div>
               </div>
-              <h2
-                className="text-2xl font-black tracking-tighter text-center z-10"
-                style={{ color: colors.onSurface }}
+
+              <button
+                type="button"
+                onClick={() => setAccountManagerOpen(false)}
+                className="flex h-10 w-10 items-center justify-center rounded-full border transition-all hover:bg-white/10"
+                style={{
+                  color: colors.onSurface,
+                  borderColor: `${colors.onSurface}15`,
+                  backgroundColor: colors.surfaceContainer,
+                }}
+                aria-label={t("close")}
               >
-                {t("account_manager")}
-              </h2>
-              <div
-                className="mt-2 px-3 py-1 rounded-full bg-yellow-500/20 text-[10px] font-black uppercase tracking-widest z-10"
-                style={{ color: colors.secondary }}
-              >
-                {t("account_management")}
-              </div>
-              <p
-                className="mt-8 text-xs font-bold opacity-30 text-center leading-relaxed z-10"
-                style={{ color: colors.onSurface }}
-              >
-                {t("manage_accounts_hint")}
-              </p>
+                <Icons.Close className="w-5 h-5" />
+              </button>
             </div>
 
-            <div className="flex-1 p-10 flex flex-col relative">
-              <button
-                onClick={() => setAccountManagerOpen(false)}
-                className="absolute top-6 right-6 w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors z-20"
-                style={{ color: colors.onSurfaceVariant }}
-              >
-                <Icons.Close className="w-6 h-6" />
-              </button>
-
-              <div className="mb-8">
-                <h3
-                  className="text-2xl font-black tracking-tight"
-                  style={{ color: colors.onSurface }}
-                >
-                  {t("account_manager")}
-                </h3>
-                <p
-                  className="text-sm font-medium opacity-60"
-                  style={{ color: colors.onSurfaceVariant }}
-                >
-                  {t("manage_accounts_desc")}
-                </p>
-              </div>
-
-              <div className="space-y-3 flex-1 overflow-y-auto px-1 custom-scrollbar mb-6">
+            {/* Content */}
+            <div className="px-6 py-6 flex flex-col gap-4">
+              <div className="space-y-3 max-h-[320px] overflow-y-auto px-1 custom-scrollbar mb-2">
                 {accounts.map((account, index) => {
                   const isActive =
                     session?.username === account.username &&
@@ -1079,7 +981,7 @@ export function LauncherAppOverlays({
                   return (
                     <div
                       key={`${account.type}-${account.username}-${index}`}
-                      className="group flex items-center gap-4 p-4 rounded-3xl transition-all border-2 relative overflow-hidden"
+                      className="group flex items-center gap-4 p-4 rounded-2xl transition-all border relative overflow-hidden"
                       style={{
                         backgroundColor: isActive
                           ? `${colors.secondary}15`
@@ -1090,30 +992,30 @@ export function LauncherAppOverlays({
                       <div className="relative shrink-0">
                         <MCHead
                           username={account.username}
-                          size={54}
-                          className="rounded-full shadow-lg border-2 border-white/5"
+                          size={48}
+                          className="rounded-full shadow-md border border-white/5"
                         />
                         {isActive && (
-                          <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-green-500 border-4 border-[#1e1e2e] flex items-center justify-center shadow-lg">
-                            <Icons.Check className="w-3 h-3 text-white" />
+                          <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-green-500 border-2 border-[#1e1e2e] flex items-center justify-center shadow-lg">
+                            <Icons.Check className="w-2.5 h-2.5 text-white" />
                           </div>
                         )}
                       </div>
 
                       <div className="flex-1 min-w-0">
                         <div
-                          className="font-black text-lg flex items-center gap-2"
+                          className="font-black text-base flex items-center gap-2"
                           style={{ color: colors.onSurface }}
                         >
                           <span className="truncate">{account.username}</span>
                           {account.isAdmin && (
-                            <div className="bg-yellow-500/20 px-2 py-0.5 rounded text-[10px] font-black text-yellow-500 uppercase">
+                            <div className="bg-yellow-500/20 px-2 py-0.5 rounded text-[9px] font-black text-yellow-500 uppercase">
                               {t("admin")}
                             </div>
                           )}
                         </div>
                         <div
-                          className="text-xs font-bold uppercase tracking-widest opacity-30 mt-0.5"
+                          className="text-[10px] font-bold uppercase tracking-widest opacity-30 mt-0.5"
                           style={{ color: colors.onSurface }}
                         >
                           {t("account_type_label")} {account.type}
@@ -1127,9 +1029,9 @@ export function LauncherAppOverlays({
                               playClick();
                               void selectAccount(account);
                             }}
-                            className="bg-white/5 hover:bg-yellow-500 hover:text-black w-10 h-10 rounded-xl flex items-center justify-center transition-all shadow-lg active:scale-90"
+                            className="bg-white/5 hover:bg-yellow-500 hover:text-black w-9 h-9 rounded-lg flex items-center justify-center transition-all shadow-md active:scale-90"
                           >
-                            <Icons.Play className="w-5 h-5 ml-0.5" />
+                            <Icons.Play className="w-4.5 h-4.5 ml-0.5" />
                           </button>
                         )}
                         <button
@@ -1137,9 +1039,9 @@ export function LauncherAppOverlays({
                             playClick();
                             void removeAccountFromList(account);
                           }}
-                          className="bg-white/5 hover:bg-red-500 hover:text-white w-10 h-10 rounded-xl flex items-center justify-center transition-all shadow-lg active:scale-90"
+                          className="bg-white/5 hover:bg-red-500 hover:text-white w-9 h-9 rounded-lg flex items-center justify-center transition-all shadow-md active:scale-90"
                         >
-                          <Icons.Trash className="w-5 h-5" />
+                          <Icons.Trash className="w-4.5 h-4.5" />
                         </button>
                       </div>
                     </div>
@@ -1147,9 +1049,9 @@ export function LauncherAppOverlays({
                 })}
 
                 {accounts.length === 0 && (
-                  <div className="h-full flex flex-col items-center justify-center opacity-30 py-12">
-                    <Icons.Person className="w-16 h-16 mb-4" />
-                    <p className="font-black uppercase tracking-widest">
+                  <div className="h-full flex flex-col items-center justify-center opacity-30 py-8">
+                    <Icons.Person className="w-12 h-12 mb-3" />
+                    <p className="font-black text-xs uppercase tracking-widest">
                       {t("no_account_found")}
                     </p>
                   </div>
@@ -1161,7 +1063,7 @@ export function LauncherAppOverlays({
                   playClick();
                   setAccountManagerOpen(false);
                 }}
-                className="w-full py-4 rounded-2xl font-black text-lg transition-all hover:bg-white/5 border-2 border-white/5 active:scale-[0.98]"
+                className="w-full py-3 rounded-xl font-black text-sm transition-all hover:bg-white/5 border border-white/5 active:scale-[0.99]"
                 style={{ color: colors.onSurface }}
               >
                 {t("back_to_main")}
@@ -1172,74 +1074,61 @@ export function LauncherAppOverlays({
       )}
 
       {importModpackOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5 animate-in fade-in duration-300">
           <div
-            className="flex w-full max-w-3xl h-[520px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.4)] relative border border-white/10 overflow-hidden"
+            className="flex w-full max-w-[540px] flex-col overflow-hidden rounded-2xl border border-white/10"
             style={{ backgroundColor: colors.surface }}
           >
+            {/* Header */}
             <div
-              className="w-[32%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5"
-              style={{ backgroundColor: `${colors.secondary}10` }}
+              className="flex items-center justify-between border-b px-6 py-4"
+              style={{
+                borderColor: `${colors.onSurface}10`,
+                backgroundColor: colors.surfaceContainerLow || colors.surfaceContainer,
+              }}
             >
-              <div className="absolute top-0 left-0 w-full h-full bg-linear-to-b from-yellow-500/10 to-transparent pointer-events-none" />
-              <div
-                className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-yellow-500/30 z-10"
-                style={{ backgroundColor: colors.secondary }}
-              >
-                <Icons.Download
-                  className="w-10 h-10 -rotate-180"
-                  style={{ color: "#1a1a1a" }}
-                />
+              <div className="flex items-center gap-4">
+                <div
+                  className="flex h-10 w-10 items-center justify-center rounded-md"
+                  style={{
+                    backgroundColor: colors.secondary,
+                    color: "#1a1a1a",
+                  }}
+                >
+                  <Icons.Download className="h-5.5 w-5.5 -rotate-180" />
+                </div>
+                <div>
+                  <h2 className="text-base font-black tracking-tight" style={{ color: colors.onSurface }}>
+                    {t("import_content")}
+                  </h2>
+                  <p className="text-xs opacity-75" style={{ color: colors.onSurfaceVariant }}>
+                    {t("drag_and_drop_or_select")}
+                  </p>
+                </div>
               </div>
-              <h2
-                className="text-2xl font-black tracking-tighter text-center z-10"
-                style={{ color: colors.onSurface }}
-              >
-                {t("import")}
-              </h2>
-              <div
-                className="mt-2 px-3 py-1 rounded-full bg-yellow-500/20 text-[10px] font-black uppercase tracking-widest z-10"
-                style={{ color: colors.secondary }}
-              >
-                {t("modpacks")}
-              </div>
-              <p
-                className="mt-8 text-xs font-bold opacity-30 text-center leading-relaxed z-10"
-                style={{ color: colors.onSurface }}
-              >
-                {t("expand_your_world")}
-              </p>
-            </div>
 
-            <div className="flex-1 p-10 flex flex-col relative">
               <button
+                type="button"
                 onClick={() => {
                   setImportModpackOpen(false);
                   setIsDragging(false);
                 }}
-                className="absolute top-6 right-6 w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors z-20"
-                style={{ color: colors.onSurfaceVariant }}
+                className="flex h-10 w-10 items-center justify-center rounded-full border transition-all hover:bg-white/10"
+                style={{
+                  color: colors.onSurface,
+                  borderColor: `${colors.onSurface}15`,
+                  backgroundColor: colors.surfaceContainer,
+                }}
+                aria-label={t("close")}
               >
-                <Icons.Close className="w-6 h-6" />
+                <Icons.Close className="w-5 h-5" />
               </button>
+            </div>
 
-              <div className="mb-6">
-                <h3
-                  className="text-2xl font-black tracking-tight"
-                  style={{ color: colors.onSurface }}
-                >
-                  {t("import_content")}
-                </h3>
-                <p
-                  className="text-sm font-medium opacity-60"
-                  style={{ color: colors.onSurfaceVariant }}
-                >
-                  {t("drag_and_drop_or_select")}
-                </p>
-              </div>
-
+            {/* Content */}
+            <div className="px-6 py-6 flex flex-col gap-4">
               <div
-                className={`relative flex-1 border-2 border-dashed rounded-3xl p-8 flex flex-col items-center justify-center transition-all ${isDragging ? "scale-105" : "hover:border-yellow-500/30"}`}
+                className={`relative border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center transition-all ${isDragging ? "scale-[1.02]" : "hover:border-yellow-500/30"}`}
                 style={{
                   borderColor: isDragging ? colors.secondary : colors.onSurfaceVariant,
                   backgroundColor: isDragging
@@ -1267,21 +1156,21 @@ export function LauncherAppOverlays({
                   }
                 }}
               >
-                <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center mb-3 transition-transform">
                   <Icons.Box
-                    className="w-10 h-10 opacity-40"
+                    className="w-7 h-7 opacity-40"
                     style={{
                       color: isDragging ? colors.secondary : colors.onSurface,
                     }}
                   />
                 </div>
                 <p
-                  className="text-lg font-black tracking-tight"
+                  className="text-base font-black tracking-tight"
                   style={{ color: colors.onSurface }}
                 >
                   {isDragging ? t("drop_now_to_import") : t("drag_file_here")}
                 </p>
-                <p className="text-xs font-bold opacity-30 mt-1 uppercase tracking-widest">
+                <p className="text-[10px] font-bold opacity-30 mt-1 uppercase tracking-widest">
                   {t("support_zip_mrpack")}
                 </p>
 
@@ -1299,19 +1188,19 @@ export function LauncherAppOverlays({
                     };
                     input.click();
                   }}
-                  className="mt-6 px-8 py-3 rounded-2xl font-black text-sm transition-all hover:scale-105 shadow-xl"
+                  className="mt-4 px-6 py-2 rounded-xl font-black text-xs transition-all hover:scale-105 shadow-md"
                   style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
                 >
                   {t("select_file_from_machine")}
                 </button>
               </div>
 
-              <div className="mt-6 flex gap-4">
+              <div className="flex gap-4">
                 <div
-                  className="flex-1 p-3 rounded-2xl flex items-center gap-3 border border-white/5"
+                  className="flex-1 p-3 rounded-xl flex items-center gap-3 border border-white/5"
                   style={{ backgroundColor: colors.surfaceContainer }}
                 >
-                  <div className="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center text-orange-500 font-black text-xs">
+                  <div className="w-9 h-9 rounded-lg bg-orange-500/10 flex items-center justify-center text-orange-500 font-black text-[10px]">
                     CF
                   </div>
                   <div>
@@ -1321,16 +1210,16 @@ export function LauncherAppOverlays({
                     >
                       CurseForge
                     </div>
-                    <div className="text-[10px] opacity-40 uppercase font-bold">
+                    <div className="text-[9px] opacity-40 uppercase font-bold">
                       Standard .ZIP
                     </div>
                   </div>
                 </div>
                 <div
-                  className="flex-1 p-3 rounded-2xl flex items-center gap-3 border border-white/5"
+                  className="flex-1 p-3 rounded-xl flex items-center gap-3 border border-white/5"
                   style={{ backgroundColor: colors.surfaceContainer }}
                 >
-                  <div className="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center text-green-500 font-black text-xs">
+                  <div className="w-9 h-9 rounded-lg bg-green-500/10 flex items-center justify-center text-green-500 font-black text-[10px]">
                     MR
                   </div>
                   <div>
@@ -1340,7 +1229,7 @@ export function LauncherAppOverlays({
                     >
                       Modrinth
                     </div>
-                    <div className="text-[10px] opacity-40 uppercase font-bold">
+                    <div className="text-[9px] opacity-40 uppercase font-bold">
                       Native .MRPACK
                     </div>
                   </div>

@@ -1,5 +1,6 @@
 
 
+import { app } from "electron";
 import { createRequire } from "module";
 import { isGameRunning } from "./MinecraftRun/gameProcess.js";
 
@@ -8,6 +9,14 @@ const customRequire = createRequire(__filename);
 
 
 const CLIENT_ID = "1449834700079366174"; 
+
+let appVersion = "";
+try {
+  appVersion = app.getVersion();
+} catch {
+  // Safe fallback if called before app is ready
+}
+const versionSuffix = appVersion ? ` v${appVersion}` : "";
 
 
 
@@ -81,10 +90,13 @@ function getPlayerAvatarUrl(
 
   if (!uuid || uuid.startsWith("catid-")) {
     if (avatarUrl) return avatarUrl;
+    if (playerUsername) {
+      return `https://crafthead.net/avatar/${playerUsername}/128`;
+    }
     return undefined;
   }
 
-  return `https://crafatar.com/avatars/${uuid}`;
+  return `https://crafthead.net/avatar/${uuid}/128`;
 }
 
 
@@ -276,7 +288,7 @@ export async function updateRPC(
       defaultButtons.push({ label, url: effectiveActivity.serverSocialUrl });
     }
     defaultButtons.push({
-      label: "Reality Launcher",
+      label: `Reality Launcher${versionSuffix}`,
       url: "https://reality.catlabdesign.space"
     });
 
@@ -297,7 +309,7 @@ export async function updateRPC(
       case "idle":
         
         activity.largeImageKey = DEFAULT_LARGE_IMAGE_KEY;
-        activity.largeImageText = DEFAULT_LARGE_IMAGE_TEXT;
+        activity.largeImageText = `${DEFAULT_LARGE_IMAGE_TEXT}${versionSuffix}`;
         activity.details = "On Main Menu";
         activity.state = "Choosing a server...";
         break;
@@ -306,13 +318,15 @@ export async function updateRPC(
         
         if (resolvedIcon) {
           activity.largeImageKey = resolvedIcon;
-          activity.largeImageText = effectiveActivity.serverName || DEFAULT_LARGE_IMAGE_TEXT;
+          activity.largeImageText = effectiveActivity.serverName || `${DEFAULT_LARGE_IMAGE_TEXT}${versionSuffix}`;
         } else {
           activity.largeImageKey = DEFAULT_LARGE_IMAGE_KEY;
-          activity.largeImageText = DEFAULT_LARGE_IMAGE_TEXT;
+          activity.largeImageText = `${DEFAULT_LARGE_IMAGE_TEXT}${versionSuffix}`;
         }
-        activity.smallImageKey = INSTANCE_SMALL_IMAGE_KEY;
-        activity.smallImageText = INSTANCE_SMALL_IMAGE_TEXT;
+        if (!activity.smallImageKey) {
+          activity.smallImageKey = INSTANCE_SMALL_IMAGE_KEY;
+          activity.smallImageText = `${INSTANCE_SMALL_IMAGE_TEXT}${versionSuffix}`;
+        }
         activity.details = "Launching...";
         activity.state = effectiveActivity.serverName || "Minecraft";
         break;
@@ -321,69 +335,71 @@ export async function updateRPC(
         
         if (resolvedIcon) {
           activity.largeImageKey = resolvedIcon;
-          activity.largeImageText = effectiveActivity.serverName || DEFAULT_LARGE_IMAGE_TEXT;
+          activity.largeImageText = effectiveActivity.serverName || `${DEFAULT_LARGE_IMAGE_TEXT}${versionSuffix}`;
         } else {
           activity.largeImageKey = DEFAULT_LARGE_IMAGE_KEY;
-          activity.largeImageText = DEFAULT_LARGE_IMAGE_TEXT;
+          activity.largeImageText = `${DEFAULT_LARGE_IMAGE_TEXT}${versionSuffix}`;
         }
-        activity.smallImageKey = INSTANCE_SMALL_IMAGE_KEY;
-        activity.smallImageText = INSTANCE_SMALL_IMAGE_TEXT;
+        if (!activity.smallImageKey) {
+          activity.smallImageKey = INSTANCE_SMALL_IMAGE_KEY;
+          activity.smallImageText = `${INSTANCE_SMALL_IMAGE_TEXT}${versionSuffix}`;
+        }
         activity.details = "Playing";
         activity.state = effectiveActivity.serverName || "Minecraft";
         break;
 
       case "browsing_home":
         activity.largeImageKey = DEFAULT_LARGE_IMAGE_KEY;
-        activity.largeImageText = "Home";
+        activity.largeImageText = `Home${versionSuffix}`;
         activity.details = "Browsing Home";
         activity.state = "Checking launcher dashboard";
         break;
 
       case "browsing_explore":
         activity.largeImageKey = DEFAULT_LARGE_IMAGE_KEY;
-        activity.largeImageText = "Explore";
+        activity.largeImageText = `Explore${versionSuffix}`;
         activity.details = "Browsing Explore";
         activity.state = "Finding mods and modpacks";
         break;
 
       case "browsing_settings":
         activity.largeImageKey = DEFAULT_LARGE_IMAGE_KEY;
-        activity.largeImageText = "Settings";
+        activity.largeImageText = `Settings${versionSuffix}`;
         activity.details = "Adjusting Settings";
         activity.state = "Tweaking launcher preferences";
         break;
 
       case "browsing_wardrobe":
         activity.largeImageKey = DEFAULT_LARGE_IMAGE_KEY;
-        activity.largeImageText = "Wardrobe";
+        activity.largeImageText = `Wardrobe${versionSuffix}`;
         activity.details = "Customizing Skin";
         activity.state = "Previewing player cosmetics";
         break;
 
       case "browsing_about":
         activity.largeImageKey = DEFAULT_LARGE_IMAGE_KEY;
-        activity.largeImageText = "About";
+        activity.largeImageText = `About${versionSuffix}`;
         activity.details = "Viewing About";
         activity.state = "Reading launcher information";
         break;
 
       case "browsing_admin":
         activity.largeImageKey = DEFAULT_LARGE_IMAGE_KEY;
-        activity.largeImageText = "Admin";
+        activity.largeImageText = `Admin${versionSuffix}`;
         activity.details = "Admin Panel";
         activity.state = "Managing launcher data";
         break;
 
       case "browsing_modpacks":
         activity.largeImageKey = "modpack";
-        activity.largeImageText = "Browsing Modpacks";
+        activity.largeImageText = `Browsing Modpacks${versionSuffix}`;
         activity.details = "Browsing Modpacks";
         activity.state = "Looking for modpacks";
         break;
 
       case "browsing_servers":
         activity.largeImageKey = "server";
-        activity.largeImageText = "Browsing Servers";
+        activity.largeImageText = `Browsing Servers${versionSuffix}`;
         activity.details = "Browsing Servers";
         activity.state = "Looking for a server to play";
         break;

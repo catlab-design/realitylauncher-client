@@ -536,7 +536,7 @@ export function registerInstanceHandlers(
     let instance = getInstance(id);
     if (!instance) {
       logger.warn(` instances-launch: Instance not found (ID: ${id})`);
-      return { ok: false, message: "Instance เนเธกเนเธเธ" };
+      return { ok: false, message: "ไม่พบ Instance" };
     }
     const launchPolicy = getLaunchPolicyForInstance(instance, options);
 
