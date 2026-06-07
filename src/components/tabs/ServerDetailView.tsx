@@ -280,7 +280,7 @@ export function ServerDetailView({
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     playClick();
-                                    isActive ? onStop(e, instance.id) : onPlay(e, instance);
+                                    isActive ? onStop(e, instance.storagePath || instance.id) : onPlay(e, instance);
                                 }}
                                 className="flex-1 h-12 rounded-xl flex items-center justify-center gap-2.5 transition-all hover:brightness-105 active:scale-[0.98] font-bold text-base"
                                 style={

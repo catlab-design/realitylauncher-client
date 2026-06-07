@@ -304,9 +304,10 @@ pub struct CurseForgeManifest {
     pub manifest_version: u32,
     pub name: String,
     pub version: String,
-    pub author: String,
+    pub author: Option<String>,
+    #[serde(default)]
     pub files: Vec<CurseForgeManifestFile>,
-    pub overrides: String,
+    pub overrides: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -314,6 +315,7 @@ pub struct CurseForgeManifest {
 #[napi(object)]
 pub struct CurseForgeMinecraft {
     pub version: String,
+    #[serde(default)]
     pub mod_loaders: Vec<CurseForgeModLoader>,
 }
 
@@ -332,7 +334,12 @@ pub struct CurseForgeManifestFile {
     pub project_id: u32,
     #[serde(alias = "fileID")]
     pub file_id: u32,
+    #[serde(default = "default_required")]
     pub required: bool,
+}
+
+fn default_required() -> bool {
+    true
 }
 
 /// Parse CurseForge modpack manifest

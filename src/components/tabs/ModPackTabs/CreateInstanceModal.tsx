@@ -4,6 +4,7 @@
  */
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
+import { motion } from "framer-motion";
 import toast from "react-hot-toast";
 import { Icons } from "../../ui/Icons";
 import minecraftIcon from "../../../assets/minecraft.svg";
@@ -81,7 +82,7 @@ function ScrollableSelect({ value, onChange, options, disabled, colors, placehol
                 type="button"
                 onClick={handleOpen}
                 disabled={disabled}
-                className="w-full px-4 py-3.5 rounded-xl border flex items-center justify-between gap-2 transition-colors outline-none disabled:opacity-50"
+                className="w-full px-3.5 py-2.5 rounded-xl border flex items-center justify-between gap-2 transition-colors outline-none disabled:opacity-50 text-sm"
                 style={{ backgroundColor: colors.surfaceContainer, borderColor: colors.outline, color: colors.onSurface }}
             >
                 <span className="truncate">{selected?.label ?? placeholder ?? ""}</span>
@@ -149,6 +150,25 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
     const handleSound = () => {
         if (config?.clickSoundEnabled) playClick();
     };
+
+    const handleClose = () => {
+        if (config?.clickSoundEnabled) playClick();
+        onClose();
+    };
+
+    const stopPropagation = (event: React.MouseEvent<HTMLDivElement>) => {
+        event.stopPropagation();
+    };
+
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                handleClose();
+            }
+        };
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [onClose, config]);
 
     // Loader Version State
     const [loaderVersion, setLoaderVersion] = useState<string | undefined>(undefined);
@@ -246,203 +266,248 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
     };
 
     const loaders = [
-        { id: "vanilla", icon: <img src={minecraftIcon.src} alt={t('vanilla')} className="w-6 h-6" /> },
-        { id: "fabric", icon: <img src={fabricIcon.src} alt={t('fabric')} className="w-6 h-6" /> },
-        { id: "forge", icon: <img src={forgeIcon.src} alt={t('forge')} className="w-6 h-6" /> },
-        { id: "neoforge", icon: <img src={neoforgeIcon.src} alt={t('neoforge')} className="w-6 h-6" /> },
-        { id: "quilt", icon: <img src={quiltIcon.src} alt={t('quilt')} className="w-6 h-6" /> },
+        { id: "vanilla", icon: <img src={minecraftIcon.src} alt={t('vanilla')} className="w-5 h-5" /> },
+        { id: "fabric", icon: <img src={fabricIcon.src} alt={t('fabric')} className="w-5 h-5" /> },
+        { id: "forge", icon: <img src={forgeIcon.src} alt={t('forge')} className="w-5 h-5" /> },
+        { id: "neoforge", icon: <img src={neoforgeIcon.src} alt={t('neoforge')} className="w-5 h-5" /> },
+        { id: "quilt", icon: <img src={quiltIcon.src} alt={t('quilt')} className="w-5 h-5" /> },
     ];
 
     const currentLoaderInfo = LOADER_INFO[hoveredLoader || loader];
 
     return (
         <Portal>
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                <div
-                    className="w-[80%] max-w-4xl rounded-2xl p-8 relative animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto"
+            <motion.div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5"
+                onClick={handleClose}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.24, ease: "easeOut" }}
+            >
+                <motion.div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label={t('create_new_instance_title')}
+                    className="flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/10 shadow-2xl"
                     style={{ backgroundColor: colors.surface }}
+                    onClick={stopPropagation}
+                    initial={{ opacity: 0, y: 28, scale: 0.975 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{ type: "spring", stiffness: 260, damping: 28, mass: 0.9 }}
                 >
-                    {/* Close Button */}
-                    <button
-                        onClick={onClose}
-                        className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center transition-all hover:bg-gray-500/20 active:scale-90"
-                        style={{ color: colors.onSurfaceVariant }}
-                        title="Close"
-                    >
-                        <Icons.Close className="w-5 h-5" />
-                    </button>
-
                     {/* Header */}
-                    <div className="mb-6">
-                        <h2 className="text-xl font-bold" style={{ color: colors.onSurface }}>
-                            {t('create_new_instance_title')}
-                        </h2>
-                        <p className="text-sm mt-1" style={{ color: colors.onSurfaceVariant }}>
-                            {t('instance_desc')}
-                        </p>
-                    </div>
-
-                    {/* Name Input */}
-                    <div className="mb-6">
-                        <label className="flex items-center gap-2 text-sm font-semibold mb-2" style={{ color: colors.onSurfaceVariant }}>
-                            <Icons.Edit className="w-4 h-4" />
-                            {t('instance_name')}
-                        </label>
-                        <input
-                            type="text"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            placeholder={t('instance_name_placeholder')}
-                            className="w-full px-4 py-4 rounded-xl border transition-all focus:ring-2 focus:ring-offset-2 outline-none"
-                            style={{
-                                backgroundColor: colors.surfaceContainer,
-                                borderColor: colors.outline,
-                                color: colors.onSurface,
-                            }}
-                        />
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                        {/* Minecraft Version */}
-                        <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                                <label className="flex items-center gap-2 text-sm font-semibold" style={{ color: colors.onSurfaceVariant }}>
-                                    <Icons.Compass className="w-4 h-4" />
-                                    {t('minecraft_version_label')}
-                                </label>
-                                <label className="flex items-center gap-2 text-xs cursor-pointer select-none transition-opacity hover:opacity-100 opacity-70" style={{ color: colors.onSurfaceVariant }}>
-                                    <input
-                                        type="checkbox"
-                                        checked={showAllVersions}
-                                        onChange={(e) => { handleSound(); setShowAllVersions(e.target.checked); }}
-                                        className="w-4 h-4 rounded-md accent-primary"
-                                    />
-                                    {t('include_snapshots')}
-                                </label>
+                    <div
+                        className="flex items-center justify-between border-b px-6 py-3.5 sm:px-7 shrink-0"
+                        style={{
+                            borderColor: `${colors.onSurface}10`,
+                            backgroundColor: colors.surfaceContainerLow || colors.surfaceContainer,
+                        }}
+                    >
+                        <div className="flex items-center gap-4">
+                            <div
+                                className="flex h-10 w-10 items-center justify-center rounded-md"
+                                style={{
+                                    backgroundColor: colors.secondary,
+                                    color: "#1a1a1a",
+                                }}
+                            >
+                                <Icons.Add className="w-5.5 h-5.5" />
                             </div>
-                            <ScrollableSelect
-                                value={minecraftVersion}
-                                onChange={(v) => { handleSound(); setMinecraftVersion(v); }}
-                                options={filteredVersions.map(v => ({
-                                    value: v.version,
-                                    label: v.version + (v.version_type !== "release" ? ` (${v.version_type})` : ""),
-                                }))}
-                                colors={colors}
+                            <div>
+                                <h2
+                                    className="text-base font-black tracking-tight"
+                                    style={{ color: colors.onSurface }}
+                                >
+                                    {t('create_new_instance_title')}
+                                </h2>
+                                <p
+                                    className="text-xs opacity-75"
+                                    style={{ color: colors.onSurfaceVariant }}
+                                >
+                                    {t('instance_desc')}
+                                </p>
+                            </div>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={handleClose}
+                            className="flex h-10 w-10 items-center justify-center rounded-full border transition-all hover:bg-white/10 shrink-0"
+                            style={{
+                                color: colors.onSurface,
+                                borderColor: `${colors.onSurface}15`,
+                                backgroundColor: colors.surfaceContainer,
+                            }}
+                            title="Close"
+                        >
+                            <Icons.Close className="h-5 w-5" />
+                        </button>
+                    </div>
+
+                    {/* Scrollable Body */}
+                    <div className="flex-1 overflow-y-auto px-6 pb-6 pt-5 sm:px-7 sm:pb-7 sm:pt-6 custom-scrollbar">
+                        {/* Name Input */}
+                        <div className="mb-6">
+                            <label className="flex items-center gap-2 text-sm font-semibold mb-2" style={{ color: colors.onSurfaceVariant }}>
+                                <Icons.Edit className="w-4 h-4" />
+                                {t('instance_name')}
+                            </label>
+                            <input
+                                type="text"
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                placeholder={t('instance_name_placeholder')}
+                                className="w-full px-3.5 py-2.5 rounded-xl border transition-all focus:ring-2 focus:ring-offset-2 outline-none text-sm"
+                                style={{
+                                    backgroundColor: colors.surfaceContainer,
+                                    borderColor: colors.outline,
+                                    color: colors.onSurface,
+                                }}
                             />
                         </div>
 
-                        {/* Loader Version Selection (if not vanilla) */}
-                        {loader !== "vanilla" && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                            {/* Minecraft Version */}
                             <div className="space-y-2">
-                                <label className="flex items-center gap-2 text-sm font-semibold" style={{ color: colors.onSurfaceVariant }}>
-                                    <Icons.Terminal className="w-4 h-4" />
-                                    {t('loader_version')}
-                                    {loadingLoaderVersions && (
-                                        <span className="text-xs opacity-60 animate-pulse">{t('loading')}</span>
-                                    )}
-                                </label>
+                                <div className="flex items-center justify-between">
+                                    <label className="flex items-center gap-2 text-sm font-semibold" style={{ color: colors.onSurfaceVariant }}>
+                                        <Icons.Compass className="w-4 h-4" />
+                                        {t('minecraft_version_label')}
+                                    </label>
+                                    <label className="flex items-center gap-2 text-xs cursor-pointer select-none transition-opacity hover:opacity-100 opacity-70" style={{ color: colors.onSurfaceVariant }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={showAllVersions}
+                                            onChange={(e) => { handleSound(); setShowAllVersions(e.target.checked); }}
+                                            className="w-4 h-4 rounded-md accent-primary"
+                                        />
+                                        {t('include_snapshots')}
+                                    </label>
+                                </div>
                                 <ScrollableSelect
-                                    value={loaderVersion || ""}
-                                    onChange={setLoaderVersion}
-                                    disabled={loadingLoaderVersions}
-                                    options={loadingLoaderVersions
-                                        ? [{ value: "", label: t('loading') }]
-                                        : loaderVersions.length === 0
-                                            ? [{ value: "", label: `${t('no_loader_version_found')} ${minecraftVersion}` }]
-                                            : loaderVersions.map(v => ({ value: v, label: v }))
-                                    }
+                                    value={minecraftVersion}
+                                    onChange={(v) => { handleSound(); setMinecraftVersion(v); }}
+                                    options={filteredVersions.map(v => ({
+                                        value: v.version,
+                                        label: v.version + (v.version_type !== "release" ? ` (${v.version_type})` : ""),
+                                    }))}
                                     colors={colors}
                                 />
                             </div>
-                        )}
-                    </div>
 
-                    {/* Loader Selection */}
-                    <div className="mb-8">
-                        <label className="flex items-center gap-2 text-sm font-semibold mb-4" style={{ color: colors.onSurfaceVariant }}>
-                            <Icons.Box className="w-4 h-4" />
-                            {t('mod_loader')}
-                            <span className="text-xs font-normal opacity-60">({t('select_to_add_mods')})</span>
-                        </label>
-
-                        <div className="grid grid-cols-5 gap-3 mb-4">
-                            {loaders.map((l) => {
-                                const info = LOADER_INFO[l.id];
-                                const isSelected = loader === l.id;
-                                return (
-                                    <button
-                                        key={l.id}
-                                        onClick={() => { handleSound(); setLoader(l.id as any); }}
-                                        onMouseEnter={() => setHoveredLoader(l.id)}
-                                        onMouseLeave={() => setHoveredLoader(null)}
-                                        className="flex flex-col items-center py-4 px-2 rounded-2xl text-center transition-all relative border-2"
-                                        style={{
-                                            backgroundColor: isSelected ? colors.secondary + "15" : colors.surfaceContainer,
-                                            borderColor: isSelected ? colors.secondary : "transparent",
-                                            color: isSelected ? colors.onSurface : colors.onSurfaceVariant,
-                                            transform: isSelected ? "translateY(-4px)" : "none",
-                                            boxShadow: isSelected ? `0 12px 24px ${colors.secondary}20` : "none",
-                                        }}
-                                    >
-                                        <div className="w-10 h-10 mb-2 flex items-center justify-center">
-                                            {l.icon}
-                                        </div>
-                                        <div className="text-xs font-bold uppercase tracking-wider">{info.name}</div>
-                                        {isSelected && (
-                                            <div
-                                                className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-2 h-2 rounded-full"
-                                                style={{ backgroundColor: colors.secondary }}
-                                            />
+                            {/* Loader Version Selection (if not vanilla) */}
+                            {loader !== "vanilla" && (
+                                <div className="space-y-2">
+                                    <label className="flex items-center gap-2 text-sm font-semibold" style={{ color: colors.onSurfaceVariant }}>
+                                        <Icons.Terminal className="w-4 h-4" />
+                                        {t('loader_version')}
+                                        {loadingLoaderVersions && (
+                                            <span className="text-xs opacity-60 animate-pulse">{t('loading')}</span>
                                         )}
-                                    </button>
-                                );
-                            })}
+                                    </label>
+                                    <ScrollableSelect
+                                        value={loaderVersion || ""}
+                                        onChange={setLoaderVersion}
+                                        disabled={loadingLoaderVersions}
+                                        options={loadingLoaderVersions
+                                            ? [{ value: "", label: t('loading') }]
+                                            : loaderVersions.length === 0
+                                                ? [{ value: "", label: `${t('no_loader_version_found')} ${minecraftVersion}` }]
+                                                : loaderVersions.map(v => ({ value: v, label: v }))
+                                        }
+                                        colors={colors}
+                                    />
+                                </div>
+                            )}
                         </div>
 
-                        {/* Loader Description Box */}
-                        <div
-                            className="px-4 py-3 rounded-xl text-sm transition-all border"
-                            style={{
-                                backgroundColor: colors.surfaceContainerLow,
-                                borderColor: colors.outlineVariant,
-                                borderLeft: `4px solid ${currentLoaderInfo.color}`,
+                        {/* Loader Selection */}
+                        <div className="mb-8">
+                            <label className="flex items-center gap-2 text-sm font-semibold mb-4" style={{ color: colors.onSurfaceVariant }}>
+                                <Icons.Box className="w-4 h-4" />
+                                {t('mod_loader')}
+                                <span className="text-xs font-normal opacity-60">({t('select_to_add_mods')})</span>
+                            </label>
+
+                            <div className="grid grid-cols-5 gap-3 mb-4">
+                                {loaders.map((l) => {
+                                    const info = LOADER_INFO[l.id];
+                                    const isSelected = loader === l.id;
+                                    return (
+                                        <button
+                                            key={l.id}
+                                            onClick={() => { handleSound(); setLoader(l.id as any); }}
+                                            onMouseEnter={() => setHoveredLoader(l.id)}
+                                            onMouseLeave={() => setHoveredLoader(null)}
+                                            className="flex flex-col items-center py-2.5 px-2 rounded-xl text-center transition-all relative border-2 text-sm"
+                                            style={{
+                                                backgroundColor: isSelected ? colors.secondary + "15" : colors.surfaceContainer,
+                                                borderColor: isSelected ? colors.secondary : "transparent",
+                                                color: isSelected ? colors.onSurface : colors.onSurfaceVariant,
+                                                transform: isSelected ? "translateY(-2px)" : "none",
+                                                boxShadow: isSelected ? `0 8px 16px ${colors.secondary}15` : "none",
+                                            }}
+                                        >
+                                            <div className="w-7 h-7 mb-1 flex items-center justify-center">
+                                                {l.icon}
+                                            </div>
+                                            <div className="text-[10px] font-black uppercase tracking-wider">{info.name}</div>
+                                            {isSelected && (
+                                                <div
+                                                    className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-1.5 h-1.5 rounded-full"
+                                                    style={{ backgroundColor: colors.secondary }}
+                                                />
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {/* Loader Description Box */}
+                            <div
+                                className="px-4 py-3 rounded-xl text-sm transition-all border"
+                                style={{
+                                    backgroundColor: colors.surfaceContainerLow,
+                                    borderColor: colors.outlineVariant,
+                                    borderLeft: `4px solid ${currentLoaderInfo.color}`,
+                                }}
+                            >
+                                <span className="font-medium" style={{ color: colors.onSurface }}>{currentLoaderInfo.name}: </span>
+                                <span style={{ color: colors.onSurfaceVariant }}>{currentLoaderInfo.description}</span>
+                            </div>
+                        </div>
+
+                        {/* Create Button */}
+                        <button
+                            onClick={() => { handleSound(); handleCreate(); }}
+                            disabled={isLoading || !name.trim() || (loader !== "vanilla" && !loaderVersion && loaderVersions.length > 0)}
+                            className="w-full py-2.5 rounded-xl font-bold text-sm transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                            style={{ 
+                                backgroundColor: colors.secondary, 
+                                color: "#1a1a1a",
+                                boxShadow: `0 8px 20px ${colors.secondary}30`
                             }}
                         >
-                            <span className="font-medium" style={{ color: colors.onSurface }}>{currentLoaderInfo.name}: </span>
-                            <span style={{ color: colors.onSurfaceVariant }}>{currentLoaderInfo.description}</span>
-                        </div>
+                            {isLoading ? (
+                                <>
+                                    <Icons.Refresh className="w-5 h-5 animate-spin text-black/60" />
+                                    {t('creating_dot')}
+                                </>
+                            ) : (
+                                <>
+                                    <Icons.Add className="w-5 h-5" />
+                                    {t('create_instance')}
+                                </>
+                            )}
+                        </button>
+
+                        {/* Help Text */}
+                        <p className="text-xs text-center mt-4 opacity-50" style={{ color: colors.onSurfaceVariant }}>
+                            {t('create_instance_footer')}
+                        </p>
                     </div>
-
-                    {/* Create Button */}
-                    <button
-                        onClick={() => { handleSound(); handleCreate(); }}
-                        disabled={isLoading || !name.trim() || (loader !== "vanilla" && !loaderVersion && loaderVersions.length > 0)}
-                        className="w-full py-4 rounded-2xl font-bold text-lg transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-3"
-                        style={{ 
-                            backgroundColor: colors.secondary, 
-                            color: "#1a1a1a",
-                            boxShadow: `0 8px 30px ${colors.secondary}40`
-                        }}
-                    >
-                        {isLoading ? (
-                            <>
-                                <Icons.Refresh className="w-6 h-6 animate-spin text-black/60" />
-                                {t('creating_dot')}
-                            </>
-                        ) : (
-                            <>
-                                <Icons.Add className="w-6 h-6" />
-                                {t('create_instance')}
-                            </>
-                        )}
-                    </button>
-
-                    {/* Help Text */}
-                    <p className="text-xs text-center mt-4 opacity-50" style={{ color: colors.onSurfaceVariant }}>
-                        {t('create_instance_footer')}
-                    </p>
-                </div>
-            </div>
+                </motion.div>
+            </motion.div>
         </Portal>
     );
 }

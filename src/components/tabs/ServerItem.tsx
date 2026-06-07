@@ -166,7 +166,7 @@ export function ServerItem({
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         playClick();
-                                        isActive ? onStop(e, instance.id) : onPlay(e, instance);
+                                        isActive ? onStop(e, instance.storagePath || instance.id) : onPlay(e, instance);
                                     }}
                                     className="h-12 px-6 rounded-tl-2xl flex items-center gap-1.5 transition-all active:scale-95 hover:brightness-110 font-extrabold text-sm shadow-md"
                                     style={{
@@ -352,7 +352,7 @@ export function ServerItem({
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         playClick();
-                                        isActive ? onStop(e, instance.id) : onPlay(e, instance);
+                                        isActive ? onStop(e, instance.storagePath || instance.id) : onPlay(e, instance);
                                     }}
                                     className="h-11 px-5 rounded-xl flex items-center gap-1.5 transition-all active:scale-95 hover:brightness-110 font-extrabold text-sm shadow-sm"
                                     style={{
@@ -552,7 +552,7 @@ export function ServerItem({
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     playClick();
-                                    isActive ? onStop(e, instance.id) : onPlay(e, instance);
+                                    isActive ? onStop(e, instance.storagePath || instance.id) : onPlay(e, instance);
                                 }}
                                 className="h-14 px-8 rounded-tl-2xl flex items-center gap-2 transition-all active:scale-95 hover:brightness-110 font-extrabold text-sm shadow-md"
                                 style={{

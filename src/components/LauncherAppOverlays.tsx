@@ -19,6 +19,7 @@ interface LauncherPalette {
   secondary: string;
   surface: string;
   surfaceContainer: string;
+  surfaceContainerLow?: string;
   surfaceContainerHighest: string;
   onPrimary: string;
   onSurface: string;

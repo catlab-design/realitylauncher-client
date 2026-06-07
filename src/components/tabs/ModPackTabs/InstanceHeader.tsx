@@ -1,4 +1,4 @@
-﻿/**
+/**
  * InstanceHeader - Header section for instance detail view
  */
 
@@ -49,7 +49,7 @@ export function InstanceHeader({
             {/* Instance icon */}
             <div
                 className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl overflow-hidden"
-                style={{ backgroundColor: colors.surfaceContainer }}
+                style={{ backgroundColor: (instance.icon?.startsWith("data:") || instance.icon?.startsWith("file://") || instance.icon?.startsWith("http")) ? 'transparent' : colors.surfaceContainer }}
             >
                 {instance.icon?.startsWith("data:") || instance.icon?.startsWith("file://") || instance.icon?.startsWith("http") ? (
                     <img src={instance.icon} alt="icon" className="w-full h-full object-cover" />

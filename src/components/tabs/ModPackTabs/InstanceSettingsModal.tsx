@@ -770,7 +770,7 @@ export function InstanceSettingsModal({
                                                 <div
                                                     className={`w-28 h-28 rounded-3xl flex items-center justify-center text-3xl transition-all overflow-hidden border-2 ${instance.cloudId ? "" : "cursor-pointer hover:border-secondary/50"}`}
                                                     style={{
-                                                        backgroundColor: colors.surfaceContainerHighest,
+                                                        backgroundColor: (instance.icon?.startsWith("data:") || instance.icon?.startsWith("http") || instance.icon?.includes("/") || instance.icon?.includes("\\")) ? 'transparent' : colors.surfaceContainerHighest,
                                                         borderColor: colors.outline + "20"
                                                     }}
                                                     onClick={async () => {

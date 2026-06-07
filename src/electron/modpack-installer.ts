@@ -85,6 +85,47 @@ const FAST_MIRROR_HINTS = [
   "edge.forgecdn.net",
 ];
 
+function tryParseNativeManifest<T>(
+  parserName: string,
+  parse: () => T | null,
+): T | null {
+  try {
+    return parse();
+  } catch (error) {
+    console.warn(`[ModpackInstaller] ${parserName} failed:`, error);
+    return null;
+  }
+}
+
+function looksLikeCurseForgeManifest(raw: any): boolean {
+  return Boolean(
+    raw &&
+      typeof raw === "object" &&
+      raw.minecraft &&
+      typeof raw.minecraft.version === "string" &&
+      Array.isArray(raw.files),
+  );
+}
+
+function hasCurseForgeManifest(native: any, modpackPath: string): boolean {
+  const nativeManifest = tryParseNativeManifest(
+    "CurseForge manifest parse",
+    () => native.parseCurseforgeManifest(modpackPath),
+  );
+  if (nativeManifest) return true;
+
+  try {
+    const manifestJson = native.readFileFromZip(modpackPath, "manifest.json") as
+      | string
+      | null;
+    if (!manifestJson) return false;
+    return looksLikeCurseForgeManifest(JSON.parse(manifestJson));
+  } catch (error) {
+    console.warn("[ModpackInstaller] CurseForge fallback detection failed:", error);
+    return false;
+  }
+}
+
 function clampInt(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, Math.floor(value)));
 }
@@ -768,12 +809,14 @@ export async function installModpack(
     }
 
     const native = getNativeModule();
-    const isModrinth = !!native.parseModrinthManifest(mrpackPath);
+    const isModrinth = !!tryParseNativeManifest("Modrinth manifest parse", () =>
+      native.parseModrinthManifest(mrpackPath),
+    );
     if (isModrinth) {
       return await installModrinthModpack(mrpackPath, onProgress, signal);
     }
 
-    const isCurseForge = !!native.parseCurseforgeManifest(mrpackPath);
+    const isCurseForge = hasCurseForgeManifest(native, mrpackPath);
     if (isCurseForge) {
       return await installCurseForgeModpack(mrpackPath, onProgress, signal);
     }

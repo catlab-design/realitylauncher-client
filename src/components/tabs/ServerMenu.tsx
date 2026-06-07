@@ -197,7 +197,8 @@ export function ServerMenu({
                 const all = [...(instances.owned || []), ...(instances.member || [])];
                 for (const inst of all) {
                     try {
-                        if (await (window.api as any)?.isGameRunning?.(inst.id)) runningIds.add(inst.id);
+                        const targetId = inst.storagePath || inst.id;
+                        if (await (window.api as any)?.isGameRunning?.(targetId)) runningIds.add(targetId);
                     } catch { }
                 }
                 setPlayingInstances(runningIds);
@@ -213,7 +214,8 @@ export function ServerMenu({
         e.stopPropagation();
         if (launchingId) return;
         launchCancelledRef.current = false;
-        setLaunchingId(instance.id);
+        const targetId = instance.storagePath || instance.id;
+        setLaunchingId(targetId);
         try {
             if (session?.type === "catid" && session.minecraftUuid) {
                 const linkedMsAccount = accounts.find(a => a.type === "microsoft" && a.uuid === session.minecraftUuid);
@@ -231,15 +233,15 @@ export function ServerMenu({
                 toast.error(requiresRelogin ? t('session_expired_login_server') : (refreshErr || t('session_expired_login_server')));
                 return;
             }
-            const res = await window.api?.instancesLaunch?.(instance.id);
+            const res = await window.api?.instancesLaunch?.(targetId);
             if (launchCancelledRef.current) {
-                await window.api?.killGame?.(instance.id);
-                setPlayingInstances(prev => { const s = new Set(prev); s.delete(instance.id); return s; });
+                await window.api?.killGame?.(targetId);
+                setPlayingInstances(prev => { const s = new Set(prev); s.delete(targetId); return s; });
                 return;
             }
             if (res?.ok) {
                 toast.success(res.message || t('launching'));
-                setPlayingInstances(prev => new Set(prev).add(instance.id));
+                setPlayingInstances(prev => new Set(prev).add(targetId));
             } else {
                 const errorMessage = res?.message || t('launch_failed_server') || t('error_occurred');
                 const isJavaError = errorMessage.toLowerCase().includes("java") || errorMessage.toLowerCase().includes("jre") || errorMessage.toLowerCase().includes("java_home");
@@ -276,11 +278,11 @@ export function ServerMenu({
                 } else {
                     toast.error(errorMessage);
                 }
-                setPlayingInstances(prev => { const s = new Set(prev); s.delete(instance.id); return s; });
+                setPlayingInstances(prev => { const s = new Set(prev); s.delete(targetId); return s; });
             }
         } catch (err: any) {
             toast.error(err.message || t('error_occurred'));
-            setPlayingInstances(prev => { const s = new Set(prev); s.delete(instance.id); return s; });
+            setPlayingInstances(prev => { const s = new Set(prev); s.delete(targetId); return s; });
         } finally { setLaunchingId(null); }
     };
 
@@ -508,8 +510,8 @@ export function ServerMenu({
                     onJoin={handleJoinServer}
                     onViewLogs={handleViewLogs}
                     isInstalled={localInstances.has(viewingInstance.storagePath || viewingInstance.id)}
-                    isPlaying={playingInstances.has(viewingInstance.id)}
-                    isLaunching={launchingId === viewingInstance.id}
+                    isPlaying={playingInstances.has(viewingInstance.storagePath || viewingInstance.id)}
+                    isLaunching={launchingId === (viewingInstance.storagePath || viewingInstance.id)}
                     isMember={joinedServers.some(s => s.id === viewingInstance.id)}
                     colors={colors}
                     t={t}
@@ -953,8 +955,8 @@ export function ServerMenu({
                                                         isInstalled={isInstalled}
                                                         isMember={true}
                                                         showPublic={false}
-                                                        isPlaying={playingInstances.has(instance.id)}
-                                                        isLaunching={launchingId === instance.id}
+                                                        isPlaying={playingInstances.has(targetId)}
+                                                        isLaunching={launchingId === targetId}
                                                         getWithTimestamp={getWithTimestamp}
                                                         viewMode={viewMode}
                                                         onSelect={(inst) => {
@@ -1137,8 +1139,8 @@ export function ServerMenu({
                                             isInstalled={isInstalled}
                                             isMember={isMember}
                                             showPublic={showPublic}
-                                            isPlaying={playingInstances.has(instance.id)}
-                                            isLaunching={launchingId === instance.id}
+                                            isPlaying={playingInstances.has(targetId)}
+                                            isLaunching={launchingId === targetId}
                                             getWithTimestamp={getWithTimestamp}
                                             viewMode={viewMode}
                                             onSelect={(inst) => {

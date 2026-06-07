@@ -508,7 +508,7 @@ export function Home({
 
                                     {/* Icon */}
                                     <div className="relative z-10 w-14 h-14 rounded-xl overflow-hidden shrink-0"
-                                         style={{ backgroundColor: colors.surfaceContainerHighest }}>
+                                         style={{ backgroundColor: instance.icon ? 'transparent' : colors.surfaceContainerHighest }}>
                                         {instance.icon ? (
                                             <img src={instance.icon} alt={instance.name} className="w-full h-full object-cover" />
                                         ) : (

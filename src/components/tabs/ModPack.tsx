@@ -536,7 +536,7 @@ export function ModPack({
 
                 {/* Static bottom-left: icon + name */}
                 <div className="absolute left-2 bottom-2 right-12 flex items-center gap-3 z-20 transition-all duration-500 ease-in-out group-hover:-translate-y-21 pointer-events-none">
-                    <div className="w-12 h-12 rounded-xl bg-black/20 backdrop-blur-md border border-white/10 overflow-hidden shrink-0">
+                    <div className={`w-12 h-12 rounded-xl overflow-hidden shrink-0 ${instance.icon ? "" : "bg-black/20 backdrop-blur-md border border-white/10"}`}>
                         {instance.icon ? (
                             <SmartImage trigger={refreshTrigger} src={instance.icon} alt={instance.name} className="w-full h-full object-cover" />
                         ) : (
@@ -639,7 +639,7 @@ export function ModPack({
                 <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/50 to-transparent" />
 
                 <div className="absolute left-2 bottom-2 right-12 flex items-center gap-3 z-20 transition-all duration-500 ease-in-out group-hover:-translate-y-21 pointer-events-none">
-                    <div className="w-12 h-12 rounded-xl bg-black/20 backdrop-blur-md border border-white/10 overflow-hidden shrink-0 pointer-events-auto">
+                    <div className={`w-12 h-12 rounded-xl overflow-hidden shrink-0 pointer-events-auto ${serverInstance.icon ? "" : "bg-black/20 backdrop-blur-md border border-white/10"}`}>
                         {serverInstance.icon ? (
                             <SmartImage trigger={refreshTrigger} src={serverInstance.icon} alt={serverInstance.name} className="w-full h-full object-cover" />
                         ) : (

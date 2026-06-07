@@ -1092,10 +1092,10 @@ export function InstanceDetail({
 
                         {/* Floating Icon */}
                         <div className="absolute -bottom-8 left-8 w-24 h-24 rounded-2xl p-1 z-10"
-                            style={{ backgroundColor: colors.surface }}>
+                            style={{ backgroundColor: (instance.icon?.startsWith("data:") || instance.icon?.startsWith("file://") || instance.icon?.startsWith("http")) ? 'transparent' : colors.surface }}>
                             <div className="w-full h-full rounded-[14px] bg-cover bg-center overflow-hidden flex items-center justify-center"
                                 style={{
-                                    backgroundColor: colors.surfaceContainerHighest
+                                    backgroundColor: (instance.icon?.startsWith("data:") || instance.icon?.startsWith("file://") || instance.icon?.startsWith("http")) ? 'transparent' : colors.surfaceContainerHighest
                                 }}>
                                 {instance.icon?.startsWith("data:") || instance.icon?.startsWith("file://") || instance.icon?.startsWith("http") ? (
                                     <img src={instance.icon} alt="icon" className="w-full h-full object-cover" />
@@ -1212,7 +1212,7 @@ export function InstanceDetail({
                     </button>
 
                     <div className="w-24 h-24 rounded-2xl flex items-center justify-center text-4xl overflow-hidden shrink-0"
-                        style={{ backgroundColor: colors.surfaceContainer }}>
+                        style={{ backgroundColor: (instance.icon?.startsWith("data:") || instance.icon?.startsWith("file://") || instance.icon?.startsWith("http")) ? 'transparent' : colors.surfaceContainer }}>
                         {instance.icon?.startsWith("data:") || instance.icon?.startsWith("file://") || instance.icon?.startsWith("http") ? (
                             <img src={instance.icon} alt="icon" className="w-full h-full object-cover" />
                         ) : (
