@@ -3,7 +3,6 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import path from "path";
 import fs from "fs";
-import crypto from "crypto";
 import { createRequire } from "module";
 import { getMinecraftDir, getConfig } from "../config.js";
 import { trackGameLaunch, trackGameClose } from "../telemetry.js";
@@ -12,284 +11,19 @@ import {
   getJavaMajorVersion,
   getJavaPath,
 } from "./javaRuntime.js";
-
-const VERSION_MANIFEST_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
-const RESOURCES_URL = "https://resources.download.minecraft.net";
+import { loadVersionJson } from "./versionManifest.js";
+import {
+  computeNativeFingerprint,
+  canReuseExtractedNatives,
+  saveNativeExtractionMarker,
+} from "./nativesCache.js";
+import {
+  getMissingAssetDownloadsFromIndex,
+  type DownloadItem,
+} from "./assetCheck.js";
+import { fileExists, logPerfStep } from "./fsUtils.js";
 
 let nativeModuleCache: any | null = null;
-let versionManifestCache: { manifest: any; cachedAt: number } | null = null;
-
-interface NativeExtractionMeta {
-  fingerprint: string;
-  nativeSourceCount: number;
-  platform: string;
-  arch: string;
-  extractedAt: string;
-}
-
-interface AssetIndexData {
-  objects?: Record<string, { hash: string; size: number }>;
-}
-
-function logPerfStep(step: string, startedAt: number): void {
-  const elapsedMs = Date.now() - startedAt;
-  if (elapsedMs >= 200) {
-    console.log(`[RustLauncher][Perf] ${step}: ${elapsedMs}ms`);
-  }
-}
-
-function readJsonFileSafe<T>(filePath: string): T | null {
-  try {
-    if (!fs.existsSync(filePath)) return null;
-    return JSON.parse(fs.readFileSync(filePath, "utf-8")) as T;
-  } catch {
-    return null;
-  }
-}
-
-async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    await fs.promises.access(filePath, fs.constants.F_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function yieldToEventLoop(): Promise<void> {
-  await new Promise<void>((resolve) => setImmediate(resolve));
-}
-
-function getManifestCachePath(minecraftRoot: string): string {
-  return path.join(minecraftRoot, "cache", "version_manifest_v2.json");
-}
-
-async function getVersionManifestCached(
-  native: any,
-  minecraftRoot: string,
-): Promise<any> {
-  const now = Date.now();
-  if (
-    versionManifestCache &&
-    now - versionManifestCache.cachedAt < VERSION_MANIFEST_CACHE_TTL_MS
-  ) {
-    return versionManifestCache.manifest;
-  }
-
-  const manifestCachePath = getManifestCachePath(minecraftRoot);
-  try {
-    if (fs.existsSync(manifestCachePath)) {
-      const stats = fs.statSync(manifestCachePath);
-      if (now - stats.mtimeMs < VERSION_MANIFEST_CACHE_TTL_MS) {
-        const manifestFromDisk = readJsonFileSafe<any>(manifestCachePath);
-        if (manifestFromDisk?.versions) {
-          versionManifestCache = { manifest: manifestFromDisk, cachedAt: now };
-          return manifestFromDisk;
-        }
-      }
-    }
-  } catch {
-    
-  }
-
-  try {
-    const manifest = await native.fetchVersionManifest();
-    const cacheDir = path.dirname(manifestCachePath);
-    if (!fs.existsSync(cacheDir)) {
-      fs.mkdirSync(cacheDir, { recursive: true });
-    }
-    fs.writeFileSync(manifestCachePath, JSON.stringify(manifest));
-    versionManifestCache = { manifest, cachedAt: now };
-    return manifest;
-  } catch (error) {
-    const staleManifest = readJsonFileSafe<any>(manifestCachePath);
-    if (staleManifest?.versions) {
-      console.warn(
-        "[RustLauncher] Failed to refresh version manifest, using stale cache",
-      );
-      versionManifestCache = { manifest: staleManifest, cachedAt: now };
-      return staleManifest;
-    }
-    throw error;
-  }
-}
-
-async function loadVersionJson(
-  versionId: string,
-  versionsDir: string,
-  minecraftRoot: string,
-  native: any,
-  manifest: any | null,
-): Promise<{ versionJson: string; manifest: any | null }> {
-  const versionJsonPath = path.join(
-    versionsDir,
-    versionId,
-    `${versionId}.json`,
-  );
-  if (fs.existsSync(versionJsonPath)) {
-    return { versionJson: fs.readFileSync(versionJsonPath, "utf-8"), manifest };
-  }
-
-  const resolvedManifest =
-    manifest ?? (await getVersionManifestCached(native, minecraftRoot));
-  const versionInfo = resolvedManifest.versions.find(
-    (v: any) => v.id === versionId,
-  );
-  if (!versionInfo) {
-    throw new Error(`ไม่พบเวอร์ชัน ${versionId}`);
-  }
-
-  const versionJson = await native.fetchVersionDetail(versionInfo.url);
-  fs.mkdirSync(path.dirname(versionJsonPath), { recursive: true });
-  fs.writeFileSync(versionJsonPath, versionJson);
-  return { versionJson, manifest: resolvedManifest };
-}
-
-function computeNativeFingerprint(
-  versionData: any,
-  librariesDir: string,
-  osKey: string,
-  archBits: string,
-): {
-  fingerprint: string;
-  nativeSourceCount: number;
-  missingSourceCount: number;
-} {
-  const sourceEntries: string[] = [];
-  let missingSourceCount = 0;
-  for (const lib of versionData.libraries || []) {
-    const classifierTemplate = lib.natives?.[osKey];
-    if (!classifierTemplate) continue;
-    const classifierKey = String(classifierTemplate).replace(
-      "${arch}",
-      archBits,
-    );
-    const classifier = lib.downloads?.classifiers?.[classifierKey];
-    if (!classifier?.path) continue;
-
-    const nativeJarPath = path.join(librariesDir, classifier.path);
-    let descriptor = `${classifier.path}`;
-    try {
-      const stats = fs.statSync(nativeJarPath);
-      descriptor += `|${stats.size}|${Math.floor(stats.mtimeMs)}`;
-    } catch {
-      descriptor += "|missing";
-      missingSourceCount += 1;
-    }
-    sourceEntries.push(descriptor);
-  }
-
-  sourceEntries.sort((a, b) => a.localeCompare(b));
-  const fingerprint = crypto
-    .createHash("sha1")
-    .update(
-      [versionData.id || "", osKey, archBits, ...sourceEntries].join("\n"),
-    )
-    .digest("hex");
-
-  return {
-    fingerprint,
-    nativeSourceCount: sourceEntries.length,
-    missingSourceCount,
-  };
-}
-
-function hasNativeBinary(dirPath: string): boolean {
-  if (!fs.existsSync(dirPath)) return false;
-
-  const stack = [dirPath];
-  while (stack.length > 0) {
-    const currentDir = stack.pop()!;
-    let entries: fs.Dirent[] = [];
-    try {
-      entries = fs.readdirSync(currentDir, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-
-    for (const entry of entries) {
-      const fullPath = path.join(currentDir, entry.name);
-      if (entry.isDirectory()) {
-        stack.push(fullPath);
-        continue;
-      }
-      if (
-        entry.name.endsWith(".dll") ||
-        entry.name.endsWith(".so") ||
-        entry.name.endsWith(".dylib") ||
-        entry.name.endsWith(".jnilib")
-      ) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-function canReuseExtractedNatives(
-  nativesDir: string,
-  expectedFingerprint: string,
-): boolean {
-  const markerPath = path.join(nativesDir, ".extract-meta.json");
-  const marker = readJsonFileSafe<NativeExtractionMeta>(markerPath);
-  if (!marker) return false;
-  if (marker.fingerprint !== expectedFingerprint) return false;
-  if (marker.platform !== process.platform || marker.arch !== process.arch)
-    return false;
-
-  
-  if (marker.nativeSourceCount <= 0) return true;
-  return hasNativeBinary(nativesDir);
-}
-
-function saveNativeExtractionMarker(
-  nativesDir: string,
-  fingerprint: string,
-  nativeSourceCount: number,
-): void {
-  const markerPath = path.join(nativesDir, ".extract-meta.json");
-  const marker: NativeExtractionMeta = {
-    fingerprint,
-    nativeSourceCount,
-    platform: process.platform,
-    arch: process.arch,
-    extractedAt: new Date().toISOString(),
-  };
-  fs.writeFileSync(markerPath, JSON.stringify(marker));
-}
-
-async function getMissingAssetDownloadsFromIndex(
-  assetIndexPath: string,
-  assetsDir: string,
-): Promise<DownloadItem[]> {
-  const index = readJsonFileSafe<AssetIndexData>(assetIndexPath);
-  if (!index?.objects) {
-    throw new Error(`Invalid asset index: ${assetIndexPath}`);
-  }
-
-  const downloads: DownloadItem[] = [];
-  const objects = Object.values(index.objects);
-  let inspected = 0;
-  for (const obj of objects) {
-    inspected += 1;
-    if (inspected % 300 === 0) {
-      await yieldToEventLoop();
-    }
-
-    if (!obj?.hash || obj.hash.length < 2) continue;
-    const hashPrefix = obj.hash.slice(0, 2);
-    const destPath = path.join(assetsDir, "objects", hashPrefix, obj.hash);
-    if (await fileExists(destPath)) continue;
-
-    downloads.push({
-      url: `${RESOURCES_URL}/${hashPrefix}/${obj.hash}`,
-      path: destPath,
-      sha1: obj.hash,
-      size: obj.size,
-    });
-  }
-  return downloads;
-}
 
 import type { LaunchOptions, LaunchResult, LaunchProgress } from "./types.js";
 import {
@@ -361,13 +95,6 @@ function redactLaunchArgs(args: string[], accessToken?: string): string[] {
   });
 }
 
-
-interface DownloadItem {
-  url: string;
-  path: string;
-  sha1?: string;
-  size?: number;
-}
 
 interface PrepareResult {
   success: boolean;
