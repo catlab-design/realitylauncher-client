@@ -156,7 +156,7 @@ ci:checks:
     - "pnpm install --no-frozen-lockfile --prefer-offline"
     - "node scripts/check-no-app-asar-writes.cjs"
     - "pnpm exec astro build"
-    - "pnpm exec esbuild src/electron/main.ts --bundle --platform=node --format=cjs --minify --external:electron --external:discord-rpc --external:electron-updater --external:minecraft-java-core --outfile=dist-electron/main.cjs"
+    - "pnpm exec esbuild src/electron/main.ts --bundle --platform=node --format=cjs --minify --external:electron --external:discord-rpc --external:electron-updater --outfile=dist-electron/main.cjs"
     - "pnpm exec esbuild src/electron/preload.ts --bundle --platform=node --format=cjs --minify --external:electron --outdir=dist-electron"
     - "cargo check --manifest-path native/Cargo.toml"
 
@@ -336,7 +336,7 @@ build:windows:
       Pop-Location
     - "pnpm exec astro build"
     - "node scripts/check-no-app-asar-writes.cjs"
-    - "pnpm exec esbuild src/electron/main.ts --bundle --platform=node --format=cjs --minify --external:electron --external:discord-rpc --external:electron-updater --external:minecraft-java-core --outfile=dist-electron/main.cjs"
+    - "pnpm exec esbuild src/electron/main.ts --bundle --platform=node --format=cjs --minify --external:electron --external:discord-rpc --external:electron-updater --outfile=dist-electron/main.cjs"
     - "pnpm exec esbuild src/electron/preload.ts --bundle --platform=node --format=cjs --minify --external:electron --outdir=dist-electron"
     - |
       $ErrorActionPreference = 'Continue'
