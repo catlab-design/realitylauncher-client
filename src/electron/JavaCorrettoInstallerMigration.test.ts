@@ -2,8 +2,8 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const utilityHandlersSource = readFileSync(
-  join(import.meta.dir, "ipc", "utility-handlers.ts"),
+const javaHandlersSource = readFileSync(
+  join(import.meta.dir, "ipc", "java-handlers.ts"),
   "utf8",
 );
 
@@ -14,10 +14,10 @@ const nativeJavaSource = readFileSync(
 
 describe("Java installer vendor defaults", () => {
   it("uses Amazon Corretto direct download in Electron fallback installer", () => {
-    expect(utilityHandlersSource).toContain(
+    expect(javaHandlersSource).toContain(
       "https://corretto.aws/downloads/latest/"
     );
-    expect(utilityHandlersSource).toContain("amazon-corretto-");
+    expect(javaHandlersSource).toContain("amazon-corretto-");
   });
 
   it("uses Amazon Corretto direct download in native installer", () => {
@@ -27,7 +27,7 @@ describe("Java installer vendor defaults", () => {
   });
 
   it("drops the Azul Zulu metadata API from installer defaults", () => {
-    expect(utilityHandlersSource).not.toContain(
+    expect(javaHandlersSource).not.toContain(
       "https://api.azul.com/metadata/v1/zulu/packages/"
     );
     expect(nativeJavaSource).not.toContain(
@@ -36,7 +36,7 @@ describe("Java installer vendor defaults", () => {
   });
 
   it("removes Adoptium endpoint from installer defaults", () => {
-    expect(utilityHandlersSource).not.toContain("api.adoptium.net/v3/assets");
+    expect(javaHandlersSource).not.toContain("api.adoptium.net/v3/assets");
     expect(nativeJavaSource).not.toContain("api.adoptium.net/v3/assets");
   });
 });

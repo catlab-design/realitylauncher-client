@@ -61,7 +61,7 @@ It is in `package.json` and the esbuild `--external` flag but imported nowhere i
 - Modify: `src/electron/MinecraftRun/rustLauncher.ts`
 - Modify: `src/electron/MinecraftRun/RustLauncherSizeGuard.test.ts`
 
-**Step 1 (failing test):** Lower the cap in `RustLauncherSizeGuard.test.ts` from 1850 → **1250**, delete the stale "should be refactored" note. Run `bun test MinecraftRun` → expected FAIL.
+**Step 1 (failing test):** Lower the cap in `RustLauncherSizeGuard.test.ts` from 1850 → **1530** (revised from 1250: only ~326 lines actually move in this task; the rest of L11–639 is Task 4 scope), delete the stale "should be refactored" note. Run `bun test MinecraftRun` → expected FAIL.
 **Step 2:** Move to `javaRuntime.ts` (exact symbols, currently rustLauncher.ts L11–639): `JAVA_DISCOVERY_CACHE_TTL_MS`, `JAVA_MAJOR_CACHE_TTL_MS`, `MAX_JAVA_*_CACHE`, `javaPathSelectionCache`, `javaMajorVersionCache`, `getRequiredJavaVersion`, `addBoundedCacheEntry`, `getJavaMajorVersion`, `getJavaPath`. Export what rustLauncher needs; import them back.
 **Step 3:** Run `bun test` + `bun run typecheck` → expected PASS (size guard now passes too).
 **Step 4:** Add size guard for the new file (copy the existing guard pattern, cap **700**).
@@ -75,7 +75,7 @@ It is in `package.json` and the esbuild `--external` flag but imported nowhere i
 - Create: `src/electron/MinecraftRun/assetCheck.ts` — `getMissingAssetDownloadsFromIndex`, `AssetIndexData`, `RESOURCES_URL`
 - Small shared helpers (`readJsonFileSafe`, `fileExists`, `yieldToEventLoop`, `logPerfStep`) → `src/electron/MinecraftRun/fsUtils.ts`
 
-**Steps:** Same TDD loop as Task 3 — lower rustLauncher cap 1250 → **950** first, extract, `bun test` + `typecheck`, commit: `refactor: split manifest/natives/asset helpers out of rustLauncher`
+**Steps:** Same TDD loop as Task 3 — lower rustLauncher cap 1530 → **1255** first, extract, `bun test` + `typecheck`, commit: `refactor: split manifest/natives/asset helpers out of rustLauncher`
 
 ### Task 5: Decompose the 884-line `launchGameRust` function
 
@@ -85,7 +85,7 @@ Highest-value, highest-care task. Read the whole function first; it almost certa
 **Step 2:** Extract **pure** helpers first (no fs/process side effects — e.g. arg/classpath assembly, alongside the existing `redactLaunchArgs`) into `src/electron/MinecraftRun/launchArgs.ts`.
 **Step 3 (new unit tests):** Write `launchArgs.test.ts` covering the extracted pure functions (memory args, classpath separator per platform, token redaction). These are the first real unit tests for launch logic — keep them.
 **Step 4:** Extract side-effecting phases into named `async function`s in rustLauncher.ts itself (same file is fine — readability goal is named phases, not more files). `launchGameRust` body should end ≤ ~150 lines of phase calls.
-**Step 5:** `bun test` + `typecheck` + manually launch a game once via `bun run dev` if possible. Lower cap 950 → **800**.
+**Step 5:** `bun test` + `typecheck` + manually launch a game once via `bun run dev` if possible. Lower cap 1255 → **1100**.
 **Step 6:** Commit: `refactor: break launchGameRust into named phases`
 
 ### Task 6: Split `auth-handlers.ts` (1,453) by domain

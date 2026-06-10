@@ -2,8 +2,8 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const utilityHandlersSource = readFileSync(
-  join(import.meta.dir, "ipc", "utility-handlers.ts"),
+const javaHandlersSource = readFileSync(
+  join(import.meta.dir, "ipc", "java-handlers.ts"),
   "utf8",
 );
 const launcherHandlersSource = readFileSync(
@@ -17,9 +17,9 @@ const gameProcessSource = readFileSync(
 
 describe("Rust bridge migration", () => {
   it("routes Java detection through native module first", () => {
-    expect(utilityHandlersSource).toContain("getNativeModule");
-    expect(utilityHandlersSource).toContain("native.detectJavaInstallations");
-    expect(utilityHandlersSource).toContain("native.validateJavaPath");
+    expect(javaHandlersSource).toContain("getNativeModule");
+    expect(javaHandlersSource).toContain("native.detectJavaInstallations");
+    expect(javaHandlersSource).toContain("native.validateJavaPath");
   });
 
   it("routes launcher Java fallback through native module first", () => {

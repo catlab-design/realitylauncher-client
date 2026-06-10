@@ -12,17 +12,20 @@ export async function registerAllHandlers(
     { registerAuthHandlers },
     { registerWindowHandlers },
     { registerUtilityHandlers },
+    { registerJavaHandlers },
   ] = await Promise.all([
     import("./config-handlers.js"),
     import("./auth-handlers.js"),
     import("./window-handlers.js"),
     import("./utility-handlers.js"),
+    import("./java-handlers.js"),
   ]);
 
   registerConfigHandlers();
   registerAuthHandlers(getMainWindow);
   registerWindowHandlers(getMainWindow);
   registerUtilityHandlers(getMainWindow);
+  registerJavaHandlers(getMainWindow);
 
   console.log("[IPC] Critical handlers registered");
 

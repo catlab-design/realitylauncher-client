@@ -6,8 +6,8 @@ const nativeJavaSource = readFileSync(
   join(import.meta.dir, "..", "..", "native", "src", "java", "mod.rs"),
   "utf8",
 );
-const utilityHandlersSource = readFileSync(
-  join(import.meta.dir, "ipc", "utility-handlers.ts"),
+const javaHandlersSource = readFileSync(
+  join(import.meta.dir, "ipc", "java-handlers.ts"),
   "utf8",
 );
 const launcherHandlersSource = readFileSync(
@@ -26,9 +26,9 @@ describe("Java native process spawning", () => {
   });
 
   it("avoids shell-based where/which java lookup in utility handlers", () => {
-    expect(utilityHandlersSource).not.toContain("execSync(findCommand");
-    expect(utilityHandlersSource).toContain("spawnSync(findCommand");
-    expect(utilityHandlersSource).toContain("windowsHide: true");
+    expect(javaHandlersSource).not.toContain("execSync(findCommand");
+    expect(javaHandlersSource).toContain("spawnSync(findCommand");
+    expect(javaHandlersSource).toContain("windowsHide: true");
   });
 
   it("avoids shell-based where/which java lookup in launcher handlers", () => {
