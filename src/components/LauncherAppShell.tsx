@@ -1,5 +1,5 @@
 import React, { type Dispatch, type SetStateAction } from "react";
-import { Toaster } from "react-hot-toast";
+import toast, { Toaster } from "react-hot-toast";
 import { AnimatePresence, motion } from "framer-motion";
 
 import { Sidebar } from "./layout/Sidebar";
@@ -70,10 +70,11 @@ interface LauncherAppShellProps {
   setInstallMinimized: (value: boolean) => void;
   operationType: string | null;
   handleCancelInstall: () => void | Promise<void>;
+  handleRepair: (instanceId: string) => void | Promise<void>;
 }
 
 export function LauncherAppShell({
-  colors, titleBarColors, config, session, accounts, selectedInstance, inboxOpen, setInboxOpen, announcements, userNotifications, unreadCount, setInvitations, setServerRefreshTrigger, setNotificationRefreshTrigger, accountDropdownOpen, setAccountDropdownOpen, t, selectAccount, removeAccountFromList, setLoginDialogOpen, setLinkCatIDOpen, handleLinkMicrosoft, handleLogout, updateConfig, contentTab, settingsDialogOpen, onCloseSettingsDialog, news, servers, selectedServer, setSelectedServer, setSelectedInstance, setActiveTab, serverRefreshTrigger, settingsTab, setSettingsTab, setImportModpackOpen, handleShowConfirm, handleBrowseJava, handleBrowseMinecraftDir, handleUnlink, isAdmin, adminToken, isExporting, exportProgress, isExportMinimized, setExportMinimized, handleCancelExport, exportingInstanceId, isInstalling, installProgress, isInstallMinimized, setInstallMinimized, operationType, handleCancelInstall,
+  colors, titleBarColors, config, session, accounts, selectedInstance, inboxOpen, setInboxOpen, announcements, userNotifications, unreadCount, setInvitations, setServerRefreshTrigger, setNotificationRefreshTrigger, accountDropdownOpen, setAccountDropdownOpen, t, selectAccount, removeAccountFromList, setLoginDialogOpen, setLinkCatIDOpen, handleLinkMicrosoft, handleLogout, updateConfig, contentTab, settingsDialogOpen, onCloseSettingsDialog, news, servers, selectedServer, setSelectedServer, setSelectedInstance, setActiveTab, serverRefreshTrigger, settingsTab, setSettingsTab, setImportModpackOpen, handleShowConfirm, handleBrowseJava, handleBrowseMinecraftDir, handleUnlink, isAdmin, adminToken, isExporting, exportProgress, isExportMinimized, setExportMinimized, handleCancelExport, exportingInstanceId, isInstalling, installProgress, isInstallMinimized, setInstallMinimized, operationType, handleCancelInstall, handleRepair,
 }: LauncherAppShellProps) {
   const [shouldRenderSettingsDialog, setShouldRenderSettingsDialog] = React.useState(false);
   React.useEffect(() => {
@@ -86,14 +87,140 @@ export function LauncherAppShell({
         position="bottom-right"
         gutter={10}
         containerStyle={{ bottom: 24, right: 24 }}
-        toastOptions={{
-          duration: 3000,
-          style: { background: colors.surfaceContainer, color: colors.onSurface, borderRadius: "8px", padding: "12px 18px", fontSize: "13px", fontWeight: 500, boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4)", maxWidth: "350px", border: "1px solid rgba(255, 255, 255, 0.1)" },
-          success: { style: { background: "#2ecc71", color: "#fff", boxShadow: "0 8px 32px rgba(34, 197, 94, 0.25)" }, iconTheme: { primary: "#22c55e", secondary: "#fff" } },
-          error: { style: { background: "#ff3b1f", color: "#fff", boxShadow: "0 8px 32px rgba(239, 68, 68, 0.25)" }, iconTheme: { primary: "#ef4444", secondary: "#fff" } },
-          loading: { style: { boxShadow: `0 0 20px ${colors.primary}80, 0 0 40px ${colors.primary}4d` } },
+      >
+        {(toastItem) => {
+          const messageText = typeof toastItem.message === "function" ? toastItem.message(toastItem) : toastItem.message;
+          
+          const getBorderLeftColor = () => {
+            if (toastItem.type === "success") return "#22c55e";
+            if (toastItem.type === "error") return "#ef4444";
+            if (toastItem.type === "loading") return "#3b82f6";
+            if (toastItem.icon === "⚠️") return "#eab308";
+            return "#3b82f6";
+          };
+
+          const getTitle = () => {
+            if (toastItem.type === "success") return toastItem.icon === "⚠️" ? t("toast_warning") : t("toast_success");
+            if (toastItem.type === "error") return t("toast_error");
+            if (toastItem.type === "loading") return t("toast_loading");
+            if (toastItem.icon === "⚠️") return t("toast_warning");
+            return t("toast_info");
+          };
+
+          const renderIcon = () => {
+            if (toastItem.icon) {
+              if (typeof toastItem.icon === "string") {
+                if (toastItem.icon === "⚠️") {
+                  return (
+                    <div className="w-5 h-5 flex items-center justify-center shrink-0">
+                      <svg className="w-5 h-5 text-amber-500" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2L1 21h22L12 2zm1 14h-2v-2h2v2zm0-4h-2V8h2v4z" />
+                      </svg>
+                    </div>
+                  );
+                }
+                return <span className="text-base leading-none shrink-0">{toastItem.icon}</span>;
+              }
+              return <div className="shrink-0">{toastItem.icon}</div>;
+            }
+
+            switch (toastItem.type) {
+              case "success":
+                return (
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: "#22c55e" }}>
+                    <svg className="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </div>
+                );
+              case "error":
+                return (
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: "#ef4444" }}>
+                    <svg className="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </div>
+                );
+              case "loading":
+                return (
+                  <div className="w-5 h-5 rounded-full border-2 border-t-transparent animate-spin shrink-0" style={{ borderColor: "#3b82f6", borderTopColor: "transparent" }} />
+                );
+              default:
+                return (
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: "#3b82f6" }}>
+                    <span className="text-white text-[10px] font-black leading-none select-none">i</span>
+                  </div>
+                );
+            }
+          };
+
+          return (
+            <motion.div
+              layout
+              initial={{ opacity: 0, scale: 0.85, y: 30 }}
+              animate={{
+                opacity: toastItem.visible ? 1 : 0,
+                scale: toastItem.visible ? 1 : 0.85,
+                y: toastItem.visible ? 0 : 20,
+              }}
+              exit={{ opacity: 0, scale: 0.85, y: 20 }}
+              transition={{
+                type: "spring",
+                stiffness: 160,
+                damping: 15,
+                mass: 0.8
+              }}
+              className="flex items-start gap-3.5 p-4 rounded-xl shadow-2xl border max-w-sm w-[350px] relative overflow-hidden"
+              style={{
+                backgroundColor: colors.surfaceContainerHigh || colors.surfaceContainer || "#1e1e1e",
+                borderColor: `${colors.outline}15` || "rgba(255, 255, 255, 0.08)",
+                borderLeft: `4px solid ${getBorderLeftColor()}`,
+              }}
+            >
+              <motion.div
+                initial={{ scale: 0, rotate: -10 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{
+                  type: "spring",
+                  stiffness: 300,
+                  damping: 15,
+                  delay: 0.08
+                }}
+                className="mt-0.5 shrink-0"
+              >
+                {renderIcon()}
+              </motion.div>
+              <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                <div 
+                  className="font-bold text-sm leading-tight" 
+                  style={{ color: colors.onSurface }}
+                >
+                  {getTitle()}
+                </div>
+                <div 
+                  className="text-xs font-medium leading-normal break-words" 
+                  style={{ color: colors.onSurfaceVariant }}
+                >
+                  {messageText}
+                </div>
+              </div>
+              {toastItem.type !== "loading" && (
+                <button
+                  onClick={() => toast.dismiss(toastItem.id)}
+                  className="shrink-0 p-0.5 rounded-lg text-opacity-60 hover:text-opacity-100 hover:bg-white/5 transition-all cursor-pointer"
+                  style={{ color: colors.onSurfaceVariant }}
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              )}
+            </motion.div>
+          );
         }}
-      />
+      </Toaster>
 
       <div className={`flex-1 flex flex-col overflow-hidden ml-app-shell ${config.rainbowMode ? "rainbow-mode" : ""}`}>
         <LauncherAppTitleBar
@@ -120,11 +247,11 @@ export function LauncherAppShell({
                   <React.Suspense fallback={<TabLoadingFallback colors={colors} />}>
                     {contentTab === "home" && <Home session={session} news={news} servers={servers} selectedServer={selectedServer} setSelectedServer={setSelectedServer} setSelectedInstance={setSelectedInstance} colors={colors} setActiveTab={setActiveTab} language={config.language} />}
                     {contentTab === "servers" && <ServerMenu colors={colors} servers={servers} selectedServer={selectedServer} setSelectedServer={setSelectedServer} session={session} setActiveTab={setActiveTab} refreshTrigger={serverRefreshTrigger} language={config.language} config={config} updateConfig={updateConfig} setSettingsTab={setSettingsTab} />}
-                    {contentTab === "modpack" && <ModPack colors={colors} config={config} setImportModpackOpen={setImportModpackOpen} setActiveTab={setActiveTab} setSettingsTab={setSettingsTab} onShowConfirm={handleShowConfirm} isActive={true} selectedInstance={selectedInstance} setSelectedInstance={setSelectedInstance} selectedServer={selectedServer} session={session} updateConfig={updateConfig} language={config.language} />}
+                    {contentTab === "modpack" && <ModPack colors={colors} config={config} setImportModpackOpen={setImportModpackOpen} setActiveTab={setActiveTab} setSettingsTab={setSettingsTab} onShowConfirm={handleShowConfirm} isActive={true} selectedInstance={selectedInstance} setSelectedInstance={setSelectedInstance} selectedServer={selectedServer} session={session} updateConfig={updateConfig} language={config.language} handleRepair={handleRepair} />}
                     {contentTab === "explore" && <UIErrorBoundary><Explore colors={colors} config={config} /></UIErrorBoundary>}
                     {contentTab === "admin" && isAdmin && adminToken && <AdminPanel colors={colors} adminToken={adminToken} language={config.language} />}
                     {contentTab === "about" && <About colors={colors} config={config} />}
-                    {contentTab === "wardrobe" && <Wardrobe colors={colors} />}
+                    {contentTab === "wardrobe" && <Wardrobe colors={colors} selectedInstance={selectedInstance} />}
                   </React.Suspense>
                 </motion.div>
               </AnimatePresence>

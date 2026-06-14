@@ -4,6 +4,10 @@ interface UiState {
     
     activeTab: string;
     setActiveTab: (tab: string) => void;
+    lastContentTab: string;
+    setLastContentTab: (tab: string) => void;
+    wardrobeMode: "microsoft" | "catskinc";
+    setWardrobeMode: (mode: "microsoft" | "catskinc") => void;
 
     settingsTab: "appearance" | "game" | "connections" | "language" | "launcher" | "resources" | "java" | "account" | "update";
     setSettingsTab: (tab: UiState['settingsTab']) => void;
@@ -34,6 +38,15 @@ interface UiState {
 export const useUiStore = create<UiState>((set) => ({
     activeTab: "home",
     setActiveTab: (tab) => set({ activeTab: tab }),
+    lastContentTab: "home",
+    setLastContentTab: (tab) => set({ lastContentTab: tab }),
+    wardrobeMode: (typeof window !== "undefined" && localStorage.getItem("wardrobe-mode") as "microsoft" | "catskinc") || "microsoft",
+    setWardrobeMode: (mode) => {
+        if (typeof window !== "undefined") {
+            localStorage.setItem("wardrobe-mode", mode);
+        }
+        set({ wardrobeMode: mode });
+    },
 
     settingsTab: "account",
     setSettingsTab: (tab) => set({ settingsTab: tab }),

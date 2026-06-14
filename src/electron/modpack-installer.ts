@@ -108,14 +108,25 @@ function looksLikeCurseForgeManifest(raw: any): boolean {
 }
 
 function hasCurseForgeManifest(native: any, modpackPath: string): boolean {
+  let manifestPath = "manifest.json";
+  try {
+    const zipContents = native.listZipContents(modpackPath) as string[];
+    const foundPath = zipContents.find((p) => p.endsWith("manifest.json"));
+    if (foundPath) {
+      manifestPath = foundPath;
+    }
+  } catch (error) {
+    console.warn("[ModpackInstaller] Failed to list ZIP contents:", error);
+  }
+
   const nativeManifest = tryParseNativeManifest(
     "CurseForge manifest parse",
-    () => native.parseCurseforgeManifest(modpackPath),
+    () => manifestPath === "manifest.json" ? native.parseCurseforgeManifest(modpackPath) : null,
   );
   if (nativeManifest) return true;
 
   try {
-    const manifestJson = native.readFileFromZip(modpackPath, "manifest.json") as
+    const manifestJson = native.readFileFromZip(modpackPath, manifestPath) as
       | string
       | null;
     if (!manifestJson) return false;

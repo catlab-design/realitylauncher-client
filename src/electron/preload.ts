@@ -203,6 +203,19 @@ const api = {
       variant,
       fileName,
     }),
+  catskincGetConfig: (gameDirectory?: string) => ipcRenderer.invoke("catskinc-get-config", gameDirectory),
+  catskincGetSelectedSkin: (gameDirectory?: string) => ipcRenderer.invoke("catskinc-get-selected-skin", gameDirectory),
+  catskincSaveConfig: (payload: { ip: string; gameDirectory?: string }) => ipcRenderer.invoke("catskinc-save-config", payload),
+  catskincUploadSkin: (payload: {
+    dataUrl: string;
+    slim: boolean;
+    mouthOpenDataUrl?: string;
+    gameDirectory?: string;
+  }) => ipcRenderer.invoke("catskinc-upload-skin", payload),
+  catskincClearAssets: (payload: {
+    mode: "all" | "skin" | "mouth";
+    gameDirectory?: string;
+  }) => ipcRenderer.invoke("catskinc-clear-assets", payload),
 
   
   

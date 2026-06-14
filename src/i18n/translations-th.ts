@@ -28,7 +28,7 @@ export const thTranslations = {
     wardrobe_preview_failed: "โหลดพรีวิวสกินไม่สำเร็จ",
     wardrobe_only_png: "รองรับเฉพาะไฟล์ PNG",
     wardrobe_file_too_large: "ไฟล์ใหญ่เกินไป (สูงสุด 2MB)",
-    wardrobe_invalid_dimensions: "ไฟล์สกินต้องมีขนาด 64x64 หรือ 64x32 พิกเซล",
+    wardrobe_invalid_dimensions: "ไฟล์สกินต้องมีสัดส่วนแบบ 1:1 หรือ 2:1 (เช่น 64x64, 128x128, 256x256)",
     wardrobe_preview_ready: "โหลดพรีวิวสกินแล้ว",
     wardrobe_file_read_failed: "อ่านไฟล์สกินไม่สำเร็จ",
     wardrobe_select_skin_first: "กรุณาเลือกไฟล์สกินก่อน",
@@ -50,6 +50,16 @@ export const thTranslations = {
     wardrobe_apply_skin: "ใช้งานสกินนี้",
     wardrobe_applying: "กำลังอัปเดตสกิน...",
     wardrobe_preview_cleared: "ล้างแคชพรีวิวสกินแล้ว",
+    wardrobe_mode_microsoft: "บัญชี Microsoft",
+    wardrobe_mode_catskinc: "ม็อด CatSkinC",
+    wardrobe_catskinc_sync_success: "ซิงค์สกินกับ CatSkinC สำเร็จแล้ว",
+    wardrobe_catskinc_sync_failed: "ไม่สามารถซิงค์กับ CatSkinC: {error}",
+    wardrobe_catskinc_mouth_open: "เลเยอร์ภาพเปิดปาก (.png)",
+    wardrobe_catskinc_choose_mouth: "เลือกไฟล์เลเยอร์เปิดปาก (.png)",
+    wardrobe_catskinc_test_mic: "ทดสอบปากด้วยไมค์",
+    wardrobe_catskinc_mic_listening: "กำลังฟังเสียง...",
+    wardrobe_catskinc_configured: "เซิร์ฟเวอร์ม็อด: {ip}",
+    wardrobe_catskinc_not_configured: "ไม่พบการตั้งค่าม็อด",
     checking_data: "กำลังตรวจสอบไฟล์",
 
     
@@ -279,7 +289,6 @@ export const thTranslations = {
     no_servers: "ไม่มีเซิร์ฟเวอร์",
     reading_status: "กำลังอ่าน",
 
-    
     tab_account: "บัญชีผู้ใช้",
     tab_appearance: "การแสดงผล",
     tab_game: "เกมและประสิทธิภาพ",
@@ -303,6 +312,7 @@ export const thTranslations = {
     telemetry_off: "ปิด Telemetry",
     limit_download_speed: "จำกัดความเร็วดาวน์โหลด",
     unlimited: "ไม่จำกัด",
+    catskinc_server_ip: "เซิร์ฟเวอร์ IP CatSkin",
 
     
     launcher_settings: "ตั้งค่า Launcher",
@@ -387,6 +397,11 @@ export const thTranslations = {
     update_check_failed: "ตรวจสอบไม่สำเร็จ",
     check: "ตรวจสอบ",
 
+    toast_success: "สำเร็จ",
+    toast_info: "ข้อมูล",
+    toast_error: "ข้อผิดพลาด",
+    toast_warning: "คำเตือน",
+    toast_loading: "กำลังดำเนินการ...",
     
     launcher_folder: "โฟลเดอร์ Launcher",
     launcher_folder_desc: "โฟลเดอร์ที่เก็บไฟล์ทั้งหมดของ Launcher",

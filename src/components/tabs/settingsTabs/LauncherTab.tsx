@@ -111,7 +111,7 @@ export function LauncherTab({ config, updateConfig, colors }: SettingsTabProps) 
                                 style={{
                                     backgroundColor: config.closeOnLaunch === option.value ? colors.secondary + "20" : "transparent",
                                     borderColor: config.closeOnLaunch === option.value ? colors.secondary : "transparent",
-                                    color: config.closeOnLaunch === option.value ? colors.secondary : colors.onSurfaceVariant,
+                                    color: config.closeOnLaunch === option.value ? colors.onSurface : colors.onSurfaceVariant,
                                 }}
                             >
                                 {option.label}

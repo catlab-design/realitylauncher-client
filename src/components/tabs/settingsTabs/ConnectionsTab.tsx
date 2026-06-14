@@ -1,3 +1,4 @@
+import { useEffect, useState, useCallback } from "react";
 import toast from "react-hot-toast";
 import type { LauncherConfig } from "../../../types/launcher";
 import type { SettingsTabProps } from "./AccountTab";
@@ -7,6 +8,36 @@ import { useTranslation } from "../../../hooks/useTranslation";
 export function ConnectionsTab({ config, updateConfig, colors }: SettingsTabProps) {
     const windowApi = (window as any).api;
     const { t } = useTranslation(config.language);
+
+    const [catskinIp, setCatskinIp] = useState("storage-api.catskin.space");
+    const [showIp, setShowIp] = useState(false);
+
+    useEffect(() => {
+        if (windowApi?.catskincGetConfig) {
+            windowApi.catskincGetConfig().then((cfg: any) => {
+                if (cfg && cfg.ip) {
+                    setCatskinIp(cfg.ip);
+                }
+            });
+        }
+    }, [windowApi]);
+
+    const handleSaveIp = useCallback(async (val: string) => {
+        const targetIp = val.trim() || "storage-api.catskin.space";
+        setCatskinIp(targetIp);
+        if (windowApi?.catskincSaveConfig) {
+            try {
+                const res = await windowApi.catskincSaveConfig({ ip: targetIp });
+                if (res.ok) {
+                    toast.success(t("wardrobe_catskinc_sync_success"));
+                } else {
+                    toast.error(res.error || t("wardrobe_apply_failed"));
+                }
+            } catch (err: any) {
+                toast.error(err?.message || t("wardrobe_apply_failed"));
+            }
+        }
+    }, [windowApi, t]);
 
     return (
         <div className="rounded-lg overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
@@ -96,7 +127,7 @@ export function ConnectionsTab({ config, updateConfig, colors }: SettingsTabProp
                 <div>
                     <div className="flex items-center justify-between mb-2">
                         <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('limit_download_speed')}</p>
-                        <span className="text-sm font-medium px-3 py-1 rounded-md" style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.secondary }}>
+                        <span className="text-sm font-medium px-3 py-1 rounded-md" style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}>
                             {config.downloadSpeedLimit === 0 ? t('unlimited') : `${config.downloadSpeedLimit} MB/s`}
                         </span>
                     </div>
@@ -113,6 +144,81 @@ export function ConnectionsTab({ config, updateConfig, colors }: SettingsTabProp
                     <div className="flex justify-between text-xs mt-1" style={{ color: colors.onSurfaceVariant }}>
                         <span>{t('unlimited')}</span>
                         <span>100 MB/s</span>
+                    </div>
+                </div>
+
+                <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
+
+                {/* CatSkin Server IP */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex-1">
+                        <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('catskinc_server_ip')}</p>
+                        <p className="text-xs mt-0.5" style={{ color: colors.onSurfaceVariant }}>
+                            {config.language === "th" 
+                                ? "กำหนดที่อยู่เซิร์ฟเวอร์หลักเพื่อดึงข้อมูลสกินและเลอยอร์ปาก" 
+                                : "Configure the server address for retrieving skins and mouth overlays."}
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2 w-full md:w-[360px] shrink-0">
+                        <div className="relative flex-1">
+                            <input
+                                type={showIp ? "text" : "password"}
+                                value={catskinIp}
+                                onChange={(e) => setCatskinIp(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                        handleSaveIp(e.currentTarget.value);
+                                        e.currentTarget.blur();
+                                    }
+                                }}
+                                placeholder="storage-api.catskin.space"
+                                className="w-full px-4 py-2.5 pr-10 text-sm rounded-md border outline-none transition-all"
+                                style={{
+                                    borderColor: colors.outline,
+                                    backgroundColor: colors.surface,
+                                    color: colors.onSurface,
+                                }}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowIp(!showIp)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center p-1 rounded hover:bg-white/10 transition-colors"
+                                style={{ color: colors.onSurfaceVariant }}
+                            >
+                                {showIp ? (
+                                    <i className="fa-solid fa-eye-slash text-xs"></i>
+                                ) : (
+                                    <i className="fa-solid fa-eye text-xs"></i>
+                                )}
+                            </button>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => handleSaveIp(catskinIp)}
+                            className="px-3.5 py-2.5 rounded-md text-xs font-semibold transition-all hover:opacity-90 active:scale-95 flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+                            style={{
+                                backgroundColor: colors.secondary,
+                                color: "#1a1a1a"
+                            }}
+                        >
+                            <i className="fa-solid fa-floppy-disk text-[10px]"></i>
+                            {t('save')}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setCatskinIp("storage-api.catskin.space");
+                                handleSaveIp("storage-api.catskin.space");
+                            }}
+                            className="p-2.5 rounded-md border transition-all hover:bg-white/5 active:scale-95 flex items-center justify-center cursor-pointer"
+                            style={{
+                                borderColor: colors.outline,
+                                color: colors.onSurfaceVariant
+                            }}
+                            title={t('reset_settings')}
+                        >
+                            <i className="fa-solid fa-rotate-left text-xs"></i>
+                        </button>
                     </div>
                 </div>
             </div>

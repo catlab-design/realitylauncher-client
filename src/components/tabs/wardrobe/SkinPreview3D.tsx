@@ -8,6 +8,7 @@ interface SkinPreview3DProps {
     height?: string | number;
     onResetRotation?: (resetFn: () => void) => void;
     onSkinLoadStateChange?: (loading: boolean) => void;
+    animationType?: "idle" | "walk" | "run" | "fly";
 }
 
 const FALLBACK_ROTATION = 0;
@@ -64,24 +65,24 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
     width = "100%", 
     height = "100%",
     onResetRotation,
-    onSkinLoadStateChange
+    onSkinLoadStateChange,
+    animationType = "idle"
 }) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const viewerRef = useRef<any | null>(null);
-    const dragRef = useRef({
-        active: false,
-        startX: 0,
-        startRotation: FALLBACK_ROTATION,
-    });
-
-    const [rotationY, setRotationY] = useState(FALLBACK_ROTATION);
     const [viewerReady, setViewerReady] = useState(false);
 
     // Expose reset rotation capability
     useEffect(() => {
         if (onResetRotation) {
-            onResetRotation(() => setRotationY(FALLBACK_ROTATION));
+            onResetRotation(() => {
+                const viewer = viewerRef.current;
+                if (viewer) {
+                    viewer.controls.reset();
+                    viewer.playerObject.rotation.set(0, FALLBACK_ROTATION, 0);
+                }
+            });
         }
     }, [onResetRotation]);
 
@@ -109,17 +110,18 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
                     height: ch,
                     zoom: calcZoom(ch),
                     fov: 60,
-                    enableControls: false,
+                    enableControls: true,
                     animation: new IdleAnimation(),
-                    background: backgroundColor,
+                    background: backgroundColor === "transparent" ? undefined : backgroundColor,
                 });
 
-                viewer.controls.enabled = false;
+                viewer.controls.enableZoom = true;
+                viewer.controls.enablePan = false;
                 viewer.autoRotate = false;
-                viewer.playerObject.rotation.y = rotationY;
                 viewerRef.current = viewer;
                 setViewerReady(true);
 
+                let firstResize = true;
                 resizeObserver = new ResizeObserver(() => {
                     const container = containerRef.current;
                     if (!container || !viewerRef.current) return;
@@ -127,6 +129,10 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
                     const h = container.clientHeight;
                     viewerRef.current.setSize(w, h);
                     viewerRef.current.zoom = calcZoom(h);
+                    if (firstResize && viewerRef.current.controls) {
+                        viewerRef.current.controls.saveState();
+                        firstResize = false;
+                    }
                 });
                 resizeObserver.observe(containerRef.current);
             } catch (error) {
@@ -146,11 +152,39 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
         };
     }, [backgroundColor, onSkinLoadStateChange]);
 
-    // Sync Rotation
+    // Sync Animation Type
     useEffect(() => {
-        if (!viewerRef.current) return;
-        viewerRef.current.playerObject.rotation.y = rotationY;
-    }, [rotationY]);
+        const viewer = viewerRef.current;
+        if (!viewer || !viewerReady) return;
+
+        let cancelled = false;
+
+        const syncAnim = async () => {
+            const modules = await loadSkinViewerModule();
+            if (cancelled) return;
+
+            viewer.animation = null; // Clear active
+
+            let animInstance: any = null;
+            if (animationType === "walk") {
+                animInstance = new modules.WalkingAnimation();
+            } else if (animationType === "run") {
+                animInstance = new modules.RunningAnimation();
+            } else if (animationType === "fly") {
+                animInstance = new modules.FlyingAnimation();
+            } else {
+                animInstance = new modules.IdleAnimation();
+            }
+
+            viewer.animation = animInstance;
+        };
+
+        void syncAnim();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [animationType, viewerReady]);
 
     // Sync Skin & Variant
     useEffect(() => {
@@ -196,39 +230,11 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
             });
     }, [skinUrl, variant, viewerReady, onSkinLoadStateChange]);
 
-    // Drag Logic
-    const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-        if (event.button !== 0) return;
-        const target = event.currentTarget;
-        target.setPointerCapture(event.pointerId);
-        dragRef.current.active = true;
-        dragRef.current.startX = event.clientX;
-        dragRef.current.startRotation = rotationY;
-    };
-
-    const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-        if (!dragRef.current.active) return;
-        const deltaX = event.clientX - dragRef.current.startX;
-        const nextRotation = dragRef.current.startRotation + deltaX * 0.01;
-        setRotationY(nextRotation);
-    };
-
-    const stopDragging = (event: React.PointerEvent<HTMLDivElement>) => {
-        if (!dragRef.current.active) return;
-        dragRef.current.active = false;
-        event.currentTarget.releasePointerCapture(event.pointerId);
-    };
-
     return (
         <div
             ref={containerRef}
-            className="relative overflow-hidden cursor-grab active:cursor-grabbing touch-none select-none"
+            className="relative w-full h-full overflow-hidden touch-none select-none"
             style={{ width, height, backgroundColor }}
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={stopDragging}
-            onPointerCancel={stopDragging}
-            onPointerLeave={stopDragging}
         >
             <canvas ref={canvasRef} className="block w-full h-full" style={{ backgroundColor: "transparent" }} />
         </div>

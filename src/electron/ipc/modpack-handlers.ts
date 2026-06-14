@@ -189,6 +189,7 @@ export function registerModpackHandlers(
 
       // Pre-install Minecraft core files so user can play immediately
       if (result.ok && result.instance) {
+        getMainWindow()?.webContents.send("instances-updated");
         await runPreInstallAfterModpack(result.instance.id, getMainWindow());
       }
 
@@ -347,6 +348,7 @@ export function registerModpackHandlers(
             }
           } catch {}
 
+          mainWindow?.webContents.send("instances-updated");
           // Pre-install Minecraft core files so user can play immediately
           await runPreInstallAfterModpack(result.instance.id, mainWindow);
         }
@@ -465,6 +467,7 @@ export function registerModpackHandlers(
             if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
           } catch {}
 
+          mainWindow?.webContents.send("instances-updated");
           // Pre-install Minecraft core files so user can play immediately
           await runPreInstallAfterModpack(result.instance.id, mainWindow);
         }

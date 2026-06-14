@@ -19,19 +19,19 @@ const TEAM: TeamMember[] = [
     {
         name: "Sam_Su",
         userGame: "Sam_Su",
-        role: "CEO & ผู้ก่อตั้ง Q-Team",
+        role: "CEO & ผู้ก่อตั้ง CatLab_",
         subRole: "Designer / Developer",
         description: "ออกแบบประสบการณ์ผู้ใช้ และพัฒนาระบบของ Reality"
     },
     {
         name: "Jo",
         userGame: "Kjofex2",
-        role: "Co-CEO Q-Team",
+        role: "Co-CEO CatLab_",
         description: "ร่วมวางแผนและขับเคลื่อนโปรเจกต์"
     },
     {
         name: "Pumpkins",
-        userGame: "realnice_k",
+        userGame: "notpumpkins",
         role: "IT Department",
         description: "รับผิดชอบการพัฒนาและฟีเจอร์ของระบบ"
     },
@@ -62,7 +62,7 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
         },
         {
             name: "Pumpkins",
-            userGame: "realnice_k",
+            userGame: "notpumpkins",
             role: t('role_it'),
             description: t('desc_pumpkins')
         },

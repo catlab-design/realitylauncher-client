@@ -17,7 +17,6 @@ import {
 import { useProgressStore } from "../../store/progressStore";
 import { useLaunchStore } from "../../store/launchStore";
 import { useInstances } from "../../hooks/useInstances";
-import { useGameEvents } from "../../hooks/useGameEvents";
 import { useAuthStore } from "../../store/authStore";
 import { Portal } from "../ui/Portal";
 import {
@@ -47,6 +46,7 @@ interface ModPackProps {
     session?: AuthSession | null;
     updateConfig?: (newConfig: Partial<LauncherConfig>) => void;
     language: "th" | "en";
+    handleRepair?: (id: string) => void | Promise<void>;
 }
 
 const isCancellationError = (msg: unknown): boolean => {
@@ -70,6 +70,7 @@ export function ModPack({
     session,
     updateConfig,
     language,
+    handleRepair,
 }: ModPackProps) {
     const { t } = useTranslation(language);
     const { accounts, setSession: setAuthSession, updateAccount } = useAuthStore();
@@ -177,10 +178,7 @@ export function ModPack({
         setSelectedInstance(instance);
     };
 
-    const { handleCancelInstall: _handleCancelInstall, handleRepair } = useGameEvents({
-        t, isInstalling, setInstalling, setInstallProgress, setInstallMinimized,
-        operationType, setOperationType, installingInstanceId, setInstallingInstanceId, loadInstances,
-    });
+
 
     const launchCancelledRef = useRef(false);
     const launchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -738,7 +736,7 @@ export function ModPack({
                         </button>
                         <button
                             type="button"
-                            onClick={(e) => { e.stopPropagation(); playClick(); handleRepair(serverInstance.id); }}
+                            onClick={(e) => { e.stopPropagation(); playClick(); handleRepair?.(serverInstance.id); }}
                             className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-red-500/20 hover:text-red-500 active:scale-95 backdrop-blur-md border border-white/10 shrink-0 bg-white/10 text-white"
                             title={t('repair_files')}
                         >

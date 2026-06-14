@@ -11,6 +11,10 @@ const rustLauncherSource = readFileSync(
   join(import.meta.dir, "MinecraftRun", "rustLauncher.ts"),
   "utf8",
 );
+const launchArgsSource = readFileSync(
+  join(import.meta.dir, "MinecraftRun", "launchArgs.ts"),
+  "utf8",
+);
 
 describe("instance metadata save regressions", () => {
   it("serializes concurrent saves for the same instance", () => {
@@ -28,7 +32,7 @@ describe("instance metadata save regressions", () => {
   it("does not write Minecraft access tokens to launch logs", () => {
     expect(instanceHandlersSource).toContain('accessToken: launchOptions.accessToken ? "[redacted]" : undefined');
     expect(instanceHandlersSource).not.toContain("logger.info(`[Launch] Launch Options:`, { options: launchOptions });");
-    expect(rustLauncherSource).toContain("function redactLaunchArgs");
+    expect(launchArgsSource).toContain("export function redactLaunchArgs");
     expect(rustLauncherSource).toContain("const debugAllArgs = redactLaunchArgs(allArgs, accessToken)");
     expect(rustLauncherSource).not.toContain('`"${javaPath}" ${allArgs.join(" ")}`');
   });

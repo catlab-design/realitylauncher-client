@@ -13,6 +13,7 @@ import { playClick, playSucceed, playNotification, setSoundConfig } from "../lib
 import { useTranslation } from "../hooks/useTranslation";
 import { useConfigStore } from "../store/configStore";
 import { useAuthStore } from "../store/authStore";
+import { useGameEvents } from "../hooks/useGameEvents";
 import { useUiStore } from "../store/uiStore";
 import { useProgressStore } from "../store/progressStore";
 import {
@@ -48,31 +49,24 @@ function LauncherAppContent() {
     }
   };
 
-  const handleCancelInstall = async () => {
-    try {
-      if (installingInstanceId) {
-        await (window.api as any)?.instanceCancelAction?.(installingInstanceId);
-      }
-      await (window.api as any)?.modpackCancelInstall?.();
-      toast.error(t('cancel_install_success'));
-
-      setInstalling(false);
-      setInstallProgress(null);
-      setInstallingInstanceId(null);
-      setOperationType(null);
-    } catch (error) {
-      console.error("Failed to cancel install:", error);
-    }
-  };
-
   const { session, accounts, setSession, addAccount, updateAccount, removeAccount: removeAccountAction } = useAuthStore();
-  const { activeTab, setActiveTab, settingsTab, setSettingsTab, modals, openModal, closeModal } = useUiStore();
+  const { activeTab, setActiveTab, settingsTab, setSettingsTab, modals, openModal, closeModal, lastContentTab, setLastContentTab } = useUiStore();
 
   const [isLoading, setIsLoading] = useState(true);
   const [authBootstrapComplete, setAuthBootstrapComplete] = useState(false);
-  const [lastContentTab, setLastContentTab] = useState("home");
 
   const { t } = useTranslation(config.language);
+  const { handleCancelInstall, handleRepair } = useGameEvents({
+    t,
+    isInstalling,
+    setInstalling,
+    setInstallProgress,
+    setInstallMinimized,
+    operationType,
+    setOperationType,
+    installingInstanceId,
+    setInstallingInstanceId,
+  });
   const settingsDialogOpen = activeTab === "settings";
   const contentTab = activeTab === "settings" ? lastContentTab : activeTab;
 
@@ -1255,6 +1249,7 @@ function LauncherAppContent() {
         setInstallMinimized={setInstallMinimized}
         operationType={operationType}
         handleCancelInstall={handleCancelInstall}
+        handleRepair={handleRepair}
       />
     </div>
   );

@@ -1141,7 +1141,7 @@ export function LauncherAppOverlays({
                   setIsDragging(true);
                 }}
                 onDragLeave={() => setIsDragging(false)}
-                onDrop={(e) => {
+                onDrop={async (e) => {
                   e.preventDefault();
                   setIsDragging(false);
                   const files = Array.from(e.dataTransfer.files);
@@ -1150,8 +1150,33 @@ export function LauncherAppOverlays({
                       file.name.endsWith(".zip") || file.name.endsWith(".mrpack"),
                   );
                   if (validFile) {
-                    toast.success(`${t("importing")}: ${validFile.name}`);
-                    setImportModpackOpen(false);
+                    let filePath = (validFile as any).path;
+                    if (window.api?.getPathForFile) {
+                      try {
+                        filePath = window.api.getPathForFile(validFile);
+                      } catch (err) {
+                        console.warn("Failed to get path via webUtils:", err);
+                      }
+                    }
+                    if (filePath) {
+                      setImportModpackOpen(false);
+                      toast.success(`${t("importing")}: ${validFile.name}`);
+                      try {
+                        const result = await window.api?.modpackInstall?.(filePath);
+                        if (result?.ok && result.instance) {
+                          toast.success(t("install_complete"));
+                        } else {
+                          const errMsg = typeof result?.error === "string" ? result.error : "";
+                          if (errMsg) {
+                            toast.error(errMsg);
+                          }
+                        }
+                      } catch (error: any) {
+                        toast.error(error?.message || t("error_occurred"));
+                      }
+                    } else {
+                      toast.error(t("cannot_read_file"));
+                    }
                   } else {
                     toast.error(t("support_zip_mrpack"));
                   }
@@ -1180,11 +1205,36 @@ export function LauncherAppOverlays({
                     const input = document.createElement("input");
                     input.type = "file";
                     input.accept = ".zip,.mrpack";
-                    input.onchange = (e) => {
+                    input.onchange = async (e) => {
                       const file = (e.target as HTMLInputElement).files?.[0];
                       if (file) {
-                        toast.success(`${t("importing")}: ${file.name}`);
-                        setImportModpackOpen(false);
+                        let filePath = (file as any).path;
+                        if (window.api?.getPathForFile) {
+                          try {
+                            filePath = window.api.getPathForFile(file);
+                          } catch (err) {
+                            console.warn("Failed to get path via webUtils:", err);
+                          }
+                        }
+                        if (filePath) {
+                          setImportModpackOpen(false);
+                          toast.success(`${t("importing")}: ${file.name}`);
+                          try {
+                            const result = await window.api?.modpackInstall?.(filePath);
+                            if (result?.ok && result.instance) {
+                              toast.success(t("install_complete"));
+                            } else {
+                              const errMsg = typeof result?.error === "string" ? result.error : "";
+                              if (errMsg) {
+                                toast.error(errMsg);
+                              }
+                            }
+                          } catch (error: any) {
+                            toast.error(error?.message || t("error_occurred"));
+                          }
+                        } else {
+                          toast.error(t("cannot_read_file"));
+                        }
                       }
                     };
                     input.click();

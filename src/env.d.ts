@@ -415,6 +415,25 @@ declare global {
         requiresRelogin?: boolean;
         error?: string;
       }>;
+      catskincGetConfig: (gameDirectory?: string) => Promise<{ ok: boolean; configured: boolean; ip: string }>;
+      catskincGetSelectedSkin: (gameDirectory?: string) => Promise<{
+        ok: boolean;
+        url?: string;
+        mouthUrl?: string;
+        slim?: boolean;
+        error?: string;
+      }>;
+      catskincSaveConfig: (payload: { ip: string; gameDirectory?: string }) => Promise<{ ok: boolean; error?: string }>;
+      catskincUploadSkin: (payload: {
+        dataUrl: string;
+        slim: boolean;
+        mouthOpenDataUrl?: string;
+        gameDirectory?: string;
+      }) => Promise<{ ok: boolean; error?: string; message?: string }>;
+      catskincClearAssets: (payload: {
+        mode: "all" | "skin" | "mouth";
+        gameDirectory?: string;
+      }) => Promise<{ ok: boolean; error?: string }>;
       
       windowMinimize: () => Promise<void>;
       windowMaximize: () => Promise<void>;

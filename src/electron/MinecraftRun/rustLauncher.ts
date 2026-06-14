@@ -1,5 +1,3 @@
-
-
 import { app, BrowserWindow, ipcMain } from "electron";
 import path from "path";
 import fs from "fs";
@@ -22,6 +20,12 @@ import {
   type DownloadItem,
 } from "./assetCheck.js";
 import { fileExists, logPerfStep } from "./fsUtils.js";
+import {
+  redactLaunchArgs,
+  fixUnreplacedVars,
+  getOfflineUuid,
+  escapeArgfileContent,
+} from "./launchArgs.js";
 
 let nativeModuleCache: any | null = null;
 
@@ -49,7 +53,6 @@ import {
   logResourcePacksState,
 } from "./rustLauncherSupport.js";
 
-
 const customRequire = createRequire(__filename);
 
 function getNative() {
@@ -65,11 +68,6 @@ function getNative() {
   try {
     nativeModuleCache = customRequire(nativePath);
   } catch (err) {
-    // index.cjs is present but the platform-specific .node binary failed to load.
-    // Usually means the build shipped without a binary for this OS/arch — e.g. an
-    // Intel-mac (x64) build missing the darwin-x64 .node, or a Windows-only build
-    // run on macOS. Surface a clear, actionable message instead of napi's cryptic
-    // "Failed to load native binding".
     throw new Error(
       `Native module failed to load for ${process.platform}-${process.arch}. ` +
         `This build is likely missing the native binary for your system. ` +
@@ -78,23 +76,6 @@ function getNative() {
   }
   return nativeModuleCache;
 }
-
-function redactLaunchArgs(args: string[], accessToken?: string): string[] {
-  return args.map((arg, index) => {
-    const previous = args[index - 1];
-    if (previous === "--accessToken") {
-      return "[redacted]";
-    }
-    if (arg.startsWith("--accessToken=")) {
-      return "--accessToken=[redacted]";
-    }
-    if (accessToken && arg === accessToken) {
-      return "[redacted]";
-    }
-    return arg;
-  });
-}
-
 
 interface PrepareResult {
   success: boolean;
@@ -106,6 +87,321 @@ interface PrepareResult {
   error?: string;
 }
 
+interface VersionJsonResult {
+  versionJson: string;
+  mergedVersionData: any;
+  manifest: any;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared Helper Phase Functions
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function loadAndPrepareVersionJson(
+  version: string,
+  versionsDir: string,
+  minecraftRoot: string,
+  native: any,
+  loader: any,
+  gameDir: string,
+  sendProgress: (progress: Partial<LaunchProgress>) => void,
+): Promise<VersionJsonResult> {
+  sendProgress({ type: "prepare", task: "Checking version data..." });
+  let manifest: any | null = null;
+  const versionLoadStartedAt = Date.now();
+  const versionLoad = await loadVersionJson(
+    version,
+    versionsDir,
+    minecraftRoot,
+    native,
+    manifest,
+  );
+  logPerfStep("load-version-json", versionLoadStartedAt);
+  let versionJson = versionLoad.versionJson;
+  manifest = versionLoad.manifest;
+
+  if (loader && loader.enable && loader.type !== "vanilla") {
+    sendProgress({ type: "prepare", task: `กำลังเตรียม ${loader.type}...` });
+    const applyLoaderStartedAt = Date.now();
+    versionJson = await applyModLoader(
+      versionJson,
+      version,
+      loader,
+      gameDir,
+      native,
+      getJavaPath,
+    );
+    logPerfStep(`apply-loader-${loader.type}`, applyLoaderStartedAt);
+  }
+
+  let mergedVersionData = JSON.parse(versionJson);
+  if (mergedVersionData.inheritsFrom) {
+    sendProgress({
+      type: "prepare",
+      task: "กำลัง merge version profiles...",
+    });
+    const parentVersion = mergedVersionData.inheritsFrom;
+    const parentJsonPath = path.join(
+      versionsDir,
+      parentVersion,
+      `${parentVersion}.json`,
+    );
+
+    let parentJson: string;
+    if (fs.existsSync(parentJsonPath)) {
+      parentJson = fs.readFileSync(parentJsonPath, "utf-8");
+    } else {
+      const parentLoad = await loadVersionJson(
+        parentVersion,
+        versionsDir,
+        minecraftRoot,
+        native,
+        manifest,
+      );
+      parentJson = parentLoad.versionJson;
+      manifest = parentLoad.manifest;
+    }
+
+    const parentData = JSON.parse(parentJson);
+
+    mergedVersionData = {
+      ...parentData,
+      ...mergedVersionData,
+      libraries: mergeLibraries(
+        mergedVersionData.libraries || [],
+        parentData.libraries || [],
+      ),
+      arguments: {
+        game: filterGameArgs([
+          ...(mergedVersionData.arguments?.game || []),
+          ...(parentData.arguments?.game || []),
+        ]),
+        jvm: [
+          ...(mergedVersionData.arguments?.jvm || []),
+          ...(parentData.arguments?.jvm || []),
+        ],
+      },
+    };
+
+    delete mergedVersionData.inheritsFrom;
+
+    console.log(
+      `[RustLauncher] Merged ${mergedVersionData.id} with parent ${parentVersion}`,
+    );
+    versionJson = JSON.stringify(mergedVersionData);
+  }
+
+  return {
+    versionJson,
+    mergedVersionData,
+    manifest,
+  };
+}
+
+async function resolveJavaPath(
+  version: string,
+  mergedVersionData: any,
+  customJavaPath: string | undefined,
+  native: any,
+  sendProgress: (progress: Partial<LaunchProgress>) => void,
+): Promise<string> {
+  sendProgress({ type: "prepare", task: "กำลังค้นหา Java..." });
+  const javaResolveStartedAt = Date.now();
+  const config = getConfig();
+  const requiredJavaMajor = getRequiredJavaVersion(version, mergedVersionData);
+  // Resolve Java after manifest merge
+  const javaPath = await getJavaPath(
+        customJavaPath,
+        config.javaPath,
+        native,
+        version,
+        requiredJavaMajor,
+  );
+  logPerfStep("resolve-java-path", javaResolveStartedAt);
+  console.log(`[RustLauncher] Using Java: ${javaPath}`);
+  return javaPath;
+}
+
+async function downloadMissingLibraries(
+  downloads: DownloadItem[],
+  sendProgress: (progress: Partial<LaunchProgress>) => void,
+): Promise<void> {
+  if (downloads.length === 0) return;
+
+  sendProgress({
+    type: "download",
+    task: "กำลังดาวน์โหลดไฟล์เกม...",
+    current: 0,
+    total: downloads.length,
+    percent: 0,
+  });
+
+  const concurrency = 10;
+  const queue = [...downloads];
+  let completed = 0;
+  const total = downloads.length;
+
+  const workers = Array(Math.min(concurrency, queue.length))
+    .fill(null)
+    .map(async () => {
+      while (queue.length > 0) {
+        const dl = queue.shift();
+        if (!dl) break;
+
+        try {
+          const hash = dl.sha1;
+          await downloadFileAtomic(
+            dl.url,
+            dl.path,
+            hash ? { sha1: hash } : undefined,
+          );
+
+          completed++;
+          sendProgress({
+            type: "download",
+            task: `กำลังดาวน์โหลด ${path.basename(dl.path)}`,
+            current: completed,
+            total: total,
+            percent: Math.round((completed / total) * 100),
+          });
+        } catch (err: any) {
+          console.error(`[RustLauncher] Failed to download ${dl.path}:`, err);
+          throw new Error(
+            `Failed to download ${path.basename(dl.path)}: ${err.message}`,
+          );
+        }
+      }
+    });
+
+  await Promise.all(workers).catch((err) => {
+    console.error("[RustLauncher] Download errors:", err);
+    throw new Error(`ดาวน์โหลดไฟล์ไม่สำเร็จ: ${err.message}`);
+  });
+
+  sendProgress({
+    type: "download",
+    task: "ดาวน์โหลดเสร็จสิ้น",
+    percent: 100,
+  });
+}
+
+async function verifyAndDownloadAssets(
+  versionData: any,
+  assetsDir: string,
+  native: any,
+  sendProgress: (progress: Partial<LaunchProgress>) => void,
+): Promise<void> {
+  if (!versionData.assetIndex) return;
+
+  const assetIndexId = versionData.assetIndex.id;
+  const assetIndexPath = path.join(assetsDir, "indexes", `${assetIndexId}.json`);
+  const assetVerifiedMarkerPath = path.join(assetsDir, "indexes", `.${assetIndexId}.verified`);
+
+  const assetsAlreadyVerified =
+    (await fileExists(assetVerifiedMarkerPath)) &&
+    (await fileExists(assetIndexPath));
+
+  if (!assetsAlreadyVerified) {
+    sendProgress({ type: "download", task: "กำลังตรวจสอบ assets..." });
+
+    if (!(await fileExists(assetIndexPath))) {
+      const assetIndexJson = await native.fetchVersionDetail(versionData.assetIndex.url);
+      await fs.promises.mkdir(path.dirname(assetIndexPath), { recursive: true });
+      await fs.promises.writeFile(assetIndexPath, assetIndexJson, "utf-8");
+    }
+
+    let assetDownloads: DownloadItem[] = [];
+    try {
+      assetDownloads = await native.getAssetDownloads(versionData.assetIndex.url, assetsDir);
+    } catch (nativeAssetError) {
+      console.warn(
+        "[RustLauncher] Native asset scan failed, falling back to local scan",
+        nativeAssetError,
+      );
+      const localAssetScanStartedAt = Date.now();
+      assetDownloads = await getMissingAssetDownloadsFromIndex(assetIndexPath, assetsDir);
+      logPerfStep("asset-index-local-scan", localAssetScanStartedAt);
+    }
+
+    if (assetDownloads.length > 0) {
+      sendProgress({
+        type: "download",
+        task: `กำลังดาวน์โหลด assets (${assetDownloads.length} ไฟล์)...`,
+        current: 0,
+        total: assetDownloads.length,
+      });
+
+      const assetDownloadStartedAt = Date.now();
+      await native.downloadFiles(assetDownloads, 20);
+      logPerfStep("asset-download-batch", assetDownloadStartedAt);
+    }
+
+    try {
+      await fs.promises.writeFile(
+        assetVerifiedMarkerPath,
+        JSON.stringify({ id: assetIndexId, verifiedAt: Date.now() }),
+        "utf-8",
+      );
+    } catch {
+      // Ignore write errors for marker file
+    }
+  }
+}
+
+async function extractNatives(
+  versionJson: string,
+  librariesDir: string,
+  nativesDir: string,
+  native: any,
+  sendProgress: (progress: Partial<LaunchProgress>) => void,
+): Promise<boolean> {
+  sendProgress({ type: "extract", task: "Extracting natives..." });
+
+  const extractNativesStartedAt = Date.now();
+  let reusedNatives = false;
+  if (native.extractNativesIfNeeded) {
+    const nativesResult = native.extractNativesIfNeeded(versionJson, librariesDir, nativesDir);
+    reusedNatives = nativesResult.reusedCache;
+    if (nativesResult.error) {
+      console.warn(`[RustLauncher] extractNativesIfNeeded warning: ${nativesResult.error}`);
+    }
+    console.log(`[RustLauncher] Natives: ${reusedNatives ? "reused cache" : "extracted"}`);
+  } else {
+    // Fallback: legacy TS extraction
+    const versionDataForNatives = JSON.parse(versionJson);
+    const osKey = process.platform === "win32" ? "windows" : process.platform === "darwin" ? "osx" : "linux";
+    const archBits = process.arch === "x64" || process.arch === "arm64" ? "64" : "32";
+    const nativeFingerprint = computeNativeFingerprint(versionDataForNatives, librariesDir, osKey, archBits);
+    if (canReuseExtractedNatives(nativesDir, nativeFingerprint.fingerprint)) {
+      reusedNatives = true;
+    } else {
+      if (fs.existsSync(nativesDir)) fs.rmSync(nativesDir, { recursive: true, force: true });
+      fs.mkdirSync(nativesDir, { recursive: true });
+      for (const lib of versionDataForNatives.libraries || []) {
+        if (!lib.natives) continue;
+        const classifierTemplate = lib.natives[osKey];
+        if (!classifierTemplate) continue;
+        const classifierKey = classifierTemplate.replace("${arch}", archBits);
+        const classifier = lib.downloads?.classifiers?.[classifierKey];
+        if (!classifier?.path) continue;
+        const nativeJarPath = path.join(librariesDir, classifier.path);
+        if (!fs.existsSync(nativeJarPath)) continue;
+        try { native.extractZip(nativeJarPath, nativesDir); } catch {}
+      }
+      const metaInfPath = path.join(nativesDir, "META-INF");
+      if (fs.existsSync(metaInfPath)) fs.rmSync(metaInfPath, { recursive: true, force: true });
+      if (nativeFingerprint.missingSourceCount === 0) {
+        saveNativeExtractionMarker(nativesDir, nativeFingerprint.fingerprint, nativeFingerprint.nativeSourceCount);
+      }
+    }
+  }
+  logPerfStep("extract-natives", extractNativesStartedAt);
+  return reusedNatives;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Core Launch & Install Handlers
+// ─────────────────────────────────────────────────────────────────────────────
 
 export async function launchGameRust(
   options: LaunchOptions,
@@ -128,7 +424,6 @@ export async function launchGameRust(
     loader,
   } = options;
 
-  const config = getConfig();
   const gameDir = options.gameDirectory || getMinecraftDir();
   const minecraftRoot = getMinecraftDir(); 
   const assetsDir = path.join(minecraftRoot, "assets");
@@ -175,140 +470,39 @@ export async function launchGameRust(
   };
 
   try {
-    sendProgress({ type: "prepare", task: "Checking version data..." });
-    let manifest: any | null = null;
-    const versionLoadStartedAt = Date.now();
-    const versionLoad = await loadVersionJson(
+    // Phase 1: Load and prepare version JSON
+    const { versionJson, mergedVersionData } = await loadAndPrepareVersionJson(
       version,
       versionsDir,
       minecraftRoot,
       native,
-      manifest,
+      loader,
+      gameDir,
+      sendProgress,
     );
-    logPerfStep("load-version-json", versionLoadStartedAt);
-    let versionJson = versionLoad.versionJson;
-    manifest = versionLoad.manifest;
 
-    
-    if (loader && loader.enable && loader.type !== "vanilla") {
-      sendProgress({ type: "prepare", task: `กำลังเตรียม ${loader.type}...` });
-      const applyLoaderStartedAt = Date.now();
-      versionJson = await applyModLoader(
-        versionJson,
-        version,
-        loader,
-        gameDir,
-        native,
-        getJavaPath,
-      );
-      logPerfStep(`apply-loader-${loader.type}`, applyLoaderStartedAt);
-    }
-
-    
-    let mergedVersionData = JSON.parse(versionJson);
-    if (mergedVersionData.inheritsFrom) {
-      sendProgress({
-        type: "prepare",
-        task: "กำลัง merge version profiles...",
-      });
-      const parentVersion = mergedVersionData.inheritsFrom;
-      const parentJsonPath = path.join(
-        versionsDir,
-        parentVersion,
-        `${parentVersion}.json`,
-      );
-
-      let parentJson: string;
-      if (fs.existsSync(parentJsonPath)) {
-        parentJson = fs.readFileSync(parentJsonPath, "utf-8");
-      } else {
-        const parentLoad = await loadVersionJson(
-          parentVersion,
-          versionsDir,
-          minecraftRoot,
-          native,
-          manifest,
-        );
-        parentJson = parentLoad.versionJson;
-        manifest = parentLoad.manifest;
-      }
-
-      const parentData = JSON.parse(parentJson);
-
-      
-      mergedVersionData = {
-        ...parentData,
-        ...mergedVersionData,
-        
-        libraries: mergeLibraries(
-          mergedVersionData.libraries || [],
-          parentData.libraries || [],
-        ),
-        
-        arguments: {
-          game: filterGameArgs([
-            ...(mergedVersionData.arguments?.game || []),
-            ...(parentData.arguments?.game || []),
-          ]),
-          jvm: [
-            ...(mergedVersionData.arguments?.jvm || []),
-            ...(parentData.arguments?.jvm || []),
-          ],
-        },
-      };
-
-      
-      delete mergedVersionData.inheritsFrom;
-
-      console.log(
-        `[RustLauncher] Merged ${mergedVersionData.id} with parent ${parentVersion}`,
-      );
-      versionJson = JSON.stringify(mergedVersionData);
-    }
-
-    sendProgress({ type: "prepare", task: "กำลังค้นหา Java..." });
-    const javaResolveStartedAt = Date.now();
-    const requiredJavaMajor = getRequiredJavaVersion(version, mergedVersionData);
-    const javaPath = await getJavaPath(
-      customJavaPath,
-      config.javaPath,
-      native,
+    // Phase 2: Resolve Java
+    const javaPath = await resolveJavaPath(
       version,
-      requiredJavaMajor,
+      mergedVersionData,
+      customJavaPath,
+      native,
+      sendProgress,
     );
-    logPerfStep("resolve-java-path", javaResolveStartedAt);
-    console.log(`[RustLauncher] Using Java: ${javaPath}`);
-
-    
-    sendProgress({ type: "prepare", task: "กำลังเตรียมไฟล์เกม..." });
 
     const versionJarPath = path.join(versionsDir, version, `${version}.jar`);
 
-    
-    
-    
+    // Phase 3: Setup launch arguments & variables
     let sanitizedUuid = uuid || "00000000-0000-0000-0000-000000000000";
     if (uuid?.startsWith("catid-")) {
-      const crypto = await import("node:crypto");
-      const md5 = crypto
-        .createHash("md5")
-        .update(`OfflinePlayer:${username}`)
-        .digest();
-      
-      md5[6] = (md5[6] & 0x0f) | 0x30;
-      
-      md5[8] = (md5[8] & 0x3f) | 0x80;
-      const hex = md5.toString("hex");
-      sanitizedUuid = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+      sanitizedUuid = getOfflineUuid(username);
       console.log(
         `[RustLauncher] Generated offline UUID for CatID user "${username}": ${sanitizedUuid}`,
       );
     }
 
-    
-    const versionData = JSON.parse(versionJson);
     const assetIndex =
-      versionData.assetIndex?.id || versionData.assets || version;
+      versionDataToIndexId(mergedVersionData, version);
 
     // Clamp heap to system RAM (avoids OOM on low-spec) — see rustLauncherSupport.ts
     const { minMb: safeMinMb, maxMb: safeMaxMb } = computeSafeHeapMb(ramMB);
@@ -364,234 +558,43 @@ export async function launchGameRust(
       throw new Error(prepareResult.error || "Failed to prepare launch");
     }
 
-    
-    const fixUnreplacedVars = (arg: string): string => {
-      let res = arg
-        .replace(/\$\{auth_xuid\}/g, "0")
-        .replace(/\$\{clientid\}/g, "")
-        .replace(/\$\{auth_session\}/g, accessToken || "token:0")
-        .replace(/\$\{resolution_width\}/g, "854")
-        .replace(/\$\{resolution_height\}/g, "480")
-        .replace(/\$\{path_separator\}/g, path.delimiter)
-        .replace(/\$\{primary_jar_name\}/g, `${version}.jar`);
+    const fixVars = (arg: string) => fixUnreplacedVars(arg, accessToken, version);
+    prepareResult.jvmArgs = prepareResult.jvmArgs.map(fixVars);
+    prepareResult.gameArgs = prepareResult.gameArgs.map(fixVars);
 
-      
-      
-      return res;
-    };
-
-    prepareResult.jvmArgs = prepareResult.jvmArgs.map(fixUnreplacedVars);
-    prepareResult.gameArgs = prepareResult.gameArgs.map(fixUnreplacedVars);
-
-    
     const unreplacedPattern = /\$\{[^}]+\}/g;
     for (const arg of [...prepareResult.jvmArgs, ...prepareResult.gameArgs]) {
       const matches = arg.match(unreplacedPattern);
       if (matches) {
-        
         console.warn(
           `[RustLauncher] WARNING: Unreplaced template variables in arg: ${matches.join(", ")}`,
         );
       }
     }
 
-    if (prepareResult.downloadsNeeded.length > 0) {
-      sendProgress({
-        type: "download",
-        task: "กำลังดาวน์โหลดไฟล์เกม...",
-        current: 0,
-        total: prepareResult.downloadsNeeded.length,
-        percent: 0,
-      });
+    // Phase 4: Download missing libraries
+    await downloadMissingLibraries(prepareResult.downloadsNeeded, sendProgress);
 
-      
-      
-      const downloads = prepareResult.downloadsNeeded;
-      const concurrency = 10;
-      const queue = [...downloads];
-      let completed = 0;
-      const total = downloads.length;
+    // Phase 5: Verify and download assets
+    const versionData = JSON.parse(versionJson);
+    await verifyAndDownloadAssets(versionData, assetsDir, native, sendProgress);
 
-      const workers = Array(Math.min(concurrency, queue.length))
-        .fill(null)
-        .map(async () => {
-          while (queue.length > 0) {
-            const dl = queue.shift();
-            if (!dl) break;
+    // Phase 6: Extract natives
+    const reusedNatives = await extractNatives(
+      versionJson,
+      librariesDir,
+      nativesDir,
+      native,
+      sendProgress,
+    );
 
-            try {
-              
-              const hash = dl.sha1;
-
-              await downloadFileAtomic(
-                dl.url,
-                dl.path,
-                hash ? { sha1: hash } : undefined,
-              );
-
-              completed++;
-              sendProgress({
-                type: "download",
-                task: `กำลังดาวน์โหลด ${path.basename(dl.path)}`,
-                current: completed,
-                total: total,
-                percent: Math.round((completed / total) * 100),
-              });
-            } catch (err: any) {
-              console.error(
-                `[RustLauncher] Failed to download ${dl.path}:`,
-                err,
-              );
-              throw new Error(
-                `Failed to download ${path.basename(dl.path)}: ${err.message}`,
-              );
-            }
-          }
-        });
-
-      await Promise.all(workers).catch((err) => {
-        console.error("[RustLauncher] Download errors:", err);
-        throw new Error(`ดาวน์โหลดไฟล์ไม่สำเร็จ: ${err.message}`);
-      });
-
-      sendProgress({
-        type: "download",
-        task: "ดาวน์โหลดเสร็จสิ้น",
-        percent: 100,
-      });
-    }
-
-    
-    if (versionData.assetIndex) {
-      const assetIndexId = versionData.assetIndex.id;
-      const assetIndexPath = path.join(
-        assetsDir,
-        "indexes",
-        `${assetIndexId}.json`,
-      );
-      // Marker that this asset index was fully verified, so later launches can
-      // skip stat-ing thousands of asset files.
-      const assetVerifiedMarkerPath = path.join(
-        assetsDir,
-        "indexes",
-        `.${assetIndexId}.verified`,
-      );
-
-      const assetsAlreadyVerified =
-        (await fileExists(assetVerifiedMarkerPath)) &&
-        (await fileExists(assetIndexPath));
-
-      if (!assetsAlreadyVerified) {
-        sendProgress({ type: "download", task: "กำลังตรวจสอบ assets..." });
-
-        if (!(await fileExists(assetIndexPath))) {
-
-          const assetIndexJson = await native.fetchVersionDetail(
-            versionData.assetIndex.url,
-          );
-          await fs.promises.mkdir(path.dirname(assetIndexPath), {
-            recursive: true,
-          });
-          await fs.promises.writeFile(assetIndexPath, assetIndexJson, "utf-8");
-        }
-
-        let assetDownloads: DownloadItem[] = [];
-        try {
-
-          assetDownloads = await native.getAssetDownloads(
-            versionData.assetIndex.url,
-            assetsDir,
-          );
-        } catch (nativeAssetError) {
-          console.warn(
-            "[RustLauncher] Native asset scan failed, falling back to local scan",
-            nativeAssetError,
-          );
-          const localAssetScanStartedAt = Date.now();
-          assetDownloads = await getMissingAssetDownloadsFromIndex(
-            assetIndexPath,
-            assetsDir,
-          );
-          logPerfStep("asset-index-local-scan", localAssetScanStartedAt);
-        }
-
-        if (assetDownloads.length > 0) {
-          sendProgress({
-            type: "download",
-            task: `กำลังดาวน์โหลด assets (${assetDownloads.length} ไฟล์)...`,
-            current: 0,
-            total: assetDownloads.length,
-          });
-
-          const assetDownloadStartedAt = Date.now();
-          await native.downloadFiles(assetDownloads, 20);
-          logPerfStep("asset-download-batch", assetDownloadStartedAt);
-        }
-
-        // Verification (and any missing downloads) complete — write the marker to skip next time.
-        try {
-          await fs.promises.writeFile(
-            assetVerifiedMarkerPath,
-            JSON.stringify({ id: assetIndexId, verifiedAt: Date.now() }),
-            "utf-8",
-          );
-        } catch {
-
-        }
-      }
-    }
-
-    // ── Natives extraction (Rust — fingerprint + extract in one call) ────────
-    sendProgress({ type: "extract", task: "Extracting natives..." });
-
-    const extractNativesStartedAt = Date.now();
-    let reusedNatives = false;
-    if (native.extractNativesIfNeeded) {
-      const nativesResult = native.extractNativesIfNeeded(versionJson, librariesDir, nativesDir);
-      reusedNatives = nativesResult.reusedCache;
-      if (nativesResult.error) {
-        console.warn(`[RustLauncher] extractNativesIfNeeded warning: ${nativesResult.error}`);
-      }
-      console.log(`[RustLauncher] Natives: ${reusedNatives ? "reused cache" : "extracted"}`);
-    } else {
-      // Fallback: legacy TS extraction
-      const versionDataForNatives = JSON.parse(versionJson);
-      const osKey = process.platform === "win32" ? "windows" : process.platform === "darwin" ? "osx" : "linux";
-      const archBits = process.arch === "x64" || process.arch === "arm64" ? "64" : "32";
-      const nativeFingerprint = computeNativeFingerprint(versionDataForNatives, librariesDir, osKey, archBits);
-      if (canReuseExtractedNatives(nativesDir, nativeFingerprint.fingerprint)) {
-        reusedNatives = true;
-      } else {
-        if (fs.existsSync(nativesDir)) fs.rmSync(nativesDir, { recursive: true, force: true });
-        fs.mkdirSync(nativesDir, { recursive: true });
-        for (const lib of versionDataForNatives.libraries || []) {
-          if (!lib.natives) continue;
-          const classifierTemplate = lib.natives[osKey];
-          if (!classifierTemplate) continue;
-          const classifierKey = classifierTemplate.replace("${arch}", archBits);
-          const classifier = lib.downloads?.classifiers?.[classifierKey];
-          if (!classifier?.path) continue;
-          const nativeJarPath = path.join(librariesDir, classifier.path);
-          if (!fs.existsSync(nativeJarPath)) continue;
-          try { native.extractZip(nativeJarPath, nativesDir); } catch {}
-        }
-        const metaInfPath = path.join(nativesDir, "META-INF");
-        if (fs.existsSync(metaInfPath)) fs.rmSync(metaInfPath, { recursive: true, force: true });
-        if (nativeFingerprint.missingSourceCount === 0) {
-          saveNativeExtractionMarker(nativesDir, nativeFingerprint.fingerprint, nativeFingerprint.nativeSourceCount);
-        }
-      }
-    }
-    logPerfStep("extract-natives", extractNativesStartedAt);
-
-    
+    // Phase 7: Spawn game process
     sendProgress({ type: "launch", task: "กำลังเปิดเกม..." });
 
     if (isAborted(instanceId)) {
       throw new Error("การเปิดเกมถูกยกเลิก");
     }
 
-    
     const { spawn } = await import("child_process");
 
     const allArgs = [
@@ -600,6 +603,7 @@ export async function launchGameRust(
       ...prepareResult.gameArgs,
     ];
 
+    const requiredJavaMajor = getRequiredJavaVersion(version, mergedVersionData);
     const javaMajorVersion = await getJavaMajorVersion(
       javaPath,
       requiredJavaMajor,
@@ -608,7 +612,6 @@ export async function launchGameRust(
       `[RustLauncher] Detected Java Major Version: ${javaMajorVersion}`,
     );
 
-    
     const isForge20 =
       version.includes("1.20.1") &&
       loader &&
@@ -619,36 +622,27 @@ export async function launchGameRust(
       );
     }
 
-    
     let spawnArgs = allArgs;
     let argsFilePath: string | null = null;
     const safeInstanceId =
       instanceId.replace(/[^a-zA-Z0-9_-]/g, "_") || "default";
-    // ── Argfile creation (Rust — avoids TS string escaping overhead) ─────────
+
     if (javaMajorVersion >= 9) {
       try {
         let relPath: string | null = null;
         if (native.createLaunchArgfile) {
           relPath = native.createLaunchArgfile(allArgs, gameDir, instanceId);
         } else {
-          // Fallback: legacy TS argfile
           const tempDir = path.join(gameDir, "temp");
           fs.mkdirSync(tempDir, { recursive: true });
           const argsFileName = `args_${safeInstanceId}.txt`;
           const argsFile = path.join(tempDir, argsFileName);
           argsFilePath = argsFile;
-          const fileContent = allArgs
-            .map((arg) => {
-              let escaped = arg.replace(/\\/g, "\\\\");
-              if (escaped.includes(" ") && !escaped.startsWith('"')) escaped = `"${escaped}"`;
-              return escaped;
-            })
-            .join("\n");
+          const fileContent = escapeArgfileContent(allArgs);
           fs.writeFileSync(argsFile, fileContent);
           relPath = `temp/${argsFileName}`;
         }
         if (relPath) {
-          // Store absolute path for cleanup on game exit
           argsFilePath = path.join(gameDir, relPath);
           spawnArgs = [`@${relPath}`];
           console.log(`[RustLauncher] Created argument file: ${relPath}`);
@@ -664,13 +658,10 @@ export async function launchGameRust(
       cwd: gameDir,
       env: { ...process.env },
       stdio: ["ignore", "pipe", "pipe"],
-      
-      
       detached: process.platform !== "win32",
       windowsHide: true,
     });
 
-    
     if (process.platform !== "win32") {
       child.unref();
     }
@@ -687,7 +678,6 @@ export async function launchGameRust(
       `[RustLauncher] Launch Args (Tail): ${allArgs.slice(-5).join(" ")}`,
     );
 
-    
     const crashLogPath = path.join(gameDir, "launch-debug.log");
     try {
       const debugJvmArgs = redactLaunchArgs(prepareResult.jvmArgs, accessToken);
@@ -720,12 +710,10 @@ export async function launchGameRust(
       console.warn(`[RustLauncher] Failed to save debug log:`, e);
     }
 
-    
     const gameLogCallback = getGameLogCallback();
     let stderrBuffer = ""; 
     const MAX_STDERR_BUFFER = 100_000; 
 
-    
     let logQueue: Array<{ level: string; message: string }> = [];
     let logFlushTimer: NodeJS.Timeout | null = null;
     const LOG_FLUSH_INTERVAL = 100; 
@@ -733,7 +721,6 @@ export async function launchGameRust(
 
     const flushLogs = () => {
       if (logQueue.length > 0 && gameLogCallback) {
-        
         const toSend = logQueue.slice(-20);
         for (const log of toSend) {
           gameLogCallback(log.level, log.message);
@@ -746,7 +733,6 @@ export async function launchGameRust(
     const queueLog = (level: string, message: string) => {
       logQueue.push({ level, message });
 
-      
       if (logQueue.length >= MAX_QUEUE_SIZE) {
         if (logFlushTimer) clearTimeout(logFlushTimer);
         flushLogs();
@@ -761,7 +747,6 @@ export async function launchGameRust(
         for (const line of lines) {
           const lineStr = line.trim();
           if (lineStr) {
-            
             if (
               lineStr.includes("java.util.zip.ZipException") ||
               lineStr.includes("zip END header not found")
@@ -777,7 +762,6 @@ export async function launchGameRust(
               }
             }
 
-            
             let level = "info";
             if (lineStr.includes("/ERROR]") || lineStr.includes("/FATAL]"))
               level = "error";
@@ -808,7 +792,6 @@ export async function launchGameRust(
       });
     }
 
-    
     native.saveRunningInstance(instanceId, child.pid, gameDir);
 
     setGameProcess(instanceId, child as any);
@@ -821,7 +804,6 @@ export async function launchGameRust(
       );
     }
 
-    
     const windows = BrowserWindow.getAllWindows();
     for (const win of windows) {
       if (!win.isDestroyed() && win.webContents && !win.webContents.isDestroyed()) {
@@ -833,11 +815,9 @@ export async function launchGameRust(
       }
     }
 
-    
     const launchTimestamp = Date.now();
     const launchArgsFilePath = argsFilePath;
 
-    
     child.on("close", (code: number | null) => {
       console.log(`[RustLauncher] Game process closed with code: ${code}`);
       if (telemetryInstanceId) {
@@ -846,7 +826,6 @@ export async function launchGameRust(
       native.removeRunningInstance(instanceId);
       setGameProcess(instanceId, null as any);
 
-      
       const runDuration = Date.now() - launchTimestamp;
       if (runDuration < 10000 && code !== 0) {
         console.error(
@@ -859,7 +838,6 @@ export async function launchGameRust(
             `t:crash_immediate^^${Math.round(runDuration / 1000)}^^${code}`,
           );
 
-          
           let specificReasonFound = false;
           if (stderrBuffer) {
             try {
@@ -867,7 +845,6 @@ export async function launchGameRust(
                 | string
                 | null;
               if (parsedReason) {
-                
                 let tKey = "crash_reason";
                 if (parsedReason.includes("OUT_OF_MEMORY"))
                   tKey = "crash_out_of_memory";
@@ -902,7 +879,6 @@ export async function launchGameRust(
           }
         }
 
-        
         try {
           const crashAppend = [
             ``,
@@ -922,7 +898,6 @@ export async function launchGameRust(
         } catch {}
       }
 
-      
       const windows = BrowserWindow.getAllWindows();
       for (const win of windows) {
         if (!win.isDestroyed() && win.webContents && !win.webContents.isDestroyed()) {
@@ -938,10 +913,8 @@ export async function launchGameRust(
         }
       }
 
-      
       ipcMain.emit("game-stopped", null, { instanceId });
 
-      
       if (launchArgsFilePath) {
         try {
           fs.unlinkSync(launchArgsFilePath);
@@ -977,9 +950,7 @@ export async function launchGameRust(
 export { launchGameRust as launchGame };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// preInstallInstance — download and stage all Minecraft files ahead of time
-// (version JSON, libraries, assets, natives) without spawning the game process.
-// Called after createInstance or installModpack so the instance is ready to play.
+// preInstallInstance
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface PreInstallOptions {
@@ -1004,7 +975,6 @@ export async function preInstallInstance(
   } = options;
 
   const native = getNative();
-  const config = getConfig();
   const minecraftRoot = getMinecraftDir();
   const assetsDir = path.join(minecraftRoot, "assets");
   const librariesDir = path.join(minecraftRoot, "libraries");
@@ -1018,88 +988,34 @@ export async function preInstallInstance(
   try {
     let javaPath: string | undefined;
 
-    // ─── 1. Download version JSON if missing ────────────────────────────────
-    sendProgress({ type: "prepare", task: "กำลังดาวน์โหลด version data..." });
-    let manifest: any | null = null;
-    const versionLoad = await loadVersionJson(version, versionsDir, minecraftRoot, native, manifest);
-    let versionJson = versionLoad.versionJson;
-    manifest = versionLoad.manifest;
+    // 1. Load version JSON
+    const { versionJson, mergedVersionData } = await loadAndPrepareVersionJson(
+      version,
+      versionsDir,
+      minecraftRoot,
+      native,
+      loader,
+      gameDir,
+      sendProgress,
+    );
 
-    // ─── 2. Apply mod loader (installs fabric/forge/etc if needed) ───────────
-    if (loader && loader.enable && loader.type !== "vanilla") {
-      sendProgress({ type: "prepare", task: `กำลังติดตั้ง ${loader.type}...` });
-      try {
-        versionJson = await applyModLoader(
-          versionJson,
-          version,
-          loader,
-          gameDir,
-          native,
-          getJavaPath,
-        );
-      } catch (loaderErr: any) {
-        // Loader install failure shouldn't block the rest of pre-install
-        console.warn("[PreInstall] Loader apply failed:", loaderErr?.message);
-      }
-    }
-
-    // ─── 3. Merge inherited version profiles ────────────────────────────────
-    let mergedVersionData = JSON.parse(versionJson);
-    if (mergedVersionData.inheritsFrom) {
-      sendProgress({ type: "prepare", task: "กำลัง merge version profiles..." });
-      const parentVersion = mergedVersionData.inheritsFrom;
-      const parentJsonPath = path.join(versionsDir, parentVersion, `${parentVersion}.json`);
-
-      let parentJson: string;
-      if (fs.existsSync(parentJsonPath)) {
-        parentJson = fs.readFileSync(parentJsonPath, "utf-8");
-      } else {
-        const parentLoad = await loadVersionJson(parentVersion, versionsDir, minecraftRoot, native, manifest);
-        parentJson = parentLoad.versionJson;
-        manifest = parentLoad.manifest;
-      }
-
-      const parentData = JSON.parse(parentJson);
-      mergedVersionData = {
-        ...parentData,
-        ...mergedVersionData,
-        libraries: mergeLibraries(mergedVersionData.libraries || [], parentData.libraries || []),
-        arguments: {
-          game: filterGameArgs([
-            ...(mergedVersionData.arguments?.game || []),
-            ...(parentData.arguments?.game || []),
-          ]),
-          jvm: [
-            ...(mergedVersionData.arguments?.jvm || []),
-            ...(parentData.arguments?.jvm || []),
-          ],
-        },
-      };
-      delete mergedVersionData.inheritsFrom;
-      versionJson = JSON.stringify(mergedVersionData);
-    }
-
-    // ─── 4. Resolve Java after manifest merge so custom versions can request Java 25+.
+    // 2. Resolve Java
     try {
-      sendProgress({ type: "prepare", task: "กำลังค้นหา Java..." });
-      const requiredJavaMajor = getRequiredJavaVersion(version, mergedVersionData);
-      javaPath = await getJavaPath(
-        customJavaPath,
-        config.javaPath,
-        native,
+      javaPath = await resolveJavaPath(
         version,
-        requiredJavaMajor,
+        mergedVersionData,
+        customJavaPath,
+        native,
+        sendProgress,
       );
     } catch {
-      // Java not found — not fatal for vanilla/fabric preinstall; launch will prompt install.
       console.warn("[PreInstall] Java not found, continuing without it");
     }
 
-    // ─── 5. prepareLaunch — find all missing library downloads ──────────────
     sendProgress({ type: "prepare", task: "กำลังตรวจสอบไฟล์เกม..." });
 
     const versionJarPath = path.join(versionsDir, version, `${version}.jar`);
-    const assetIndex = mergedVersionData.assetIndex?.id || mergedVersionData.assets || version;
+    const assetIndex = versionDataToIndexId(mergedVersionData, version);
 
     const launchOptions = {
       instanceId,
@@ -1126,121 +1042,14 @@ export async function preInstallInstance(
       console.warn("[PreInstall] prepareLaunch returned failure but no downloads listed");
     }
 
-    // ─── 6. Download missing libraries ──────────────────────────────────────
-    if (prepareResult.downloadsNeeded.length > 0) {
-      const downloads = prepareResult.downloadsNeeded;
-      const total = downloads.length;
-      let completed = 0;
+    // 3. Download missing libraries
+    await downloadMissingLibraries(prepareResult.downloadsNeeded, sendProgress);
 
-      sendProgress({
-        type: "download",
-        task: `กำลังดาวน์โหลด libraries (${total} ไฟล์)...`,
-        current: 0,
-        total,
-        percent: 0,
-      });
+    // 4. Download missing assets
+    await verifyAndDownloadAssets(mergedVersionData, assetsDir, native, sendProgress);
 
-      const concurrency = 10;
-      const queue = [...downloads];
-      const workers = Array(Math.min(concurrency, queue.length))
-        .fill(null)
-        .map(async () => {
-          while (queue.length > 0) {
-            const dl = queue.shift();
-            if (!dl) break;
-            try {
-              await downloadFileAtomic(dl.url, dl.path, dl.sha1 ? { sha1: dl.sha1 } : undefined);
-              completed++;
-              if (completed % 5 === 0 || completed === total) {
-                sendProgress({
-                  type: "download",
-                  task: `กำลังดาวน์โหลด libraries...`,
-                  current: completed,
-                  total,
-                  percent: Math.round((completed / total) * 100),
-                });
-              }
-            } catch (err: any) {
-              console.error(`[PreInstall] Failed to download ${dl.path}:`, err);
-            }
-          }
-        });
-      await Promise.all(workers);
-    }
-
-    // ─── 7. Download missing assets ─────────────────────────────────────────
-    if (mergedVersionData.assetIndex) {
-      sendProgress({ type: "download", task: "กำลังตรวจสอบ assets..." });
-
-      const assetIndexPath = path.join(assetsDir, "indexes", `${mergedVersionData.assetIndex.id}.json`);
-
-      if (!(await fileExists(assetIndexPath))) {
-        const assetIndexJson = await native.fetchVersionDetail(mergedVersionData.assetIndex.url);
-        await fs.promises.mkdir(path.dirname(assetIndexPath), { recursive: true });
-        await fs.promises.writeFile(assetIndexPath, assetIndexJson, "utf-8");
-      }
-
-      let assetDownloads: DownloadItem[] = [];
-      try {
-        assetDownloads = await native.getAssetDownloads(mergedVersionData.assetIndex.url, assetsDir);
-      } catch {
-        try {
-          assetDownloads = await getMissingAssetDownloadsFromIndex(assetIndexPath, assetsDir);
-        } catch (err) {
-          console.warn("[PreInstall] Asset scan failed:", err);
-        }
-      }
-
-      if (assetDownloads.length > 0) {
-        sendProgress({
-          type: "download",
-          task: `กำลังดาวน์โหลด assets (${assetDownloads.length} ไฟล์)...`,
-          current: 0,
-          total: assetDownloads.length,
-          percent: 0,
-        });
-        await native.downloadFiles(assetDownloads, 20);
-      }
-    }
-
-    // ─── 8. Extract natives (Rust) ──────────────────────────────────────────
-    sendProgress({ type: "extract", task: "กำลัง extract natives..." });
-
-    if (native.extractNativesIfNeeded) {
-      const nativesResult = native.extractNativesIfNeeded(versionJson, librariesDir, nativesDir);
-      if (nativesResult.error) console.warn(`[PreInstall] extractNativesIfNeeded: ${nativesResult.error}`);
-      console.log(`[PreInstall] Natives: ${nativesResult.reusedCache ? "reused cache" : "extracted"}`);
-    } else {
-      // Fallback: legacy TS extraction
-      const versionDataForNatives = JSON.parse(versionJson);
-      const osKey = process.platform === "win32" ? "windows" : process.platform === "darwin" ? "osx" : "linux";
-      const archBits = process.arch === "x64" || process.arch === "arm64" ? "64" : "32";
-      const nativeFingerprint = computeNativeFingerprint(versionDataForNatives, librariesDir, osKey, archBits);
-      if (!canReuseExtractedNatives(nativesDir, nativeFingerprint.fingerprint)) {
-        if (fs.existsSync(nativesDir)) fs.rmSync(nativesDir, { recursive: true, force: true });
-        fs.mkdirSync(nativesDir, { recursive: true });
-        let nativesExtracted = 0;
-        for (const lib of versionDataForNatives.libraries || []) {
-          if (!lib.natives) continue;
-          const classifierTemplate = lib.natives[osKey];
-          if (!classifierTemplate) continue;
-          const classifierKey = classifierTemplate.replace("${arch}", archBits);
-          const classifier = lib.downloads?.classifiers?.[classifierKey];
-          if (!classifier?.path) continue;
-          const nativeJarPath = path.join(librariesDir, classifier.path);
-          if (!fs.existsSync(nativeJarPath)) continue;
-          try { native.extractZip(nativeJarPath, nativesDir); nativesExtracted++; } catch {}
-        }
-        const metaInfPath = path.join(nativesDir, "META-INF");
-        if (fs.existsSync(metaInfPath)) fs.rmSync(metaInfPath, { recursive: true, force: true });
-        if (nativeFingerprint.missingSourceCount === 0) {
-          saveNativeExtractionMarker(nativesDir, nativeFingerprint.fingerprint, nativeFingerprint.nativeSourceCount);
-        }
-        if (nativesExtracted > 0) console.log(`[PreInstall] Extracted natives from ${nativesExtracted} JARs`);
-      } else {
-        console.log(`[PreInstall] Reusing cached natives`);
-      }
-    }
+    // 5. Extract natives
+    await extractNatives(versionJson, librariesDir, nativesDir, native, sendProgress);
 
     sendProgress({ type: "launch", task: "เตรียมไฟล์เกมเสร็จสิ้น!", percent: 100 });
 
@@ -1250,4 +1059,8 @@ export async function preInstallInstance(
     console.error(`[PreInstall] Error:`, error);
     return { ok: false, message: error.message || "เกิดข้อผิดพลาดในการเตรียมไฟล์เกม" };
   }
+}
+
+function versionDataToIndexId(mergedVersionData: any, version: string): string {
+  return mergedVersionData.assetIndex?.id || mergedVersionData.assets || version;
 }

@@ -187,29 +187,52 @@ function normalizeCurseForgeManifest(raw: any): CurseForgeManifest | null {
   };
 }
 
-function parseCurseForgeManifest(zipPath: string): CurseForgeManifest | null {
+function parseCurseForgeManifest(zipPath: string): { manifest: CurseForgeManifest; zipPrefix: string } | null {
   const native = getNativeModule();
 
+  // Try to find manifest.json path inside ZIP first to see if it's nested
+  let manifestPath = "manifest.json";
+  let zipPrefix = "";
   try {
-    const manifest = native.parseCurseforgeManifest(zipPath) as
-      | CurseForgeManifest
-      | null;
-    const normalized = normalizeCurseForgeManifest(manifest);
-    if (normalized) return normalized;
+    const zipContents = native.listZipContents(zipPath) as string[];
+    const foundPath = zipContents.find((p) => p.endsWith("manifest.json"));
+    if (foundPath) {
+      manifestPath = foundPath;
+      if (foundPath.includes("/")) {
+        zipPrefix = foundPath.substring(0, foundPath.lastIndexOf("/") + 1);
+      } else if (foundPath.includes("\\")) {
+        zipPrefix = foundPath.substring(0, foundPath.lastIndexOf("\\") + 1);
+      }
+    }
   } catch (error) {
-    console.warn("[CurseForge] Native manifest parse failed, trying JS fallback:", error);
+    console.warn("[CurseForge] Failed to list ZIP contents:", error);
   }
 
+  // Read file directly (bypassing Rust strict schema deserializer if it misses primary)
   try {
-    const manifestJson = native.readFileFromZip(zipPath, "manifest.json") as
-      | string
-      | null;
-    if (!manifestJson) return null;
-    return normalizeCurseForgeManifest(JSON.parse(manifestJson));
+    const manifestJson = native.readFileFromZip(zipPath, manifestPath) as string | null;
+    if (manifestJson) {
+      const normalized = normalizeCurseForgeManifest(JSON.parse(manifestJson));
+      if (normalized) {
+        return { manifest: normalized, zipPrefix };
+      }
+    }
   } catch (error) {
     console.warn("[CurseForge] JS manifest parse failed:", error);
-    return null;
   }
+
+  // Fallback to native parser
+  try {
+    const manifest = native.parseCurseforgeManifest(zipPath) as CurseForgeManifest | null;
+    const normalized = normalizeCurseForgeManifest(manifest);
+    if (normalized) {
+      return { manifest: normalized, zipPrefix: "" };
+    }
+  } catch (error) {
+    console.warn("[CurseForge] Native manifest parse failed:", error);
+  }
+
+  return null;
 }
 
 
@@ -228,10 +251,11 @@ export async function installCurseForgeModpack(
     if (signal?.aborted) throw new Error("Installation cancelled");
 
     const native = getNativeModule();
-    const manifest = parseCurseForgeManifest(zipPath);
-    if (!manifest) {
+    const parseResult = parseCurseForgeManifest(zipPath);
+    if (!parseResult) {
       throw new Error("Could not find manifest.json in modpack");
     }
+    const { manifest, zipPrefix } = parseResult;
     console.log(
       "[CurseForge] Parsed manifest:",
       manifest.name,
@@ -328,9 +352,12 @@ export async function installCurseForgeModpack(
                   break;
                 }
 
+                const urlPath = downloadUrl.split("?")[0];
                 downloadedFilename = decodeURIComponent(
-                  downloadUrl.split("/").pop() || downloadedFilename,
+                  urlPath.split("/").pop() || downloadedFilename,
                 );
+                // Sanitize filename to ensure Windows compatibility (remove \ / : * ? " < > |)
+                downloadedFilename = downloadedFilename.replace(/[\\/:*?"<>|]/g, "_");
                 const destPath = path.join(
                   instance.gameDirectory,
                   "mods",
@@ -401,7 +428,7 @@ export async function installCurseForgeModpack(
     );
 
     
-    const overridesDir = manifest.overrides || "overrides";
+    const overridesDir = zipPrefix + (manifest.overrides || "overrides");
     const extractResult = native.extractModpackOverrides(
       zipPath,
       instance.gameDirectory,

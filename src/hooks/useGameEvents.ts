@@ -13,7 +13,7 @@ interface UseGameEventsProps {
     setOperationType: (val: "install" | "repair" | "sync" | null) => void;
     installingInstanceId: string | null;
     setInstallingInstanceId: (val: string | null) => void;
-    loadInstances: () => void;
+    loadInstances?: () => void;
 }
 
 export function useGameEvents({
@@ -110,7 +110,7 @@ export function useGameEvents({
                         setInstallMinimized(false);
                         setOperationTypeSafe(null);
                         setInstallingInstanceId(null);
-                        loadInstances();
+                        if (loadInstances) loadInstances();
                     }
                 }, 1000);
             } else if (data.type === "error" || data.type === "cancelled" || data.type === "sync-error") {
@@ -147,7 +147,7 @@ export function useGameEvents({
                         setInstallMinimized(false);
                         setOperationTypeSafe(null);
                         setInstallingInstanceId(null);
-                        loadInstances();
+                        if (loadInstances) loadInstances();
                     }
                 }, 1000);
             } else if (data.stage === "error" || data.stage === "cancelled") {
@@ -207,7 +207,7 @@ export function useGameEvents({
                     setInstallProgress(null);
                     setOperationType(null);
                     toast.success(result.message || t('repair_success'));
-                    loadInstances();
+                    if (loadInstances) loadInstances();
                 }, 1000);
             } else {
                 setInstalling(false);

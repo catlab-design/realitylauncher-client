@@ -9,12 +9,94 @@
 import { ipcMain, shell, dialog, BrowserWindow } from "electron";
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { getMinecraftDir, getAppDataDir } from "../config.js";
 import { getSession } from "../auth.js";
 import { refreshMicrosoftTokenIfNeeded } from "../auth-refresh.js";
 import { API_URL } from "../lib/constants.js";
 
 const ML_API_URL = process.env.ML_API_URL || API_URL;
+
+function getCatSkinCloudUrl(gameDirectory?: string): string {
+  const defaultUrl = "https://storage-api.catskin.space";
+  try {
+    const baseDir = gameDirectory || getMinecraftDir();
+    const configPath = path.join(baseDir, "config", "catskinc.json");
+    if (fs.existsSync(configPath)) {
+      const raw = fs.readFileSync(configPath, "utf-8");
+      const parsed = JSON.parse(raw);
+      let ip = parsed?.catskinCloudIp;
+      if (ip && typeof ip === "string") {
+        ip = ip.trim();
+        if (!ip.startsWith("http://") && !ip.startsWith("https://")) {
+          if (ip.startsWith("localhost") || ip.startsWith("127.0.0.1")) {
+            return `http://${ip}`;
+          } else {
+            return `https://${ip}`;
+          }
+        }
+        return ip;
+      }
+    }
+  } catch (e) {
+    console.error("[CatSkinC] Failed to read catskinc config:", e);
+  }
+  return defaultUrl;
+}
+
+async function fetchUrlAsDataUrl(url: string, headers: Record<string, string>): Promise<string | undefined> {
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers,
+    });
+    if (!response.ok) {
+      console.error(`[CatSkinC] Failed to fetch asset ${url}: ${response.status}`);
+      return undefined;
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    return `data:image/png;base64,${buffer.toString("base64")}`;
+  } catch (err) {
+    console.error(`[CatSkinC] Error fetching asset ${url}:`, err);
+    return undefined;
+  }
+}
+
+function getFormattedMinecraftUuid(session: { uuid: string; minecraftUuid?: string }): string {
+  const targetUuid = session.minecraftUuid || session.uuid;
+  if (!targetUuid) return "";
+  const cleaned = targetUuid.trim().toLowerCase();
+  if (cleaned.length === 32 && !cleaned.includes("-")) {
+    return `${cleaned.slice(0, 8)}-${cleaned.slice(8, 12)}-${cleaned.slice(12, 16)}-${cleaned.slice(16, 20)}-${cleaned.slice(20)}`;
+  }
+  return cleaned;
+}
+
+function appendHashField(output: Buffer[], name: string, value: Buffer) {
+  output.push(Buffer.from(name, "utf-8"));
+  output.push(Buffer.from(":", "utf-8"));
+  output.push(Buffer.from(value.length.toString(), "utf-8"));
+  output.push(Buffer.from("\n", "utf-8"));
+  output.push(value);
+  output.push(Buffer.from("\n", "utf-8"));
+}
+
+function computeUploadContentHash(
+  uuid: string | null,
+  slim: boolean,
+  skinBytes: Buffer,
+  mouthOpenBytes: Buffer | null,
+): string {
+  const parts: Buffer[] = [];
+  appendHashField(parts, "uuid", Buffer.from(uuid || "", "utf-8"));
+  appendHashField(parts, "slim", Buffer.from(slim ? "true" : "false", "utf-8"));
+  appendHashField(parts, "file", skinBytes);
+  appendHashField(parts, "mouth_open", mouthOpenBytes || Buffer.alloc(0));
+  appendHashField(parts, "mouth_close", Buffer.alloc(0));
+  const combined = Buffer.concat(parts);
+  return crypto.createHash("sha256").update(combined).digest("hex");
+}
 
 type SkinVariant = "classic" | "slim";
 type MinecraftProfileCacheEntry = {
@@ -548,6 +630,398 @@ export function registerUtilityHandlers(
         return { ok: false, error: "Microsoft account is required." };
       } catch (error: any) {
         return { ok: false, error: error?.message || "Failed to upload skin." };
+      }
+    },
+  );
+
+  ipcMain.handle("catskinc-get-config", async (_event, gameDirectory?: string): Promise<{ ok: boolean; configured: boolean; ip: string }> => {
+    try {
+      const baseDir = gameDirectory || getMinecraftDir();
+      const configPath = path.join(baseDir, "config", "catskinc.json");
+      if (fs.existsSync(configPath)) {
+        const raw = fs.readFileSync(configPath, "utf-8");
+        const parsed = JSON.parse(raw);
+        const ip = parsed?.catskinCloudIp || "storage-api.catskin.space";
+        return { ok: true, configured: true, ip };
+      }
+      return { ok: true, configured: false, ip: "storage-api.catskin.space" };
+    } catch {
+      return { ok: false, configured: false, ip: "storage-api.catskin.space" };
+    }
+  });
+
+  ipcMain.handle(
+    "catskinc-save-config",
+    async (_event, payload: { ip: string; gameDirectory?: string }): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        const baseDir = payload.gameDirectory || getMinecraftDir();
+        const configPath = path.join(baseDir, "config", "catskinc.json");
+        const configDir = path.dirname(configPath);
+        if (!fs.existsSync(configDir)) {
+          fs.mkdirSync(configDir, { recursive: true });
+        }
+        
+        let existingConfig: any = {};
+        if (fs.existsSync(configPath)) {
+          try {
+            const raw = fs.readFileSync(configPath, "utf-8");
+            existingConfig = JSON.parse(raw);
+          } catch {}
+        }
+        
+        existingConfig.catskinCloudIp = payload.ip.trim();
+        
+        fs.writeFileSync(configPath, JSON.stringify(existingConfig, null, 2), "utf-8");
+        return { ok: true };
+      } catch (error: any) {
+        return { ok: false, error: error?.message || "Failed to save CatSkinC config" };
+      }
+    }
+  );
+
+  ipcMain.handle("catskinc-get-selected-skin", async (_event, gameDirectory?: string): Promise<{ ok: boolean; url?: string; mouthUrl?: string; slim?: boolean; error?: string }> => {
+    try {
+      const session = getSession();
+      if (!session) {
+        return { ok: false, error: "Not logged in" };
+      }
+      const catskincBaseUrl = getCatSkinCloudUrl(gameDirectory);
+      const requestId = crypto.randomUUID();
+      const formattedUuid = getFormattedMinecraftUuid(session);
+      const response = await fetch(`${catskincBaseUrl}/selected?uuid=${formattedUuid}`, {
+        method: "GET",
+        headers: {
+          "User-Agent": "catskinc/ServerApiClient",
+          "x-catskinc-protocol": "2",
+          "x-catskinc-request-id": requestId,
+          "x-catskinc-content-sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        }
+      });
+      if (!response.ok) {
+        return { ok: false, error: `Failed to fetch selected skin from CatSkinC (${response.status})` };
+      }
+      const data = await response.json() as any;
+      let skinUrl = data.url;
+      if (skinUrl === "" || skinUrl === null || skinUrl === "/public/system/updateyurmod.png") {
+        skinUrl = undefined;
+      }
+      if (skinUrl && !skinUrl.startsWith("http://") && !skinUrl.startsWith("https://")) {
+        skinUrl = `${catskincBaseUrl}${skinUrl}`;
+      }
+      let mouthUrl = data.mouth_open_url || data.mouthOpenUrl || data.mouth_url || data.mouthUrl;
+      if (mouthUrl === "" || mouthUrl === null) {
+        mouthUrl = undefined;
+      }
+      if (mouthUrl && !mouthUrl.startsWith("http://") && !mouthUrl.startsWith("https://")) {
+        mouthUrl = `${catskincBaseUrl}${mouthUrl}`;
+      }
+      let skinDataUrl: string | undefined = undefined;
+      if (skinUrl) {
+        skinDataUrl = await fetchUrlAsDataUrl(skinUrl, {
+          "User-Agent": "catskinc/ServerApiClient",
+          "x-catskinc-protocol": "2",
+          "x-catskinc-request-id": crypto.randomUUID(),
+        });
+      }
+      let mouthDataUrl: string | undefined = undefined;
+      if (mouthUrl) {
+        mouthDataUrl = await fetchUrlAsDataUrl(mouthUrl, {
+          "User-Agent": "catskinc/ServerApiClient",
+          "x-catskinc-protocol": "2",
+          "x-catskinc-request-id": crypto.randomUUID(),
+        });
+      }
+      return {
+        ok: true,
+        url: skinDataUrl || undefined,
+        mouthUrl: mouthDataUrl || undefined,
+        slim: data.slim ?? false
+      };
+    } catch (error: any) {
+      return { ok: false, error: error?.message || "Failed to query CatSkinC server." };
+    }
+  });
+
+  ipcMain.handle(
+    "catskinc-upload-skin",
+    async (
+      _event,
+      payload: { dataUrl: string; slim: boolean; mouthOpenDataUrl?: string; gameDirectory?: string },
+    ): Promise<{ ok: boolean; error?: string; message?: string }> => {
+      try {
+        const session = getSession();
+        if (!session) {
+          return { ok: false, error: "Not logged in" };
+        }
+
+        if (session.type !== "microsoft") {
+          return { ok: false, error: "Microsoft account is required to authenticate with CatSkinC." };
+        }
+
+        const skinBuffer = parsePngDataUrl(payload.dataUrl || "");
+        if (!skinBuffer) {
+          return { ok: false, error: "Invalid skin image format. Only PNG is supported." };
+        }
+
+        const mouthOpenBuffer = payload.mouthOpenDataUrl ? parsePngDataUrl(payload.mouthOpenDataUrl) : null;
+
+        const refreshResult = await refreshMicrosoftTokenIfNeeded();
+        if (!refreshResult.ok) {
+          return {
+            ok: false,
+            error: refreshResult.error || "Could not refresh Microsoft token.",
+          };
+        }
+        const accessToken = refreshResult.session?.accessToken || session.accessToken;
+        if (!accessToken) {
+          return { ok: false, error: "Microsoft access token not found." };
+        }
+
+        const serverIdBytes = crypto.randomBytes(20);
+        const serverId = serverIdBytes.toString("hex");
+
+        const mojangJoinResponse = await fetch("https://sessionserver.mojang.com/session/minecraft/join", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            accessToken,
+            selectedProfile: session.uuid,
+            serverId,
+          }),
+        });
+
+        if (!mojangJoinResponse.ok) {
+          let errorText = `Mojang joinServer verification failed (${mojangJoinResponse.status})`;
+          try {
+            const errorData = await mojangJoinResponse.json();
+            errorText = errorData?.errorMessage || errorData?.error || errorText;
+          } catch {}
+          return { ok: false, error: errorText };
+        }
+
+        const catskincBaseUrl = getCatSkinCloudUrl(payload.gameDirectory);
+        const formattedUuid = getFormattedMinecraftUuid(session);
+
+        const authPayload = {
+          username: session.username,
+          uuid: formattedUuid,
+          server_id: serverId,
+        };
+        const authBody = JSON.stringify(authPayload);
+        const authBodyBytes = Buffer.from(authBody, "utf-8");
+        const authBodySha256 = crypto.createHash("sha256").update(authBodyBytes).digest("hex");
+        const authRequestId = crypto.randomUUID();
+
+        const authResponse = await fetch(`${catskincBaseUrl}/auth/session`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "x-catskinc-protocol": "2",
+            "x-catskinc-request-id": authRequestId,
+            "x-catskinc-content-sha256": authBodySha256,
+          },
+          body: authBody,
+        });
+
+        if (!authResponse.ok) {
+          let errorText = `CatSkinC session authentication failed (${authResponse.status})`;
+          try {
+            const errorData = await authResponse.json();
+            errorText = errorData?.message || errorData?.error || errorText;
+          } catch {}
+          return { ok: false, error: errorText };
+        }
+
+        const authData = await authResponse.json() as any;
+        const sessionToken = authData?.session_token;
+        if (!sessionToken) {
+          return { ok: false, error: "Failed to retrieve session token from CatSkinC." };
+        }
+
+        const form = new FormData();
+        form.append("uuid", formattedUuid);
+        form.append("slim", String(payload.slim));
+        form.append(
+          "file",
+          new Blob([Uint8Array.from(skinBuffer)], { type: "image/png" }),
+          "skin.png",
+        );
+
+        if (mouthOpenBuffer) {
+          form.append(
+            "mouth_open",
+            new Blob([Uint8Array.from(mouthOpenBuffer)], { type: "image/png" }),
+            "mouth-open.png",
+          );
+          form.append(
+            "mouth",
+            new Blob([Uint8Array.from(mouthOpenBuffer)], { type: "image/png" }),
+            "mouth-open.png",
+          );
+        }
+
+        const canonicalHash = computeUploadContentHash(
+          formattedUuid,
+          payload.slim,
+          skinBuffer,
+          mouthOpenBuffer,
+        );
+
+        const uploadRequestId = crypto.randomUUID();
+
+        const uploadResponse = await fetch(`${catskincBaseUrl}/upload`, {
+          method: "POST",
+          headers: {
+            "x-catskinc-protocol": "2",
+            "x-catskinc-request-id": uploadRequestId,
+            "x-catskinc-session": sessionToken,
+            "x-catskinc-content-sha256": canonicalHash,
+          },
+          body: form,
+        });
+
+        if (!uploadResponse.ok) {
+          let errorText = `Skin upload to CatSkinC failed (${uploadResponse.status})`;
+          try {
+            const errorData = await uploadResponse.json() as any;
+            errorText = errorData?.message || errorData?.error || errorText;
+          } catch {}
+          return { ok: false, error: errorText };
+        }
+
+        return { ok: true, message: "Skin synced to CatSkinC successfully" };
+      } catch (error: any) {
+        return { ok: false, error: error?.message || "Failed to upload to CatSkinC." };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    "catskinc-clear-assets",
+    async (
+      _event,
+      payload: { mode: "all" | "skin" | "mouth"; gameDirectory?: string },
+    ): Promise<{ ok: boolean; error?: string; message?: string }> => {
+      try {
+        const session = getSession();
+        if (!session) {
+          return { ok: false, error: "Not logged in" };
+        }
+
+        if (session.type !== "microsoft") {
+          return { ok: false, error: "Microsoft account is required to authenticate with CatSkinC." };
+        }
+
+        const refreshResult = await refreshMicrosoftTokenIfNeeded();
+        if (!refreshResult.ok) {
+          return {
+            ok: false,
+            error: refreshResult.error || "Could not refresh Microsoft token.",
+          };
+        }
+        const accessToken = refreshResult.session?.accessToken || session.accessToken;
+        if (!accessToken) {
+          return { ok: false, error: "Microsoft access token not found." };
+        }
+
+        const serverIdBytes = crypto.randomBytes(20);
+        const serverId = serverIdBytes.toString("hex");
+
+        const mojangJoinResponse = await fetch("https://sessionserver.mojang.com/session/minecraft/join", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            accessToken,
+            selectedProfile: session.uuid,
+            serverId,
+          }),
+        });
+
+        if (!mojangJoinResponse.ok) {
+          let errorText = `Mojang joinServer verification failed (${mojangJoinResponse.status})`;
+          try {
+            const errorData = await mojangJoinResponse.json();
+            errorText = errorData?.errorMessage || errorData?.error || errorText;
+          } catch {}
+          return { ok: false, error: errorText };
+        }
+
+        const catskincBaseUrl = getCatSkinCloudUrl(payload.gameDirectory);
+        const formattedUuid = getFormattedMinecraftUuid(session);
+
+        const authPayload = {
+          username: session.username,
+          uuid: formattedUuid,
+          server_id: serverId,
+        };
+        const authBody = JSON.stringify(authPayload);
+        const authBodyBytes = Buffer.from(authBody, "utf-8");
+        const authBodySha256 = crypto.createHash("sha256").update(authBodyBytes).digest("hex");
+        const authRequestId = crypto.randomUUID();
+
+        const authResponse = await fetch(`${catskincBaseUrl}/auth/session`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "x-catskinc-protocol": "2",
+            "x-catskinc-request-id": authRequestId,
+            "x-catskinc-content-sha256": authBodySha256,
+          },
+          body: authBody,
+        });
+
+        if (!authResponse.ok) {
+          let errorText = `CatSkinC session authentication failed (${authResponse.status})`;
+          try {
+            const errorData = await authResponse.json();
+            errorText = errorData?.message || errorData?.error || errorText;
+          } catch {}
+          return { ok: false, error: errorText };
+        }
+
+        const authData = await authResponse.json() as any;
+        const sessionToken = authData?.session_token;
+        if (!sessionToken) {
+          return { ok: false, error: "Failed to retrieve session token from CatSkinC." };
+        }
+
+        const selectBody = {
+          uuid: formattedUuid,
+          clear: payload.mode,
+        };
+        const selectBodyStr = JSON.stringify(selectBody);
+        const selectBodyBytes = Buffer.from(selectBodyStr, "utf-8");
+        const selectBodySha256 = crypto.createHash("sha256").update(selectBodyBytes).digest("hex");
+        const selectRequestId = crypto.randomUUID();
+
+        const selectResponse = await fetch(`${catskincBaseUrl}/select`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "x-catskinc-protocol": "2",
+            "x-catskinc-request-id": selectRequestId,
+            "x-catskinc-session": sessionToken,
+            "x-catskinc-content-sha256": selectBodySha256,
+          },
+          body: selectBodyStr,
+        });
+
+        if (!selectResponse.ok) {
+          let errorText = `Clear operation failed (${selectResponse.status})`;
+          try {
+            const errorData = await selectResponse.json() as any;
+            errorText = errorData?.message || errorData?.error || errorText;
+          } catch {}
+          return { ok: false, error: errorText };
+        }
+
+        return { ok: true, message: "Cleared assets successfully." };
+      } catch (error: any) {
+        return { ok: false, error: error?.message || "Failed to clear assets." };
       }
     },
   );
