@@ -68,6 +68,8 @@ const api = {
     ipcRenderer.invoke("open-microsoft-login", verificationUri, userCode),
   getMinecraftDir: () => ipcRenderer.invoke("get-minecraft-dir"),
   getAppDataDir: () => ipcRenderer.invoke("get-app-data-dir"),
+  readLocalFileAsDataUrl: (filePath: string) =>
+    ipcRenderer.invoke("read-local-file-as-data-url", filePath),
   getSystemRam: () => ipcRenderer.invoke("get-system-ram"),
   getMaxRam: () => ipcRenderer.invoke("get-max-ram"),
   autoDetectJava: () => ipcRenderer.invoke("auto-detect-java"),

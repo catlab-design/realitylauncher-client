@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import elytraAssetUrl from "../../../assets/elytra.png";
 
 interface SkinPreview3DProps {
     skinUrl: string | null;
@@ -181,9 +182,18 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
 
         void syncAnim();
 
-        return () => {
-            cancelled = true;
-        };
+    }, [animationType, viewerReady]);
+
+    // Sync Cape/Elytra based on animationType
+    useEffect(() => {
+        const viewer = viewerRef.current;
+        if (!viewer || !viewerReady) return;
+
+        if (animationType === "fly") {
+            viewer.loadCape(elytraAssetUrl, { backEquipment: "elytra" });
+        } else {
+            viewer.loadCape(null);
+        }
     }, [animationType, viewerReady]);
 
     // Sync Skin & Variant

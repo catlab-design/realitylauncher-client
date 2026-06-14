@@ -619,13 +619,14 @@ function LauncherAppContent() {
 
       if (notifiedVersion && notifiedVersion !== currentVersion) {
         try {
-          const response = await fetch("https://cdn.reality.catlabdesign.space/client/latest.json");
+          const response = await fetch("https://api.github.com/repos/catlab-design/realitylauncher-client/releases/latest");
           if (response.ok) {
             const data = await response.json();
-            if (data.changelog) {
+            const changelogText = data.body || data.description || "";
+            if (changelogText) {
               setChangelogData({
                 version: currentVersion,
-                changelog: data.changelog
+                changelog: changelogText
               });
               setChangelogModalOpen(true);
             }

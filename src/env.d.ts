@@ -132,6 +132,7 @@ declare global {
       openExternal: (url: string) => Promise<void>;
       getMinecraftDir: () => Promise<string>;
       getAppDataDir: () => Promise<string>;
+      readLocalFileAsDataUrl: (filePath: string) => Promise<string | null>;
       
       browseJava: () => Promise<string | null>;
       browseDirectory: (title?: string) => Promise<string | null>;

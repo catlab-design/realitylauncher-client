@@ -2,7 +2,7 @@
   "name": "reality-launcher",
   "private": true,
   "type": "module",
-  "version": "3.3.0",
+  "version": "3.3.1",
   "license": "GPL-3.0-only",
   "main": "dist-electron/main.cjs",
   "repository": {
@@ -122,8 +122,9 @@
       "include": "build/installer.nsh"
     },
     "publish": {
-      "provider": "generic",
-      "url": "https://cdn.reality.catlabdesign.space/client"
+      "provider": "github",
+      "owner": "catlab-design",
+      "repo": "realitylauncher-client"
     }
   },
   "dependencies": {

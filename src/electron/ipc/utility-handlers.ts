@@ -717,19 +717,11 @@ export function registerUtilityHandlers(
       }
       let skinDataUrl: string | undefined = undefined;
       if (skinUrl) {
-        skinDataUrl = await fetchUrlAsDataUrl(skinUrl, {
-          "User-Agent": "catskinc/ServerApiClient",
-          "x-catskinc-protocol": "2",
-          "x-catskinc-request-id": crypto.randomUUID(),
-        });
+        skinDataUrl = await fetchUrlAsDataUrl(skinUrl, { "x-catskinc-protocol": "2" });
       }
       let mouthDataUrl: string | undefined = undefined;
       if (mouthUrl) {
-        mouthDataUrl = await fetchUrlAsDataUrl(mouthUrl, {
-          "User-Agent": "catskinc/ServerApiClient",
-          "x-catskinc-protocol": "2",
-          "x-catskinc-request-id": crypto.randomUUID(),
-        });
+        mouthDataUrl = await fetchUrlAsDataUrl(mouthUrl, { "x-catskinc-protocol": "2" });
       }
       return {
         ok: true,
@@ -1025,6 +1017,30 @@ export function registerUtilityHandlers(
       }
     },
   );
+
+  ipcMain.handle("read-local-file-as-data-url", async (_event, filePath: string): Promise<string | null> => {
+    try {
+      if (!fs.existsSync(filePath)) {
+        return null;
+      }
+      const fileData = fs.readFileSync(filePath);
+      const ext = path.extname(filePath).toLowerCase();
+
+      const mimeTypes: Record<string, string> = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+      };
+
+      const mimeType = mimeTypes[ext] || "image/png";
+      return `data:${mimeType};base64,${fileData.toString("base64")}`;
+    } catch (error) {
+      console.error("[Utility] Failed to read local file:", error);
+      return null;
+    }
+  });
 
   console.log("[IPC] Utility handlers registered");
 }
