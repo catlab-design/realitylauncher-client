@@ -36,6 +36,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   R2_BUCKET: realitystorage
   CDN_URL: https://cdn.reality.catlabdesign.space
 
@@ -57,7 +58,7 @@ jobs:
           PLATFORMS='[{"platform":"linux","runs_on":"ubuntu-latest"}]'
       
           if [[ "$ENABLE_WINDOWS" == "true" || "$ENABLE_MS_STORE" == "true" || "$BUILD_WINDOWS" == "true" ]]; then
-            PLATFORMS=$(echo "$PLATFORMS" | jq -c '. + [{"platform":"win","runs_on":"windows-latest"}]')
+            PLATFORMS=$(echo "$PLATFORMS" | jq -c '. + [{"platform":"win","runs_on":"windows-2022"}]')
           fi
       
           if [[ "$ENABLE_MACOS" == "true" || "$BUILD_MACOS" == "true" ]]; then
@@ -206,6 +207,25 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-electron-cache-
 
+      - name: Configure Visual Studio environment (Windows)
+        if: matrix.platform == 'win'
+        shell: pwsh
+        run: |
+          $vsPath = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise"
+          if (Test-Path "$vsPath\Common7\Tools\Launch-VsDevShell.ps1") {
+            & "$vsPath\Common7\Tools\Launch-VsDevShell.ps1" -Arch amd64 -SkipAutomaticLocation
+            Write-Host "VS dev shell configured from: $vsPath"
+          } else {
+            Write-Host "VS 2022 Enterprise not found at $vsPath, trying VS 2025..."
+            $vsPath25 = "${env:ProgramFiles}\Microsoft Visual Studio\18\Enterprise"
+            if (Test-Path "$vsPath25\Common7\Tools\Launch-VsDevShell.ps1") {
+              & "$vsPath25\Common7\Tools\Launch-VsDevShell.ps1" -Arch amd64 -SkipAutomaticLocation
+              Write-Host "VS dev shell configured from: $vsPath25"
+            } else {
+              Write-Host "No VS dev shell found, will rely on env vars"
+            }
+          }
+
       - name: Build Electron app (Windows, with retry)
         if: matrix.platform == 'win'
         shell: pwsh
@@ -231,6 +251,7 @@ jobs:
 
           throw "electron-builder --win failed after $maxAttempts attempts."
         env:
+          GYP_MSVS_VERSION: 2022
           NODE_OPTIONS: "--max-old-space-size=4096"
 
       - name: Setup Microsoft Store CLI (Windows release only)
@@ -796,7 +817,7 @@ jobs:
 
   microsoft-store:
     needs: release
-    runs-on: windows-latest
+    runs-on: windows-2022
     if: (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch') && vars.ENABLE_MS_STORE_RELEASE == 'true'
 
     steps:
