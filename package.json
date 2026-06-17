@@ -86,10 +86,10 @@
       "category": "public.app-category.games",
       "extraResources": [
         {
-          "from": "../ml-launcher-core/target/release",
+          "from": "./native/target/release",
           "to": "bin",
           "filter": [
-            "ml-launcher-core"
+            "native"
           ]
         }
       ]
@@ -103,10 +103,10 @@
       "category": "Game",
       "extraResources": [
         {
-          "from": "../ml-launcher-core/target/release",
+          "from": "./native/target/release",
           "to": "bin",
           "filter": [
-            "ml-launcher-core"
+            "native"
           ]
         }
       ]
