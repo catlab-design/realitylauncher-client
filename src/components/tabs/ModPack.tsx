@@ -770,7 +770,7 @@ export function ModPack({
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-10 transition-opacity group-hover:opacity-100">
                     <button
                         type="button"
-                        onClick={() => { playClick(); handleInstallServerInstance(server.id); }}
+                        onClick={() => { playClick(); handleInstallServerInstance(server.storagePath || server.id); }}
                         disabled={disableServerInstallAction}
                         className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:pointer-events-none flex items-center gap-2"
                     >

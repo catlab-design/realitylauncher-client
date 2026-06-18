@@ -618,11 +618,16 @@ function LauncherAppContent() {
       }
 
       if (notifiedVersion && notifiedVersion !== currentVersion) {
+        const API_URL = (window as any).API_URL;
         try {
-          const response = await fetch("https://api.github.com/repos/catlab-design/realitylauncher-client/releases/latest");
+          let response = await fetch(`${API_URL}/launcher/latest`);
+          if (!response.ok) {
+            const cdnFallback = "https://cdn.reality.catlabdesign.space/client/latest.json";
+            response = await fetch(cdnFallback);
+          }
           if (response.ok) {
             const data = await response.json();
-            const changelogText = data.body || data.description || "";
+            const changelogText = data.changelog || "";
             if (changelogText) {
               setChangelogData({
                 version: currentVersion,

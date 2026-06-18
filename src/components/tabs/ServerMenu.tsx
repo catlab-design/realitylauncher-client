@@ -403,12 +403,12 @@ export function ServerMenu({
         e.stopPropagation();
         try {
             setOperationType("install"); setInstalling(true); setInstallMinimized(false);
-            setInstallingInstanceId(instance.id);
+            setInstallingInstanceId(instance.storagePath || instance.id);
             setInstallProgress({ stage: "sync-start", type: "sync-start", message: t('starting_install') });
             handleInstanceClick(instance);
             setActiveTab?.("modpack");
             toast.success(t('starting_install'));
-            const res = await (window.api as any)?.instancesCloudInstall?.(instance.id);
+            const res = await (window.api as any)?.instancesCloudInstall?.(instance.storagePath || instance.id);
             if (!res?.ok) {
                 const errMsg = typeof res?.error === 'string' ? res.error : t('install_failed_server');
                 if (errMsg.includes("401") || errMsg.includes("Unauthorized")) toast.error(t('session_expired_login_server'));
