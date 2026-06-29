@@ -1068,6 +1068,12 @@ export async function syncServerMods(
       `[Cloud Sync] Downloading ${finalQueue.length} files with concurrency=${downloadConcurrency}...`,
     );
 
+    // Files we could not download (missing on storage, permanent HTTP error,
+    // or exhausted retries). One bad file must not abort the whole sync.
+    const failedMods: Array<{ filename: string; reason: string }> = [];
+    // HTTP statuses where retrying is pointless (file is gone / access denied).
+    const PERMANENT_HTTP_STATUSES = new Set([400, 401, 403, 404, 410]);
+
     let downloadedByNative = false;
     if (finalQueue.length > 0) {
       try {
@@ -1154,15 +1160,28 @@ export async function syncServerMods(
                 throw err;
               }
 
+              const statusCode =
+                typeof err?.statusCode === "number" ? err.statusCode : undefined;
+              const isPermanent =
+                statusCode !== undefined &&
+                PERMANENT_HTTP_STATUSES.has(statusCode);
+
               console.warn(
                 `[Cloud Sync] Download failed for ${mod.filename} (Attempt ${attempts}/${maxAttempts}): ${err?.message || err} | URL=${mod.url}`,
               );
 
-              if (attempts >= maxAttempts) {
+              // Permanent errors won't recover on retry; exhausted retries are
+              // also terminal. In both cases skip the file (record it) and keep
+              // syncing the rest instead of aborting the entire operation.
+              if (isPermanent || attempts >= maxAttempts) {
                 console.error(
-                  `[Cloud Sync] Gave up on ${mod.filename} after ${maxAttempts} attempts.`,
+                  `[Cloud Sync] Skipping ${mod.filename}: ${err?.message || err}`,
                 );
-                throw err;
+                failedMods.push({
+                  filename: mod.filename,
+                  reason: err?.message || String(err),
+                });
+                return;
               }
 
               const delay = Math.random() * 1000 + attempts * 1000;
@@ -1175,7 +1194,23 @@ export async function syncServerMods(
     }
     throwIfAborted(signal);
 
-    
+    // If every queued file failed, this is a real outage (bad token, server
+    // down, all URLs broken) — surface it. A partial failure (some files
+    // missing on storage) is tolerated so the player can still launch.
+    if (failedMods.length > 0) {
+      console.warn(
+        `[Cloud Sync] ${failedMods.length}/${finalQueue.length} file(s) could not be downloaded:`,
+        failedMods.slice(0, 10),
+      );
+      if (finalQueue.length > 0 && failedMods.length === finalQueue.length) {
+        const first = failedMods[0];
+        throw new Error(
+          `Sync failed: could not download any of ${finalQueue.length} file(s) (${first?.reason || "unknown error"})`,
+        );
+      }
+    }
+
+
     if (!isFreshCloudInstance) {
       throwIfAborted(signal);
     emitProgress({ type: "sync-clean", task: "กำลังลบไฟล์ส่วนเกิน..." }, true);

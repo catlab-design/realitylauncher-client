@@ -579,9 +579,11 @@ export async function downloadFile(
           cleanup();
           file.close();
           if (fs.existsSync(dest)) fs.rmSync(dest, { force: true });
-          reject(
-            new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`),
-          );
+          const httpError = new Error(
+            `HTTP ${response.statusCode}: ${response.statusMessage}`,
+          ) as Error & { statusCode?: number };
+          httpError.statusCode = response.statusCode;
+          reject(httpError);
           return;
         }
 

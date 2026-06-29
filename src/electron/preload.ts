@@ -226,6 +226,7 @@ const api = {
   downloadUpdate: () => ipcRenderer.invoke("download-update"),
   installUpdate: () => ipcRenderer.invoke("install-update"),
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
+  checkLatestVersion: () => ipcRenderer.invoke("check-latest-version"),
   isDevMode: () => ipcRenderer.invoke("is-dev-mode"),
   onUpdateAvailable: (
     callback: (data: { version: string; releaseDate: string }) => void,

@@ -701,6 +701,16 @@ declare global {
       downloadUpdate: () => Promise<void>;
       installUpdate: () => Promise<void>;
       getAppVersion: () => Promise<string>;
+      checkLatestVersion: () => Promise<{
+        ok: boolean;
+        current: string;
+        latest?: string;
+        updateAvailable?: boolean;
+        releaseDate?: string;
+        changelog?: string;
+        downloadUrl?: string;
+        error?: string;
+      }>;
       onUpdateAvailable: (
         callback: (data: { version: string; releaseDate: string }) => void,
       ) => () => void;

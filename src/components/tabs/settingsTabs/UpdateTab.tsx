@@ -11,10 +11,29 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
     type UpdateStatusType = "idle" | "checking" | "available" | "downloading" | "ready";
     const [updateStatus, setUpdateStatus] = useState<UpdateStatusType>("idle");
     const [updateInfo, setUpdateInfo] = useState<{ version: string; releaseDate: string } | null>(null);
+    const [downloadUrl, setDownloadUrl] = useState<string>("");
     const [downloadProgress, setDownloadProgress] = useState<number>(0);
     const { t } = useTranslation(config.language);
 
     const windowApi = (window as any).api;
+
+    // Check ml-api (published via ml-admin) for the latest release and compare
+    // against the installed version. This is the source of truth for whether an
+    // update is available, independent of electron-updater's own feed.
+    const checkLatestFromApi = async (): Promise<boolean> => {
+        const result = await windowApi?.checkLatestVersion?.();
+        if (!result?.ok) {
+            throw new Error(result?.error || "check failed");
+        }
+        if (result.updateAvailable && result.latest) {
+            setUpdateInfo({ version: result.latest, releaseDate: result.releaseDate || "" });
+            setDownloadUrl(result.downloadUrl || "");
+            setUpdateStatus("available");
+            return true;
+        }
+        setUpdateStatus("idle");
+        return false;
+    };
 
     useEffect(() => {
         (async () => {
@@ -22,6 +41,13 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
             const devMode = await windowApi?.isDevMode?.();
             if (version) setAppVersion(version);
             if (devMode !== undefined) setIsDevMode(devMode);
+
+            // Report availability from ml-api on open (best-effort).
+            try {
+                await checkLatestFromApi();
+            } catch {
+                // Network/manifest error — stay on installed version silently.
+            }
         })();
 
         const cleanups: (() => void)[] = [];
@@ -125,7 +151,13 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
                     <button
                         onClick={async () => {
                             try {
-                                await windowApi?.downloadUpdate?.();
+                                // Prefer the official download URL resolved from ml-api;
+                                // fall back to electron-updater's in-app download.
+                                if (downloadUrl) {
+                                    await windowApi?.openExternal?.(downloadUrl);
+                                } else {
+                                    await windowApi?.downloadUpdate?.();
+                                }
                                 toast.success(t('downloading_update'));
                             } catch (error) {
                                 toast.error(t('download_failed'));
@@ -241,15 +273,12 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
                                 setUpdateStatus("checking");
                                 toast.loading(t('checking_for_updates'), { id: "check-update" });
                                 try {
-                                    await windowApi?.checkForUpdates?.();
-                                    setTimeout(() => {
-                                        if ((updateStatus as string) === "checking") {
-                                            setUpdateStatus("idle");
-                                            toast.success(t('already_latest_version'), { id: "check-update" });
-                                        } else {
-                                            toast.dismiss("check-update");
-                                        }
-                                    }, 3000);
+                                    const hasUpdate = await checkLatestFromApi();
+                                    if (hasUpdate) {
+                                        toast.dismiss("check-update");
+                                    } else {
+                                        toast.success(t('already_latest_version'), { id: "check-update" });
+                                    }
                                 } catch (error) {
                                     setUpdateStatus("idle");
                                     toast.error(t('update_check_failed'), { id: "check-update" });
