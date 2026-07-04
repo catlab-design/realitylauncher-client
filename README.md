@@ -1,4 +1,4 @@
-# Reality Launcher Client (Tauri Edition)
+# Reality Launcher Client (Very Fast & Lightweight)
 
 Modern desktop client for Reality Launcher, built with Tauri v2, React 19, Vite, and Rust.
 

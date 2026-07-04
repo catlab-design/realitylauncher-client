@@ -1,4 +1,4 @@
-# Contributing to Reality Launcher Client (Tauri Edition)
+# Contributing to Reality Launcher Client (Very Fast & Lightweight)
 
 Thank you for your interest in contributing to the Reality Launcher Client! This document details the setup steps, development workflow, and coding guidelines to help you contribute effectively.
 
