@@ -170,12 +170,10 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [onClose, config]);
 
-    // Loader Version State
     const [loaderVersion, setLoaderVersion] = useState<string | undefined>(undefined);
     const [loaderVersions, setLoaderVersions] = useState<string[]>([]);
     const [loadingLoaderVersions, setLoadingLoaderVersions] = useState(false);
 
-    // Fetch loader versions when loader or mc version changes
     useEffect(() => {
         if (loader === "vanilla") {
             setLoaderVersions([]);
@@ -295,7 +293,6 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     transition={{ type: "spring", stiffness: 260, damping: 28, mass: 0.9 }}
                 >
-                    {/* Header */}
                     <div
                         className="flex items-center justify-between border-b px-6 py-3.5 sm:px-7 shrink-0"
                         style={{

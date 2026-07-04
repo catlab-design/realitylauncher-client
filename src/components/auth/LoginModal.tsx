@@ -48,7 +48,6 @@ export function LoginModal({
                         exit={{ opacity: 0, y: 18, scale: 0.985 }}
                         transition={{ type: "spring", stiffness: 260, damping: 28, mass: 0.9 }}
                     >
-                        {/* Header */}
                         <div
                             className="flex items-center justify-between border-b px-6 py-4"
                             style={{
@@ -91,7 +90,6 @@ export function LoginModal({
                             </button>
                         </div>
 
-                        {/* Content */}
                         <div className="px-6 py-6 flex flex-col gap-4">
                             {/* Microsoft Login Button */}
                             <button

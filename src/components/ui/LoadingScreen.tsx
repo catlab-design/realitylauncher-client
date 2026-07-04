@@ -15,7 +15,6 @@ export function LoadingScreen({ onComplete }: LoadingScreenProps) {
     useEffect(() => {
         let completed = false;
 
-        // Dev mode detection
         const isDevMode = typeof window !== 'undefined' &&
             (window.location.hostname === 'localhost' || window.location.port === '4321');
 

@@ -67,7 +67,6 @@ function _formatSize(bytes: number): string {
     return `${bytes} B`;
 }
 
-// Format date
 function formatDate(dateStr: string): string {
     try {
         const d = new Date(dateStr);
@@ -77,7 +76,6 @@ function formatDate(dateStr: string): string {
     }
 }
 
-// Format relative time
 function formatRelativeTime(dateStr: string): string {
     try {
         const d = new Date(dateStr);
@@ -127,7 +125,6 @@ export function ProjectDetailPage({
     // Use either fullProject if fetched, or fallback to the initial project from props
     const currentProject = fullProject || project;
 
-    // Fetch full project details if possible (to get more accurate links/versions)
     useEffect(() => {
         let isMounted = true;
 
@@ -201,7 +198,6 @@ export function ProjectDetailPage({
         return getImageUrl(raw) || bannerImage.src;
     })();
 
-    // Fetch full body (description) when tab switches.
     // - When the body was already provided by the parent (preloaded), use it directly.
     // - Otherwise hit the API. Resetting bodyHtml on project change prevents flashing the
     //   previous project's body during a fast back-forth between detail pages (B6).
@@ -217,7 +213,6 @@ export function ProjectDetailPage({
         if (!bodyHtml) fetchBody();
     }, [activeTab, project.project_id, project.body, contentSource]);
 
-    // Fetch versions when tab switches
     useEffect(() => {
         if (activeTab === "versions" && versions.length === 0) {
             fetchVersions();
@@ -355,7 +350,6 @@ export function ProjectDetailPage({
 
                     {/* Project Info Overlay */}
                     <div className="absolute bottom-0 left-0 right-0 p-6 flex items-end gap-5 z-10">
-                        {/* Icon */}
                         <div className="w-20 h-20 rounded-2xl overflow-hidden shrink-0 border-2 border-white/10"
                             style={{ backgroundColor: colors.surfaceContainerHighest }}>
                             {project.icon_url ? (
@@ -436,7 +430,6 @@ export function ProjectDetailPage({
                     </div>
                 )}
 
-                {/* Tabs */}
                 <div className="flex items-center gap-1 px-6 py-2"
                     style={{ backgroundColor: colors.surfaceContainer, borderBottom: `1px solid ${colors.outline}15` }}>
                     {tabs.map((tab) => (
@@ -761,7 +754,6 @@ export function ProjectDetailPage({
                                                     {formatNumber(v.downloads)}
                                                 </div>
 
-                                                {/* Actions */}
                                                 <div className="col-span-1 flex justify-end gap-1">
                                                     <button
                                                         onClick={() => { playClick(); onInstallVersion(project, v.id); }}

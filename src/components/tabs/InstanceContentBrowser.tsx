@@ -15,7 +15,6 @@ import type { TranslationKey } from "../../i18n/translations";
 import modrinthIcon from "../../assets/modrinth.svg";
 import curseforgeIcon from "../../assets/curseforge.svg";
 
-// Import shared components from ExploreTabs
 import {
     type ModrinthProject,
     type ModVersion,
@@ -45,7 +44,6 @@ interface InstanceContentBrowserProps {
 }
 
 // ========================================
-// Constants
 // ========================================
 
 const SORT_OPTIONS = [
@@ -73,7 +71,6 @@ const getAvailableTabs = (loader: string) => {
 };
 
 // ========================================
-// Component
 // ========================================
 
 export function InstanceContentBrowser({
@@ -86,7 +83,6 @@ export function InstanceContentBrowser({
     onUpdate,
 }: InstanceContentBrowserProps) {
     const { t } = useTranslation(config?.language);
-    // Content state
     const [contentType, setContentType] = useState<ContentType>(initialContentType);
     const [contentSource, setContentSource] = useState<ContentSource>(CONTENT_SOURCES.MODRINTH);
 
@@ -97,39 +93,32 @@ export function InstanceContentBrowser({
     const [categoryFilters, setCategoryFilters] = useState<string[]>([]);
     const [environmentFilters, setEnvironmentFilters] = useState<string[]>([]);
 
-    // Search state
     const [searchQuery, setSearchQuery] = useState("");
     const [sortBy, setSortBy] = useState("relevance");
     const [page, setPage] = useState(1);
     const [viewCount, setViewCount] = useState(20);
 
-    // Results state
     const [results, setResults] = useState<ModrinthProject[]>([]);
     const [totalHits, setTotalHits] = useState(0);
     const [isLoading, setIsLoading] = useState(false);
 
-    // Preview state
     const [previewProject, setPreviewProject] = useState<ModrinthProject | null>(null);
 
-    // Install state
     const [isInstalling, setIsInstalling] = useState(false);
     const [selectedProject, setSelectedProject] = useState<ModrinthProject | null>(null);
     const [installedIds, setInstalledIds] = useState<Set<string>>(new Set());
     const [installedNames, setInstalledNames] = useState<Set<string>>(new Set());
     const [installedProjects, setInstalledProjects] = useState<ModrinthProject[]>([]);
 
-    // Detail Page State
     const [detailProject, setDetailProject] = useState<ModrinthProject | null>(null);
     const [isInstallingVersion, setIsInstallingVersion] = useState(false);
     const [installVersionProgress, setInstallVersionProgress] = useState<{stage: string, message: string} | null>(null);
 
-    // Refs
     const debounceRef = useRef<NodeJS.Timeout | null>(null);
     const contentListRef = useRef<HTMLDivElement | null>(null);
     // Race-condition guard: stale search requests are silently ignored.
     const searchTokenRef = useRef(0);
 
-    // Lightbox state
     const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
 
     // Helper to get URL from raw image item - normalize to absolute URL when possible
@@ -146,22 +135,18 @@ export function InstanceContentBrowser({
     const totalPages = Math.ceil(totalHits / viewCount);
 
     // ========================================
-    // Data Loading
     // ========================================
 
-    // Fetch full project details for better images (Modrinth only)
     const fetchFullProjectDetails = async (project: ModrinthProject) => {
         // Skip for CurseForge or if we already have gallery objects and high-res icon
         if (contentSource !== CONTENT_SOURCES.MODRINTH) return;
 
         // If we already have object-type gallery items (contain 'ordering/created'), likely already fetched
-        // Check first item type
 
 
         try {
             const rawProject = await window.api?.modrinthGetProject?.(project.project_id);
             if (rawProject) {
-                // Normalize and merge
                 const fullProject: ModrinthProject = {
                     ...project,
                     gallery: rawProject.gallery || [], // Native now returns objects
@@ -171,7 +156,6 @@ export function InstanceContentBrowser({
                     icon_url: rawProject.icon_url || project.icon_url, // Prefer full resolution
                 };
 
-                // Fetch full details in background to upgrade images
                 // Update preview if still selected (avoid race condition)
                 setPreviewProject(prev => {
                     if (prev && prev.project_id === project.project_id) {
@@ -244,7 +228,6 @@ export function InstanceContentBrowser({
 
         for (const name of installedNames) {
             const normalizedName = normalizeForMatch(name);
-            // Check various matches
             if (normalizedName.includes(projectTitle) || projectTitle.includes(normalizedName)) {
                 return true;
             }
@@ -371,7 +354,6 @@ export function InstanceContentBrowser({
         }
     }, [searchQuery, contentSource, contentType, sortBy, page, viewCount, mcVersionFilters, loaderFilters, categoryFilters, environmentFilters, instance]);
 
-    // Fetch full project details for gallery
 
 
     // Debounce ref for filter changes
@@ -408,7 +390,6 @@ export function InstanceContentBrowser({
     }, [results]);
 
     // ========================================
-    // Handlers
     // ========================================
 
     const handleDebouncedSearch = useCallback((value: string) => {
@@ -425,7 +406,6 @@ export function InstanceContentBrowser({
             handleOpenDetail(project);
         } else {
             setPreviewProject(project);
-            // Fetch full details in background to upgrade images
             fetchFullProjectDetails(project);
         }
     };
@@ -564,7 +544,6 @@ export function InstanceContentBrowser({
         return null;
     };
 
-    // Handle install button click - auto install best compatible version
     const handleAddToInstance = async (project: ModrinthProject) => {
         // Block mod installation on vanilla instances
         if (contentType === "mod" && instance.loader === "vanilla") {
@@ -635,7 +614,6 @@ export function InstanceContentBrowser({
                 return;
             }
 
-            // Install directly
             const result = await window.api?.contentDownloadToInstance?.({
                 projectId: project.project_id,
                 versionId: bestVersion.id,
@@ -646,7 +624,6 @@ export function InstanceContentBrowser({
 
             if (result?.ok) {
                 toast.success(t("install_success_name").replace("{name}", project.title));
-                // Track installed project
                 setInstalledIds(prev => new Set(prev).add(project.project_id));
                 
                 // Auto-lock for cloud instances
@@ -681,7 +658,6 @@ export function InstanceContentBrowser({
     };
 
     // ========================================
-    // Render
     // ========================================
 
 
@@ -707,12 +683,10 @@ export function InstanceContentBrowser({
                     preloadUrls={(() => {
                         const urls: string[] = [];
                         if (previewProject?.gallery && selectedImageIndex !== null) {
-                            // Preload Next
                             if (selectedImageIndex < previewProject.gallery.length - 1) {
                                 const next = getImageUrl(previewProject.gallery[selectedImageIndex + 1]);
                                 if (next) urls.push(next);
                             }
-                            // Preload Prev
                             if (selectedImageIndex > 0) {
                                 const prev = getImageUrl(previewProject.gallery[selectedImageIndex - 1]);
                                 if (prev) urls.push(prev);
@@ -1023,7 +997,6 @@ export function InstanceContentBrowser({
                                                 playClick();
                                                 const newPage = Math.max(1, page - 1);
                                                 setPage(newPage);
-                                                // Scroll to top of list
                                                 contentListRef.current?.scrollIntoView({ behavior: 'smooth' });
                                             }}
                                             disabled={page === 1}
@@ -1045,7 +1018,6 @@ export function InstanceContentBrowser({
                                                 playClick();
                                                 const newPage = Math.min(totalPages, page + 1);
                                                 setPage(newPage);
-                                                // Scroll to top of list
                                                 contentListRef.current?.scrollIntoView({ behavior: 'smooth' });
                                             }}
                                             disabled={page >= totalPages}

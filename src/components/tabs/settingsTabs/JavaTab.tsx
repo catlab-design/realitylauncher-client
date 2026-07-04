@@ -178,7 +178,6 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                                 try {
                                     // ลบโฟลเดอร์ Java ที่ launcher ติดตั้งไว้ (ถ้ามี)
                                     await windowApi?.deleteJava?.(version);
-                                    // ลบ config
                                     updateConfig({ javaPaths: { ...config.javaPaths, [pathKey]: undefined } });
                                     toast.success(t('java_deleted_successfully').replace('{version}', label));
                                 } catch {

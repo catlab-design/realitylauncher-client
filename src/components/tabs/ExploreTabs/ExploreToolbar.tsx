@@ -15,7 +15,6 @@ import { FilterMenu } from "./FilterMenu";
 
 interface ExploreToolbarProps {
     colors: any;
-    // State
     contentSource: ContentSource;
     projectType: ProjectType;
     searchQuery: string;
@@ -28,7 +27,6 @@ interface ExploreToolbarProps {
     loaderFilters: string[];
     categoryFilters: string[];
     environmentFilters: string[];
-    // Handlers
     onContentSourceChange: (source: ContentSource) => void;
     onProjectTypeChange: (type: ProjectType) => void;
     onSearchChange: (query: string) => void;

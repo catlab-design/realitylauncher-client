@@ -90,7 +90,6 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
     // Calculate zoom based on container height so the character does not disappear in large cards.
     const calcZoom = (h: number) => Math.min(0.95, Math.max(0.45, h / 620));
 
-    // Initialize Viewer
     useEffect(() => {
         let cancelled = false;
         let resizeObserver: ResizeObserver | null = null;
@@ -153,7 +152,6 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
         };
     }, [backgroundColor, onSkinLoadStateChange]);
 
-    // Sync Animation Type
     useEffect(() => {
         const viewer = viewerRef.current;
         if (!viewer || !viewerReady) return;
@@ -196,7 +194,6 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
         }
     }, [animationType, viewerReady]);
 
-    // Sync Skin & Variant
     useEffect(() => {
         const viewer = viewerRef.current;
         if (!viewer || !viewerReady) return;

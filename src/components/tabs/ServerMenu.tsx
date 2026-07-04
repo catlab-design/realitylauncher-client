@@ -487,7 +487,6 @@ export function ServerMenu({
     const isSessionError = !!apiError && isAuthErrorMessage(apiError);
 
     // ─────────────────────────────────────────────────────────────────────────
-    //  RENDER
     // ─────────────────────────────────────────────────────────────────────────
     return (
         <div className="h-full flex flex-col">

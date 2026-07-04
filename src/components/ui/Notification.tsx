@@ -141,7 +141,6 @@ export function NotificationContainer({ colors }: { colors: NotificationProps["c
     );
 }
 
-// Toast-like API
 export const notify = {
     success: (message: string) => addNotification?.({ message, type: "success" }) || "",
     error: (message: string) => addNotification?.({ message, type: "error" }) || "",

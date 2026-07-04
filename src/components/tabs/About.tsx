@@ -69,7 +69,6 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
     ];
 
     useEffect(() => {
-        // Fetch dynamic version
         (window as any).api?.getAppVersion()?.then((v: string) => {
             setVersion(`v${v}`);
         }).catch(() => {

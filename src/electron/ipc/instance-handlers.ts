@@ -751,7 +751,6 @@ export function registerInstanceHandlers(
       },
     });
 
-    // Fetch fresh serverIps from cloud (local instance.json may not have them yet)
     if (launchPolicy.isServerBacked && instance.cloudId) {
       try {
         const { fetchJoinedServers } = await import("../cloud-instances.js");

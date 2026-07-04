@@ -124,7 +124,6 @@ export function LazyContentItem({
 
         const fetchIcon = async () => {
             try {
-                // Modrinth
                 if (currentItem.modrinthProjectId) {
                     const project = await (window.api as any)?.modrinthGetProject?.(currentItem.modrinthProjectId);
                     if (project?.icon_url || project?.iconUrl) {
@@ -133,7 +132,6 @@ export function LazyContentItem({
                     }
                 }
 
-                // CurseForge
                 if (currentItem.curseforgeProjectId) {
                     const result = await (window.api as any)?.curseforgeGetProject?.(currentItem.curseforgeProjectId);
                     const logo = result?.data?.logo?.url;
@@ -246,7 +244,6 @@ export function LazyContentItem({
                 {isSelected && <Icons.Check className="w-3.5 h-3.5" style={{ color: "#1a1a1a" }} />}
             </div>
 
-            {/* Icon */}
             {iconUrl ? (
                 <img
                     src={iconUrl}
@@ -284,7 +281,6 @@ export function LazyContentItem({
                 </p>
             </div>
 
-            {/* Actions */}
             <div className="flex items-center gap-2 shrink-0">
                 {/* Toggle switch */}
                 <button

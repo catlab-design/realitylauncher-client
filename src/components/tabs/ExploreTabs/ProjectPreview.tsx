@@ -23,7 +23,6 @@ interface ProjectPreviewProps {
 }
 
 // ========================================
-// Image Preview Modal
 // ========================================
 
 
@@ -47,7 +46,6 @@ export function ProjectPreview({
         setSelectedImageIndex(null);
     }, [project?.project_id]);
 
-    // Loading Skeleton state
     if (isLoading) {
         return (
             <div className="rounded-2xl overflow-hidden sticky top-4 flex flex-col h-[calc(100vh-2rem)] animate-pulse"
@@ -169,12 +167,10 @@ export function ProjectPreview({
                     preloadUrls={(() => {
                         const urls: string[] = [];
                         if (project.gallery && selectedImageIndex !== null) {
-                            // Preload Next
                             if (selectedImageIndex < project.gallery.length - 1) {
                                 const next = getImageUrl(project.gallery[selectedImageIndex + 1]);
                                 if (next) urls.push(next);
                             }
-                            // Preload Prev
                             if (selectedImageIndex > 0) {
                                 const prev = getImageUrl(project.gallery[selectedImageIndex - 1]);
                                 if (prev) urls.push(prev);

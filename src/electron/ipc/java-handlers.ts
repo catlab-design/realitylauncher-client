@@ -55,7 +55,6 @@ export function registerJavaHandlers(
 
     // Java is java.exe/javaw.exe on Windows but a bare `java` (no extension) on
     // macOS/Linux, so don't apply an .exe-only filter there or those users can't
-    // select the file.
     const isWin = process.platform === "win32";
     const result = await dialog.showOpenDialog(win, {
       title: isWin

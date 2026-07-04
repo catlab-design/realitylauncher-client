@@ -21,7 +21,6 @@
 import React, { useEffect, useState } from "react";
 
 // ========================================
-// Types
 // ========================================
 
 interface SparkleTextProps {
@@ -43,7 +42,6 @@ interface Sparkle {
 }
 
 // ========================================
-// Utility
 // ========================================
 
 function cn(...classes: (string | false | null | undefined)[]): string {
@@ -64,7 +62,6 @@ function createSparkle(colors: string[]): Sparkle {
 }
 
 // ========================================
-// Component
 // ========================================
 
 export default function SparkleText({

@@ -1,5 +1,4 @@
 // ========================================
-// Instance Selection Modal
 // ========================================
 
 import React, { useState, useMemo } from "react";

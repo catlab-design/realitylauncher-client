@@ -1,5 +1,4 @@
 // ========================================
-// Project List Component
 // ========================================
 
 import React, { useRef } from "react";

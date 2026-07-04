@@ -23,7 +23,6 @@
 import React, { useMemo } from "react";
 
 // ========================================
-// Types
 // ========================================
 
 interface MeteorsProps {
@@ -40,7 +39,6 @@ interface MeteorsProps {
 }
 
 // ========================================
-// Component
 // ========================================
 
 /**
@@ -65,7 +63,6 @@ export default function Meteors({
             id: i,
             // ตำแหน่งเริ่มต้น (% จากซ้าย)
             left: Math.random() * 100,
-            // ความยาว meteor (px)
             size: Math.random() * 80 + 20,
             // Animation duration (seconds)
             duration: Math.random() * (maxSpeed - minSpeed) + minSpeed,
@@ -84,11 +81,9 @@ export default function Meteors({
                         // ตำแหน่งเริ่มต้น (บนซ้าย)
                         top: "-10%",
                         left: `${meteor.left}%`,
-                        // ความยาว meteor
                         width: `${meteor.size}px`,
                         // Gradient จากสีไปโปร่งใส
                         background: `linear-gradient(90deg, ${color}, transparent)`,
-                        // Animation
                         animation: `meteor ${meteor.duration}s linear ${meteor.delay}s infinite`,
                     }}
                 >

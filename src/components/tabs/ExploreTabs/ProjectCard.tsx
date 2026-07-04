@@ -1,5 +1,4 @@
 // ========================================
-// Project Card Component
 // ========================================
 
 import React, { useState } from "react";
@@ -73,7 +72,6 @@ export function ProjectCard({ colors, project, isActive, onClick, isInstalling, 
             )}
 
             <div className="p-4 flex items-start gap-4 relative z-10">
-                {/* Icon */}
                 <div
                     className="w-12 h-12 rounded-xl bg-cover bg-center shrink-0 overflow-hidden"
                     style={{
@@ -91,7 +89,6 @@ export function ProjectCard({ colors, project, isActive, onClick, isInstalling, 
                     )}
                 </div>
 
-                {/* Content */}
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-0.5">
                         <h3 className="text-[15px] font-semibold truncate pr-2 transition-colors"

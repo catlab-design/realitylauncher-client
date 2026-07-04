@@ -343,7 +343,6 @@ async function verifyAndDownloadAssets(
         "utf-8",
       );
     } catch {
-      // Ignore write errors for marker file
     }
   }
 }
@@ -481,7 +480,6 @@ export async function launchGameRust(
       sendProgress,
     );
 
-    // Phase 2: Resolve Java
     const javaPath = await resolveJavaPath(
       version,
       mergedVersionData,
@@ -950,7 +948,6 @@ export async function launchGameRust(
 export { launchGameRust as launchGame };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// preInstallInstance
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface PreInstallOptions {
@@ -988,7 +985,6 @@ export async function preInstallInstance(
   try {
     let javaPath: string | undefined;
 
-    // 1. Load version JSON
     const { versionJson, mergedVersionData } = await loadAndPrepareVersionJson(
       version,
       versionsDir,
@@ -999,7 +995,6 @@ export async function preInstallInstance(
       sendProgress,
     );
 
-    // 2. Resolve Java
     try {
       javaPath = await resolveJavaPath(
         version,
@@ -1048,7 +1043,6 @@ export async function preInstallInstance(
     // 4. Download missing assets
     await verifyAndDownloadAssets(mergedVersionData, assetsDir, native, sendProgress);
 
-    // 5. Extract natives
     await extractNatives(versionJson, librariesDir, nativesDir, native, sendProgress);
 
     sendProgress({ type: "launch", task: "เตรียมไฟล์เกมเสร็จสิ้น!", percent: 100 });

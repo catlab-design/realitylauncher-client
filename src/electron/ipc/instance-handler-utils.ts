@@ -1,4 +1,5 @@
-import { app } from "electron";
+
+import { app } from "electron";
 import * as path from "path";
 import { existsSync, readFileSync, writeFileSync, rmSync, readdirSync } from "fs";
 import * as fs from "fs-extra";
@@ -109,7 +110,6 @@ export interface ModMetadataCache {
   curseforgeProjectId?: string;
 }
 export const modMetadataCache = new Map<string, ModMetadataCache>();
-// Persistent Cache Logic
 const METADATA_CACHE_FILE = "metadata-cache.json";
 let metadataCacheLoaded = false;
 let saveTimeout: NodeJS.Timeout | null = null;
@@ -439,7 +439,6 @@ function stringSimilarity(s1: string, s2: string): number {
     return shorter.length / longer.length;
   }
 
-  // Simple word-based matching
   const words1 = s1.split(/\s+/).filter((w) => w.length > 2);
   const words2 = s2.split(/\s+/).filter((w) => w.length > 2);
   if (words1.length === 0 || words2.length === 0) return 0;
@@ -467,7 +466,6 @@ export async function fetchIconFromOnline(
   name: string,
   contentType: "shader" | "resourcepack",
 ): Promise<{ url: string | null; modrinthId?: string; curseforgeId?: string }> {
-  // Check cache first
   const cacheKey = `${contentType}:${name.toLowerCase()}`;
   const cached = getIconFromCache(cacheKey);
   if (cached !== undefined) {
@@ -494,7 +492,6 @@ export async function fetchIconFromOnline(
   const normalizedSearch = mainName.toLowerCase();
 
   try {
-    // Try Modrinth first
     const modrinthUrl = `https://api.modrinth.com/v2/search?query=${encodeURIComponent(mainName)}&facets=[["project_type:${projectType}"]]&limit=5`;
     const modrinthRes = await fetch(modrinthUrl, {
       headers: { "User-Agent": "Reality-Launcher/1.0" },
@@ -511,7 +508,6 @@ export async function fetchIconFromOnline(
           const hitTitle = (hit.title || "").toLowerCase();
           const hitSlug = (hit.slug || "").toLowerCase().replace(/-/g, " ");
 
-          // Calculate similarity scores
           const titleScore = stringSimilarity(normalizedSearch, hitTitle);
           const slugScore = stringSimilarity(normalizedSearch, hitSlug);
           const score = Math.max(titleScore, slugScore);
@@ -719,7 +715,6 @@ export async function extractModInfo(
 }
 
 // ========================================
-// Modrinth API Helper
 // ========================================
 export const ModrinthAPI = {
   async resolveHashes(
@@ -788,7 +783,6 @@ export const ModrinthAPI = {
           }
         }
 
-        // 3. Assemble results
         for (const [hash, pid] of Object.entries(hashToProjectId)) {
           const cached = modrinthProjectCache.get(pid);
           if (cached && cached.icon) {
@@ -816,7 +810,6 @@ export const ModrinthAPI = {
 
     for (const chunk of chunks) {
       try {
-        // Check cache first
         const toFetch = chunk.filter((id) => !modrinthProjectCache.has(id));
         chunk.forEach((id) => {
           const cached = modrinthProjectCache.get(id);

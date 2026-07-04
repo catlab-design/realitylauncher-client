@@ -35,7 +35,6 @@ function syncToGlobal() {
   globalAny.__AUTH_SESSION__ = currentSession;
 }
 
-// File path helpers
 function getSessionPath(): string {
   return path.join(app.getPath("userData"), "session.dat");
 }
@@ -124,7 +123,6 @@ function saveSession(): void {
   }
 }
 
-// Initialize auth module on startup
 export function initAuth(): void {
   loadSession();
   if (currentSession) {

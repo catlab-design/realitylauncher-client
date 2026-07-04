@@ -243,7 +243,6 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
         }
     }, [selectedInstance?.gameDirectory]);
 
-    // Fetch CatSkinC skin on mount or session change
     useEffect(() => {
         syncCatskincSkin();
     }, [syncCatskincSkin]);
@@ -1020,7 +1019,6 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
                             </div>
                         </div>
 
-                        {/* Divider */}
                         <div className="h-[1px] w-full" style={{ backgroundColor: `${colors.outline}22` }} />
 
                         {/* Section 2: Variant Selector */}
@@ -1061,7 +1059,6 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
                             </div>
                         </div>
 
-                        {/* Divider */}
                         <div className="h-[1px] w-full" style={{ backgroundColor: `${colors.outline}22` }} />
 
                         {/* Section 3: File Upload & Skin Controls */}
@@ -1175,7 +1172,6 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
 
                         </div>
 
-                        {/* Divider */}
                         <div className="h-[1px] w-full" style={{ backgroundColor: `${colors.outline}22` }} />
 
                         {/* Section 4: Action Buttons Row */}

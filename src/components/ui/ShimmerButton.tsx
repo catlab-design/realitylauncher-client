@@ -26,7 +26,6 @@
 import React from "react";
 
 // ========================================
-// Types - ประเภทข้อมูล
 // ========================================
 
 /**
@@ -56,7 +55,6 @@ function cn(...classes: (string | false | null | undefined)[]): string {
 }
 
 // ========================================
-// Component
 // ========================================
 
 /**
@@ -78,28 +76,22 @@ export default function ShimmerButton({
 }: ShimmerButtonProps) {
     // Base styles - สไตล์พื้นฐานของปุ่ม
     const baseStyles = cn(
-        // Layout & sizing
         "relative inline-flex items-center justify-center gap-2",
         "px-5 py-2.5 rounded-xl",
-        // Typography
         "text-sm font-semibold",
         // Transition สำหรับ hover effects
         "transition-all duration-300",
         // Overflow hidden เพื่อซ่อน shimmer ที่ล้นออกมา
         "overflow-hidden",
-        // Disabled state
         "disabled:opacity-50 disabled:cursor-not-allowed",
-        // Focus ring
         "focus:outline-none focus:ring-2 focus:ring-white/20"
     );
 
     // Variant styles - สไตล์ตาม variant
     const variantStyles = {
         default: cn(
-            // Background gradient
             "bg-gradient-to-r from-violet-600 via-fuchsia-600 to-pink-600",
             "text-white",
-            // Hover glow
             "hover:shadow-lg hover:shadow-fuchsia-500/30",
             "active:scale-[0.98]"
         ),
@@ -108,7 +100,6 @@ export default function ShimmerButton({
             "bg-transparent",
             "border border-white/20",
             "text-white",
-            // Hover
             "hover:bg-white/5 hover:border-white/30",
             "active:scale-[0.98]"
         ),

@@ -153,7 +153,6 @@ export function FilterMenu({
                             boxShadow: "0 24px 48px -16px rgba(0,0,0,0.4), 0 8px 16px -4px rgba(0,0,0,0.2)",
                         }}
                     >
-                        {/* Header */}
                         <div
                             className="px-4 py-2.5 flex items-center justify-between border-b"
                             style={{ borderColor: colors.outline + "30" }}

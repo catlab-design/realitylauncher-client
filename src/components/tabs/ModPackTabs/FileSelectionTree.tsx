@@ -134,7 +134,6 @@ function TreeNode({ node, includedPaths, onToggle, colors, getNodeState, level =
                     {state === "indeterminate" && <div className="w-2 h-0.5 bg-white rounded-full" />}
                 </div>
 
-                {/* Icon */}
                 <div className="w-5 flex justify-center opacity-70" style={{ color: colors.secondary }}>
                     {node.type === "directory" ? <Icons.Folder className="w-4 h-4" /> : <i className="fa-regular fa-file text-xs" />}
                 </div>

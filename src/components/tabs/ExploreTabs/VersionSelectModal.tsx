@@ -1,5 +1,4 @@
 // ========================================
-// Version Selection Modal
 // ========================================
 
 import React, { useState, useMemo } from "react";

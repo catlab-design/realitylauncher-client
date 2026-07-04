@@ -19,7 +19,6 @@ export function ImagePreviewModal({ colors, imageUrl, onClose, onNext, onPrev, h
     const [isLoading, setIsLoading] = useState(true);
     const { t } = useTranslation();
 
-    // Preload images
     React.useEffect(() => {
         if (preloadUrls && preloadUrls.length > 0) {
             preloadUrls.forEach(url => {
@@ -109,7 +108,6 @@ export function ImagePreviewModal({ colors, imageUrl, onClose, onNext, onPrev, h
                             <i className="fa-solid fa-chevron-right text-sm"></i>
                         </button>
 
-                        {/* Divider */}
                         <div className="w-px h-6 bg-white/20 mx-1"></div>
 
                         {/* Close Button */}

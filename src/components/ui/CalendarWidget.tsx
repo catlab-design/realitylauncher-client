@@ -174,7 +174,6 @@ export function CalendarWidget({
     }, [preFetchedAgendas, isPreLoading, instanceId]);
 
 
-    // Fetch real agendas if instanceId is provided
     useEffect(() => {
         // Only fetch if we have an instanceId or if pre-fetched data wasn't provided for global view
         if (!instanceId && preFetchedAgendas) return;
@@ -266,7 +265,6 @@ export function CalendarWidget({
     for (let i = 0; i < firstDay; i++) {
         days.push(null);
     }
-    // Days of current month
     for (let i = 1; i <= daysInMonth; i++) {
         days.push(i);
     }
@@ -287,7 +285,6 @@ export function CalendarWidget({
         ? ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
         : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-    // Buddhist Era for Thai
     const displayYear = language === "th" ? year + 543 : year;
 
     const handlePrevMonth = () => {
@@ -349,7 +346,6 @@ export function CalendarWidget({
         }
     };
 
-    // Handle date click
     const handleDateClick = (day: number) => {
         const date = new Date(year, month, day);
         handleDaySelect(date);
@@ -436,7 +432,6 @@ export function CalendarWidget({
 
                 {/* MAIN AREA: Weekly Schedule Grid (Expanded) or Calendar Grid (Popup) */}
                 <div className="flex-1 flex flex-col relative backdrop-blur-sm min-w-0 shrink overflow-hidden" style={{ backgroundColor: isFull ? (colors.surface === '#ffffff' ? '#ffffff' : colors.surface) : 'transparent' }}>
-                    {/* Header */}
                     <div 
                         className={`${isFull ? 'px-8 py-5' : 'px-4 py-3'} flex items-center justify-between`}
                         style={{

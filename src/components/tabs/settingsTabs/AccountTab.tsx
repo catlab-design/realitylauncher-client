@@ -55,7 +55,6 @@ export function AccountTab({
                 updateAccount(result.session);
                 toast.success(t('save_success') || "บันทึกสำเร็จ");
                 
-                // Refresh cached avatar
                 window.dispatchEvent(new CustomEvent("minecraft-skin-updated", { detail: { username: session.username } }));
             } else {
                 toast.error(result.error || "เกิดข้อผิดพลาด");

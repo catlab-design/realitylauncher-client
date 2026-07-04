@@ -37,7 +37,6 @@ export interface ModrinthProject {
   featured_gallery?: string | null;
   color?: number | null; // Integer color from Rust
   latest_version?: string | null;
-  // Full detail fields
   body?: string; // Full markdown description
   source_url?: string;
   wiki_url?: string;

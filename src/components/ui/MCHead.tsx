@@ -39,7 +39,6 @@ function extractMCHeadFromSkinTexture(skinDataUrl: string, size: number): Promis
                 const overlayY = Math.round(8 * scale);
                 const overlaySize = Math.round(8 * scale);
 
-                // Base head layer
                 ctx.drawImage(img, headX, headY, headSize, headSize, 0, 0, size, size);
                 // Hat/accessory overlay layer
                 ctx.drawImage(img, overlayX, overlayY, overlaySize, overlaySize, 0, 0, size, size);
@@ -196,7 +195,6 @@ export function MCHead({ username, size = 48, className = "" }: { username: stri
             setError(false);
         }
 
-        // Fetch fresh image in background and cache it as base64
         fetch(srcUrl)
             .then((res) => {
                 if (!res.ok) throw new Error("Failed to fetch profile image");

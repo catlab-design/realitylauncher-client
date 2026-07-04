@@ -19,7 +19,6 @@ function getNative(): any {
   return nativeModule;
 }
 
-// Type definitions
 export type LoaderType = "vanilla" | "fabric" | "forge" | "neoforge" | "quilt";
 
 export interface GameInstance {
@@ -79,7 +78,6 @@ const instanceCache = new Map<string, GameInstance>();
 // Current list of instances (may be paginated subset for UI)
 let instances: GameInstance[] = [];
 
-// Path helpers
 export function getInstancesDir(): string {
   const minecraftDir = getMinecraftDir();
   return path.join(minecraftDir, "instances");
@@ -276,7 +274,6 @@ async function saveInstances(): Promise<void> {
   }
 }
 
-// CRUD operations
 export async function getInstances(
   offset: number = 0,
   limit: number = 1000,
@@ -624,7 +621,6 @@ export async function setInstanceIcon(
   }
 }
 
-// Helper functions
 async function copyDirectoryAsync(src: string, dest: string): Promise<void> {
   await fs.promises.mkdir(dest, { recursive: true });
 
@@ -666,7 +662,6 @@ function generateUniqueId(name: string): string {
   return uniqueName;
 }
 
-// Initialize on module load
 loadInstances().catch((err) =>
   console.error("[Instances] Init load failed:", err),
 );

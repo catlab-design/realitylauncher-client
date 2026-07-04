@@ -53,7 +53,6 @@ export const Marquee: React.FC<MarqueeProps> = ({
       }
     };
 
-    // Initial check
     calculateOverflow();
 
     // Use ResizeObserver for more robust monitoring

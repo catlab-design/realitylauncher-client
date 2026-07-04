@@ -52,7 +52,6 @@ export function InstanceSettingsModal({
     const [editedName, setEditedName] = useState(instance.name);
     const [deleteConfirm, setDeleteConfirm] = useState(false);
 
-    // Export state
     const [exportStep, setExportStep] = useState<"format" | "config">("format");
     const [selectedFormat, setSelectedFormat] = useState<"zip" | "mrpack">("zip");
     const [exportOptions, setExportOptions] = useState({
@@ -62,7 +61,6 @@ export function InstanceSettingsModal({
         includedPaths: ["mods", "config", "resourcepacks", "shaderpacks"]
     });
     
-    // File Tree State
     const [fileTree, setFileTree] = useState<FileNode[]>([]);
     const [loadingFiles, setLoadingFiles] = useState(false);
     
@@ -80,7 +78,6 @@ export function InstanceSettingsModal({
         }
     }, [settingsTab]);
 
-    // Fetch files when entering config step
     useEffect(() => {
         if (settingsTab === "export" && exportStep === "config") {
             const fetchFiles = async () => {
@@ -166,13 +163,11 @@ export function InstanceSettingsModal({
     const handleExport = async () => {
         playClick();
         
-        // Prepare options
         const options = {
             format: selectedFormat,
             ...exportOptions
         };
         
-        // Close modal immediately and trigger export in background
         onClose();
         onExport(instance.id, options);
     };
@@ -188,7 +183,6 @@ export function InstanceSettingsModal({
     
 
 
-    // Helpers
     const formatBytes = (bytes: number) => {
         if (bytes === 0) return "0 B";
         const k = 1024;
@@ -197,7 +191,6 @@ export function InstanceSettingsModal({
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
     };
 
-    // ... rest of code ...
 
     // START OF UI REPLACEMENT
     /* This replacement targets the "Files Section" in the render method */
@@ -212,20 +205,16 @@ export function InstanceSettingsModal({
 
 
 
-    // Installation settings state
     const [editedLoader, setEditedLoader] = useState<LoaderType>(instance.loader as LoaderType);
     const [editedVersion, setEditedVersion] = useState(instance.minecraftVersion);
     const [editedLoaderVersion, setEditedLoaderVersion] = useState(instance.loaderVersion);
-    // Java settings
     const [editedJavaPath, setEditedJavaPath] = useState(instance.javaPath || "");
     const [editedRam, setEditedRam] = useState(instance.ramMB || config.ramMB);
     const [editedJavaArgs, setEditedJavaArgs] = useState(instance.javaArguments || instance.javaArguments === "" ? instance.javaArguments : config.javaArguments);
-    // Advanced settings
     const [loaderVersions, setLoaderVersions] = useState<string[]>([]);
     const [loadingLoaderVersions, setLoadingLoaderVersions] = useState(false);
     const [maxRamMB, setMaxRamMB] = useState(0);
 
-    // Fetch system info
     useEffect(() => {
         (async () => {
             if (window.api) {
@@ -246,7 +235,6 @@ export function InstanceSettingsModal({
         setEditedJavaArgs(instance.javaArguments || instance.javaArguments === "" ? instance.javaArguments : config.javaArguments);
     }, [instance, config]);
 
-    // Fetch loader versions when loader or mc version changes
     useEffect(() => {
         if (editedLoader === "vanilla") {
             setLoaderVersions([]);
@@ -386,7 +374,6 @@ export function InstanceSettingsModal({
                     </div>
 
                     <div className="flex flex-1 overflow-hidden">
-                        {/* Sidebar */}
                         <div className="w-[22%] min-w-[240px] p-4 border-r flex flex-col" style={{ borderColor: colors.outline + "30" }}>
                             <button
                                 onClick={() => { playClick(); setSettingsTab("general"); }}
@@ -430,7 +417,6 @@ export function InstanceSettingsModal({
                             </button>
                         </div>
 
-                        {/* Content */}
                         <div className="flex-1 p-6 overflow-y-auto">
                             {/* Define a helper for dark mode within the component scope if needed, 
                                 but since we follow the user request, we'll force icons to be white in certain conditions */}
@@ -1098,7 +1084,6 @@ export function InstanceSettingsModal({
                                             {t('leave_empty_to_use_default')}
                                         </p>
                                     </div>
-                                    {/* RAM */}
                                     <div>
                                         <div className="flex items-center gap-2 mb-4">
                                             <div 
@@ -1110,11 +1095,9 @@ export function InstanceSettingsModal({
                                                 onClick={() => {
                                                     const isCustom = instance.ramMB !== 0;
                                                     if (isCustom) {
-                                                        // Disable custom (revert to default)
                                                         onUpdate(instance.id, { ramMB: 0 });
                                                         setEditedRam(config.ramMB);
                                                     } else {
-                                                        // Enable custom (start with current/default)
                                                         onUpdate(instance.id, { ramMB: config.ramMB });
                                                         setEditedRam(config.ramMB);
                                                     }
@@ -1158,7 +1141,6 @@ export function InstanceSettingsModal({
                                                     <span className="text-xs opacity-70">MB</span>
                                                 </div>
                                             </div>
-                                            {/* Slider */}
                                             <div className="relative pt-2 pb-1">
                                                 {/* Track */}
                                                 <div className="h-3 w-full rounded-full relative overflow-hidden" 
@@ -1203,7 +1185,6 @@ export function InstanceSettingsModal({
                                                     <span>{maxRamMB ? `${(maxRamMB / 1024).toFixed(1)} GB` : "8.0 GB"}</span>
                                                 </div>
                                             </div>
-                                            {/* Presets */}
                                             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
                                                 <button
                                                     onClick={() => {

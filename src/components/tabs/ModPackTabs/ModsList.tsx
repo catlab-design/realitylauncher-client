@@ -1,5 +1,4 @@
 // ========================================
-// Mods List Component
 // ========================================
 
 import React, { useState, useEffect } from "react";
@@ -131,7 +130,6 @@ export function ModsList({
         const filenames = Array.from(selectedFilenames);
         if (filenames.length === 0) return;
 
-        // Simple confirmation
         if (confirm(`${t('confirm_delete_multiple' as any).replace('{count}', String(filenames.length))}`)) {
             playClick();
             await runBulkDelete(filenames, async (filename, options) => {

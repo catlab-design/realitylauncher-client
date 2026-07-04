@@ -10,7 +10,6 @@
 import { API_URL as ML_API_URL } from "./lib/constants.js";
 
 // ========================================
-// Types
 // ========================================
 
 export interface CurseForgeCategory {
@@ -125,13 +124,11 @@ export interface CurseForgeSearchFilters {
 }
 
 // ========================================
-// Constants
 // ========================================
 
 const API_TIMEOUT_MS = 30000; // 30 seconds timeout
 
 // ========================================
-// HTTP Helper
 // ========================================
 
 async function fetchJSON<T>(url: string): Promise<T> {
@@ -164,7 +161,6 @@ async function fetchJSON<T>(url: string): Promise<T> {
 }
 
 // ========================================
-// API Functions
 // ========================================
 
 /**
@@ -252,7 +248,6 @@ export async function getCurseForgeFiles(
           break;
         }
       } else {
-        // No more files
         break;
       }
     } catch (error) {

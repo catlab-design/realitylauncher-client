@@ -124,7 +124,6 @@ export function ChangelogModal({
                 style={{ backgroundColor: colors.surface, border: `1px solid ${colors.outline}40` }}
                 onClick={(e) => e.stopPropagation()}
             >
-                {/* Header */}
                 <div
                     className="px-4 py-3 border-b flex items-center gap-3"
                     style={{ borderColor: colors.outline + "30", backgroundColor: colors.surfaceContainer }}
@@ -168,7 +167,6 @@ export function ChangelogModal({
                     )}
                 </div>
 
-                {/* Footer */}
                 <div className="px-4 py-3 border-t" style={{ borderColor: colors.outline + "30" }}>
                     <button
                         onClick={onClose}

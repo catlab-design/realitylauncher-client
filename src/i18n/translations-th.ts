@@ -1032,7 +1032,6 @@ export const thTranslations = {
     partner_special_thanks: "Partner (Special Thanks)",
     alliance: "Alliance",
 
-    // Explore — sort
     sort_by: "เรียงตาม",
     // sort.* keys already defined above
 
@@ -1044,7 +1043,6 @@ export const thTranslations = {
     // game_version already defined above
     search_versions_short: "ค้นหาเวอร์ชัน...",
 
-    // Categories
     "category.adventure": "ผจญภัย",
     "category.cursed": "สาปแช่ง",
     "category.decoration": "ตกแต่ง",
@@ -1065,7 +1063,6 @@ export const thTranslations = {
     "category.utility": "ยูทิลิตี้",
     "category.worldgen": "สร้างโลก",
 
-    // Loaders
     "loader.fabric": "Fabric",
     "loader.forge": "Forge",
     "loader.neoforge": "NeoForge",
@@ -1074,7 +1071,6 @@ export const thTranslations = {
     "loader.modloader": "ModLoader",
     "loader.rift": "Rift",
 
-    // Environments
     "environment.client": "ฝั่งเครื่องผู้เล่น",
     "environment.server": "ฝั่งเซิร์ฟเวอร์",
 
@@ -1096,14 +1092,12 @@ export const thTranslations = {
     old_version_delete_failed: "ติดตั้งเวอร์ชันใหม่แล้ว แต่ลบไฟล์เก่าไม่สำเร็จ",
     update_to_latest: "อัปเดตเป็นเวอร์ชันล่าสุด",
 
-    // Confirm install
     confirm_install_modpack_title: "ติดตั้ง Modpack ?",
     confirm_install_modpack_body: 'ต้องการติดตั้ง "{name}" เป็น instance ใหม่หรือไม่ ? อาจดาวน์โหลดหลายร้อย MB',
     already_installed_modpack: 'พบ instance ที่มาจาก "{name}" อยู่แล้ว ยังต้องการติดตั้งใหม่หรือไม่ ?',
     install_in_progress_warn: "มีการติดตั้งอื่นกำลังทำงานอยู่ กรุณารอสักครู่",
     // cancel already defined above
 
-    // Misc
     items_per_page: "รายการ / หน้า",
     page_jump_first: "หน้าแรก",
     page_jump_last: "หน้าสุดท้าย",
@@ -1111,6 +1105,5 @@ export const thTranslations = {
     clear_all_filters: "ล้างทั้งหมด",
     click_again_to_open: "คลิกอีกครั้งเพื่อเปิดหน้าเต็ม",
 
-    // Mobile
     open_filters: "ตัวกรอง",
 };

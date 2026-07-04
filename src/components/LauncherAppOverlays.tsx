@@ -267,7 +267,6 @@ export function LauncherAppOverlays({
             className="flex w-full max-w-[480px] flex-col overflow-hidden rounded-2xl border border-white/10"
             style={{ backgroundColor: colors.surface }}
           >
-            {/* Header */}
             <div
               className="flex items-center justify-between border-b px-6 py-4"
               style={{
@@ -312,7 +311,6 @@ export function LauncherAppOverlays({
               </button>
             </div>
 
-            {/* Content */}
             <div className="px-6 py-6 flex flex-col gap-4">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
@@ -438,7 +436,6 @@ export function LauncherAppOverlays({
             className="flex w-full max-w-[480px] flex-col overflow-hidden rounded-2xl border border-white/10"
             style={{ backgroundColor: colors.surface }}
           >
-            {/* Header */}
             <div
               className="flex items-center justify-between border-b px-6 py-4"
               style={{
@@ -484,7 +481,6 @@ export function LauncherAppOverlays({
               </button>
             </div>
 
-            {/* Content */}
             <div className="px-6 py-6 flex flex-col items-center text-center gap-4">
               <p className="text-sm font-medium opacity-80" style={{ color: colors.onSurface }}>
                 {t("verification_check_email")}
@@ -536,7 +532,6 @@ export function LauncherAppOverlays({
             className="flex w-full max-w-[480px] flex-col overflow-hidden rounded-2xl border border-white/10"
             style={{ backgroundColor: colors.surface }}
           >
-            {/* Header */}
             <div
               className="flex items-center justify-between border-b px-6 py-4"
               style={{
@@ -593,7 +588,6 @@ export function LauncherAppOverlays({
               </button>
             </div>
 
-            {/* Content */}
             <div className="px-6 py-6 flex flex-col gap-4">
               {forgotPasswordStep === "email" ? (
                 <>
@@ -800,7 +794,6 @@ export function LauncherAppOverlays({
             className="flex w-full max-w-[480px] flex-col overflow-hidden rounded-2xl border border-white/10"
             style={{ backgroundColor: colors.surface }}
           >
-            {/* Header */}
             <div
               className="flex items-center justify-between border-b px-6 py-4"
               style={{
@@ -843,7 +836,6 @@ export function LauncherAppOverlays({
               </button>
             </div>
 
-            {/* Content */}
             <div className="px-6 py-6 flex flex-col gap-4">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>
@@ -929,7 +921,6 @@ export function LauncherAppOverlays({
             className="flex w-full max-w-[540px] flex-col overflow-hidden rounded-2xl border border-white/10"
             style={{ backgroundColor: colors.surface }}
           >
-            {/* Header */}
             <div
               className="flex items-center justify-between border-b px-6 py-4"
               style={{
@@ -972,7 +963,6 @@ export function LauncherAppOverlays({
               </button>
             </div>
 
-            {/* Content */}
             <div className="px-6 py-6 flex flex-col gap-4">
               <div className="space-y-3 max-h-[320px] overflow-y-auto px-1 custom-scrollbar mb-2">
                 {accounts.map((account, index) => {
@@ -1080,7 +1070,6 @@ export function LauncherAppOverlays({
             className="flex w-full max-w-[540px] flex-col overflow-hidden rounded-2xl border border-white/10"
             style={{ backgroundColor: colors.surface }}
           >
-            {/* Header */}
             <div
               className="flex items-center justify-between border-b px-6 py-4"
               style={{
@@ -1126,7 +1115,6 @@ export function LauncherAppOverlays({
               </button>
             </div>
 
-            {/* Content */}
             <div className="px-6 py-6 flex flex-col gap-4">
               <div
                 className={`relative border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center transition-all ${isDragging ? "scale-[1.02]" : "hover:border-yellow-500/30"}`}

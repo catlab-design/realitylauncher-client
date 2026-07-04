@@ -253,7 +253,6 @@ export function ContentList({
                         let content = null;
 
                         if (item) {
-                            // Real Item Logic
                             content = (
                                 <LazyContentItem
                                     item={item as ContentItem | DatapackItem}

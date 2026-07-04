@@ -28,7 +28,6 @@
 import React from "react";
 
 // ========================================
-// Types
 // ========================================
 
 interface AnimatedGradientTextProps {
@@ -42,7 +41,6 @@ interface AnimatedGradientTextProps {
 }
 
 // ========================================
-// Utility
 // ========================================
 
 function cn(...classes: (string | false | null | undefined)[]): string {
@@ -50,7 +48,6 @@ function cn(...classes: (string | false | null | undefined)[]): string {
 }
 
 // ========================================
-// Component
 // ========================================
 
 /**
@@ -82,11 +79,9 @@ export default function AnimatedGradientText({
                 className
             )}
             style={{
-                // Gradient background
                 backgroundImage: `linear-gradient(90deg, ${gradientColors})`,
                 // ขยาย background ให้ใหญ่พอสำหรับ animation
                 backgroundSize: "300% 100%",
-                // Animation
                 animation: `gradient-shift ${speed}s ease infinite`,
             }}
         >

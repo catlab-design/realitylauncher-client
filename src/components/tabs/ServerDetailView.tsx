@@ -155,7 +155,6 @@ export function ServerDetailView({
 
                 {/* Content overlay */}
                 <div className="absolute inset-0 flex items-end p-5 gap-4">
-                    {/* Icon */}
                     {instance.iconUrl ? (
                         <img
                             src={getWithTimestamp(instance.iconUrl)}
@@ -274,7 +273,6 @@ export function ServerDetailView({
                         </button>
                     ) : isInstalled ? (
                         <div className="flex gap-2">
-                            {/* Play / Stop */}
                             <button
                                 type="button"
                                 onClick={(e) => {
@@ -306,7 +304,6 @@ export function ServerDetailView({
                                     </>
                                 )}
                             </button>
-                            {/* Logs */}
                             <button
                                 type="button"
                                 onClick={(e) => { e.stopPropagation(); playClick(); onViewLogs(e, instance); }}

@@ -1,4 +1,14 @@
-# Reality Launcher Client
+# [DEPRECATED] Reality Launcher Client (Legacy Electron Edition)
+
+> [!WARNING]
+> **This version of the client is deprecated and no longer actively developed.**
+> 
+> This legacy Electron-based client has been replaced by the newer, much faster, and smaller Tauri v2-based client.
+> 
+> Please switch to the new active version located on the **`main`** branch of this repository:
+> - **[Reality Launcher (Tauri Edition)](https://github.com/catlab-design/realitylauncher-client)**
+
+---
 
 Desktop client for Reality Launcher, built with Electron + Astro/React and a Rust native module.
 

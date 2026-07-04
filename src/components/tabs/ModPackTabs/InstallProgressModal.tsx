@@ -98,7 +98,6 @@ export function InstallProgressModal({ colors, installProgress, title, isBytes, 
                                 </div>
                             </>
                         ) : (
-                            // Indeterminate State Placeholder
                             <div className="h-1.5 rounded-full overflow-hidden w-full relative" style={{ backgroundColor: colors.surfaceContainerHighest }}>
                                 <div className="absolute inset-y-0 left-0 w-1/3 bg-white/20 animate-[shimmer_1.5s_infinite]"
                                     style={{ backgroundColor: colors.secondary }} />

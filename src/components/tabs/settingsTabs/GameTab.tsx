@@ -60,7 +60,6 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
 
     return (
         <div className="rounded-xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
-            {/* Header */}
             <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "20" }}>
                 <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: colors.secondary + "20" }}>
                     <i className="fa-solid fa-gamepad text-sm" style={{ color: colors.secondary }}></i>
@@ -134,7 +133,6 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
                         </div>
                     </div>
 
-                    {/* Presets */}
                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-3">
                         <button
                             onClick={() => {

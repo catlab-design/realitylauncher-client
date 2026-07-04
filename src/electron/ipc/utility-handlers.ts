@@ -518,12 +518,10 @@ export function registerUtilityHandlers(
             // Re-fetch profile to get the updated skin
             const sessionKey = `catid-ms-${session.minecraftUuid}`;
             
-            // Delete cache
             const cache = loadMinecraftProfileCache();
             delete cache[sessionKey];
             saveMinecraftProfileCache(cache);
 
-            // Fetch updated profile
             const profileResponse = await fetch(`${ML_API_URL}/profile/${session.minecraftUuid}`, {
               headers: {
                 ...(apiToken ? { Authorization: `Bearer ${apiToken}` } : {}),

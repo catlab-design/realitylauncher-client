@@ -73,7 +73,6 @@ const HomeHeader = React.memo(({ session, colors, language }: { session: any, co
                     ref={tooltipRef}
                     className="fixed top-0 left-0 z-50 pointer-events-none px-3 py-1.5 rounded-lg text-xs font-bold border animate-in fade-in zoom-in duration-200 transition-none will-change-transform"
                     style={{ 
-                        // Initial position
                         transform: `translate(${mousePos.current.x + 10}px, ${mousePos.current.y + 10}px)`,
                         backgroundColor: colors.surfaceContainer,
                         color: colors.onSurface,
@@ -104,7 +103,6 @@ const HomeHeader = React.memo(({ session, colors, language }: { session: any, co
                     {/* Left Side: Avatar & Greeting */}
                     <div className="flex items-center gap-6 w-full md:w-auto">
                         <div className="relative group shrink-0">
-                            {/* Avatar */}
                             {session ? (
                                     <div className="relative transform transition-transform duration-500 rounded-full"
                                          style={{ 
@@ -264,7 +262,6 @@ export function Home({
                     }
                 }
             } catch {
-                // Ignore cache parse issues
             }
         }
 
@@ -283,7 +280,6 @@ export function Home({
                 );
             }
         } catch {
-            // Silent fail
         } finally {
             setNewsletterLoading(false);
         }
@@ -320,7 +316,6 @@ export function Home({
                     setRecentInstances(sorted);
                 }
             } catch {
-                // Silent fail
             }
         };
         loadRecentInstances();
@@ -415,8 +410,6 @@ export function Home({
                                     </div>
                                 ))}
 
-                                {/* Controls */}
-                                {/* Controls */}
                                 {newsletters.length > 1 && (
                                     <div className="absolute bottom-6 right-6 z-20 flex items-center gap-3">
                                         {/* Pagination Dots */}
@@ -506,7 +499,6 @@ export function Home({
                                         <div className="absolute inset-0 bg-black/55 group-hover:bg-black/45 transition-colors" />
                                     </>
 
-                                    {/* Icon */}
                                     <div className="relative z-10 w-14 h-14 rounded-xl overflow-hidden shrink-0"
                                          style={{ backgroundColor: instance.icon ? 'transparent' : colors.surfaceContainerHighest }}>
                                         {instance.icon ? (

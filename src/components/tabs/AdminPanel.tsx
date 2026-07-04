@@ -43,19 +43,16 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
     const [settings, setSettings] = useState<AppSettings | null>(null);
     const [error, setError] = useState<string | null>(null);
 
-    // Editing states
     const [editingClientId, setEditingClientId] = useState(false);
     const [editingDeviceClientId, setEditingDeviceClientId] = useState(false);
     const [clientIdInput, setClientIdInput] = useState("");
     const [deviceClientIdInput, setDeviceClientIdInput] = useState("");
     const [saving, setSaving] = useState(false);
 
-    // Secret modal
     const [secretModalOpen, setSecretModalOpen] = useState(false);
     const [secretType, setSecretType] = useState<"microsoft" | "curseforge">("microsoft");
     const [secretInput, setSecretInput] = useState("");
 
-    // System info
     const [systemInfo, setSystemInfo] = useState<{ apiUrl: string; version: string } | null>(null);
 
     useEffect(() => {
@@ -180,7 +177,6 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
 
     return (
         <div className="p-6 space-y-6 overflow-y-auto max-h-full">
-            {/* Header */}
             <div className="flex items-center justify-between animate-fade-in-up">
                 <div>
                     <h1 className="text-2xl font-bold flex items-center gap-2" style={{ color: colors.onSurface }}>

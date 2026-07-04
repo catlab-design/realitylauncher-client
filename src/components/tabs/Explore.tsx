@@ -6,9 +6,7 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import toast from "react-hot-toast";
 import { useTranslation } from "../../hooks/useTranslation";
 
-// Local components
 import {
-    // Types
     CONTENT_SOURCES,
     type ContentSource,
     type ProjectType,
@@ -18,12 +16,9 @@ import {
     type InstanceCompatibility,
     type InstallProgress,
     type ExploreProps,
-    // Helpers
     hasValidFilesForType,
     matchesVersion,
-    // Constants
     SEARCH_DEBOUNCE_MS,
-    // Components
     InstanceSelectModal,
     VersionSelectModal,
     ExploreToolbar,
@@ -38,15 +33,12 @@ import {
 } from "./ExploreTabs";
 
 // ========================================
-// Component
 // ========================================
 
 export function Explore({ colors, config }: ExploreProps) {
     const { t } = useTranslation(config?.language);
-    // Content source state
     const [contentSource, setContentSource] = useState<ContentSource>(CONTENT_SOURCES.MODRINTH);
 
-    // Main state
     const [projectType, setProjectType] = useState<ProjectType>("modpack");
     const [searchQuery, setSearchQuery] = useState("");
     const [results, setResults] = useState<ModrinthProject[]>([]);
@@ -59,24 +51,20 @@ export function Explore({ colors, config }: ExploreProps) {
     // Total pages (derived) - use totalHits when available, otherwise fallback to result length
     const totalPages = Math.max(1, Math.ceil((totalHits || results.length) / viewCount));
 
-    // Instance selection state
     const [instances, setInstances] = useState<GameInstance[]>([]);
     const [isLoadingInstances, setIsLoadingInstances] = useState(false);
     const [selectedProject, setSelectedProject] = useState<ModrinthProject | null>(null);
     const [showInstanceModal, setShowInstanceModal] = useState(false);
     const [isDownloading, setIsDownloading] = useState(false);
 
-    // Compatibility checking state
     const [modVersions, setModVersions] = useState<ModVersion[]>([]);
     const [instanceCompatibility, setInstanceCompatibility] = useState<InstanceCompatibility[]>([]);
     const [isCheckingCompatibility, setIsCheckingCompatibility] = useState(false);
 
-    // Modpack installation state
     const [isInstallingModpack, setIsInstallingModpack] = useState(false);
     const [installingProjectId, setInstallingProjectId] = useState<string | null>(null);
     const [installProgress, setInstallProgress] = useState<InstallProgress | null>(null);
 
-    // Version selection state
     const [showVersionModal, setShowVersionModal] = useState(false);
     const [versionModalVersions, setVersionModalVersions] = useState<ModVersion[]>([]);
     const [versionModalTitle, setVersionModalTitle] = useState("");
@@ -87,10 +75,8 @@ export function Explore({ colors, config }: ExploreProps) {
     // Content version selection state
     const [selectedInstanceForDownload, setSelectedInstanceForDownload] = useState<GameInstance | null>(null);
 
-    // Preview state
     const [previewProject, setPreviewProject] = useState<ModrinthProject | null>(null);
 
-    // Detail page state
     const [detailProject, setDetailProject] = useState<ModrinthProject | null>(null);
 
     // Filter state — arrays so each filter category supports multi-select. Modrinth handles
@@ -148,7 +134,6 @@ export function Explore({ colors, config }: ExploreProps) {
     }, [t]);
 
     // ========================================
-    // Effects
     // ========================================
 
     // Load instances on mount
@@ -210,7 +195,6 @@ export function Explore({ colors, config }: ExploreProps) {
     }, [results]);
 
     const fetchFullProjectDetails = async (project: ModrinthProject) => {
-        // Fetch for both Modrinth and CurseForge
         if (!project.project_id) return;
 
         // Token-based race guard (B3). Each call gets a new token; only the latest may apply.
@@ -376,7 +360,6 @@ export function Explore({ colors, config }: ExploreProps) {
     };
 
     // ========================================
-    // Search Handlers
     // ========================================
 
     const handleSearch = () => {
@@ -399,7 +382,6 @@ export function Explore({ colors, config }: ExploreProps) {
     }, [projectType, sortBy, viewCount, contentSource, mcVersionFilters, loaderFilters, categoryFilters, environmentFilters]);
 
     // ========================================
-    // Compatibility Checking
     // ========================================
 
     const checkCompatibility = (instance: GameInstance, versions: ModVersion[]): InstanceCompatibility => {
@@ -446,7 +428,6 @@ export function Explore({ colors, config }: ExploreProps) {
     };
 
     // ========================================
-    // Modpack Installation
     // ========================================
 
     const handleInstallModpack = async (project: ModrinthProject) => {
@@ -593,7 +574,6 @@ export function Explore({ colors, config }: ExploreProps) {
     };
 
     // ========================================
-    // Add to Instance
     // ========================================
 
     const handleAddToInstance = async (project: ModrinthProject) => {
@@ -763,11 +743,9 @@ export function Explore({ colors, config }: ExploreProps) {
     };
 
     // ========================================
-    // Detail Page Handlers
     // ========================================
 
     const handleOpenDetail = (project: ModrinthProject) => {
-        // Fetch full project with body, links, team etc.
         setDetailProject(project);
         fetchFullProjectForDetail(project);
     };
@@ -815,12 +793,10 @@ export function Explore({ colors, config }: ExploreProps) {
     };
 
     // ========================================
-    // Computed Values
     // (Computed earlier near state declarations: const totalPages = Math.max(1, Math.ceil((totalHits || results.length) / viewCount)); )
     // ========================================
 
     // ========================================
-    // Render
     // ========================================
 
     return (

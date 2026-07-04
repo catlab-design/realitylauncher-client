@@ -205,7 +205,6 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                     </div>
                 </div>
 
-                {/* Tabs */}
                 <div className="flex p-2 gap-2" style={{ backgroundColor: colors.surfaceContainerHighest + '40' }}>
                     <button
                         onClick={() => { playClick(); setActiveTab('news'); }}
@@ -355,7 +354,6 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                                             <div className="absolute left-0 top-0 bottom-0 w-1 bg-yellow-400/50" />
 
                                             <div className="flex items-start gap-4">
-                                                {/* Icon */}
                                                 <div
                                                     className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm overflow-hidden border border-white/10"
                                                     style={{ backgroundColor: colors.surfaceContainer }}
@@ -369,7 +367,6 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                                                     )}
                                                 </div>
 
-                                                {/* Content */}
                                                 <div className="flex-1 min-w-0">
                                                     <p className="text-sm font-bold truncate mb-1" style={{ color: colors.onSurface }}>
                                                         {t('invited_to_instance').replace('{instance}', invitation.instanceName)}
@@ -382,7 +379,6 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                                                         <span className="px-1.5 py-0.5 rounded bg-white/10">{invitation.role === 'admin' ? t('admin') : t('member_badge')}</span>
                                                     </p>
 
-                                                    {/* Actions */}
                                                     <div className="flex gap-2 mt-3">
                                                         <button
                                                             onClick={() => handleAccept(invitation.id)}

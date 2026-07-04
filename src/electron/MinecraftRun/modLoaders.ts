@@ -401,7 +401,6 @@ export async function applyModLoader(
         console.log(`[${loaderType}] Created dummy launcher_profiles.json`);
       }
 
-      // Download installer JAR
       const installerUrl =
         loaderType === "neoforge"
           ? `https://maven.neoforged.net/releases/net/neoforged/neoforge/${forgeVersion}/neoforge-${forgeVersion}-installer.jar`
@@ -558,7 +557,6 @@ export async function applyModLoader(
         }
       }
 
-      // Cleanup installer
       try {
         fs.unlinkSync(installerPath);
       } catch {}
@@ -723,10 +721,8 @@ export async function applyModLoader(
                         // For local files like /data/client.jar, we need to find which library needs it
                         // by checking version.json libraries that don't have downloads
 
-                        // Common patterns:
                         // PATCHED -> net.minecraft:client:xxx:xxx-srg
                         // CLIENT_EXTRA -> net.minecraft:client:xxx-extra
-                        // etc.
 
                         // For now, let's extract to a temp location and let Forge handle it
                         // OR, better: parse the forgeVersionJson.libraries to find matching entries
@@ -747,9 +743,7 @@ export async function applyModLoader(
                             const classifier = parts[3] ? `-${parts[3]}` : "";
 
                             // Check if this key matches the library's classifier
-                            // Common mappings:
                             // PATCHED -> srg (or just "client")
-                            // CLIENT_EXTRA -> extra
                             const lowerKey = key.toLowerCase();
                             const lowerClassifier = classifier.toLowerCase();
 
@@ -809,11 +803,9 @@ export async function applyModLoader(
             }
         }
 
-        // Save version JSON
         fs.mkdirSync(path.dirname(forgeVersionJsonPath), { recursive: true });
         fs.writeFileSync(forgeVersionJsonPath, JSON.stringify(forgeVersionJson, null, 2));
 
-        // Cleanup installer
         try { fs.unlinkSync(installerPath); } catch { }
 
     */
@@ -868,7 +860,6 @@ export async function applyModLoader(
     }
   }
 
-  // Fallback: Vanilla
   console.warn(
     `[Loader] Unknown loader type: ${loaderType}, falling back to vanilla`,
   );

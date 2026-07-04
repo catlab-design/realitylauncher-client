@@ -45,12 +45,10 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
     const [totalPages, setTotalPages] = useState(1);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-    // Ban Modal State
     const [banModalOpen, setBanModalOpen] = useState(false);
     const [banUserId, setBanUserId] = useState<string | null>(null);
     const [banReason, setBanReason] = useState("");
 
-    // Add User Modal State
     const [addModalOpen, setAddModalOpen] = useState(false);
     const [newUserEmail, setNewUserEmail] = useState("");
     const [newUserUsername, setNewUserUsername] = useState("");

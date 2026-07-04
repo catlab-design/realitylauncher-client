@@ -4,7 +4,6 @@ import { useTranslation } from "../../hooks/useTranslation";
 import { Portal } from "../ui/Portal";
 
 // ========================================
-// Types
 // ========================================
 
 interface LogEntry {
@@ -22,7 +21,6 @@ interface LiveLogProps {
 }
 
 // ========================================
-// Component
 // ========================================
 
 export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
@@ -35,7 +33,6 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
     const logContainerRef = useRef<HTMLDivElement>(null);
     const logIdRef = useRef(0);
 
-    // Auto scroll to bottom
     useEffect(() => {
         if (autoScroll && logContainerRef.current) {
             logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
@@ -63,7 +60,6 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
                         else if (line.includes("/WARN]")) level = "warn";
                         else if (line.includes("/DEBUG]")) level = "debug";
 
-                        // Extract timestamp
                         const timeMatch = line.match(/\[(\d{2}:\d{2}:\d{2})\]/);
                         const timestamp = timeMatch ? timeMatch[1] : "";
 
@@ -199,7 +195,6 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
                     className="w-[94vw] max-w-[1500px] h-[76vh] min-h-[620px] max-h-[860px] rounded-2xl flex flex-col overflow-hidden relative z-51"
                     style={{ backgroundColor: colors.surfaceContainer }}
                 >
-                    {/* Header */}
                     <div
                         className="flex items-center justify-between gap-4 px-5 py-4 border-b shrink-0"
                         style={{ borderColor: colors.outline }}

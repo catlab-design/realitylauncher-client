@@ -197,7 +197,6 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
                             </div>
                         </div>
 
-                        {/* Actions */}
                         <div className="flex gap-4 mt-8">
                             <button
                                 type="submit"

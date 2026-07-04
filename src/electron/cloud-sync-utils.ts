@@ -154,7 +154,6 @@ export async function logHashMismatchDiagnostic(
     const stat = await fs.promises.stat(filePath);
     bytes = String(stat.size);
   } catch {
-    // Ignore stat failures in debug logging path.
   }
 
   console.warn(
@@ -661,7 +660,6 @@ export async function downloadFileWithSoftHashCheck(
       );
     }
 
-    // Atomic rename
     if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
     fs.renameSync(tmpPath, destPath);
   } catch (error) {

@@ -63,7 +63,6 @@ export function ConfirmDialog({
                 style={{ backgroundColor: colors.surface, border: `1px solid ${colors.outline}40` }}
                 onClick={(e) => e.stopPropagation()}
             >
-                {/* Header */}
                 <div className="px-6 py-5 flex items-start gap-4">
                     <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "#fee2e2" }}>
                         <i className="fa-solid fa-triangle-exclamation text-lg text-red-500"></i>

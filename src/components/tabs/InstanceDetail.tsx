@@ -24,7 +24,6 @@ import bannerImage from "../../assets/banner.png";
 
 type InstalledBrowserContentType = "mod" | "resourcepack" | "shader" | "datapack";
 
-// Import from ModPackTabs
 import {
     ContentTabs,
     ModsList,
@@ -42,7 +41,6 @@ import {
 } from "./ModPackTabs";
 
 // ========================================
-// Types
 // ========================================
 
 interface InstanceDetailProps {
@@ -66,7 +64,6 @@ interface InstanceDetailProps {
 }
 
 // ========================================
-// Component
 // ========================================
 
 export function InstanceDetail({
@@ -89,11 +86,9 @@ export function InstanceDetail({
     isInstallLocked = false,
 }: InstanceDetailProps) {
     const { t } = useTranslation(config.language);
-    // Mods state
     const [mods, setMods] = useState<ModInfo[]>([]);
     const [modsLoading, setModsLoading] = useState(true);
 
-    // Settings state
     const [showSettings, setShowSettings] = useState(false);
 
     // Content category tabs - default to resourcepacks for vanilla (no mods support)
@@ -101,7 +96,6 @@ export function InstanceDetail({
         instance.loader === "vanilla" ? "resourcepacks" : "mods"
     );
 
-    // Content state
     const [resourcepacks, setResourcepacks] = useState<ContentItem[]>([]);
     const [resourcepacksLoading, setResourcepacksLoading] = useState(false);
     const [shaders, setShaders] = useState<ContentItem[]>([]);
@@ -137,7 +131,6 @@ export function InstanceDetail({
     // Debounce timer for mod list refreshes
     const modRefreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Drag & drop state
     const [isDragging, setIsDragging] = useState(false);
 
     // Track which filenames are currently being checked/updated
@@ -618,7 +611,6 @@ export function InstanceDetail({
         }
     };
 
-    // Drag handlers
     const handleDragOver = (e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
@@ -668,14 +660,12 @@ export function InstanceDetail({
                 continue;
             }
 
-            // Check extension
             const ext = "." + file.name.split(".").pop()?.toLowerCase();
             if (!validExts.includes(ext)) {
                 errorMessages.push(`${file.name}: ไม่รองรับ ${ext}`);
                 continue;
             }
 
-            // Add file via IPC
             console.log("[Drop] Adding file:", filePath, "as", contentType);
             const result = await (window.api as any)?.instanceAddContentFile?.(instance.id, filePath, contentType);
             console.log("[Drop] Result:", result);
@@ -702,10 +692,8 @@ export function InstanceDetail({
             }
         }
 
-        // Show results
         if (successCount > 0) {
             toast.success(t('files_added_success'));
-            // Refresh current tab
             switch (contentTab) {
                 case "mods": loadMods(); break;
                 case "resourcepacks": loadResourcepacks(); break;
@@ -719,7 +707,6 @@ export function InstanceDetail({
     };
 
     // ========================================
-    // Effects
     // ========================================
 
     // Reset tab/data state when switching instance
@@ -747,7 +734,6 @@ export function InstanceDetail({
     }, [instance.id, instance.loader]);
 
     // ========================================
-    // Data Loading
     // ========================================
 
     const loadMods = async (options?: { silent?: boolean; metadataRetry?: number }) => {
@@ -881,7 +867,6 @@ export function InstanceDetail({
     }, [contentTab, instance.id, loadedTabs]);
 
     // ========================================
-    // Handlers
     // ========================================
 
     const handleToggleMod = async (filename: string) => {
@@ -1032,7 +1017,6 @@ export function InstanceDetail({
     };
 
     // ========================================
-    // Render
     // ========================================
 
     const validExtsLabel = getValidExtensions(contentTab).join(", ");
@@ -1126,7 +1110,6 @@ export function InstanceDetail({
                             </div>
                         </div>
 
-                        {/* Actions */}
                         <div className="flex items-center gap-3">
                             {/* Open folder button */}
                             <button

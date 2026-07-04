@@ -1011,7 +1011,6 @@ export const enTranslations = {
     partner_special_thanks: "Partner (Special Thanks)",
     alliance: "Alliance",
 
-    // Explore — sort
     sort_by: "Sort by",
     // sort.* keys already defined above
 
@@ -1044,7 +1043,6 @@ export const enTranslations = {
     "category.utility": "Utility",
     "category.worldgen": "World Generation",
 
-    // Loaders
     "loader.fabric": "Fabric",
     "loader.forge": "Forge",
     "loader.neoforge": "NeoForge",
@@ -1053,11 +1051,9 @@ export const enTranslations = {
     "loader.modloader": "ModLoader",
     "loader.rift": "Rift",
 
-    // Environments
     "environment.client": "Client",
     "environment.server": "Server",
 
-    // Detail page
     versions: "Versions",
     no_versions_found: "No versions found",
     name: "Name",
@@ -1087,14 +1083,12 @@ export const enTranslations = {
     old_version_delete_failed: "New version installed, but the old file could not be removed.",
     update_to_latest: "Update to latest",
 
-    // Confirm install
     confirm_install_modpack_title: "Install Modpack?",
     confirm_install_modpack_body: 'Install "{name}" as a new instance? This may download several hundred MB.',
     already_installed_modpack: 'You already have an instance from "{name}". Install again?',
     install_in_progress_warn: "Another install is already running. Please wait.",
     // cancel already defined above
 
-    // Misc
     items_per_page: "Items / page",
     page_jump_first: "First page",
     page_jump_last: "Last page",
@@ -1102,6 +1096,5 @@ export const enTranslations = {
     clear_all_filters: "Clear all",
     click_again_to_open: "Click again to open full page",
 
-    // Mobile
     open_filters: "Filters",
 };

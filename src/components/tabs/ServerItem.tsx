@@ -68,7 +68,6 @@ export function ServerItem({
     const iconUrl = instance.iconUrl ? getWithTimestamp(instance.iconUrl) : null;
     const bannerImg = instance.bannerUrl || instance.iconUrl;
 
-    // ── Tiles View Mode ──
     if (viewMode === "tiles") {
         return (
             <div
@@ -193,7 +192,6 @@ export function ServerItem({
                                         </>
                                     )}
                                 </button>
-                                {/* Divider */}
                                 <div className="w-[1px] h-12 bg-black/20 z-20 self-stretch" />
                                 <button
                                     type="button"
@@ -219,7 +217,6 @@ export function ServerItem({
                                     <Icons.Download className="w-5 h-5" />
                                     <span>{t('install')}</span>
                                 </button>
-                                {/* Divider */}
                                 <div className="w-[1px] h-12 bg-black/20 z-20 self-stretch" />
                                 <button
                                     type="button"
@@ -241,7 +238,6 @@ export function ServerItem({
         );
     }
 
-    // ── Table View Mode ──
     if (viewMode === "table") {
         return (
             <div
@@ -488,7 +484,6 @@ export function ServerItem({
 
                 {/* ── Server Info (Absolute Bottom-Left) ── */}
                 <div className="absolute bottom-5 left-6 z-10 max-w-[240px] sm:max-w-md md:max-w-lg lg:max-w-xl flex items-center gap-4">
-                    {/* Icon */}
                     {iconUrl ? (
                         <img
                             src={iconUrl}
@@ -579,7 +574,6 @@ export function ServerItem({
                                     </>
                                 )}
                             </button>
-                            {/* Divider */}
                             <div className="w-[1px] h-14 bg-black/20 z-20 self-stretch" />
                             {/* LEAVE */}
                             <button
@@ -607,7 +601,6 @@ export function ServerItem({
                                 <Icons.Download className="w-5 h-5" />
                                 <span>{t('install')}</span>
                             </button>
-                            {/* Divider */}
                             <div className="w-[1px] h-14 bg-black/20 z-20 self-stretch" />
                             {/* LEAVE */}
                             <button

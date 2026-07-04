@@ -291,7 +291,6 @@ export async function searchModpacks(
       const extra = JSON.parse(filters.facets) as string[][];
       if (Array.isArray(extra)) facets.push(...extra);
     } catch {
-      // Ignore malformed facets — preserves the existing search instead of erroring.
     }
   }
 
@@ -406,7 +405,6 @@ export async function getLoaderVersions(
       if (mcParts) {
         const prefix = `${mcParts[1]}.${mcParts[2] ?? "0"}.`;
         const matches = allVersions.filter((v) => v.startsWith(prefix));
-        // Newest first
         versions.push(...matches.reverse());
       }
       console.log(`[Modrinth] Found ${versions.length} NeoForge versions for ${gameVersion}`);

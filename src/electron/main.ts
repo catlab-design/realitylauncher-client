@@ -154,7 +154,6 @@ function configureLinuxDisplayBackend(): void {
   app.commandLine.appendSwitch("ozone-platform", "wayland");
 
   
-  // Disable GPU compositing on Wayland to prevent rendering issues
   app.commandLine.appendSwitch("disable-gpu-compositing");
 
   logger.info("Wayland session detected, configured Ozone flags", {
@@ -322,7 +321,6 @@ app.whenReady().then(async () => {
   const { registerAllHandlers } = await import("./ipc/index.js");
   const registerHandlersPromise = registerAllHandlers(() => mainWindow);
 
-  // Initialize background services
   const backgroundTasks = (async () => {
     const [
       { initAuth, getSession, getApiToken },
@@ -357,7 +355,6 @@ app.whenReady().then(async () => {
 
   await Promise.all([loadUIPromise, registerHandlersPromise]);
 
-  // Initialize delayed services after UI is ready
   setTimeout(async () => {
     if (config.discordRPCEnabled) {
       const { initDiscordRPC, setPlayerInfo } = await import("./discord.js");

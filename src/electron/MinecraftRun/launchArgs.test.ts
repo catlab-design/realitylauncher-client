@@ -63,7 +63,6 @@ describe("launchArgs pure helpers", () => {
     // Offline UUID is md5 based, check structure and length
     expect(uuid).toMatch(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/);
     
-    // Check deterministic behaviour
     expect(getOfflineUuid("Player1")).toBe(uuid);
     expect(getOfflineUuid("Player2")).not.toBe(uuid);
   });

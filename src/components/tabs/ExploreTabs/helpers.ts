@@ -53,13 +53,11 @@ export function formatNumber(num: number): string {
 export function matchesVersion(modVersion: string, instanceVersion: string): boolean {
     if (modVersion === instanceVersion) return true;
 
-    // Handle wildcard versions like "1.20.x"
     if (modVersion.endsWith('.x')) {
         const prefix = modVersion.slice(0, -1);
         return instanceVersion.startsWith(prefix);
     }
 
-    // Handle version ranges like "1.20.1-1.20.4"
     const rangeMatch = modVersion.match(/^([\d.]+)[–-]([\d.]+)$/);
     if (rangeMatch) {
         const [, start, end] = rangeMatch;

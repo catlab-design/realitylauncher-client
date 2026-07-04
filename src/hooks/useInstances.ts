@@ -63,7 +63,6 @@ async function syncRunningInstanceIds(instances: GameInstance[]) {
                     runningIds.add(instance.id);
                 }
             } catch {
-                // Ignore per-instance status errors; launch/stop events keep state fresh.
             }
         }
     });

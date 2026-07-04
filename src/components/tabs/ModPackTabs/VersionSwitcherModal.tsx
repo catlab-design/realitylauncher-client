@@ -192,7 +192,6 @@ export function VersionSwitcherModal({
                     className="w-full max-w-3xl max-h-[85vh] rounded-2xl flex flex-col overflow-hidden animate-fade-in"
                     style={{ backgroundColor: colors.surface, border: `1px solid ${colors.outline}30` }}
                 >
-                    {/* Header */}
                     <div
                         className="flex items-center gap-4 px-6 py-4"
                         style={{ borderBottom: `1px solid ${colors.outline}20`, backgroundColor: colors.surfaceContainer }}
@@ -260,7 +259,6 @@ export function VersionSwitcherModal({
                         </button>
                     </div>
 
-                    {/* List */}
                     <div className="flex-1 overflow-y-auto px-3 py-3" style={{ backgroundColor: colors.surface }}>
                         {loading ? (
                             <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ color: colors.onSurfaceVariant }}>
@@ -382,7 +380,6 @@ export function VersionSwitcherModal({
                         )}
                     </div>
 
-                    {/* Footer */}
                     <div
                         className="flex items-center justify-between gap-3 px-6 py-4"
                         style={{ borderTop: `1px solid ${colors.outline}20`, backgroundColor: colors.surfaceContainer }}
