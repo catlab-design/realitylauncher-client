@@ -6,7 +6,7 @@
 > This legacy Electron-based client has been replaced by the newer, much faster, and smaller Tauri v2-based client.
 > 
 > Please switch to the new active version located on the **`main`** branch of this repository:
-> - **[Reality Launcher (Tauri Edition)](https://github.com/catlab-design/realitylauncher-client)**
+> - **[Reality Launcher (Very Fast & Lightweight)](https://github.com/catlab-design/realitylauncher-client)**
 
 ---
 
