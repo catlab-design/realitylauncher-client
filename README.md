@@ -1,76 +1,110 @@
-# Reality Launcher Client
+# Reality Launcher Client (Tauri Edition)
 
-Desktop client for Reality Launcher, built with Electron + Astro/React and a Rust native module.
+Modern desktop client for Reality Launcher, built with Tauri v2, React 19, Vite, and Rust.
 
-## Stack
-- Frontend: [Astro](https://astro.build/) + React
-- Desktop shell: [Electron](https://www.electronjs.org/)
-- Native module: Rust (`native/`, napi-rs)
-- Styling: Tailwind CSS
+Unlike the legacy client (`ml-client-old`) which used Electron and Astro, this new client (`ml-client-new`) runs on Tauri v2. This switch yields significant performance enhancements, a much smaller installation footprint, and utilizes the system's native WebView.
+
+---
+
+## Tech Stack
+
+- **Frontend:**
+  - [React 19](https://react.dev/) + TypeScript
+  - [Vite 5](https://vitejs.dev/) (Bundler)
+  - [Tailwind CSS v4](https://tailwindcss.com/) (Styling)
+  - [Zustand](https://github.com/pmndrs/zustand) (State Management)
+  - [Framer Motion](https://www.framer.com/motion/) & [GSAP](https://gsap.com/) (Fluid animations)
+  - [skinview3d](https://github.com/bsspirit/skinview3d) (3D Minecraft skin rendering)
+
+- **Desktop Shell & Backend:**
+  - [Tauri v2](https://v2.tauri.app/) (Rust-based desktop window runner)
+  - Native operations (Minecraft instance execution, CurseForge/Modrinth API interactions, cloud sync, modpack syncing, Java installation, Telemetry, Discord Rich Presence integration)
+
+- **Package Manager:** [Bun](https://bun.sh/) 1.x
+
+---
 
 ## Requirements
-- [Bun](https://bun.sh/) 1.x
-- [Node.js](https://nodejs.org/) 20+ (for tooling/scripts)
-- [Rust](https://www.rust-lang.org/tools/install) stable
+
+To run and build this application locally, ensure you have the following installed:
+
+- **Bun** 1.x
+- **Node.js** 20+ (optional, primarily for additional tooling)
+- **Rust** stable (via `rustup`)
+- **System Webview Support:**
+  - **Windows:** Microsoft Edge WebView2
+  - **macOS:** WebKit (comes default)
+  - **Linux:** `webkit2gtk` (see [Tauri installation guides](https://v2.tauri.app/start/prerequisites/))
+
+---
 
 ## Quick Start
-```bash
-bun install
-cd native && bun install && bun run build && cd ..
-bun run dev
-```
+
+1. **Install dependencies:**
+   ```bash
+   bun install
+   ```
+
+2. **Run in development mode:**
+   ```bash
+   bun run tauri dev
+   ```
+   This command starts the Vite dev server and spawns the Tauri native shell pointing to the local dev URL.
+
+---
 
 ## Common Commands
+
 ```bash
-# Build web + electron bundles
+# Run in development mode
+bun run tauri dev
+
+# Build the production packages (installer binaries for your current platform)
+bun run tauri build
+
+# Verify Vite build output only
 bun run build
 
-# Build native module only
-bun run build:rust
-
-# Package installers
-bun run dist
-bun run dist:win
-bun run dist:mac
-bun run dist:linux
+# Run typescript compilation bridge check
+bun run check:bridge
 ```
 
-Build artifacts are generated in `release-build/`.
+---
 
-## Environment
-Copy `.env.example` to `.env.local` and adjust only what you need.
+## Directory Structure
 
-Main optional runtime env vars:
-- `ML_API_URL`
-- `AUTH_URL`
-- `ML_CURSEFORGE_DOWNLOAD_CONCURRENCY`
-- `ML_MODPACK_DOWNLOAD_CONCURRENCY`
+```text
+ml-client-new/
+├── index.html                  # HTML entry point
+├── package.json                # Project dependencies and scripts
+├── tsconfig.json               # Frontend TypeScript configuration
+├── vite.config.ts              # Vite configuration
+├── src/                        # Frontend source code (React 19)
+│   ├── assets/                 # Icons, backgrounds, and static media
+│   ├── components/             # Reusable UI components & application tabs
+│   ├── hooks/                  # Custom React hooks (localization, etc.)
+│   ├── store/                  # Zustand stores (auth, config, UI states)
+│   ├── styles/                 # Tailwind CSS & global styles
+│   └── types/                  # TypeScript interface definitions
+└── src-tauri/                  # Backend source code (Rust)
+    ├── Cargo.toml              # Rust crate dependencies
+    ├── tauri.conf.json         # Tauri application configuration
+    ├── capabilities/           # Tauri v2 security permission policies
+    └── src/                    # Rust backend modules (commands, configs, instances)
+```
 
-Windows Store release helpers:
-- `MS_STORE_PRODUCT_ID`
-- `MS_STORE_MSIX_ARCH`
-- `MS_STORE_TENANT_ID`
-- `MS_STORE_SELLER_ID`
-- `MS_STORE_CLIENT_ID`
-- `MS_STORE_CLIENT_SECRET`
-- `MSSTORE_BIN`
+---
 
-## CI And Release
-- Public CI for PRs runs on GitHub-hosted runners (`.github/workflows/ci.yml`).
-- Installer builds for Linux, macOS, and Windows run from GitHub Actions using
-  `Build and Release`; the generated files are uploaded as Actions artifacts.
-- Release pipeline uses self-hosted runners (`.github/workflows/build.yml`) and publish secrets.
-- macOS self-hosted release runner is opt-in via repo variable `ENABLE_MACOS_RUNNER=true`.
-- GitLab is also supported:
-  - CI checks on merge requests/main (`.gitlab-ci.yml` job `ci:checks`)
-  - release deploy flow (tag/manual/main with flags)
-  - runs on self-hosted shell runners (`linux`, `windows`, `macos` tags)
+## Telemetry & API Configurations
+
+The client communicates with the Reality Launcher backend via a preconfigured API endpoint. The backend settings are configured in the Rust backend code (`src-tauri/src/`) targeting `https://api.reality.catlabdesign.space`.
+
+---
 
 ## Contributing
-See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
-## Security
-See [SECURITY.md](./SECURITY.md).
+Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for details on setting up development workflows, coding standards, and commit structures.
 
 ## License
+
 GPL-3.0-only. See [LICENSE](./LICENSE).

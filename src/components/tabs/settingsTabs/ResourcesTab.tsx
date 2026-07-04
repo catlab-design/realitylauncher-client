@@ -1,13 +1,21 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import toast from "react-hot-toast";
 import type { LauncherConfig } from "../../../types/launcher";
 import type { SettingsTabProps } from "./AccountTab";
 import { useTranslation } from "../../../hooks/useTranslation";
 
-export function ResourcesTab({ config, updateConfig, colors }: SettingsTabProps) {
+export function ResourcesTab({ config, updateConfig, colors, handleBrowseMinecraftDir }: SettingsTabProps & { handleBrowseMinecraftDir?: () => void | Promise<void> }) {
     const windowApi = (window as any).api;
     const { t } = useTranslation(config.language);
     const [isClearingCache, setIsClearingCache] = useState(false);
+    
+    const [resolvedDir, setResolvedDir] = useState("");
+    useEffect(() => {
+        (async () => {
+            const dir = await windowApi?.configGetMinecraftDir?.();
+            if (dir) setResolvedDir(dir);
+        })();
+    }, [config.minecraftDir]);
 
     const handleClearCache = async () => {
         if (isClearingCache) return;
@@ -15,10 +23,7 @@ export function ResourcesTab({ config, updateConfig, colors }: SettingsTabProps)
         const toastId = toast.loading(t('clearing_cache' as any) || "กำลังล้างแคช...");
         try {
             if (windowApi?.launcherClearCache) {
-                const result = await windowApi.launcherClearCache();
-                if (!result?.ok) {
-                    throw new Error(result?.launcher?.error || result?.modrinth?.error || result?.curseforge?.error || "Cache clear failed");
-                }
+                await windowApi.launcherClearCache();
             } else {
                 await Promise.all([
                     windowApi?.modrinthClearCache?.(),
@@ -40,7 +45,7 @@ export function ResourcesTab({ config, updateConfig, colors }: SettingsTabProps)
                 <h3 className="font-medium" style={{ color: colors.onSurface }}>{t('tab_resources')}</h3>
             </div>
             <div className="p-4 space-y-4">
-                {/* App Directory */}
+                {}
                 <div>
                     <p className="font-medium text-sm mb-2" style={{ color: colors.onSurface }}>{t('launcher_folder')}</p>
                     <p className="text-xs mb-2" style={{ color: colors.onSurfaceVariant }}>{t('launcher_folder_desc')}</p>
@@ -50,11 +55,11 @@ export function ResourcesTab({ config, updateConfig, colors }: SettingsTabProps)
                             style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurface }}
                         >
                             <i className="fa-solid fa-folder" style={{ color: colors.secondary }}></i>
-                            <span className="truncate">{config.minecraftDir || t('default_folder')}</span>
+                            <span className="truncate" title={config.minecraftDir || resolvedDir}>{config.minecraftDir || resolvedDir}</span>
                         </div>
                         <button
                             onClick={() => {
-                                navigator.clipboard.writeText(config.minecraftDir || t('default_folder'));
+                                navigator.clipboard.writeText(config.minecraftDir || resolvedDir);
                                 toast.success(t('path_copied'));
                             }}
                             className="px-4 py-2.5 rounded-md text-sm"
@@ -66,7 +71,7 @@ export function ResourcesTab({ config, updateConfig, colors }: SettingsTabProps)
                         <button
                             onClick={async () => {
                                 if (windowApi?.openFolder) {
-                                    await windowApi.openFolder(config.minecraftDir || "");
+                                    await windowApi.openFolder(config.minecraftDir || resolvedDir);
                                 } else {
                                     toast.success(t('open_folder_electron'));
                                 }
@@ -77,12 +82,19 @@ export function ResourcesTab({ config, updateConfig, colors }: SettingsTabProps)
                         >
                             <i className="fa-solid fa-arrow-up-right-from-square"></i>
                         </button>
+                        <button
+                            onClick={handleBrowseMinecraftDir}
+                            className="px-4 py-2.5 rounded-md text-sm font-medium"
+                            style={{ backgroundColor: colors.secondary, color: colors.onSurface }}
+                        >
+                            {t('select')}
+                        </button>
                     </div>
                 </div>
 
                 <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
 
-                {/* Cache Management */}
+                {}
                 <div>
                     <div className="flex items-center justify-between">
                         <div>
@@ -108,7 +120,6 @@ export function ResourcesTab({ config, updateConfig, colors }: SettingsTabProps)
 
                 <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
 
-                {/* Max Concurrent Downloads */}
                 <div>
                     <div className="flex items-center justify-between mb-2">
                         <div>

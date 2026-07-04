@@ -62,7 +62,7 @@ export function SettingsDialog({
             aria-modal="true"
             aria-label={t("settings")}
             className="flex h-[min(80vh,760px)] w-full max-w-[1520px] flex-col overflow-hidden rounded-2xl border border-white/10"
-            style={{ backgroundColor: colors.surface }}
+            style={{ backgroundColor: colors.surface, fontSize: 15 }}
             onClick={stopPropagation}
             initial={{ opacity: 0, y: 28, scale: 0.975 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}

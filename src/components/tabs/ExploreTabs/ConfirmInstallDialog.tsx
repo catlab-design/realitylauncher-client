@@ -1,8 +1,3 @@
-// ========================================
-// Confirm-install dialog — gates modpack install behind an explicit user confirm.
-// Shows a different copy line when the user already has an instance from this project.
-// ========================================
-
 import React from "react";
 import { createPortal } from "react-dom";
 import type { ModrinthProject } from "./types";

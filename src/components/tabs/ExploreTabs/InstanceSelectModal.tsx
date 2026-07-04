@@ -1,7 +1,3 @@
-// ========================================
-// Instance Selection Modal
-// ========================================
-
 import React, { useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "../../../hooks/useTranslation";
@@ -32,8 +28,8 @@ export function InstanceSelectModal({
     const { t } = useTranslation();
     const [filter, setFilter] = useState("");
 
-    // Filtered list (U16). We filter the compatibility result rather than `instances`
-    // so the "compatible" sort order is preserved.
+    
+    
     const filtered = useMemo(() => {
         const q = filter.trim().toLowerCase();
         if (!q) return instanceCompatibility;
@@ -67,12 +63,11 @@ export function InstanceSelectModal({
                     {t("add_project_to_instance").replace("{project}", selectedProjectTitle)}
                 </p>
 
-                {/* Search filter (U16) — only useful once the list has more than a couple of entries */}
                 {instances.length > 3 && !isCheckingCompatibility && (
                     <div className="relative mb-3">
                         <input
                             type="text"
-                            placeholder={t("search_username") /* generic search placeholder */}
+                            placeholder={t("search_username") }
                             value={filter}
                             onChange={(e) => setFilter(e.target.value)}
                             className="w-full px-4 py-2 pl-10 rounded-xl border text-sm"
@@ -92,7 +87,7 @@ export function InstanceSelectModal({
                         <p style={{ color: colors.onSurfaceVariant }}>{t("checking_compatibility")}</p>
                     </div>
                 ) : instances.length === 0 || instanceCompatibility.length === 0 ? (
-                    // Cover both "no instances at all" and "compatibility array empty" cases (B10).
+                    
                     <div className="p-6 text-center rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
                         <p style={{ color: colors.onSurfaceVariant }}>{t("no_instances_create_first")}</p>
                     </div>

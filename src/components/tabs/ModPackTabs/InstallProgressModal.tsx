@@ -8,7 +8,7 @@ export interface InstallProgress {
     current?: number;
     total?: number;
     percent?: number;
-    type?: string; // Translation key
+    type?: string; 
     filename?: string;
 }
 
@@ -47,7 +47,6 @@ export function InstallProgressModal({ colors, installProgress, title, isBytes, 
                 }}
             >
                 <div className="w-[380px] rounded-2xl p-5 relative" style={{ backgroundColor: colors.surface }}>
-                    {/* Minimize Button */}
                     {onMinimize && (
                         <button
                             onClick={onMinimize}
@@ -79,12 +78,16 @@ export function InstallProgressModal({ colors, installProgress, title, isBytes, 
                         </div>
                     </div>
 
-                    {/* Progress Bar Container - Fixed Height to prevent jumping */}
+                    {}
                     <div className="h-12 mb-2 flex flex-col justify-end">
                         {installProgress.percent !== undefined ? (
                             <>
                                 <div className="flex justify-between text-sm mb-2" style={{ color: colors.onSurfaceVariant }}>
-                                    <span className="text-xs">{currentDisplay} / {totalDisplay}</span>
+                                    {installProgress.total ? (
+                                        <span className="text-xs">{currentDisplay} / {totalDisplay}</span>
+                                    ) : (
+                                        <span />
+                                    )}
                                     <span className="font-medium">{installProgress.percent}%</span>
                                 </div>
                                 <div className="h-1.5 rounded-full overflow-hidden w-full" style={{ backgroundColor: colors.surfaceContainerHighest }}>
@@ -98,7 +101,6 @@ export function InstallProgressModal({ colors, installProgress, title, isBytes, 
                                 </div>
                             </>
                         ) : (
-                            // Indeterminate State Placeholder
                             <div className="h-1.5 rounded-full overflow-hidden w-full relative" style={{ backgroundColor: colors.surfaceContainerHighest }}>
                                 <div className="absolute inset-y-0 left-0 w-1/3 bg-white/20 animate-[shimmer_1.5s_infinite]"
                                     style={{ backgroundColor: colors.secondary }} />
@@ -106,7 +108,6 @@ export function InstallProgressModal({ colors, installProgress, title, isBytes, 
                         )}
                     </div>
 
-                    {/* Cancel Button */}
                     <div className="pt-2 flex justify-end border-t" style={{ borderColor: `${colors.outline}20` }}>
                         <button
                             onClick={onCancel}

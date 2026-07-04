@@ -24,7 +24,6 @@ interface CalendarWidgetProps {
 
 let lastMessageIndex = -1;
 
-// Helper: generate consistent YYYY-MM-DD date key
 const getDateKey = (date: Date): string => {
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -72,7 +71,6 @@ const RANDOM_MESSAGES = {
 
 
 
-// Helper: Individual agenda item component to reduce nesting complexity
 function AgendaItem({ 
     item, 
     isFull, 
@@ -153,7 +151,6 @@ export function CalendarWidget({
     const [selectedAgendaId, setSelectedAgendaId] = useState<string | null>(null);
     const [randomStatus, setRandomStatus] = useState("");
 
-    // Select random status message on mount
     useEffect(() => {
         const msgs = language === 'th' ? RANDOM_MESSAGES.th : RANDOM_MESSAGES.en;
         let index;
@@ -163,9 +160,8 @@ export function CalendarWidget({
         
         lastMessageIndex = index;
         setRandomStatus(msgs[index]);
-    }, [language, isOpen]); // Also refresh when opened
+    }, [language, isOpen]);
 
-    // Sync with pre-fetched data if provided
     useEffect(() => {
         if (preFetchedAgendas && !instanceId) {
             setAgendas(preFetchedAgendas);
@@ -174,9 +170,7 @@ export function CalendarWidget({
     }, [preFetchedAgendas, isPreLoading, instanceId]);
 
 
-    // Fetch real agendas if instanceId is provided
     useEffect(() => {
-        // Only fetch if we have an instanceId or if pre-fetched data wasn't provided for global view
         if (!instanceId && preFetchedAgendas) return;
 
         if (instanceId) {
@@ -200,15 +194,12 @@ export function CalendarWidget({
         }
     }, [instanceId, preFetchedAgendas]);
 
-    // Helper to get agendas for a specific date
     const getAgendasForDate = (date: Date) => {
         const dayOfWeek = date.getDay();
         const dateStr = date.toLocaleDateString('en-CA'); // YYYY-MM-DD
 
         return agendas.filter(item => {
-            // Recurring items (dayOfWeek matches)
             if (item.dayOfWeek !== null && item.dayOfWeek !== undefined && item.dayOfWeek === dayOfWeek) {
-                // If recurringUntil is set, check if target date is within range
                 if (item.recurringUntil) {
                     const untilDate = new Date(item.recurringUntil);
                     // Set untilDate to end of day to include the recurringUntil date itself
@@ -231,7 +222,6 @@ export function CalendarWidget({
         return () => clearInterval(timer);
     }, []);
 
-    // Reset view date when opened
     useEffect(() => {
         if (isOpen) {
             setViewDate(new Date());
@@ -245,7 +235,6 @@ export function CalendarWidget({
     const today = currentDate.getDate();
     const isCurrentMonth = currentDate.getMonth() === month && currentDate.getFullYear() === year;
 
-    // Helper to parse time string to decimal hours (e.g. "9:00 AM" -> 9.0, "20:00" -> 20.0)
     const parseTimeToHours = (timeStr: string): number => {
         if (timeStr.toLowerCase() === "all day") return 0;
         const parts = timeStr.trim().split(' ');
@@ -262,11 +251,9 @@ export function CalendarWidget({
     const firstDay = new Date(year, month, 1).getDay();
 
     const days = [];
-    // Empty slots for previous month
     for (let i = 0; i < firstDay; i++) {
         days.push(null);
     }
-    // Days of current month
     for (let i = 1; i <= daysInMonth; i++) {
         days.push(i);
     }
@@ -287,7 +274,6 @@ export function CalendarWidget({
         ? ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
         : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-    // Buddhist Era for Thai
     const displayYear = language === "th" ? year + 543 : year;
 
     const handlePrevMonth = () => {
@@ -304,7 +290,6 @@ export function CalendarWidget({
 
     const handleDaySelect = (date: Date) => {
         setSelectedDate(date);
-        // Sync view date if jumping months
         if (date.getMonth() !== viewDate.getMonth() || date.getFullYear() !== viewDate.getFullYear()) {
             setViewDate(new Date(date.getFullYear(), date.getMonth(), 1));
         }
@@ -323,7 +308,6 @@ export function CalendarWidget({
             if (currentIndex > 0) {
                 setSelectedAgendaId(currentAgendas[currentIndex - 1].id);
             } else {
-                // Wrap around to last item
                 setSelectedAgendaId(currentAgendas[currentAgendas.length - 1].id);
             }
         } else {
@@ -341,7 +325,6 @@ export function CalendarWidget({
             if (currentIndex >= 0 && currentIndex < currentAgendas.length - 1) {
                 setSelectedAgendaId(currentAgendas[currentIndex + 1].id);
             } else {
-                // Wrap around to first item
                 setSelectedAgendaId(currentAgendas[0].id);
             }
         } else {
@@ -349,7 +332,6 @@ export function CalendarWidget({
         }
     };
 
-    // Handle date click
     const handleDateClick = (day: number) => {
         const date = new Date(year, month, day);
         handleDaySelect(date);
@@ -363,7 +345,6 @@ export function CalendarWidget({
 
     return (
         <>
-            {/* Backdrop */}
             <div className="fixed inset-0 z-90" onClick={onClose} />
             
             <div 
@@ -377,21 +358,16 @@ export function CalendarWidget({
                     boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
                 }}
             >
-                {/* Main Content Row */}
                 <div className={`flex min-h-0 ${isFull ? 'flex-1 overflow-hidden' : 'h-full overflow-hidden flex-row'}`}>
-
-                {/* LEFT SIDEBAR: Brand & Date (Expanded Only) */}
                 {isFull && (
                     <div 
                         className="hidden lg:flex w-[180px] shrink-0 flex-col p-6 relative overflow-hidden"
                         style={{ backgroundColor: colors.secondary }}
                     >
-                        {/* Top-right Diagonal Accent (Flipped) */}
                         <div 
                             className="absolute top-0 right-0 w-[400px] h-[400px] translate-x-1/2 -translate-y-1/2 rotate-45 opacity-[0.08] bg-black pointer-events-none"
                         />
 
-                        {/* Branded Header */}
                         <div className="mb-14 relative z-10">
                             <div className="text-[24px] font-black leading-tight tracking-[-0.04em] text-black/90 uppercase">
                                 REALITY<br/>
@@ -400,7 +376,6 @@ export function CalendarWidget({
                             <div className="w-14 h-[4px] bg-black/20 mt-4" />
                         </div>
 
-                        {/* Large Month Display */}
                         <div className="flex flex-col relative z-10">
                             <div className="text-7xl font-black tracking-tighter text-black/90 mb-4 drop-shadow-sm">
                                 {(month + 1).toString().padStart(2, '0')}
@@ -414,7 +389,6 @@ export function CalendarWidget({
                             </div>
                         </div>
 
-                        {/* Small Footer Text */}
                         <div className="mt-auto relative z-10">
                             <div className="h-px bg-black/10 w-full mb-6" />
                             <div className="text-[10px] font-black text-black/50 uppercase tracking-[0.15em] mb-2 leading-none">
@@ -434,9 +408,7 @@ export function CalendarWidget({
                     </div>
                 )}
 
-                {/* MAIN AREA: Weekly Schedule Grid (Expanded) or Calendar Grid (Popup) */}
                 <div className="flex-1 flex flex-col relative backdrop-blur-sm min-w-0 shrink overflow-hidden" style={{ backgroundColor: isFull ? (colors.surface === '#ffffff' ? '#ffffff' : colors.surface) : 'transparent' }}>
-                    {/* Header */}
                     <div 
                         className={`${isFull ? 'px-8 py-5' : 'px-4 py-3'} flex items-center justify-between`}
                         style={{
@@ -498,7 +470,6 @@ export function CalendarWidget({
                             <button 
                                 onClick={() => {
                                     onRefresh?.();
-                                    // Also trigger local fetch if instanceId exists
                                     if (instanceId) {
                                         setIsLoadingAgendas(true);
                                         (window as any).api?.fetchInstanceAgendas?.(instanceId)
@@ -527,9 +498,7 @@ export function CalendarWidget({
                         </div>
                     </div>
 
-                    {/* Content Area */}
                     {!isFull ? (
-                        /* Popup mode: Monthly grid */
                         <div className="p-3 flex-1 flex flex-col min-h-0" style={{ backgroundColor: 'transparent' }}>
                             <div className="grid grid-cols-7 mb-2">
                                 {weekDays.map((day, i) => (
@@ -568,7 +537,6 @@ export function CalendarWidget({
                             </div>
                         </div>
                     ) : (
-                        /* Expanded Mode: Full Month Grid */
                         <div className="flex-1 flex flex-col min-h-0 bg-white" style={{ backgroundColor: colors.surface }}>
                             <div className="grid grid-cols-7 border-b" style={{ borderColor: colors.outline + '10' }}>
                                 {weekDays.map((day, i) => (
@@ -620,10 +588,8 @@ export function CalendarWidget({
                                                 </span>
                                             </div>
                                             
-                                            {/* Schedule Items Icons */}
                                             <div className="flex flex-wrap gap-1 px-1 mt-auto">
                                                 {scheduledItems.slice(0, 3).map((item, idx) => {
-                                                    // Resolve icon with capitalization (e.g. "calendar" -> "Calendar")
                                                     const iconKey = (item.icon ? (item.icon.charAt(0).toUpperCase() + item.icon.slice(1)) : "Calendar") as keyof typeof Icons;
                                                     const IconComp = Icons[iconKey] || Icons.Calendar;
                                                     return (
@@ -640,7 +606,6 @@ export function CalendarWidget({
                                                 )}
                                             </div>
 
-                                            {/* Selection corner highlight */}
                                             {isSelected && (
                                                 <div className="absolute top-0 right-0 w-8 h-8 overflow-hidden pointer-events-none">
                                                     <div className="absolute top-0 right-0 w-2 h-2 rounded-bl-full" style={{ backgroundColor: colors.secondary }} />
@@ -654,7 +619,6 @@ export function CalendarWidget({
                     )}
                 </div>
 
-                {/* RIGHT COLUMN: Details Panel */}
                 <div
                     className={isFull ? "hidden md:flex w-[360px] xl:w-[440px] flex-col z-10 border-l bg-gray-50/10" : "flex-[0.75] min-w-[200px] flex flex-col shadow-inner z-10 border-l"}
                     style={{
@@ -663,13 +627,11 @@ export function CalendarWidget({
                     }}
                 >
                     <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-                             {/* Sidebar Header: Banner & Clock */}
                              <div className="flex flex-col border-b overflow-hidden shrink-0" style={{ borderColor: colors.outline + '10' }}>
                                 {(() => {
                                     const dayAgendas = getAgendasForDate(selectedDate || currentDate);
                                     let activeAgenda = selectedAgendaId ? dayAgendas.find(a => a.id === selectedAgendaId) : null;
                                     
-                                    // If no agenda is selected, but agendas exist, preview the first one visually
                                     if (!activeAgenda && dayAgendas.length > 0) {
                                         activeAgenda = dayAgendas[0];
                                     }
@@ -685,7 +647,6 @@ export function CalendarWidget({
                                     
                                     return (
                                         <div className={`w-full ${isFull ? 'h-56' : 'h-28'} relative group overflow-hidden`}>
-                                            {/* Translucent Backdrop (for smooth transition feel) */}
                                             <div className="absolute inset-0 bg-black/20 z-0" />
                                             
                                             <img 
@@ -697,7 +658,6 @@ export function CalendarWidget({
                                             
                                             <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent z-10" />
                                             
-                                            {/* Hover Details Overlay */}
                                             <div className="absolute inset-0 z-15 opacity-0 group-hover:opacity-100 transition-opacity duration-700 backdrop-blur-md bg-black/40 flex flex-col justify-center p-8">
                                                 {activeAgenda ? (
                                                     <div className="animate-in fade-in duration-1000">
@@ -760,7 +720,6 @@ export function CalendarWidget({
                                 
                                 return (
                                     <>
-                                        {/* Header Row: Date & Navigation */}
                                         <div className={`${isFull ? 'mb-2' : 'mb-2'} flex items-start justify-between shrink-0`}>
                                             <div className="flex items-start gap-4">
                                                 <div className="w-1.5 h-8 rounded-full mt-1.5" style={{ backgroundColor: colors.secondary }} />
@@ -784,16 +743,14 @@ export function CalendarWidget({
                                             </div>
                                         </div>
 
-                                        {/* Content Scroll Area */}
                                         <div className="flex-1 overflow-y-auto px-1 pr-2 custom-scrollbar min-h-0">
-                                            {/* Agendas Section */}
                                             {isFull && (
                                                 <div className="mb-4">
                                                     <div className={`flex items-center justify-between mb-3 border-b pt-3 pb-3 sticky top-0 backdrop-blur-md z-20 ${isFull ? 'px-4' : ''}`} style={{ backgroundColor: colors.surface === '#ffffff' ? 'rgba(255, 255, 255, 0.95)' : colors.surface + 'f2', borderColor: colors.onSurface + '10' }}>
                                                         <span className={`${isFull ? 'text-sm' : 'text-[10px]'} font-black uppercase tracking-[0.2em] opacity-40`} style={{ color: colors.onSurface }}>{language === 'th' ? 'กำหนดการ' : 'Agenda'}</span>
                                                         {isFull && instanceId && (
                                                             <button 
-                                                                onClick={() => (window as any).api?.openExternal?.(`https://reality.catlabdesign.space/instances/${instanceId}/schedule`)}
+                                                                onClick={() => (window as any).api?.openExternal?.(`https:
                                                                 className="text-xs font-black text-blue-500 hover:opacity-70 uppercase"
                                                             >
                                                                 {language === 'th' ? 'แก้ไข' : 'MODIFY'}
@@ -829,7 +786,6 @@ export function CalendarWidget({
                             })()}
                         </div>
 
-                        {/* Footer Section */}
                         {isFull && (
                             <div className="mt-auto pt-2 pb-3 border-t text-center shrink-0" style={{ borderColor: colors.outline + '10' }}>
                                 <span className="text-[10px] font-bold tracking-wider opacity-40 uppercase" style={{ color: colors.onSurface }}>

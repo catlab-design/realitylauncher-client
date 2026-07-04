@@ -1,17 +1,6 @@
-// ========================================
-// ExploreTabs Barrel Export
-// ========================================
-
-// Types
 export * from "./types";
-
-// Helpers
 export * from "./helpers";
-
-// Constants
 export * from "./constants";
-
-// Components
 export { InstanceSelectModal } from "./InstanceSelectModal";
 export { VersionSelectModal } from "./VersionSelectModal";
 export { ExploreToolbar } from "./ExploreToolbar";

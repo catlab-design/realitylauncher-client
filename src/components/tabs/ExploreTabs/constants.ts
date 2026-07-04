@@ -1,7 +1,3 @@
-// ========================================
-// Constants for Explore Component
-// ========================================
-
 import type { ProjectType } from "./types";
 import { Icons } from "../../ui/Icons";
 
@@ -19,4 +15,4 @@ export const PROJECT_TABS: {
   { id: "shader", labelKey: "shaders", icon: Icons.Sun },
 ];
 
-// SORT_OPTIONS now lives in filterOptions.ts alongside the other filter taxonomies.
+

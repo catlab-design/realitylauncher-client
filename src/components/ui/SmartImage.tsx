@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 
-// Smart Image Component with caching (no timestamp cache busting)
+
 const imageCache = new Map<string, string>();
 
 export function SmartImage({
@@ -28,7 +28,7 @@ export function SmartImage({
             return;
         }
 
-        // Use cached version if available
+        
         const cached = imageCache.get(src);
         if (cached) {
             setDisplaySrc(cached);
@@ -38,10 +38,10 @@ export function SmartImage({
         setDisplaySrc(src);
         setHasError(false);
 
-        // Skip fetch for data/blob URLs
+        
         if (src.startsWith("data:") || src.startsWith("blob:")) return;
 
-        // Preload image in background (no cache busting)
+        
         const img = new Image();
         img.onload = () => {
             imageCache.set(src, src);
@@ -97,7 +97,7 @@ export function SmartBackground({
             return;
         }
 
-        // Use cached version if available
+        
         const cached = imageCache.get(src);
         if (cached) {
             setDisplaySrc(cached);
@@ -106,10 +106,10 @@ export function SmartBackground({
 
         setDisplaySrc(src);
 
-        // Skip fetch for data/blob URLs
+        
         if (src.startsWith("data:") || src.startsWith("blob:")) return;
 
-        // Preload image in background
+        
         const img = new Image();
         img.onload = () => {
             imageCache.set(src, src);

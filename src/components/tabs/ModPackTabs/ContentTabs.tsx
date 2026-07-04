@@ -14,7 +14,7 @@ interface ContentTabsProps {
     datapacksCount: number;
     shadersCount: number;
     onTabChange: (tab: ContentCategory) => void;
-    loader?: string; // Instance loader type
+    loader?: string; 
 }
 
 export function ContentTabs({

@@ -1,7 +1,3 @@
-// ========================================
-// Explore Toolbar - Search, Filters, Tabs
-// ========================================
-
 import React from "react";
 import { useTranslation } from "../../../hooks/useTranslation";
 import type { TranslationKey } from "../../../i18n/translations";
@@ -15,20 +11,17 @@ import { FilterMenu } from "./FilterMenu";
 
 interface ExploreToolbarProps {
     colors: any;
-    // State
     contentSource: ContentSource;
     projectType: ProjectType;
     searchQuery: string;
     viewCount: number;
     page: number;
     totalPages: number;
-    // Filter state — drives the inline FilterMenu trigger. Multi-select arrays.
     sortBy: string;
     mcVersionFilters: string[];
     loaderFilters: string[];
     categoryFilters: string[];
     environmentFilters: string[];
-    // Handlers
     onContentSourceChange: (source: ContentSource) => void;
     onProjectTypeChange: (type: ProjectType) => void;
     onSearchChange: (query: string) => void;
@@ -40,11 +33,8 @@ interface ExploreToolbarProps {
     onLoaderFiltersChange: (l: string[]) => void;
     onCategoryFiltersChange: (c: string[]) => void;
     onEnvironmentFiltersChange: (e: string[]) => void;
-    /** Hide the category section (e.g. resource packs). */
     showCategoryFilter?: boolean;
-    /** Hide the environment section (e.g. modpacks). */
     showEnvironmentFilter?: boolean;
-    /** Hide the filter menu entirely (e.g. when adding content to an instance). */
     hideFilterMenu?: boolean;
 }
 
@@ -86,7 +76,6 @@ export function ExploreToolbar({
             className="rounded-2xl"
             style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}30` }}
         >
-            {/* Top row: Title + Search */}
             <div
                 className="px-3 py-3 sm:px-4 flex flex-col md:flex-row md:items-center gap-3 border-b"
                 style={{ borderColor: colors.outline + "30" }}
@@ -120,7 +109,6 @@ export function ExploreToolbar({
                     <i className="fa-solid fa-search text-sm absolute left-4 top-1/2 -translate-y-1/2" style={{ color: colors.onSurfaceVariant }}></i>
                 </div>
 
-                {/* Single "ตัวกรอง" trigger — opens a popover with all 4 filter sections. Hidden when adding content to instance. */}
                 {!hideFilterMenu && (
                     <FilterMenu
                         colors={colors}
@@ -139,7 +127,6 @@ export function ExploreToolbar({
                     />
                 )}
 
-                {/* Source buttons */}
                 <div className="grid grid-cols-2 gap-2 w-full sm:w-auto md:min-w-[260px]">
                     {(() => {
                         const isDark = colors.surface?.startsWith('#') && parseInt(colors.surface.slice(1, 3), 16) < 128;
@@ -158,7 +145,7 @@ export function ExploreToolbar({
                                     }}
                                 >
                                     <img
-                                        src={modrinthIcon.src}
+                                        src={modrinthIcon}
                                         alt=""
                                         className={`w-4 h-4 ${isModrinthActive ? '' : 'opacity-80'}`}
                                         style={{ filter: (!isModrinthActive && isDark) ? 'invert(1)' : 'none' }}
@@ -175,7 +162,7 @@ export function ExploreToolbar({
                                     }}
                                 >
                                     <img
-                                        src={curseforgeIcon.src}
+                                        src={curseforgeIcon}
                                         alt=""
                                         className={`w-4 h-4 ${isCurseForgeActive ? '' : 'opacity-80'}`}
                                         style={{ filter: (isCurseForgeActive || (!isCurseForgeActive && isDark)) ? 'invert(1)' : 'none' }}
@@ -188,9 +175,7 @@ export function ExploreToolbar({
                 </div>
             </div>
 
-            {/* Bottom row: Tabs + Sort + View Count + Pagination */}
             <div className="px-3 py-3 sm:px-4 flex flex-col lg:flex-row lg:items-center gap-3">
-                {/* Type tabs */}
                 <div className="overflow-x-auto no-scrollbar">
                 <div className="flex items-center gap-2 min-w-max">
                     {PROJECT_TABS.map((tab) => {
@@ -218,7 +203,6 @@ export function ExploreToolbar({
                 <div className="hidden lg:block flex-1" />
 
                 <div className="flex items-center justify-between lg:justify-end gap-2 flex-wrap">
-                    {/* Small "Filtered" indicator — chips/per-filter clear live in FilterBar now. */}
                     {hasActiveFilter && (
                         <span
                             className="text-[11px] font-semibold px-2 py-0.5 rounded-md flex items-center gap-1.5"
@@ -229,7 +213,6 @@ export function ExploreToolbar({
                         </span>
                     )}
 
-                    {/* View Count Select */}
                     <label className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: colors.onSurfaceVariant }}>
                         <span className="hidden xl:inline">{t("items_per_page" as TranslationKey)}</span>
                         <select
@@ -251,7 +234,6 @@ export function ExploreToolbar({
                         </select>
                     </label>
 
-                    {/* Pagination */}
                     {totalPages > 0 && (
                         <div className="flex items-center gap-1">
                             <button

@@ -1,12 +1,5 @@
-// ========================================
-// Helper Functions for Explore Component
-// ========================================
-
 import type { ProjectType, ModVersion } from "./types";
 
-/**
- * Get valid file extensions for content type
- */
 export function getValidExtensionsForType(projectType: ProjectType): string[] {
     switch (projectType) {
         case "mod":
@@ -24,12 +17,9 @@ export function getValidExtensionsForType(projectType: ProjectType): string[] {
     }
 }
 
-/**
- * Check if version has valid files for the content type
- */
 export function hasValidFilesForType(version: ModVersion, projectType: ProjectType): boolean {
     if (!version.files || version.files.length === 0) {
-        // If no files info, allow it (backend will handle)
+        
         return true;
     }
     const validExtensions = getValidExtensionsForType(projectType);
@@ -38,28 +28,20 @@ export function hasValidFilesForType(version: ModVersion, projectType: ProjectTy
     );
 }
 
-/**
- * Format large numbers for display (e.g., 1.5M, 10.2k)
- */
 export function formatNumber(num: number): string {
     if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`;
     if (num >= 1_000) return `${(num / 1_000).toFixed(1)}k`;
     return num.toString();
 }
 
-/**
- * Smart version matching - handles wildcards and ranges
- */
 export function matchesVersion(modVersion: string, instanceVersion: string): boolean {
     if (modVersion === instanceVersion) return true;
 
-    // Handle wildcard versions like "1.20.x"
     if (modVersion.endsWith('.x')) {
         const prefix = modVersion.slice(0, -1);
         return instanceVersion.startsWith(prefix);
     }
 
-    // Handle version ranges like "1.20.1-1.20.4"
     const rangeMatch = modVersion.match(/^([\d.]+)[–-]([\d.]+)$/);
     if (rangeMatch) {
         const [, start, end] = rangeMatch;
@@ -83,11 +65,6 @@ export function matchesVersion(modVersion: string, instanceVersion: string): boo
     return false;
 }
 
-/**
- * Normalize image value to an absolute URL string or null.
- * Supports string, object shapes from native modules, protocol-relative URLs ("//host/path")
- * and simple relative paths ("/path") which are assumed to be Modrinth CDN paths.
- */
 export function normalizeImageUrl(raw: any, source: 'modrinth' | 'curseforge' | 'unknown' = 'unknown'): string | null {
     if (!raw) return null;
     if (typeof raw === 'object') {
@@ -98,7 +75,6 @@ export function normalizeImageUrl(raw: any, source: 'modrinth' | 'curseforge' | 
     let s = raw.trim();
     if (!s) return null;
 
-    // protocol-relative -> add https:
     if (s.startsWith('//')) s = 'https:' + s;
 
     // relative path starting with '/' - assume Modrinth CDN when source is modrinth

@@ -24,19 +24,17 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
 
     const windowApi = (window as any).api;
 
-    // Listen for Java install progress
     useEffect(() => {
         const unsubscribe = windowApi?.onJavaInstallProgress?.((data: JavaInstallProgress) => {
             setInstallProgress(data);
             if (data.phase === "complete" || data.phase === "error") {
-                // Clear progress after a short delay
                 setTimeout(() => setInstallProgress(null), 2000);
             }
         });
         return () => unsubscribe?.();
     }, []);
 
-    // Helper function to render Java version section
+    
     const renderJavaSection = (
         version: number,
         label: string,
@@ -61,7 +59,7 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                     }}
                 />
 
-                {/* Progress bar for installation */}
+                {}
                 {isInstallingThis && progressForThis && (
                     <div className="mb-3">
                         <div className="flex justify-between text-xs mb-1" style={{ color: colors.onSurfaceVariant }}>
@@ -213,7 +211,6 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                 {renderJavaSection(8, "8", "java8", (v) => v >= 8 && v < 17)}
             </div>
 
-            {/* Selection Modal */}
             <AnimatePresence>
                 {detectedJavasForModal && (
                     <div className="fixed inset-0 z-100 flex items-center justify-center p-4 backdrop-blur-sm" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>

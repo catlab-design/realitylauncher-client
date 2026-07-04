@@ -110,7 +110,7 @@ export function Settings({
             content = <UpdateTab {...commonProps} />;
             break;
         case "resources":
-            content = <ResourcesTab {...commonProps} />;
+            content = <ResourcesTab {...commonProps} handleBrowseMinecraftDir={handleBrowseMinecraftDir} />;
             break;
         case "java":
             content = <JavaTab {...commonProps} />;
@@ -122,8 +122,7 @@ export function Settings({
 
     return (
         <div className="grid h-full min-h-0 gap-6 md:grid-cols-[240px_minmax(0,1fr)] lg:grid-cols-[260px_minmax(0,1fr)]">
-            {/* Sidebar Navigation */}
-            <motion.div
+			<motion.div
                 className="min-h-0 md:border-r md:pr-5 overflow-y-auto"
                 style={{ borderColor: `${colors.onSurface}10` }}
                 initial={{ opacity: 0, x: -14 }}
@@ -163,8 +162,7 @@ export function Settings({
                 </motion.div>
             </motion.div>
 
-            {/* Content Area */}
-            <div className="min-w-0 overflow-y-auto overflow-x-hidden pr-1">
+			<div className="min-w-0 overflow-y-auto overflow-x-hidden pr-1">
                 <AnimatePresence mode="wait">
                     <motion.div
                         key={settingsTab}

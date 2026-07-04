@@ -1,7 +1,3 @@
-/**
- * ImportModpackModal - Modal สำหรับ import modpack
- */
-
 import React, { type MouseEvent } from "react";
 import { motion } from "framer-motion";
 import { Icons } from "../../ui/Icons";
@@ -63,7 +59,6 @@ export function ImportModpackModal({
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     transition={{ type: "spring", stiffness: 260, damping: 28, mass: 0.9 }}
                 >
-                    {/* Header */}
                     <div
                         className="flex items-center justify-between border-b px-6 py-3.5 sm:px-7 shrink-0"
                         style={{
@@ -114,9 +109,8 @@ export function ImportModpackModal({
                         </button>
                     </div>
 
-                    {/* Scrollable Body */}
                     <div className="flex-1 overflow-y-auto px-6 pb-6 pt-5 sm:px-7 sm:pb-7 sm:pt-6 custom-scrollbar">
-                        {/* Drop Zone */}
+                        
                         <div
                             className={`rounded-2xl p-10 text-center border-2 border-dashed mb-5 cursor-pointer transition-all duration-300 ${isDragging ? 'scale-[1.02] border-solid' : 'hover:bg-black/5'}`}
                             style={{
@@ -150,14 +144,13 @@ export function ImportModpackModal({
                             </button>
                         </div>
 
-                        {/* Source Options */}
                         <div className="grid grid-cols-2 gap-4">
                             <div
                                 className="p-4 rounded-2xl flex items-center gap-4 transition-all hover:bg-black/5 active:scale-[0.98] cursor-pointer"
                                 style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}20` }}
                             >
                                 <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: "#f16436" }}>
-                                     <img src={curseforgeIcon.src} alt="CurseForge" className="w-6 h-6 brightness-0 invert" />
+                                     <img src={curseforgeIcon} alt="CurseForge" className="w-6 h-6 brightness-0 invert" />
                                 </div>
                                 <div>
                                     <div className="text-sm font-bold leading-tight" style={{ color: colors.onSurface }}>CurseForge</div>
@@ -169,7 +162,7 @@ export function ImportModpackModal({
                                 style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}20` }}
                             >
                                 <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: "#1bd96a" }}>
-                                    <img src={modrinthIcon.src} alt="Modrinth" className="w-6 h-6 brightness-0 invert" />
+                                    <img src={modrinthIcon} alt="Modrinth" className="w-6 h-6 brightness-0 invert" />
                                 </div>
                                 <div>
                                     <div className="text-sm font-bold leading-tight" style={{ color: colors.onSurface }}>Modrinth</div>

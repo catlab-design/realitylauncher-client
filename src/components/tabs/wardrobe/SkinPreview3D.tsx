@@ -43,7 +43,7 @@ function getFallbackSkinDataUrl(): string | null {
         ctx.fillRect(x, y, w, h);
     };
 
-    // A tiny generated classic skin keeps the 3D preview visible even if remote skin URLs fail.
+    
     fill("#c68642", 0, 0, 64, 64);
     fill("#f1c27d", 0, 0, 32, 16);
     fill("#2563eb", 16, 16, 24, 16);
@@ -74,7 +74,7 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
     const viewerRef = useRef<any | null>(null);
     const [viewerReady, setViewerReady] = useState(false);
 
-    // Expose reset rotation capability
+    
     useEffect(() => {
         if (onResetRotation) {
             onResetRotation(() => {
@@ -87,10 +87,9 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
         }
     }, [onResetRotation]);
 
-    // Calculate zoom based on container height so the character does not disappear in large cards.
+    
     const calcZoom = (h: number) => Math.min(0.95, Math.max(0.45, h / 620));
 
-    // Initialize Viewer
     useEffect(() => {
         let cancelled = false;
         let resizeObserver: ResizeObserver | null = null;
@@ -153,7 +152,7 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
         };
     }, [backgroundColor, onSkinLoadStateChange]);
 
-    // Sync Animation Type
+    
     useEffect(() => {
         const viewer = viewerRef.current;
         if (!viewer || !viewerReady) return;
@@ -164,7 +163,7 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
             const modules = await loadSkinViewerModule();
             if (cancelled) return;
 
-            viewer.animation = null; // Clear active
+            viewer.animation = null;
 
             let animInstance: any = null;
             if (animationType === "walk") {
@@ -184,7 +183,7 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
 
     }, [animationType, viewerReady]);
 
-    // Sync Cape/Elytra based on animationType
+    
     useEffect(() => {
         const viewer = viewerRef.current;
         if (!viewer || !viewerReady) return;
@@ -196,7 +195,7 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
         }
     }, [animationType, viewerReady]);
 
-    // Sync Skin & Variant
+    
     useEffect(() => {
         const viewer = viewerRef.current;
         if (!viewer || !viewerReady) return;
@@ -210,7 +209,7 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
             return;
         }
 
-        // Hide player during load to prevent flash of wrong arm variant
+        
         viewer.playerObject.visible = false;
         onSkinLoadStateChange?.(true);
         viewer

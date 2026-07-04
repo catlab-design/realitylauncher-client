@@ -7,7 +7,7 @@ import { useUiStore } from "../../store/uiStore";
 import { useAuthStore } from "../../store/authStore";
 
 interface SidebarProps {
-    colors: any; // We can improve this type later, likely inferred from getColors return type
+    colors: any; 
     onTabSelect?: (tabId: string) => void;
 }
 
@@ -18,10 +18,8 @@ export function Sidebar({ colors, onTabSelect }: SidebarProps) {
     const { session, accounts } = useAuthStore();
     const [hoveredTab, setHoveredTab] = useState<string | null>(null);
 
-    // Calculate isAdmin based on session logic as done in LauncherApp
     const isAdmin = session?.isAdmin || false;
 
-    // Derive effective theme mode
     const effectiveThemeMode = React.useMemo(() => {
         if (config.theme === "auto") {
             const hour = new Date().getHours();
@@ -67,10 +65,8 @@ export function Sidebar({ colors, onTabSelect }: SidebarProps) {
 
     return (
         <nav className="w-20 flex flex-col items-center" style={{ backgroundColor: colors.secondary }}>
-            {/* Main Nav - Added top spacing since logo is moved to header */}
             <div className="flex-1 flex flex-col items-center gap-2 pt-[22px]">
 
-                {/* Main Navigation Items */}
                 {mainNavItems.map(({ id, icon: Icon, label }: { id: string, icon: any, label: string }) => (
                     <div 
                         key={id} 
@@ -108,7 +104,6 @@ export function Sidebar({ colors, onTabSelect }: SidebarProps) {
                 ))}
             </div>
 
-            {/* Bottom Section - Settings and About */}
             <div className="flex-col items-center gap-2 pb-4 flex">
                 {bottomNavItems.map(({ id, icon: Icon, label }: { id: string, icon: any, label: string }) => (
                     <div 

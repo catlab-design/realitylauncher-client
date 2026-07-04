@@ -12,6 +12,8 @@ import type { GameInstance } from "../../types/launcher";
 interface WardrobeProps {
     colors: any;
     selectedInstance?: GameInstance | null;
+    onLinkMicrosoft?: () => void | Promise<void>;
+    setLoginDialogOpen?: (open: boolean) => void;
 }
 
 type SkinVariant = "classic" | "slim";
@@ -128,13 +130,18 @@ function hasWardrobePreviewCache(
     return Boolean(username && (selectedSkinDataUrl || selectedFileName));
 }
 
-export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) => {
+export const Wardrobe: React.FC<WardrobeProps> = ({
+    colors,
+    selectedInstance,
+    onLinkMicrosoft,
+    setLoginDialogOpen,
+}) => {
     const config = useConfigStore();
     const { session } = useAuthStore();
     const { t } = useTranslation(config.language);
 
-    const isMicrosoftSession = session?.type === "microsoft";
-    const isLinkedCatidSession = session?.type === "catid" && !!session?.minecraftUuid;
+    const isMicrosoftSession = session?.authType === "microsoft";
+    const isLinkedCatidSession = session?.authType === "catid" && !!session?.minecraftUuid;
     const canManageProfile = isMicrosoftSession || isLinkedCatidSession;
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const mouthFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -193,8 +200,7 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
                 setCatskincMouthUrl(null);
                 setCatskincSlim(false);
             }
-        } catch (error) {
-            console.error("Error fetching CatSkinC skin:", error);
+        } catch {
             setCatskincSkinUrl(null);
             setCatskincMouthUrl(null);
             setCatskincSlim(false);
@@ -233,7 +239,6 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
         }
     }, [handleSaveIp]);
 
-    // Load CatSkinC config on mount or when active instance changes
     useEffect(() => {
         if (window.api?.catskincGetConfig) {
             window.api.catskincGetConfig(selectedInstance?.gameDirectory).then(cfg => {
@@ -243,7 +248,6 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
         }
     }, [selectedInstance?.gameDirectory]);
 
-    // Fetch CatSkinC skin on mount or session change
     useEffect(() => {
         syncCatskincSkin();
     }, [syncCatskincSkin]);
@@ -254,14 +258,6 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
     }, [session?.username]);
 
     const baseSkin = useMemo(() => {
-        console.log("[Wardrobe Debug] baseSkin compute:", {
-            mode,
-            selectedSkinDataUrl,
-            catskincSkinUrl,
-            profileSkinUrl: profile?.skinUrl,
-            sessionSkinUrl: session?.skinUrl,
-            fallbackSkinUrl
-        });
         if (selectedSkinDataUrl) return selectedSkinDataUrl;
         if (mode === "catskinc" && catskincSkinUrl) {
             return catskincSkinUrl;
@@ -449,7 +445,6 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
             const result = String(reader.result || "");
             if (!result.startsWith("data:image/png;base64,")) { toast.error(t("wardrobe_only_png")); return; }
 
-            // Validate skin dimensions (Aspect ratio 1:1 or 2:1)
             const img = new Image();
             img.onload = () => {
                 const w = img.width;
@@ -554,7 +549,6 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
         }
     }, [testMicActive]);
 
-    // Force turn off microphone if mode changes
     useEffect(() => {
         if (mode !== "catskinc" && testMicActive) {
             if (animationFrameRef.current) {
@@ -575,7 +569,6 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
         }
     }, [mode, testMicActive]);
 
-    // Clean up microphone on unmount
     useEffect(() => {
         return () => {
             if (animationFrameRef.current) {
@@ -592,7 +585,7 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
 
     const onApplySkin = useCallback(async () => {
         if (!canManageProfile) {
-            const errorMsg = session?.type === "catid" ? t("wardrobe_catid_link_required") : t("wardrobe_microsoft_required");
+            const errorMsg = session?.authType === "catid" ? t("wardrobe_catid_link_required") : t("wardrobe_microsoft_required");
             toast.error(errorMsg);
             return;
         }
@@ -763,7 +756,6 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
         }
     }, [selectedInstance?.gameDirectory, syncCatskincSkin, syncProfile, session?.username, t, profile]);
 
-    // --- Guard: Not logged in ---
     if (!session) {
         return (
             <div className="h-full flex items-center justify-center p-6">
@@ -775,24 +767,41 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
         );
     }
 
-    // --- Guard: Not Microsoft / CatID Linked ---
     if (!canManageProfile) {
-        const guardTitle = session?.type === "catid"
+        const isCatID = session?.authType === "catid";
+        const guardTitle = isCatID
             ? t("wardrobe_catid_link_required")
             : t("wardrobe_microsoft_required");
-        const guardDesc = session?.type === "catid"
+        const guardDesc = isCatID
             ? t("wardrobe_catid_link_hint")
             : t("wardrobe_switch_account_hint");
 
         return (
             <div className="h-full flex items-center justify-center p-6">
-                <div className="flex items-center gap-4 p-5 rounded-2xl border max-w-sm"
+                <div className="flex flex-col items-center text-center p-6 rounded-2xl border max-w-sm space-y-4"
                     style={{ backgroundColor: colors.surfaceContainer, borderColor: `${colors.outline}33` }}>
-                    <Icons.Microsoft className="w-8 h-8 shrink-0" style={{ color: "#00A4EF" }} />
+                    <Icons.Microsoft className="w-12 h-12" style={{ color: "#00A4EF" }} />
                     <div>
                         <p className="font-bold text-sm" style={{ color: colors.onSurface }}>{guardTitle}</p>
-                        <p className="text-xs opacity-60 mt-0.5" style={{ color: colors.onSurfaceVariant }}>{guardDesc}</p>
+                        <p className="text-xs opacity-60 mt-1.5" style={{ color: colors.onSurfaceVariant }}>{guardDesc}</p>
                     </div>
+                    {isCatID ? (
+                        <button
+                            onClick={() => onLinkMicrosoft?.()}
+                            className="w-full py-2 px-4 rounded-xl text-xs font-semibold transition-all duration-200 shadow-sm hover:opacity-90 active:scale-[0.98]"
+                            style={{ backgroundColor: colors.primary, color: colors.onPrimary }}
+                        >
+                            {t("link_microsoft") || "Link Microsoft"}
+                        </button>
+                    ) : (
+                        <button
+                            onClick={() => setLoginDialogOpen?.(true)}
+                            className="w-full py-2 px-4 rounded-xl text-xs font-semibold transition-all duration-200 shadow-sm hover:opacity-90 active:scale-[0.98]"
+                            style={{ backgroundColor: colors.primary, color: colors.onPrimary }}
+                        >
+                            {t("login_with_microsoft") || "Login with Microsoft"}
+                        </button>
+                    )}
                 </div>
             </div>
         );
@@ -802,7 +811,6 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
         <div className="h-full flex flex-col overflow-hidden animate-fade-in">
             <div className="flex flex-col pb-6 w-full max-w-screen-2xl mx-auto gap-4 lg:gap-6 px-4 lg:px-8 pt-3">
 
-                {/* Header Row */}
                 <div
                     className="flex items-center justify-between gap-3 animate-fade-in"
                     style={{ animationDelay: "20ms", opacity: 0 }}
@@ -816,7 +824,6 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
                         </p>
                     </div>
                     <div className="flex items-center gap-4">
-                        {/* Mode Selector */}
                         <div className="flex p-0.5 rounded-xl border text-xs font-semibold"
                             style={{ backgroundColor: colors.surfaceContainer, borderColor: `${colors.outline}22` }}>
                             <button
@@ -878,7 +885,6 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
                     </div>
                 </div>
 
-                {/* Unified Card Dashboard wrapping both preview and controls */}
                 <div
                     className="w-full h-[520px] xl:h-[560px] rounded-3xl border animate-fade-in shadow-2xl flex flex-row gap-4 xl:gap-6 p-4 xl:p-5"
                     style={{
@@ -888,7 +894,6 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
                         opacity: 0,
                     }}
                 >
-                    {/* Left: 3D Preview Viewport */}
                     <div
                         className="flex-1 h-full rounded-2xl overflow-hidden relative"
                         style={{
@@ -904,9 +909,7 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
                             onSkinLoadStateChange={setIsPreviewSkinLoading}
                         />
 
-                        {/* circular platform under character feet */}
                         <div className="absolute bottom-12 left-1/2 -translate-x-1/2 w-64 h-16 pointer-events-none select-none flex items-center justify-center" style={{ perspective: "1000px" }}>
-                            {/* Quiet, static, low-opacity border ring */}
                             <div className="absolute w-36 h-36 border rounded-full" style={{ borderColor: `${colors.outline}1a`, transform: "rotateX(75deg)" }} />
                             <div className="absolute w-24 h-24 border rounded-full" style={{ borderColor: `${colors.outline}0d`, transform: "rotateX(75deg)" }} />
                         </div>
@@ -926,13 +929,11 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
                             </div>
                         )}
 
-                        {/* Preview label */}
                         <div className="absolute top-3.5 left-3.5 text-sm font-medium tracking-wider uppercase select-none opacity-80"
                             style={{ color: colors.onSurface }}>
                             {t("wardrobe_preview_3d")}
                         </div>
 
-                        {/* Animation Controls overlay pill */}
                         <div className="absolute top-2.5 right-2.5 flex items-center gap-1 p-1 rounded-full backdrop-blur-md bg-black/40 border border-white/10">
                             {(["idle", "walk", "run", "fly"] as const).map((type) => (
                                 <button
@@ -950,13 +951,11 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
                             ))}
                         </div>
 
-                        {/* Drag hint */}
                         <div className="absolute bottom-3.5 left-1/2 -translate-x-1/2 text-sm font-medium tracking-wide select-none opacity-80"
                             style={{ color: colors.onSurface }}>
                             {t("wardrobe_drag_rotate")}
                         </div>
 
-                        {/* Microphone Test Button (Bottom-Left) */}
                         {mode === "catskinc" && finalMouthOpenUrl && (
                             <button
                                 onClick={toggleMicTest}
@@ -972,7 +971,6 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
                             </button>
                         )}
 
-                        {/* Reset rotation */}
                         <button
                             onClick={() => resetRotationRef.current?.()}
                             aria-label={t("wardrobe_reset_rotation")}
@@ -983,12 +981,9 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
                         </button>
                     </div>
 
-                    {/* Vertical Divider */}
                     <div className="w-[1px] self-stretch hidden md:block" style={{ backgroundColor: `${colors.outline}22` }} />
 
-                    {/* Right: Controls Area */}
                     <div className="w-[300px] xl:w-[340px] shrink-0 flex flex-col gap-3 xl:gap-4 justify-between">
-                        {/* Section 1: Active Profile Summary */}
                         <div className="flex items-center gap-4">
                             <div className="w-14 h-14 rounded-full overflow-hidden border relative flex items-center justify-center shrink-0"
                                 style={{ backgroundColor: colors.surfaceContainerHighest, borderColor: `${colors.outline}33` }}>
@@ -1020,10 +1015,8 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
                             </div>
                         </div>
 
-                        {/* Divider */}
                         <div className="h-[1px] w-full" style={{ backgroundColor: `${colors.outline}22` }} />
 
-                        {/* Section 2: Variant Selector */}
                         <div>
                             <div className="text-xs font-semibold uppercase tracking-wider opacity-50 mb-2" style={{ color: colors.onSurfaceVariant }}>
                                 {t("wardrobe_variant")}
@@ -1061,10 +1054,8 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
                             </div>
                         </div>
 
-                        {/* Divider */}
                         <div className="h-[1px] w-full" style={{ backgroundColor: `${colors.outline}22` }} />
 
-                        {/* Section 3: File Upload & Skin Controls */}
                         <div className="flex flex-col">
                             <div className="text-xs font-semibold uppercase tracking-wider opacity-50 mb-2" style={{ color: colors.onSurfaceVariant }}>
                                 {t("wardrobe_skin_control")}
@@ -1175,10 +1166,8 @@ export const Wardrobe: React.FC<WardrobeProps> = ({ colors, selectedInstance }) 
 
                         </div>
 
-                        {/* Divider */}
                         <div className="h-[1px] w-full" style={{ backgroundColor: `${colors.outline}22` }} />
 
-                        {/* Section 4: Action Buttons Row */}
                         <div className="grid grid-cols-2 gap-3 w-full">
                             <button
                                 onClick={handleClearClick}

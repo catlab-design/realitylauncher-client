@@ -398,6 +398,8 @@ export const enTranslations = {
     
     launcher_folder: "Launcher Folder",
     launcher_folder_desc: "Folder containing all Launcher files",
+    moving_launcher_folder: "Moving launcher folder...",
+    launcher_folder_moved: "Launcher folder moved successfully",
     path_copied: "Path copied to clipboard",
     copy: "Copy",
     open_folder_electron: "Opening folder... (This requires Electron)",
@@ -610,6 +612,8 @@ export const enTranslations = {
     cancel_install_success: "Installation cancelled",
     extracting_modpack_dot: "Reading modpack info...",
     install_complete: "Completed successfully",
+    files_failed_to_download: "file(s) failed to download",
+    syncing: "Syncing...",
     preparing_game_files: "Downloading game files...",
     login_before_use: "Please login before use",
     cannot_read_file: "Cannot read file",
@@ -1011,11 +1015,11 @@ export const enTranslations = {
     partner_special_thanks: "Partner (Special Thanks)",
     alliance: "Alliance",
 
-    // Explore — sort
+    
     sort_by: "Sort by",
-    // sort.* keys already defined above
+    
 
-    // Explore — filter sections
+    
     filter: "Filter",
     filters: "Filters",
     category: "Category",
@@ -1023,7 +1027,7 @@ export const enTranslations = {
     game_version: "Game version",
     search_versions_short: "Search versions...",
 
-    // Categories (Modrinth taxonomy)
+    
     "category.adventure": "Adventure",
     "category.cursed": "Cursed",
     "category.decoration": "Decoration",
@@ -1044,7 +1048,7 @@ export const enTranslations = {
     "category.utility": "Utility",
     "category.worldgen": "World Generation",
 
-    // Loaders
+    
     "loader.fabric": "Fabric",
     "loader.forge": "Forge",
     "loader.neoforge": "NeoForge",
@@ -1053,11 +1057,11 @@ export const enTranslations = {
     "loader.modloader": "ModLoader",
     "loader.rift": "Rift",
 
-    // Environments
+    
     "environment.client": "Client",
     "environment.server": "Server",
 
-    // Detail page
+    
     versions: "Versions",
     no_versions_found: "No versions found",
     name: "Name",
@@ -1087,14 +1091,14 @@ export const enTranslations = {
     old_version_delete_failed: "New version installed, but the old file could not be removed.",
     update_to_latest: "Update to latest",
 
-    // Confirm install
+    
     confirm_install_modpack_title: "Install Modpack?",
     confirm_install_modpack_body: 'Install "{name}" as a new instance? This may download several hundred MB.',
     already_installed_modpack: 'You already have an instance from "{name}". Install again?',
     install_in_progress_warn: "Another install is already running. Please wait.",
-    // cancel already defined above
+    
 
-    // Misc
+    
     items_per_page: "Items / page",
     page_jump_first: "First page",
     page_jump_last: "Last page",
@@ -1102,6 +1106,6 @@ export const enTranslations = {
     clear_all_filters: "Clear all",
     click_again_to_open: "Click again to open full page",
 
-    // Mobile
+    
     open_filters: "Filters",
 };

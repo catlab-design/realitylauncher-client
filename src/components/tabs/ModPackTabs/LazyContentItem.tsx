@@ -1,8 +1,3 @@
-/**
- * ContentItem - Component สำหรับแสดง ResourcePack/Shader/Datapack item
- * แบบแยกชิ้นเพื่อจัดการ icon fetching ได้ดีขึ้น และรองรับ animation
- */
-
 import React, { useState, useEffect, useRef } from "react";
 import { Icons } from "../../ui/Icons";
 import { playClick } from "../../../lib/sounds";
@@ -26,7 +21,6 @@ function isSameVersion(a: string, b: string): boolean {
     return na.startsWith(nb) || nb.startsWith(na);
 }
 
-// ฟังก์ชันลบอักขระพิเศษ (เช่น §, $, |) ออกจากชื่อไฟล์ เพื่อให้แสดงผลอ่านง่าย
 function isInstalledOlderThanLatest(
     versions: Array<{ id?: string | number; version_number?: string; displayName?: string; fileName?: string }>,
     currentVersion: string,
@@ -113,7 +107,7 @@ export function LazyContentItem({
         fetchAttempted.current = false;
     }, [currentItem.filename, currentItem.modrinthProjectId, currentItem.curseforgeProjectId]);
 
-    // Prefer official project icons when we know the linked project IDs.
+    
     useEffect(() => {
         if (fetchAttempted.current) return;
 
@@ -124,7 +118,6 @@ export function LazyContentItem({
 
         const fetchIcon = async () => {
             try {
-                // Modrinth
                 if (currentItem.modrinthProjectId) {
                     const project = await (window.api as any)?.modrinthGetProject?.(currentItem.modrinthProjectId);
                     if (project?.icon_url || project?.iconUrl) {
@@ -133,7 +126,6 @@ export function LazyContentItem({
                     }
                 }
 
-                // CurseForge
                 if (currentItem.curseforgeProjectId) {
                     const result = await (window.api as any)?.curseforgeGetProject?.(currentItem.curseforgeProjectId);
                     const logo = result?.data?.logo?.url;
@@ -230,7 +222,6 @@ export function LazyContentItem({
                 marginBottom: "4px"
             }}
         >
-            {/* Checkbox */}
             <div
                 onClick={(e) => {
                     e.stopPropagation();
@@ -246,7 +237,6 @@ export function LazyContentItem({
                 {isSelected && <Icons.Check className="w-3.5 h-3.5" style={{ color: "#1a1a1a" }} />}
             </div>
 
-            {/* Icon */}
             {iconUrl ? (
                 <img
                     src={iconUrl}
@@ -262,7 +252,6 @@ export function LazyContentItem({
                 </div>
             )}
 
-            {/* Info */}
             <div className="min-w-0 pr-4 flex flex-col justify-center">
                 <p className="font-bold text-[15px] truncate" style={{ color: colors.onSurface }}>
                     {cleanName(currentItem.name)}
@@ -273,7 +262,6 @@ export function LazyContentItem({
                 </p>
             </div>
 
-            {/* Version info from pack.mcmeta */}
             <div className="min-w-0 pr-4 hidden md:flex flex-col justify-center">
                 <p className="text-sm font-bold truncate mb-0.5 flex items-center gap-1.5" style={{ color: colors.onSurface }}>
                     {currentItem.version || "Unknown Version"}
@@ -284,9 +272,8 @@ export function LazyContentItem({
                 </p>
             </div>
 
-            {/* Actions */}
             <div className="flex items-center gap-2 shrink-0">
-                {/* Toggle switch */}
+                
                 <button
                     onClick={(e) => { e.stopPropagation(); playClick(); onToggle(currentItem.filename, isDatapack ? currentItem.worldName : undefined); }}
                     className="relative w-11 h-6 rounded-full transition-colors shrink-0"
@@ -349,7 +336,6 @@ export function LazyContentItem({
                     return null;
                 })()}
 
-                {/* Delete button */}
                 <button
                     onClick={(e) => { e.stopPropagation(); playClick(); onDelete(currentItem.filename, isDatapack ? currentItem.worldName : undefined); }}
                     className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:bg-white/10 shrink-0"
@@ -364,7 +350,6 @@ export function LazyContentItem({
                     </svg>
                 </button>
                 
-                {/* Dots menu (placeholder for layout consistency) */}
                 <button
                     onClick={(e) => e.stopPropagation()}
                     className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:bg-white/10 shrink-0"

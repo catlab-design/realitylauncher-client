@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 
 interface UiState {
-    
     activeTab: string;
     setActiveTab: (tab: string) => void;
     lastContentTab: string;
@@ -12,7 +11,6 @@ interface UiState {
     settingsTab: "appearance" | "game" | "connections" | "language" | "launcher" | "resources" | "java" | "account" | "update";
     setSettingsTab: (tab: UiState['settingsTab']) => void;
 
-    
     modals: {
         login: boolean;
         register: boolean;
@@ -25,12 +23,10 @@ interface UiState {
         linkCatID: boolean;
     };
 
-    
     openModal: (modal: keyof UiState['modals']) => void;
     closeModal: (modal: keyof UiState['modals']) => void;
     toggleModal: (modal: keyof UiState['modals']) => void;
 
-    
     changelogData: { version: string; changelog: string } | null;
     setChangelogData: (data: { version: string; changelog: string } | null) => void;
 }

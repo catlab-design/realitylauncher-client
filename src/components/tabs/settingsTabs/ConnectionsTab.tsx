@@ -46,7 +46,7 @@ export function ConnectionsTab({ config, updateConfig, colors }: SettingsTabProp
                 <h3 className="font-medium" style={{ color: colors.onSurface }}>{t('tab_connections')}</h3>
             </div>
             <div className="p-4 space-y-4">
-                {/* Discord RPC */}
+                {}
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <div className="relative">
@@ -92,7 +92,7 @@ export function ConnectionsTab({ config, updateConfig, colors }: SettingsTabProp
 
                 <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
 
-                {/* Telemetry Toggle */}
+                {}
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <i className="fa-solid fa-chart-line w-6" style={{ color: colors.onSurface }}></i>
@@ -123,7 +123,7 @@ export function ConnectionsTab({ config, updateConfig, colors }: SettingsTabProp
 
                 <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
 
-                {/* Download Speed */}
+                {}
                 <div>
                     <div className="flex items-center justify-between mb-2">
                         <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('limit_download_speed')}</p>
@@ -149,7 +149,6 @@ export function ConnectionsTab({ config, updateConfig, colors }: SettingsTabProp
 
                 <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
 
-                {/* CatSkin Server IP */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex-1">
                         <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('catskinc_server_ip')}</p>

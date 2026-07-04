@@ -9,7 +9,7 @@ export function LanguageTab({ config, updateConfig, colors }: SettingsTabProps) 
     const [hoveredValue, setHoveredValue] = useState<string | null>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
-    // Close when clicking outside
+    
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {

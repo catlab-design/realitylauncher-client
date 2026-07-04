@@ -117,7 +117,6 @@ export function ServerDetailView({
     return (
         <div className="flex-1 flex flex-col h-full animate-fade-in relative z-10 overflow-hidden">
 
-            {/* ── Back Button ───────────────────────────────────────────── */}
             <div className="flex items-center gap-3 mb-4 shrink-0">
                 <button
                     type="button"
@@ -130,9 +129,7 @@ export function ServerDetailView({
                 </button>
             </div>
 
-            {/* ── Hero Banner ───────────────────────────────────────────── */}
             <div className="relative w-full rounded-2xl overflow-hidden mb-5 shrink-0" style={{ height: "220px" }}>
-                {/* Background */}
                 <div
                     className="absolute inset-0 bg-cover bg-center"
                     style={{
@@ -149,13 +146,10 @@ export function ServerDetailView({
                     )}
                 </div>
 
-                {/* Gradient overlays */}
                 <div className="absolute inset-0 bg-linear-to-r from-black/80 via-black/45 to-black/10" />
                 <div className="absolute inset-x-0 bottom-0 h-28 bg-linear-to-t from-black/60 to-transparent" />
 
-                {/* Content overlay */}
                 <div className="absolute inset-0 flex items-end p-5 gap-4">
-                    {/* Icon */}
                     {instance.iconUrl ? (
                         <img
                             src={getWithTimestamp(instance.iconUrl)}
@@ -181,7 +175,6 @@ export function ServerDetailView({
                         )}
                     </div>
 
-                    {/* Status badge - top right */}
                     <div className="absolute top-4 right-4">
                         <span
                             className={cn(
@@ -198,7 +191,6 @@ export function ServerDetailView({
                 </div>
             </div>
 
-            {/* ── Stats Chips Row ───────────────────────────────────────── */}
             <div className="flex flex-wrap gap-2 mb-5 shrink-0">
                 {instance.minecraftVersion && (
                     <div
@@ -255,13 +247,9 @@ export function ServerDetailView({
                 )}
             </div>
 
-            {/* ── Main Layout: Actions (left) + Description (right) ─────── */}
             <div className="flex-1 grid grid-cols-1 xl:grid-cols-[280px_1fr] gap-5 overflow-y-auto xl:overflow-hidden min-h-0">
-
-                {/* LEFT: Action Buttons + Social Links */}
                 <div className="flex flex-col gap-3 xl:overflow-y-auto shrink-0">
 
-                    {/* Primary action */}
                     {!isMember ? (
                         <button
                             type="button"
@@ -274,7 +262,6 @@ export function ServerDetailView({
                         </button>
                     ) : isInstalled ? (
                         <div className="flex gap-2">
-                            {/* Play / Stop */}
                             <button
                                 type="button"
                                 onClick={(e) => {
@@ -306,7 +293,6 @@ export function ServerDetailView({
                                     </>
                                 )}
                             </button>
-                            {/* Logs */}
                             <button
                                 type="button"
                                 onClick={(e) => { e.stopPropagation(); playClick(); onViewLogs(e, instance); }}
@@ -329,7 +315,6 @@ export function ServerDetailView({
                         </button>
                     )}
 
-                    {/* Social links */}
                     {hasExternalLinks && (
                         <div className="flex gap-2 flex-wrap">
                             {socialLinks.map((link, i) => {
@@ -361,7 +346,6 @@ export function ServerDetailView({
                     )}
                 </div>
 
-                {/* RIGHT: Description */}
                 <div className="flex flex-col gap-4 overflow-y-auto xl:overflow-y-auto custom-scrollbar pb-6">
                     <div>
                         <h2

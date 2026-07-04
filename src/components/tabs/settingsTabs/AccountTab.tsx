@@ -44,7 +44,7 @@ export function AccountTab({
 
     const handleAvatarSourceChange = async (source: "catid_avatar" | "minecraft_skin") => {
         if (!session || !window.api?.authUpdateAvatarSource) return;
-        const isLinked = session.type === "catid" ? !!session.minecraftUuid : !!session.catidLinked;
+        const isLinked = session.authType === "catid" ? !!session.minecraftUuid : !!session.catidLinked;
         if (!isLinked) return;
         setIsUpdatingAvatarSource(true);
         const toastId = toast.loading(t('saving') || "กำลังบันทึก...");
@@ -52,10 +52,20 @@ export function AccountTab({
             const result = await window.api.authUpdateAvatarSource(source);
             toast.dismiss(toastId);
             if (result.ok && result.session) {
-                updateAccount(result.session);
+                
+                
+                
+                
+                
+                
+                updateAccount({
+                    ...session,
+                    avatarSource: source,
+                    avatarUrl: result.session.avatarUrl ?? session.avatarUrl,
+                });
                 toast.success(t('save_success') || "บันทึกสำเร็จ");
                 
-                // Refresh cached avatar
+                
                 window.dispatchEvent(new CustomEvent("minecraft-skin-updated", { detail: { username: session.username } }));
             } else {
                 toast.error(result.error || "เกิดข้อผิดพลาด");
@@ -77,7 +87,7 @@ export function AccountTab({
                 <h3 className="font-medium" style={{ color: colors.onSurface }}>{t('user_account')}</h3>
             </div>
             <div className="p-4 space-y-3">
-                {/* Current Account */}
+                {}
                 {session ? (
                     <div className="p-3 rounded-md space-y-4" style={{ backgroundColor: colors.surfaceContainerHigh }}>
                         <div className="flex items-center gap-3">
@@ -89,13 +99,13 @@ export function AccountTab({
                                         <span className="inline-flex items-center justify-center w-4 h-4 rounded-full" style={{ backgroundColor: "#fbbf24" }}>
                                             <Icons.Check className="w-3 h-3 text-gray-900" />
                                         </span>
-                                    ) : session.type === "catid" ? (
+                                    ) : session.authType === "catid" ? (
                                         <span className="inline-flex items-center justify-center w-4 h-4 rounded-full" style={{ backgroundColor: "#3b82f6" }}>
                                             <Icons.Check className="w-3 h-3 text-white" />
                                         </span>
-                                    ) : session.type === "microsoft" ? (
+                                    ) : session.authType === "microsoft" ? (
                                         <>
-                                            <img src={microsoftIcon.src} alt="Microsoft" className="w-5 h-5" />
+                                            <img src={microsoftIcon} alt="Microsoft" className="w-5 h-5" />
                                             {session.catidLinked && (
                                                 <span className="inline-flex items-center justify-center w-4 h-4 rounded-full" style={{ backgroundColor: "#fbbf24" }}>
                                                     <Icons.Check className="w-3 h-3 text-white" />
@@ -105,12 +115,12 @@ export function AccountTab({
                                     ) : null}
                                 </div>
                                 <div className="text-xs flex items-center gap-2" style={{ color: colors.onSurfaceVariant }}>
-                                    {session.type === "microsoft"
+                                    {session.authType === "microsoft"
                                         ? (session.catidLinked ? t('catid_and_microsoft_account') : t('microsoft_account'))
-                                        : session.type === "catid" ? t('catid_account') : t('user_account')}
+                                        : session.authType === "catid" ? t('catid_account') : t('user_account')}
                                 </div>
-                                    {/* Session status for accounts with API session */}
-                                    {(session.type === "catid" || (session.type === "microsoft" && session.apiToken)) && (
+                                    {}
+                                    {(session.authType === "catid" || (session.authType === "microsoft" && session.apiToken)) && (
                                         <SessionTimer session={session} t={t} colors={colors} language={language} />
                                     )}
                                 </div>
@@ -123,8 +133,8 @@ export function AccountTab({
                             </button>
                         </div>
 
-                        {/* Linked Accounts Actions */}
-                        {session.type === "microsoft" && (
+                        {}
+                        {session.authType === "microsoft" && (
                             <div className="pt-3 border-t flex flex-col gap-2" style={{ borderColor: colors.outline + "20" }}>
                                 <div className="text-xs font-medium" style={{ color: colors.onSurfaceVariant }}>{t('account_connections')}</div>
                                 <div className="flex gap-2">
@@ -151,7 +161,7 @@ export function AccountTab({
                                     )}
                                 </div>
 
-                                {/* Avatar display selector - Only show if linked to CatID */}
+                                {}
                                 {session.catidLinked && (
                                     <div className="pt-2 border-t flex flex-col gap-2" style={{ borderColor: colors.outline + "10" }}>
                                         <div className="text-xs font-medium" style={{ color: colors.onSurfaceVariant }}>{t('avatar_display')}</div>
@@ -186,8 +196,8 @@ export function AccountTab({
                             </div>
                         )}
 
-                        {/* CatID Account: Link/Status for Microsoft */}
-                        {session.type === "catid" && (
+                        {}
+                        {session.authType === "catid" && (
                             <div className="pt-3 border-t flex flex-col gap-3" style={{ borderColor: colors.outline + "20" }}>
                                 <div className="text-xs font-medium" style={{ color: colors.onSurfaceVariant }}>{t('account_connections')}</div>
                                 <div className="flex gap-2">
@@ -196,7 +206,7 @@ export function AccountTab({
                                             className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm border"
                                             style={{ backgroundColor: colors.surfaceContainer, color: colors.onSurface, borderColor: `${colors.outline}20` }}
                                         >
-                                            <img src={microsoftIcon.src} alt="Microsoft" className="w-4 h-4" />
+                                            <img src={microsoftIcon} alt="Microsoft" className="w-4 h-4" />
                                             <Icons.Check className="w-4 h-4" style={{ color: "#22c55e" }} />
                                             <span>{t('linked_with_microsoft')}</span>
                                         </div>
@@ -206,13 +216,12 @@ export function AccountTab({
                                             className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm transition-all hover:bg-black/5"
                                             style={{ backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
                                         >
-                                            <img src={microsoftIcon.src} alt="Microsoft" className="w-4 h-4" />
+                                            <img src={microsoftIcon} alt="Microsoft" className="w-4 h-4" />
                                             <span>{t('link_microsoft')}</span>
                                         </button>
                                     )}
                                 </div>
 
-                                {/* Avatar display selector - Only show if linked to Microsoft */}
                                 {session.minecraftUuid && (
                                     <div className="pt-2 border-t flex flex-col gap-2" style={{ borderColor: colors.outline + "10" }}>
                                         <div className="text-xs font-medium" style={{ color: colors.onSurfaceVariant }}>{t('avatar_display')}</div>
@@ -254,7 +263,6 @@ export function AccountTab({
                     </div>
                 )}
 
-                {/* Account Lists */}
                 <div className="space-y-2 max-h-48 overflow-y-auto">
                     {accounts.map((acc, index) => {
                         const account = acc as AuthSession;
@@ -276,13 +284,13 @@ export function AccountTab({
                                             <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full flex-shrink-0" style={{ backgroundColor: "#fbbf24" }}>
                                                 <Icons.Check className="w-2.5 h-2.5 text-gray-900" />
                                             </span>
-                                        ) : account.type === "catid" ? (
+                                        ) : account.authType === "catid" ? (
                                             <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full flex-shrink-0" style={{ backgroundColor: "#3b82f6" }}>
                                                 <Icons.Check className="w-2.5 h-2.5 text-white" />
                                             </span>
-                                        ) : account.type === "microsoft" ? (
+                                        ) : account.authType === "microsoft" ? (
                                             <>
-                                                <img src={microsoftIcon.src} alt="Microsoft" className="w-5 h-5" />
+                                                <img src={microsoftIcon} alt="Microsoft" className="w-5 h-5" />
                                                 {account.catidLinked && (
                                                     <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full flex-shrink-0" style={{ backgroundColor: "#fbbf24" }}>
                                                         <Icons.Check className="w-2.5 h-2.5 text-white" />
@@ -292,11 +300,10 @@ export function AccountTab({
                                         ) : null}
                                     </div>
                                     <div className="text-xs flex items-center gap-1" style={{ color: colors.onSurfaceVariant }}>
-                                        {account.type === "microsoft"
+                                        {account.authType === "microsoft"
                                             ? (account.catidLinked ? t('catid_and_microsoft_account') : t('microsoft_account'))
-                                            : account.type === "catid" ? t('catid_account') : t('user_account')}
-                                        {/* Show expired warning for CatID accounts only */}
-                                        {account.type === "catid" && (() => {
+                                            : account.authType === "catid" ? t('catid_account') : t('user_account')}
+                                        {account.authType === "catid" && (() => {
                                             const sevenDays = 7 * 24 * 60 * 60 * 1000;
                                             const createdAt = (account as any).createdAt || Date.now();
                                             const expiresAt = createdAt + sevenDays;
@@ -357,7 +364,7 @@ function SessionTimer({ session, t, colors, language }: { session: AuthSession, 
             const now = Date.now();
             let expiresAt: number;
 
-            if (session.type === "microsoft") {
+            if (session.authType === "microsoft") {
                 // For Microsoft+CatID accounts, use apiTokenExpiresAt (API session expiry)
                 // DON'T fall back to tokenExpiresAt — that's the Minecraft access token (~24h)
                 if (session.apiTokenExpiresAt) {

@@ -1,8 +1,6 @@
-// ========================================
-// Source-specific normalizers — collapse Modrinth's snake/camel mix and CurseForge's
-// id-tagged loaders+game versions into our internal ModrinthProject shape.
-// Pulled out of Explore.tsx so the component stays under its LOC guard.
-// ========================================
+
+
+
 
 import type { ModrinthProject, ProjectVersion } from "./types";
 import { normalizeImageUrl } from "./helpers";
@@ -66,8 +64,8 @@ export function normalizeCurseforgeFull(
     unknownLabel: string,
     body?: string,
 ): ModrinthProject {
-    // Walk both latestFiles and top-level gameVersions because CurseForge inconsistently
-    // populates them depending on whether the listing came from search vs. project lookup.
+    
+    
     const gvs = new Set<string>();
     const lds = new Set<string>();
     const files = cf.latestFiles || cf.latest_files || [];

@@ -18,7 +18,6 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
     const [error, setError] = useState('');
     const [success, setSuccess] = useState(false);
 
-    // Fallback colors if not provided
     const bg = colors?.surface || '#1e1e2e';
     const text = colors?.onSurface || '#ffffff';
     const primary = colors?.primary || '#3b82f6';
@@ -28,7 +27,6 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
     const danger = '#ef4444';
     const successColor = '#22c55e';
 
-    // Update key when initialKey prop changes
     useEffect(() => {
         if (initialKey) {
             setKey(initialKey);
@@ -83,7 +81,6 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
     };
 
     const formatKey = (value: string) => {
-        // Remove all non-alphanumeric characters (except dashes)
         const cleaned = value.replace(/[^A-Z0-9-]/gi, '').toUpperCase();
         return cleaned;
     };
@@ -103,9 +100,7 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
                 style={{ backgroundColor: bg, color: text }}
                 onClick={(e) => e.stopPropagation()}
             >
-                {/* Left Branding Side */}
                 <div className="w-[35%] relative flex flex-col items-center justify-center p-8 overflow-hidden border-r border-white/5" style={{ backgroundColor: `${primary}10` }}>
-                    {/* Background visual elements */}
                     <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-yellow-500/10 to-transparent pointer-events-none" />
                     <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-yellow-500/5 blur-[60px] rounded-full pointer-events-none" />
 
@@ -121,9 +116,7 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
                     </p>
                 </div>
 
-                {/* Right Form Side */}
                 <div className="flex-1 p-10 flex flex-col relative">
-                    {/* Header/Close */}
                     <div className="absolute top-6 right-6 z-20">
                         <button
                             onClick={handleClose}
@@ -141,7 +134,6 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
 
                     <form onSubmit={handleSubmit} className="flex-1 flex flex-col">
                         <div className="space-y-6 flex-1">
-                            {/* Info Box */}
                             <div className="flex gap-4 p-5 rounded-2xl transition-all border border-white/5" style={{ backgroundColor: surfaceContainer }}>
                                 <div className="shrink-0">
                                     <Icons.Info className="w-6 h-6 text-blue-400" />
@@ -151,7 +143,6 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
                                 </p>
                             </div>
 
-                            {/* Input Field */}
                             <div className="space-y-2.5">
                                 <label htmlFor="instance-key" className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-widest">
                                     {t('your_invite_key')}
@@ -179,7 +170,6 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
                                     </div>
                                 </div>
 
-                                {/* Feedback Messages */}
                                 <div className="min-h-[24px] px-1">
                                     {error && (
                                         <div className="flex items-center gap-2 text-sm font-bold text-red-400 animate-in fade-in slide-in-from-top-1">
@@ -197,7 +187,6 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
                             </div>
                         </div>
 
-                        {/* Actions */}
                         <div className="flex gap-4 mt-8">
                             <button
                                 type="submit"

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+﻿import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import gsap from "gsap";
 import { toast } from "react-hot-toast";
 
@@ -30,12 +30,10 @@ function LauncherAppContent() {
   const {
     isExporting,
     exportProgress,
-    isExportMinimized,
-    setExportMinimized,
     exportingInstanceId,
     isInstalling, setInstalling,
     installProgress, setInstallProgress,
-    isInstallMinimized, setInstallMinimized,
+    setInstallMinimized,
     operationType, setOperationType,
     installingInstanceId, setInstallingInstanceId
   } = useProgressStore();
@@ -274,8 +272,24 @@ function LauncherAppContent() {
       try {
         const savedSession = await window.api?.getSession();
         if (!cancelled && savedSession) {
-          setSession(savedSession);
-          addAccount(savedSession);
+          
+          
+          const rawType = (savedSession as any).authType ?? (savedSession as any).type;
+          const normalized = { ...savedSession, authType: rawType } as typeof savedSession;
+
+          
+          
+          
+          const persisted = useAuthStore.getState().accounts;
+          const existing = persisted.find(
+            (a) => a.uuid === normalized.uuid && a.authType === normalized.authType,
+          );
+          if (existing) {
+            setSession(existing);
+          } else {
+            setSession(normalized);
+            addAccount(normalized);
+          }
         }
       } catch { }
       finally {
@@ -414,8 +428,8 @@ function LauncherAppContent() {
   }, []);
 
   useEffect(() => {
-    let pollTimer: NodeJS.Timeout | null = null;
-    let expirationTimer: NodeJS.Timeout | null = null;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    let expirationTimer: ReturnType<typeof setTimeout> | null = null;
     let cancelled = false;
 
     const clearInboxState = () => {
@@ -505,10 +519,10 @@ function LauncherAppContent() {
     };
 
     const checkExpiration = () => {
-      if (session?.type === "catid" && session.tokenExpiresAt) {
+      if (session?.authType === "catid" && session.tokenExpiresAt) {
         if (Date.now() >= session.tokenExpiresAt) {
           console.log("[Auth] Session expired, logging out...");
-          removeAccountAction(session.uuid, session.type);
+          removeAccountAction(session.uuid, session.authType);
           setSession(null);
           window.api?.logout?.();
           toast.error(t('session_expired'));
@@ -551,7 +565,7 @@ function LauncherAppContent() {
       try {
         const result = await window.api?.loginCatIDToken?.(token);
         if (result?.ok && result.session) {
-          if (result.session.type === "catid") {
+          if (result.session.authType === "catid") {
             setSession(result.session);
           }
           toast.success(t('login_success'), { id: loadingId });
@@ -710,7 +724,7 @@ function LauncherAppContent() {
               apiToken: result.session.apiToken,
               apiTokenExpiresAt: result.session.apiTokenExpiresAt ? new Date(result.session.apiTokenExpiresAt).getTime() : undefined,
               catidLinked: !!result.session.catidLinked,
-              type: "microsoft",
+              authType: "microsoft",
               createdAt: Date.now(),
             };
 
@@ -788,7 +802,7 @@ function LauncherAppContent() {
       }
 
       const newSession: AuthSession = {
-        type: "catid",
+        authType: "catid",
         username: result.session.username,
         uuid: result.session.uuid,
         minecraftUuid: result.session.minecraftUuid,
@@ -901,9 +915,9 @@ function LauncherAppContent() {
         setVerificationWaiting(false);
         setVerificationToken(null);
 
-        if (result.user) {
-          const session: AuthSession = {
-            type: "catid",
+          if (result.user) {
+            const session: AuthSession = {
+            authType: "catid",
             username: result.user.username,
             uuid: `catid-${result.user.id}`,
             accessToken: result.token,
@@ -945,7 +959,7 @@ function LauncherAppContent() {
       console.error("[Auth] Failed to sync session with backend:", err);
     }
 
-    if (finalSession.type === "catid" && finalSession.accessToken) {
+    if (finalSession.authType === "catid" && finalSession.accessToken) {
       setAdminToken(finalSession.accessToken);
       try {
         const adminCheck = await window.api?.checkAdminStatus(finalSession.accessToken);
@@ -967,8 +981,8 @@ function LauncherAppContent() {
   };
 
   const removeAccountFromList = async (account: AuthSession) => {
-    removeAccountAction(account.uuid, account.type);
-    if (session?.username === account.username && session?.type === account.type) {
+    removeAccountAction(account.uuid, account.authType);
+    if (session?.username === account.username && session?.authType === account.authType) {
       await window.api?.logout();
       setSession(null);
     }
@@ -1002,7 +1016,7 @@ function LauncherAppContent() {
             t('link_success') +
             ' ' +
             t('link_migrated_from').replace('{oldCatID}', String(res.oldCatID)),
-            { id: loader, icon: '🔄' }
+            { id: loader, icon: '๐”' }
           );
         } else {
           toast.success(t('link_success'), { id: loader });
@@ -1011,12 +1025,14 @@ function LauncherAppContent() {
 
         const updatedSession = await window.api?.getSession?.();
         if (updatedSession) {
+          const rawType = (updatedSession as any).authType ?? (updatedSession as any).type;
           const linkedSession = {
             ...updatedSession,
+            authType: rawType,
             catidLinked:
-              updatedSession.type === "microsoft"
+              rawType === "microsoft"
                 ? true
-                : updatedSession.catidLinked,
+                : (updatedSession as any).catidLinked,
           };
           setSession(linkedSession);
           updateAccount(linkedSession);
@@ -1038,8 +1054,18 @@ function LauncherAppContent() {
 
   const handleBrowseMinecraftDir = async () => {
     const path = await window.api?.browseDirectory(t('browse_minecraft_title'));
-    if (path) {
+    if (!path) return;
+
+    const toastId = toast.loading(t('moving_launcher_folder'));
+    try {
+      await (window.api as any)?.configMigrateMinecraftDir?.(path);
       updateConfig({ minecraftDir: path });
+      toast.success(t('launcher_folder_moved'), { id: toastId });
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : String(error),
+        { id: toastId },
+      );
     }
   };
 
@@ -1058,12 +1084,19 @@ function LauncherAppContent() {
             toast.success(t('unlink_success'));
 
             const updatedSession = (await window.api?.getSession()) ?? null;
-            setSession(updatedSession);
+            if (updatedSession) {
+              const rawType = (updatedSession as any).authType ?? (updatedSession as any).type;
+              setSession({ ...updatedSession, authType: rawType } as AuthSession);
+            } else {
+              setSession(null);
+            }
 
             if (res.updatedAccount) {
-              updateAccount(res.updatedAccount);
+              const rawAccType = (res.updatedAccount as any).authType ?? (res.updatedAccount as any).type;
+              updateAccount({ ...res.updatedAccount, authType: rawAccType } as AuthSession);
             } else if (updatedSession) {
-              updateAccount(updatedSession);
+              const rawSessType = (updatedSession as any).authType ?? (updatedSession as any).type;
+              updateAccount({ ...updatedSession, authType: rawSessType } as AuthSession);
             }
           } else {
             toast.error(res?.error || t('unlink_failed'));
@@ -1245,14 +1278,10 @@ function LauncherAppContent() {
         adminToken={adminToken}
         isExporting={isExporting}
         exportProgress={exportProgress}
-        isExportMinimized={isExportMinimized}
-        setExportMinimized={setExportMinimized}
         handleCancelExport={handleCancelExport}
         exportingInstanceId={exportingInstanceId}
         isInstalling={isInstalling}
         installProgress={installProgress}
-        isInstallMinimized={isInstallMinimized}
-        setInstallMinimized={setInstallMinimized}
         operationType={operationType}
         handleCancelInstall={handleCancelInstall}
         handleRepair={handleRepair}

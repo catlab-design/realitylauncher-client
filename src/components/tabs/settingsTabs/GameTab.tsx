@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import toast from "react-hot-toast";
 import type { SettingsTabProps } from "./AccountTab";
 import { useTranslation } from "../../../hooks/useTranslation";
+import { cachedMaxRam, cachedSystemRam } from "../../../api";
 
 export interface GameTabProps extends SettingsTabProps {
     handleBrowseJava: () => void;
@@ -9,9 +10,12 @@ export interface GameTabProps extends SettingsTabProps {
 }
 
 export function GameTab({ config, updateConfig, colors, handleBrowseJava, handleBrowseMinecraftDir }: GameTabProps) {
-    const [maxRamMB, setMaxRamMB] = useState(8192);
-    const [systemRamMB, setSystemRamMB] = useState(0);
+    const [maxRamMB, setMaxRamMB] = useState(cachedMaxRam);
+    const [systemRamMB, setSystemRamMB] = useState(cachedSystemRam);
     const [isDetectingJava, setIsDetectingJava] = useState(false);
+    
+    
+    const [resolvedDir, setResolvedDir] = useState("");
     const { t } = useTranslation(config.language);
 
     useEffect(() => {
@@ -20,8 +24,10 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
             const systemRam = await (window as any).api?.getSystemRam?.();
             if (maxRam) setMaxRamMB(maxRam);
             if (systemRam) setSystemRamMB(systemRam);
+            const dir = await (window as any).api?.configGetMinecraftDir?.();
+            if (dir) setResolvedDir(dir);
         })();
-    }, []);
+    }, [config.minecraftDir]);
 
     const handleAutoDetectJava = async () => {
         setIsDetectingJava(true);
@@ -60,7 +66,6 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
 
     return (
         <div className="rounded-xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
-            {/* Header */}
             <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "20" }}>
                 <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: colors.secondary + "20" }}>
                     <i className="fa-solid fa-gamepad text-sm" style={{ color: colors.secondary }}></i>
@@ -69,7 +74,6 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
             </div>
 
             <div className="p-4 space-y-4">
-                {/* RAM Allocation Section */}
                 <div className="space-y-3">
                     <div className="flex items-center justify-between">
                         <div>
@@ -97,12 +101,9 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
                         </div>
                     </div>
 
-                    {/* Custom Slider */}
                     <div className="relative pt-4 pb-1">
-                        {/* Track Background */}
                         <div className="h-3 w-full rounded-full relative overflow-hidden" 
                              style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                            {/* Fill */}
                             <div 
                                 className="absolute top-0 left-0 h-full rounded-full transition-all duration-150 ease-out"
                                 style={{ 
@@ -112,7 +113,6 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
                             />
                         </div>
                         
-                        {/* Native Range Input (Transparent overlay) */}
                         <input
                             type="range"
                             min={512}
@@ -124,7 +124,6 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
                             style={{ margin: 0 }}
                         />
 
-                        {/* Labels */}
                         <div className="flex justify-between text-[10px] mt-2 font-medium px-1" style={{ color: colors.onSurfaceVariant }}>
                             <span>512 MB</span>
                             <span className="text-center absolute left-1/2 -translate-x-1/2" style={{ opacity: 0.5 }}>
@@ -134,7 +133,6 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
                         </div>
                     </div>
 
-                    {/* Presets */}
                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-3">
                         <button
                             onClick={() => {
@@ -157,7 +155,7 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
                             style={{
                                 backgroundColor: colors.primaryContainer,
                                 borderColor: colors.primary + "40",
-                                color: colors.onPrimaryContainer,
+                                color: colors.onSurface,
                             }}
                         >
                             <span className="flex items-center gap-1.5">
@@ -182,7 +180,7 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
                                     style={{
                                         backgroundColor: isActive ? colors.secondaryContainer : colors.surface,
                                         borderColor: isActive ? colors.secondary : colors.outline + "30",
-                                        color: isActive ? colors.onSecondaryContainer : colors.onSurface,
+                                        color: colors.onSurface,
                                     }}
                                 >
                                     <span>{preset.label}</span>
@@ -191,13 +189,12 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
                             );
                         })}
                     </div>
-                </div>
+                    </div>
+
 
                 <div className="h-px w-full" style={{ backgroundColor: colors.outline + "20" }} />
 
-                {/* Minecraft Directory & Java Args Grid */}
                 <div className="grid grid-cols-1 gap-4">
-                    {/* Minecraft Directory */}
                     <div className="space-y-2">
                         <p className="font-medium text-sm flex items-center gap-2" style={{ color: colors.onSurface }}>
                             <i className="fa-solid fa-folder-open text-xs opacity-70"></i>
@@ -207,8 +204,9 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
                             <div className="flex-1 relative">
                                 <input
                                     type="text"
-                                    value={config.minecraftDir || t('use_default')}
+                                    value={config.minecraftDir || resolvedDir}
                                     readOnly
+                                    title={config.minecraftDir || resolvedDir}
                                     className="w-full pl-3 pr-3 py-2.5 rounded-md border text-xs transition-colors"
                                     style={{ 
                                         borderColor: colors.outline + "40", 
@@ -220,14 +218,13 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
                             <button
                                 onClick={handleBrowseMinecraftDir}
                                 className="px-4 py-2.5 rounded-md text-xs font-medium hover:brightness-110 transition-all"
-                                style={{ backgroundColor: colors.secondary, color: colors.onSecondary }}
+                                style={{ backgroundColor: colors.secondary, color: colors.onSurface }}
                             >
                                 {t('select')}
                             </button>
                         </div>
                     </div>
 
-                    {/* Java Arguments */}
                     <div className="space-y-2">
                         <div>
                              <p className="font-medium text-sm flex items-center gap-2" style={{ color: colors.onSurface }}>

@@ -1,12 +1,7 @@
-// ModPackTabs - Extracted components for ModPack management
-
-// Types
 export * from "./types";
 
-// Helpers
 export * from "./helpers";
 
-// Components
 export { CreateInstanceModal } from "./CreateInstanceModal";
 export type { CreateInstanceModalProps } from "./CreateInstanceModal";
 

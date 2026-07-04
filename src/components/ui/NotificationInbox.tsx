@@ -100,8 +100,8 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
 
     const handleMarkRead = async (notificationId: string) => {
         if (!window.api?.notificationsMarkRead) return;
-        // Optimistic update locally? 
-        // We can't easily update props, so we just fire the changed event.
+        
+        
         try {
             const success = await window.api.notificationsMarkRead(notificationId);
             if (success) {
@@ -113,10 +113,10 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
     };
 
     const handleDeleteNotification = async (e: React.MouseEvent, notificationId: string) => {
-        e.stopPropagation(); // Prevent marking as read
+        e.stopPropagation();
         if (!window.api?.notificationsDelete) return;
 
-        // Optimistic UI update could be tricky with props, but let's try to just use the callback
+        
         setProcessingId(notificationId);
         try {
             const success = await window.api.notificationsDelete(notificationId);
@@ -154,7 +154,6 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
 
     return (
         <>
-            {/* Backdrop for click-outside */}
             <div
                 className="fixed inset-0 z-[99]"
                 onClick={onClose}
@@ -167,7 +166,6 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                     boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
                 }}
             >
-                {/* Header with Glass effect */}
                 <div
                     className="px-5 py-4 flex items-center justify-between relative"
                     style={{
@@ -205,7 +203,6 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                     </div>
                 </div>
 
-                {/* Tabs */}
                 <div className="flex p-2 gap-2" style={{ backgroundColor: colors.surfaceContainerHighest + '40' }}>
                     <button
                         onClick={() => { playClick(); setActiveTab('news'); }}
@@ -256,13 +253,11 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                     </button>
                 </div>
 
-                {/* Content Area */}
                 <div className={`overflow-y-auto custom-scrollbar p-2 ${isFullscreen ? 'max-h-[600px]' : 'max-h-[400px]'}`}>
                     {activeTab === 'news' && (
                         <div className="space-y-3 p-2 animate-in slide-in-from-left-4 fade-in duration-300">
                             {announcements.length > 0 ? (
                                 announcements.map((announcement: any) => {
-                                    // Dynamic Icon based on type
                                     const iconMap: Record<string, { icon: React.ReactNode; color: string; bg: string }> = {
                                         news: {
                                             icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />,
@@ -341,7 +336,6 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                                 </div>
                             ) : (
                                 <>
-                                    {/* Invitations List */}
                                     {invitations.map((invitation) => (
                                         <div
                                             key={invitation.id}
@@ -351,11 +345,9 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                                                 borderColor: colors.outline + '40'
                                             }}
                                         >
-                                            {/* Indicator Bar */}
                                             <div className="absolute left-0 top-0 bottom-0 w-1 bg-yellow-400/50" />
 
                                             <div className="flex items-start gap-4">
-                                                {/* Icon */}
                                                 <div
                                                     className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm overflow-hidden border border-white/10"
                                                     style={{ backgroundColor: colors.surfaceContainer }}
@@ -369,7 +361,6 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                                                     )}
                                                 </div>
 
-                                                {/* Content */}
                                                 <div className="flex-1 min-w-0">
                                                     <p className="text-sm font-bold truncate mb-1" style={{ color: colors.onSurface }}>
                                                         {t('invited_to_instance').replace('{instance}', invitation.instanceName)}
@@ -382,7 +373,6 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                                                         <span className="px-1.5 py-0.5 rounded bg-white/10">{invitation.role === 'admin' ? t('admin') : t('member_badge')}</span>
                                                     </p>
 
-                                                    {/* Actions */}
                                                     <div className="flex gap-2 mt-3">
                                                         <button
                                                             onClick={() => handleAccept(invitation.id)}
@@ -424,7 +414,6 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                                         </div>
                                     ))}
 
-                                    {/* Generic Notifications List */}
                                     {notifications.map((notification) => {
                                         const typeStyles: Record<string, { icon: React.ReactNode; bgColor: string; color: string }> = {
                                             instance_transfer: { icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />, bgColor: '#8b5cf620', color: '#8b5cf6' },
@@ -443,7 +432,6 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                                                 style={{ backgroundColor: colors.surface, borderColor: colors.outline + '40' }}
                                                 onClick={() => !notification.isRead && handleMarkRead(notification.id)}>
 
-                                                {/* Delete Button (Visible on hover) */}
                                                 <button
                                                     onClick={(e) => handleDeleteNotification(e, notification.id)}
                                                     className="absolute top-2 right-2 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500 hover:text-white"

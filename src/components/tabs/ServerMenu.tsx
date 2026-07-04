@@ -29,7 +29,6 @@ interface ServerMenuProps {
     setSettingsTab?: (tab: any) => void;
 }
 
-// ── Active Tab Type ──────────────────────────────────────────────────────────
 type ActiveTab = "my" | "explore" | "join";
 
 export function ServerMenu({
@@ -61,14 +60,13 @@ export function ServerMenu({
 
     const [logViewerInstanceId, setLogViewerInstanceId] = useState<string | null>(null);
     const [playingInstances, setPlayingInstances] = useState<Set<string>>(new Set());
-    // launchingId อยู่ใน global store เพื่อให้สถานะ "กำลังเปิด" รอดการสลับแท็บ
+    
     const launchingId = useLaunchStore((s) => s.launchingId);
     const setLaunchingId = useLaunchStore((s) => s.setLaunchingId);
     const [viewingInstance, setViewingInstance] = useState<Instance | null>(null);
     const [timestamp, setTimestamp] = useState(Date.now());
-    const [localInstances, setLocalInstances] = useState<Set<string>>(new Set());
+    const [localInstancesByCloudId, setLocalInstancesByCloudId] = useState<Map<string, any>>(new Map());
 
-    // ── Tab state ────────────────────────────────────────────────────────────
     const [activeTab, setActiveTabState] = useState<ActiveTab>("my");
     const [viewMode, setViewMode] = useState<"tiles" | "table" | "list">(() => {
         if (typeof window !== "undefined") {
@@ -78,24 +76,19 @@ export function ServerMenu({
     });
     const [viewMenuOpen, setViewMenuOpen] = useState(false);
 
-    // Legacy state derived from tab
     const showPublic = activeTab === "explore";
     const isJoinMode = activeTab === "join";
 
-    // ── Join state ───────────────────────────────────────────────────────────
     const [joinKey, setJoinKey] = useState("");
 
-    // ── Explore / Search state ───────────────────────────────────────────────
     const [searchQuery, setSearchQuery] = useState("");
     const [mySearchQuery, setMySearchQuery] = useState("");
     const [publicInstances, setPublicInstances] = useState<Instance[]>([]);
     const [isSearching, setIsSearching] = useState(false);
     const [isExploreJoinedExpanded, setIsExploreJoinedExpanded] = useState(false);
 
-    // ── Joined servers (flat list) ────────────────────────────────────────────
     const [joinedServers, setJoinedServers] = useState<any[]>([]);
 
-    // ── Confirm Dialog ────────────────────────────────────────────────────────
     const [confirmDialog, setConfirmDialog] = useState<{
         isOpen: boolean;
         title: string;
@@ -114,7 +107,6 @@ export function ServerMenu({
         onConfirm: () => { },
     });
 
-    // ── Join Submit ────────────────────────────────────────────────────────────
     const isAuthErrorMessage = (message: string) => (
         message.includes("401") ||
         message.includes("Unauthorized") ||
@@ -126,7 +118,7 @@ export function ServerMenu({
 
     const handleInvalidSession = async () => {
         if (session) {
-            removeAccount(session.uuid, session.type);
+            removeAccount(session.uuid, session.authType);
         }
         setAuthSession(null);
         try {
@@ -161,7 +153,6 @@ export function ServerMenu({
         }
     };
 
-    // ── Helpers ────────────────────────────────────────────────────────────────
     const getWithTimestamp = (url: string | null | undefined) => {
         if (!url) return "";
         if (url.startsWith("blob:") || url.startsWith("data:")) return url;
@@ -176,7 +167,6 @@ export function ServerMenu({
         opacity: 0,
     });
 
-    // ── Game Event Listeners ───────────────────────────────────────────────────
     useEffect(() => {
         const removeStartedListener = (window.api as any)?.onGameStarted((data: any) => {
             setPlayingInstances(prev => new Set(prev).add(data.instanceId));
@@ -189,7 +179,16 @@ export function ServerMenu({
         return () => { removeStartedListener?.(); removeStoppedListener?.(); };
     }, []);
 
-    // ── Sync running status when instances load ────────────────────────────────
+    const resolveLocalId = React.useCallback((instance: any): string => {
+        const cloudTargetId = instance.storagePath || instance.id;
+        const local = localInstancesByCloudId.get(instance.id) || (instance.storagePath && localInstancesByCloudId.get(instance.storagePath));
+        return local?.id || cloudTargetId;
+    }, [localInstancesByCloudId]);
+
+    const isServerInstalled = React.useCallback((instance: any): boolean => {
+        return localInstancesByCloudId.has(instance.id) || (!!instance.storagePath && localInstancesByCloudId.has(instance.storagePath));
+    }, [localInstancesByCloudId]);
+
     useEffect(() => {
         if (instances && (instances.owned.length > 0 || instances.member.length > 0)) {
             const sync = async () => {
@@ -197,7 +196,7 @@ export function ServerMenu({
                 const all = [...(instances.owned || []), ...(instances.member || [])];
                 for (const inst of all) {
                     try {
-                        const targetId = inst.storagePath || inst.id;
+                        const targetId = resolveLocalId(inst);
                         if (await (window.api as any)?.isGameRunning?.(targetId)) runningIds.add(targetId);
                     } catch { }
                 }
@@ -205,20 +204,19 @@ export function ServerMenu({
             };
             sync();
         }
-    }, [instances]);
+    }, [instances, resolveLocalId]);
 
     const launchCancelledRef = React.useRef(false);
 
-    // ── Play ───────────────────────────────────────────────────────────────────
     const handlePlayServer = async (e: React.MouseEvent, instance: any) => {
         e.stopPropagation();
         if (launchingId) return;
         launchCancelledRef.current = false;
-        const targetId = instance.storagePath || instance.id;
+        const targetId = resolveLocalId(instance);
         setLaunchingId(targetId);
         try {
-            if (session?.type === "catid" && session.minecraftUuid) {
-                const linkedMsAccount = accounts.find(a => a.type === "microsoft" && a.uuid === session.minecraftUuid);
+            if (session?.authType === "catid" && session.minecraftUuid) {
+                const linkedMsAccount = accounts.find(a => a.authType === "microsoft" && a.uuid === session.minecraftUuid);
                 if (linkedMsAccount) {
                     const switchedSession = await window.api?.setActiveSession?.(linkedMsAccount);
                     if (switchedSession) { setAuthSession(switchedSession as AuthSession); updateAccount(switchedSession as AuthSession); }
@@ -228,9 +226,8 @@ export function ServerMenu({
             }
             const refreshResult = await window.api?.authRefreshToken?.();
             if (refreshResult && refreshResult.ok === false) {
-                const requiresRelogin = refreshResult.requiresRelogin === true;
                 const refreshErr = typeof refreshResult.error === "string" ? refreshResult.error : "";
-                toast.error(requiresRelogin ? t('session_expired_login_server') : (refreshErr || t('session_expired_login_server')));
+                toast.error(refreshErr || t('session_expired_login_server'));
                 return;
             }
             const res = await window.api?.instancesLaunch?.(targetId);
@@ -286,9 +283,9 @@ export function ServerMenu({
         } finally { setLaunchingId(null); }
     };
 
-    // ── Stop ───────────────────────────────────────────────────────────────────
-    const handleStopServer = async (e: React.MouseEvent, instanceId: string) => {
+    const handleStopServer = async (e: React.MouseEvent, instance: any) => {
         e.stopPropagation();
+        const instanceId = resolveLocalId(instance);
         if (launchingId === instanceId) launchCancelledRef.current = true;
         try {
             await (window.api as any)?.killGame?.(instanceId);
@@ -303,7 +300,6 @@ export function ServerMenu({
         (window.api as any)?.instancesOpenFolder?.(instanceId);
     };
 
-    // ── Join (public) ──────────────────────────────────────────────────────────
     const handleJoinServer = (instance: any) => {
         setConfirmDialog({
             isOpen: true,
@@ -325,7 +321,6 @@ export function ServerMenu({
         });
     };
 
-    // ── Fetch ──────────────────────────────────────────────────────────────────
     useEffect(() => { fetchInstances(); }, [session, refreshTrigger]);
 
     const fetchInstances = async () => {
@@ -363,7 +358,17 @@ export function ServerMenu({
             const unique = all.filter((v: any, i: number, a: any[]) => a.findIndex((t: any) => t.id === v.id) === i);
             setJoinedServers(unique);
 
-            if (localList) setLocalInstances(new Set(localList.map((i: any) => i.id)));
+            // Cloud-backed servers are matched by cloudId (a locally installed
+            // instance's own id is a fresh generated one, unrelated to the
+            // server's storagePath/id) — falling back to id keeps purely local
+            // instances (no cloudId) matchable too.
+            if (localList) {
+                const byCloudId = new Map<string, any>();
+                for (const inst of localList as any[]) {
+                    byCloudId.set(inst.cloudId || inst.id, inst);
+                }
+                setLocalInstancesByCloudId(byCloudId);
+            }
         } catch (e: any) {
             setInstances({ owned: [], member: [] });
             setJoinedServers([]);
@@ -371,14 +376,13 @@ export function ServerMenu({
         } finally { setLoading(false); }
     };
 
-    // ── Public / Explore ───────────────────────────────────────────────────────
     const fetchPublicInstances = async (query: string = "") => {
         setIsSearching(true);
         try {
             const apiUrl = (window as any).API_URL;
             const url = new URL(`${apiUrl}/instances/public`);
             if (query) url.searchParams.append("q", query);
-            const token = session?.type === "catid" ? (session.apiToken || session.accessToken) : session?.apiToken;
+            const token = session?.authType === "catid" ? (session.apiToken || session.accessToken) : session?.apiToken;
             const res = await fetch(url.toString(), { headers: token ? { Authorization: `Bearer ${token}` } : undefined });
             if (res.ok) {
                 const data = await res.json();
@@ -398,7 +402,6 @@ export function ServerMenu({
         fetchPublicInstances(searchQuery);
     };
 
-    // ── Install ────────────────────────────────────────────────────────────────
     const handleInstall = async (e: React.MouseEvent, instance: any) => {
         e.stopPropagation();
         try {
@@ -423,7 +426,6 @@ export function ServerMenu({
         }
     };
 
-    // ── Leave ──────────────────────────────────────────────────────────────────
     const handleLeaveServer = (e: React.MouseEvent, instance: any) => {
         e.stopPropagation();
         setConfirmDialog({
@@ -450,7 +452,6 @@ export function ServerMenu({
         setLogViewerInstanceId(instance.id);
     };
 
-    // ── Instance Click ─────────────────────────────────────────────────────────
     const handleInstanceClick = (instance: any) => {
         const serverObj: Server = {
             id: instance.id,
@@ -466,7 +467,6 @@ export function ServerMenu({
         onInstanceSelect?.(instance);
     };
 
-    // ── Displayed instances ────────────────────────────────────────────────────
     const allMyInstances = [...(instances?.owned || []), ...(instances?.member || [])];
 
     const displayedInstances = showPublic
@@ -486,12 +486,8 @@ export function ServerMenu({
     const myServerCount = (instances?.owned?.length ?? 0) + (instances?.member?.length ?? 0);
     const isSessionError = !!apiError && isAuthErrorMessage(apiError);
 
-    // ─────────────────────────────────────────────────────────────────────────
-    //  RENDER
-    // ─────────────────────────────────────────────────────────────────────────
     return (
         <div className="h-full flex flex-col">
-            {/* LiveLog Viewer */}
             <LiveLog
                 colors={colors}
                 isOpen={logViewerInstanceId !== null}
@@ -499,7 +495,6 @@ export function ServerMenu({
                 instanceId={logViewerInstanceId}
             />
 
-            {/* Server Detail View */}
             {viewingInstance ? (
                 <ServerDetailView
                     instance={viewingInstance}
@@ -509,9 +504,9 @@ export function ServerMenu({
                     onInstall={handleInstall}
                     onJoin={handleJoinServer}
                     onViewLogs={handleViewLogs}
-                    isInstalled={localInstances.has(viewingInstance.storagePath || viewingInstance.id)}
-                    isPlaying={playingInstances.has(viewingInstance.storagePath || viewingInstance.id)}
-                    isLaunching={launchingId === (viewingInstance.storagePath || viewingInstance.id)}
+                    isInstalled={isServerInstalled(viewingInstance)}
+                    isPlaying={playingInstances.has(resolveLocalId(viewingInstance))}
+                    isLaunching={launchingId === resolveLocalId(viewingInstance)}
                     isMember={joinedServers.some(s => s.id === viewingInstance.id)}
                     colors={colors}
                     t={t}
@@ -520,10 +515,8 @@ export function ServerMenu({
             ) : (
                 <div className="h-full flex flex-col animate-fade-in">
 
-                    {/* ── HEADER ──────────────────────────────────────────── */}
                     <div className="shrink-0 mb-5 animate-fade-in relative z-20">
                         <div className="flex items-center justify-between gap-3 mb-4">
-                            {/* Page Title */}
                             <div>
                                 <h2 className="text-2xl font-black tracking-tight" style={{ color: colors.onSurface }}>
                                     {activeTab === "join"
@@ -541,9 +534,7 @@ export function ServerMenu({
                                 </p>
                             </div>
 
-                            {/* Right actions: Refresh + Join button */}
                             <div className="flex items-center gap-2 shrink-0">
-                                {/* Refresh */}
                                 <button
                                     type="button"
                                     onClick={() => { playClick(); fetchInstances(); }}
@@ -554,7 +545,6 @@ export function ServerMenu({
                                     <Icons.Refresh className="w-4 h-4" />
                                 </button>
 
-                                {/* Join with Key button */}
                                 <button
                                     type="button"
                                     onClick={() => {
@@ -583,9 +573,7 @@ export function ServerMenu({
                             </div>
                         </div>
 
-                        {/* ── TAB BAR ───────────────────────────────────────── */}
                         <div className="flex items-center gap-1 p-1 rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
-                            {/* My Servers Tab */}
                             <button
                                 type="button"
                                 onClick={() => { playClick(); setActiveTabState("my"); }}
@@ -613,7 +601,6 @@ export function ServerMenu({
                                 )}
                             </button>
 
-                            {/* Explore Tab */}
                             <button
                                 type="button"
                                 onClick={() => { playClick(); setActiveTabState("explore"); }}
@@ -631,7 +618,6 @@ export function ServerMenu({
                             </button>
                         </div>
 
-                        {/* ── MY SERVERS SEARCH BAR & VIEW SWITCHER ─────────── */}
                         {activeTab === "my" && (
                             <div className="flex items-center gap-2 mt-3 animate-fade-in">
                                 <div className="relative flex-1">
@@ -667,7 +653,6 @@ export function ServerMenu({
                                     )}
                                 </div>
 
-                                {/* View Switcher Dropdown */}
                                 <div className="relative shrink-0">
                                     <button
                                         type="button"
@@ -691,12 +676,10 @@ export function ServerMenu({
 
                                     {viewMenuOpen && (
                                         <>
-                                            {/* Click outside backdrop */}
                                             <div 
                                                 className="fixed inset-0 z-40" 
                                                 onClick={() => setViewMenuOpen(false)}
                                             />
-                                            {/* Dropdown Menu */}
                                             <div 
                                                 className="absolute right-0 mt-1.5 z-50 min-w-[140px] rounded-xl shadow-xl border p-1 flex flex-col gap-0.5 animate-fade-in"
                                                 style={{ 
@@ -705,7 +688,6 @@ export function ServerMenu({
                                                     color: colors.onSurface
                                                 }}
                                             >
-                                                {/* Tiles option */}
                                                 <button
                                                     type="button"
                                                     onClick={() => {
@@ -723,7 +705,6 @@ export function ServerMenu({
                                                     {viewMode === "tiles" && <Icons.Check className="w-3.5 h-3.5 text-emerald-500" />}
                                                 </button>
 
-                                                {/* Table option */}
                                                 <button
                                                     type="button"
                                                     onClick={() => {
@@ -741,7 +722,6 @@ export function ServerMenu({
                                                     {viewMode === "table" && <Icons.Check className="w-3.5 h-3.5 text-emerald-500" />}
                                                 </button>
 
-                                                {/* List option */}
                                                 <button
                                                     type="button"
                                                     onClick={() => {
@@ -765,7 +745,6 @@ export function ServerMenu({
                             </div>
                         )}
 
-                        {/* ── EXPLORE SEARCH & FILTER ROW ──────────────────────── */}
                         {activeTab === "explore" && (
                             <div className="flex flex-col gap-3 mt-3 animate-fade-in">
                                 <div className="flex items-center gap-2">
@@ -822,7 +801,6 @@ export function ServerMenu({
                                         </span>
                                     </button>
 
-                                    {/* View Switcher Dropdown */}
                                     <div className="relative shrink-0">
                                         <button
                                             type="button"
@@ -846,12 +824,10 @@ export function ServerMenu({
 
                                         {viewMenuOpen && (
                                             <>
-                                                {/* Click outside backdrop */}
                                                 <div 
                                                     className="fixed inset-0 z-40" 
                                                     onClick={() => setViewMenuOpen(false)}
                                                 />
-                                                {/* Dropdown Menu */}
                                                 <div 
                                                     className="absolute right-0 mt-1.5 z-50 min-w-[140px] rounded-xl shadow-xl border p-1 flex flex-col gap-0.5 animate-fade-in"
                                                     style={{ 
@@ -860,7 +836,6 @@ export function ServerMenu({
                                                         color: colors.onSurface
                                                     }}
                                                 >
-                                                    {/* Tiles option */}
                                                     <button
                                                         type="button"
                                                         onClick={() => {
@@ -878,7 +853,6 @@ export function ServerMenu({
                                                         {viewMode === "tiles" && <Icons.Check className="w-3.5 h-3.5 text-emerald-500" />}
                                                     </button>
 
-                                                    {/* Table option */}
                                                     <button
                                                         type="button"
                                                         onClick={() => {
@@ -896,7 +870,6 @@ export function ServerMenu({
                                                         {viewMode === "table" && <Icons.Check className="w-3.5 h-3.5 text-emerald-500" />}
                                                     </button>
 
-                                                    {/* List option */}
                                                     <button
                                                         type="button"
                                                         onClick={() => {
@@ -919,7 +892,6 @@ export function ServerMenu({
                                     </div>
                                 </div>
 
-                                {/* Expanded List Content */}
                                 {isExploreJoinedExpanded && (
                                     <div 
                                         className={cn(
@@ -943,8 +915,8 @@ export function ServerMenu({
                                         )}
                                         {joinedServers.filter((inst: any) => !!inst.isPublic).length > 0 ? (
                                             joinedServers.filter((inst: any) => !!inst.isPublic).map((instance: any, index: number) => {
-                                                const targetId = instance.storagePath || instance.id;
-                                                const isInstalled = localInstances.has(targetId);
+                                                const targetId = resolveLocalId(instance);
+                                                const isInstalled = isServerInstalled(instance);
                                                 return (
                                                     <ServerItem
                                                         key={`joined-${instance.id}`}
@@ -985,7 +957,6 @@ export function ServerMenu({
                             </div>
                         )}
 
-                        {/* ── JOIN FORM ───────────────────────────────────────── */}
                         {activeTab === "join" && (
                             <form onSubmit={handleJoinSubmit} className="relative mt-3 animate-fade-in flex gap-2">
                                 <div className="relative flex-1">
@@ -1023,8 +994,6 @@ export function ServerMenu({
                         )}
                     </div>
 
-                    {/* ── CONTENT AREA ─────────────────────────────────────── */}
-                    {/* Not logged in */}
                     {!session ? (
                         <div className="flex-1 flex flex-col items-center justify-center gap-5 animate-fade-in">
                             <div className="w-20 h-20 rounded-3xl flex items-center justify-center" style={{ backgroundColor: colors.surfaceContainerHighest }}>
@@ -1036,7 +1005,6 @@ export function ServerMenu({
                             </div>
                         </div>
                     ) : (loading || isSearching) ? (
-                        /* Loading skeleton */
                         <div className="flex flex-col gap-2 pb-4">
                             {Array.from({ length: 4 }).map((_, i) => (
                                 <div
@@ -1048,14 +1016,11 @@ export function ServerMenu({
                                         animationDelay: `${Math.min(i * 40, 150)}ms`
                                     }}
                                 >
-                                    {/* Icon skeleton */}
                                     <div className="w-16 h-16 rounded-xl shrink-0" style={{ backgroundColor: colors.surfaceContainerHighest }} />
-                                    {/* Text skeleton */}
                                     <div className="flex-1 space-y-2">
                                         <div className="h-4 rounded-lg" style={{ width: `${40 + (i % 3) * 12}%`, backgroundColor: colors.surfaceContainerHighest }} />
                                         <div className="h-3 rounded-md" style={{ width: `${55 + (i % 2) * 15}%`, backgroundColor: colors.surfaceContainerHighest }} />
                                     </div>
-                                    {/* Button skeleton */}
                                     <div className="flex items-center gap-2 shrink-0">
                                         <div className="w-20 h-10 rounded-xl" style={{ backgroundColor: colors.surfaceContainerHighest }} />
                                     </div>
@@ -1063,7 +1028,6 @@ export function ServerMenu({
                             ))}
                         </div>
                     ) : displayedInstances.length === 0 ? (
-                        /* Empty state */
                         <div className="flex-1 flex flex-col items-center justify-center gap-5 animate-fade-in">
                             <div className="w-20 h-20 rounded-3xl flex items-center justify-center" style={{ backgroundColor: colors.surfaceContainerHighest }}>
                                 {apiError ? (
@@ -1106,7 +1070,6 @@ export function ServerMenu({
                             </div>
                         </div>
                     ) : (
-                        /* Server Grid */
                         <div className="flex-1 flex flex-col min-h-0">
                             {viewMode === "table" && (
                                 <div 
@@ -1126,8 +1089,8 @@ export function ServerMenu({
                                     : "flex flex-col gap-2"
                             )}>
                                 {displayedInstances.map((instance: any, index: number) => {
-                                    const targetId = instance.storagePath || instance.id;
-                                    const isInstalled = localInstances.has(targetId);
+                                    const targetId = resolveLocalId(instance);
+                                    const isInstalled = isServerInstalled(instance);
                                     const isMember = joinedServers.some(s => s.id === instance.id);
                                     return (
                                         <ServerItem
@@ -1163,7 +1126,6 @@ export function ServerMenu({
                         </div>
                     )}
 
-                    {/* Confirm Dialog */}
                     <ConfirmDialog
                         isOpen={confirmDialog.isOpen}
                         onClose={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}

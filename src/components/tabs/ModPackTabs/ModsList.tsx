@@ -1,7 +1,3 @@
-// ========================================
-// Mods List Component
-// ========================================
-
 import React, { useState, useEffect } from "react";
 import { Icons } from "../../ui/Icons";
 import { Skeleton } from "../../ui/Skeleton";
@@ -112,7 +108,6 @@ export function ModsList({
 
         playClick();
         
-        // Use Promise.all to toggle all selected mods concurrently
         const togglePromises = filenames.map(async (filename) => {
             const mod = mods.find(m => m.filename === filename);
             if (mod && mod.enabled !== enabled) {
@@ -131,7 +126,6 @@ export function ModsList({
         const filenames = Array.from(selectedFilenames);
         if (filenames.length === 0) return;
 
-        // Simple confirmation
         if (confirm(`${t('confirm_delete_multiple' as any).replace('{count}', String(filenames.length))}`)) {
             playClick();
             await runBulkDelete(filenames, async (filename, options) => {
@@ -155,7 +149,6 @@ export function ModsList({
 
 
 
-    // Reset page when search changes
     useEffect(() => {
         setPage(1);
     }, [searchQuery]);
@@ -173,9 +166,8 @@ export function ModsList({
 
     return (
         <>
-            {/* Header Controls - Unified Row */}
             <div className="flex items-center justify-between gap-4 mb-4 w-full overflow-x-auto no-scrollbar pb-1">
-                {/* Left Side: Select All & Title OR Pagination */}
+                
                 <div className="flex items-center gap-4 shrink-0">
                     <button
                         onClick={() => handleSelectAll(filteredMods)}
@@ -226,9 +218,7 @@ export function ModsList({
                     )}
                 </div>
 
-                {/* Right Side: Actions (Search, Install, Refresh) */}
                 <div className="flex items-center gap-2 shrink-0 max-w-full overflow-hidden">
-                    {/* Search */}
                     <div
                         className="min-h-11 flex items-center gap-2 px-4 lg:px-5 py-2.5 rounded-xl transition-colors focus-within:ring-1 focus-within:ring-white/20 min-w-0 flex-1 lg:flex-none"
                         style={{ backgroundColor: colors.surfaceContainerHighest }}
@@ -276,7 +266,6 @@ export function ModsList({
                 </div>
             </div>
 
-            {/* Lock Info Banner for Server Managed Instances */}
             {isServerManaged && showLockInfo && (
                 <div className="group relative flex items-center gap-3 p-3 lg:p-4 mb-4 rounded-xl border-l-4 pr-32"
                      style={{ 
@@ -328,7 +317,6 @@ export function ModsList({
                 </div>
             )}
 
-            {/* Content Area */}
             {filteredMods.length === 0 && !isLoading ? (
                 <div className="text-center py-12 rounded-2xl" style={{ backgroundColor: colors.surfaceContainer }}>
                     <Icons.Box className="w-12 h-12 mx-auto mb-3" style={{ color: colors.onSurfaceVariant, opacity: 0.5 }} />
@@ -373,7 +361,6 @@ export function ModsList({
                 </div>
             )}
 
-            {/* Bottom Pagination */}
             {!isLoading && totalPages > 1 && (
                 <div className="flex justify-center mt-6 animate-fade-in" style={{ animationDelay: '300ms' }}>
                     <div className="flex items-center gap-2 p-1.5 rounded-2xl"
@@ -415,7 +402,6 @@ export function ModsList({
                     </div>
                 )}
 
-            {/* Floating Selection Bar */}
             {selectedFilenames.size > 0 && (
                 <Portal>
                     <div 

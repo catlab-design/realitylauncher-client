@@ -1,8 +1,6 @@
-// ========================================
-// Shared filter option lists for the Explore tab and InstanceContentBrowser.
-// IDs double as i18n key suffixes (e.g. "category.adventure", "loader.fabric").
-// Labels are resolved at render time via t().
-// ========================================
+
+
+
 
 import fabricIcon from "../../../assets/fabric.svg";
 import forgeIcon from "../../../assets/forge.svg";
@@ -16,9 +14,9 @@ export interface CategoryOption {
 
 export interface LoaderOption {
     id: string;
-    /** SVG asset URL — preferred over a Font Awesome glyph when present. */
+    
     svg?: string;
-    /** Fallback Font Awesome class. */
+    
     icon: string;
     color: string;
 }
@@ -55,8 +53,8 @@ export const CATEGORIES: CategoryOption[] = [
     { id: "worldgen", icon: "fa-solid fa-earth-americas" },
 ];
 
-// Loaders with SVG assets — fabric/forge/neoforge/quilt come from modrinth-style SVGs in /assets.
-// LiteLoader/ModLoader/Rift ถูกตัดออกจากตัวกรองเพราะเลิกใช้แล้ว (legacy/ไม่รองรับ)
+
+
 export const LOADERS: LoaderOption[] = [
     { id: "fabric", svg: (fabricIcon as any).src, icon: "fa-solid fa-diamond", color: "#dbb168" },
     { id: "forge", svg: (forgeIcon as any).src, icon: "fa-solid fa-hammer", color: "#5a7fa0" },

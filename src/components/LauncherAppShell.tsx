@@ -1,4 +1,5 @@
 import React, { type Dispatch, type SetStateAction } from "react";
+import { createPortal } from "react-dom";
 import toast, { Toaster } from "react-hot-toast";
 import { AnimatePresence, motion } from "framer-motion";
 
@@ -6,13 +7,157 @@ import { Sidebar } from "./layout/Sidebar";
 import { ErrorBoundary as UIErrorBoundary } from "./ui/ErrorBoundary";
 import { LauncherAppTitleBar } from "./LauncherAppTitleBar";
 import { Home } from "./tabs/Home";
-import { About, AdminPanel, Explore, ModPack, ServerMenu, SettingsDialog, TabLoadingFallback, Wardrobe } from "./LauncherAppLazyTabs";
-import { InstallProgressModal } from "./tabs/ModPackTabs/InstallProgressModal";
+import { About, AdminPanel, Explore, ModPack, ServerMenu, SettingsDialog, TabLoadingFallback, Wardrobe, preloadTabs } from "./LauncherAppLazyTabs";
 import type { AuthSession, GameInstance, LauncherConfig, NewsItem, Server } from "../types/launcher";
 import type { TranslationKey } from "../i18n/translations";
 
 type TranslationFn = (key: TranslationKey, params?: Record<string, any>) => string;
 type SettingsTabId = "account" | "appearance" | "game" | "connections" | "language" | "launcher" | "resources" | "java" | "update";
+
+
+
+
+
+function ToastCountdownBar({ duration, color, paused }: { duration: number; color: string; paused: boolean }) {
+  return (
+    <span
+      className="pointer-events-none absolute bottom-0 left-0 h-[3px] w-full origin-left"
+      style={{
+        backgroundColor: color,
+        animation: `toast-countdown ${duration}ms linear forwards`,
+        animationPlayState: paused ? "paused" : "running",
+      }}
+    />
+  );
+}
+
+function ToastCopyButton({ text, color }: { text: string; color: string }) {
+  const [copied, setCopied] = React.useState(false);
+  if (!text) return null;
+  return (
+    <button
+      onClick={() => {
+        navigator.clipboard.writeText(text).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        });
+      }}
+      title="คัดลอก"
+      className="shrink-0 p-0.5 rounded-lg text-opacity-60 hover:text-opacity-100 hover:bg-white/5 transition-all cursor-pointer"
+      style={{ color }}
+    >
+      {copied ? (
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      ) : (
+        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+/// Minimized install/export progress rendered as a toast entry (same portal,
+/// stacking, and gutter spacing as the notification toasts) instead of a
+/// separately-positioned fixed div — the two used to sit at the exact same
+/// bottom-right corner and overlap whenever both were on screen at once.
+function ProgressToastCard({
+  colors,
+  visible,
+  percent,
+  current,
+  total,
+  title,
+  message,
+  onCancel,
+  cancelLabel,
+}: {
+  colors: any;
+  visible: boolean;
+  percent?: number;
+  current?: number;
+  total?: number;
+  title: string;
+  message: string;
+  onCancel?: () => void;
+  cancelLabel?: string;
+}) {
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, scale: 0.85, y: 30 }}
+      animate={{
+        opacity: visible ? 1 : 0,
+        scale: visible ? 1 : 0.85,
+        y: visible ? 0 : 20,
+      }}
+      exit={{ opacity: 0, scale: 0.85, y: 20 }}
+      transition={{ type: "spring", stiffness: 160, damping: 15, mass: 0.8 }}
+      className="w-[350px] rounded-md shadow-2xl overflow-hidden"
+      style={{ backgroundColor: colors.surfaceContainerHigh || colors.surfaceContainer || "#1e1e1e" }}
+    >
+      <div className="p-4 flex flex-col gap-2.5">
+        <div className="flex items-center gap-3">
+          <div
+            className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+            style={{ backgroundColor: colors.surfaceContainerHighest }}
+          >
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2" style={{ borderColor: colors.secondary }} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h4 className="font-medium text-sm truncate" style={{ color: colors.onSurface }}>
+              {title}
+            </h4>
+            <p className="text-xs truncate" style={{ color: colors.onSurfaceVariant }} title={message}>
+              {message}
+            </p>
+          </div>
+          {percent !== undefined && (
+            <span className="text-xs font-semibold shrink-0" style={{ color: colors.onSurfaceVariant }}>
+              {percent}%
+            </span>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-1">
+          {total ? (
+            <span className="text-[11px]" style={{ color: colors.onSurfaceVariant }}>
+              {current ?? 0} / {total}
+            </span>
+          ) : null}
+          <div className="h-1.5 rounded-full overflow-hidden w-full relative" style={{ backgroundColor: colors.surfaceContainerHighest }}>
+            {percent !== undefined ? (
+              <div
+                className="h-full rounded-full transition-all duration-300 ease-out"
+                style={{ width: `${percent}%`, backgroundColor: colors.secondary }}
+              />
+            ) : (
+              <div
+                className="absolute inset-y-0 left-0 w-1/3 animate-[shimmer_1.5s_infinite]"
+                style={{ backgroundColor: colors.secondary }}
+              />
+            )}
+          </div>
+        </div>
+
+        {onCancel && (
+          <div className="flex justify-end -mb-1">
+            <button
+              onClick={onCancel}
+              className="text-xs font-medium px-2.5 py-1 rounded-lg hover:bg-red-500/10 active:scale-95 transition-all"
+              style={{ color: colors.error || "#ef4444" }}
+            >
+              {cancelLabel}
+            </button>
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
 
 interface LauncherAppShellProps {
   colors: any;
@@ -60,29 +205,122 @@ interface LauncherAppShellProps {
   adminToken: string | null;
   isExporting: boolean;
   exportProgress: any;
-  isExportMinimized: boolean;
-  setExportMinimized: (value: boolean) => void;
   handleCancelExport: (instanceId: string) => void | Promise<void>;
   exportingInstanceId: string | null;
   isInstalling: boolean;
   installProgress: any;
-  isInstallMinimized: boolean;
-  setInstallMinimized: (value: boolean) => void;
   operationType: string | null;
   handleCancelInstall: () => void | Promise<void>;
   handleRepair: (instanceId: string) => void | Promise<void>;
 }
 
 export function LauncherAppShell({
-  colors, titleBarColors, config, session, accounts, selectedInstance, inboxOpen, setInboxOpen, announcements, userNotifications, unreadCount, setInvitations, setServerRefreshTrigger, setNotificationRefreshTrigger, accountDropdownOpen, setAccountDropdownOpen, t, selectAccount, removeAccountFromList, setLoginDialogOpen, setLinkCatIDOpen, handleLinkMicrosoft, handleLogout, updateConfig, contentTab, settingsDialogOpen, onCloseSettingsDialog, news, servers, selectedServer, setSelectedServer, setSelectedInstance, setActiveTab, serverRefreshTrigger, settingsTab, setSettingsTab, setImportModpackOpen, handleShowConfirm, handleBrowseJava, handleBrowseMinecraftDir, handleUnlink, isAdmin, adminToken, isExporting, exportProgress, isExportMinimized, setExportMinimized, handleCancelExport, exportingInstanceId, isInstalling, installProgress, isInstallMinimized, setInstallMinimized, operationType, handleCancelInstall, handleRepair,
+  colors, titleBarColors, config, session, accounts, selectedInstance, inboxOpen, setInboxOpen, announcements, userNotifications, unreadCount, setInvitations, setServerRefreshTrigger, setNotificationRefreshTrigger, accountDropdownOpen, setAccountDropdownOpen, t, selectAccount, removeAccountFromList, setLoginDialogOpen, setLinkCatIDOpen, handleLinkMicrosoft, handleLogout, updateConfig, contentTab, settingsDialogOpen, onCloseSettingsDialog, news, servers, selectedServer, setSelectedServer, setSelectedInstance, setActiveTab, serverRefreshTrigger, settingsTab, setSettingsTab, setImportModpackOpen, handleShowConfirm, handleBrowseJava, handleBrowseMinecraftDir, handleUnlink, isAdmin, adminToken, isExporting, exportProgress, handleCancelExport, exportingInstanceId, isInstalling, installProgress, operationType, handleCancelInstall, handleRepair,
 }: LauncherAppShellProps) {
   const [shouldRenderSettingsDialog, setShouldRenderSettingsDialog] = React.useState(false);
+  const [hoveredToastId, setHoveredToastId] = React.useState<string | null>(null);
+  
+  React.useEffect(() => {
+    preloadTabs();
+  }, []);
+
   React.useEffect(() => {
     if (settingsDialogOpen) setShouldRenderSettingsDialog(true);
   }, [settingsDialogOpen]);
 
+  // Install/export progress renders as a toast entry (same portal, stacking,
+  // and gutter spacing as notification toasts) instead of a blocking modal —
+  // these keep a slot alive in react-hot-toast's own queue so its
+  // stacking/gutter math accounts for it.
+  //
+  // react-hot-toast renders a `custom` toast by resolving its *message*
+  // (`resolveValue(message, toast)`) and never invokes the <Toaster> children
+  // render-prop for it — that render-prop only runs for built-in toast types.
+  // So the progress card has to BE the custom toast's message. We pass a
+  // function-message that reads live values off a ref (updated every render),
+  // and toggle the slot on the boolean transition only so the enter animation
+  // isn't reset ~60×/install.
+  const progressRenderRef = React.useRef<{
+    install: (visible: boolean) => React.ReactElement | null;
+    export: (visible: boolean) => React.ReactElement | null;
+  }>({ install: () => null, export: () => null });
+
+  progressRenderRef.current.install = (visible: boolean) => {
+    if (!(isInstalling && installProgress)) return null;
+    const title =
+      operationType === "repair"
+        ? t("repairing_instance")
+        : operationType === "sync"
+          ? t("checking_data")
+          : t("installing");
+    const message = installProgress.type
+      ? t(installProgress.type as any, {
+          filename: installProgress.filename,
+          current: installProgress.current,
+          total: installProgress.total,
+        } as any)
+      : installProgress.task || installProgress.message || "";
+    return (
+      <ProgressToastCard
+        colors={colors}
+        visible={visible}
+        percent={installProgress.percent}
+        current={installProgress.current}
+        total={installProgress.total}
+        title={title}
+        message={message}
+        onCancel={handleCancelInstall}
+        cancelLabel={t("cancel")}
+      />
+    );
+  };
+
+  progressRenderRef.current.export = (visible: boolean) => {
+    if (!(isExporting && exportProgress)) return null;
+    return (
+      <ProgressToastCard
+        colors={colors}
+        visible={visible}
+        percent={exportProgress.percent}
+        current={exportProgress.current}
+        total={exportProgress.total}
+        title={t("exporting" as any)}
+        message={exportProgress.message}
+        onCancel={() => handleCancelExport(exportingInstanceId || "")}
+        cancelLabel={t("cancel")}
+      />
+    );
+  };
+
+  const installToastActive = isInstalling && !!installProgress;
+  React.useEffect(() => {
+    const id = "install-progress-toast";
+    if (installToastActive) {
+      toast.custom((tItem) => progressRenderRef.current.install(tItem.visible), {
+        id,
+        duration: Infinity,
+      });
+    } else {
+      toast.dismiss(id);
+    }
+  }, [installToastActive]);
+
+  const exportToastActive = isExporting && !!exportProgress;
+  React.useEffect(() => {
+    const id = "export-progress-toast";
+    if (exportToastActive) {
+      toast.custom((tItem) => progressRenderRef.current.export(tItem.visible), {
+        id,
+        duration: Infinity,
+      });
+    } else {
+      toast.dismiss(id);
+    }
+  }, [exportToastActive]);
+
   return (
     <>
+      {createPortal(
       <Toaster
         position="bottom-right"
         gutter={10}
@@ -90,7 +328,7 @@ export function LauncherAppShell({
       >
         {(toastItem) => {
           const messageText = typeof toastItem.message === "function" ? toastItem.message(toastItem) : toastItem.message;
-          
+
           const getBorderLeftColor = () => {
             if (toastItem.type === "success") return "#22c55e";
             if (toastItem.type === "error") return "#ef4444";
@@ -171,13 +409,17 @@ export function LauncherAppShell({
                 damping: 15,
                 mass: 0.8
               }}
-              className="flex items-start gap-3.5 p-4 rounded-xl shadow-2xl border max-w-sm w-[350px] relative overflow-hidden"
+              className="flex items-start gap-3.5 p-4 pl-5 rounded-md shadow-2xl max-w-sm w-[350px] relative overflow-hidden"
               style={{
                 backgroundColor: colors.surfaceContainerHigh || colors.surfaceContainer || "#1e1e1e",
-                borderColor: `${colors.outline}15` || "rgba(255, 255, 255, 0.08)",
-                borderLeft: `4px solid ${getBorderLeftColor()}`,
               }}
+              onMouseEnter={() => setHoveredToastId(toastItem.id)}
+              onMouseLeave={() => setHoveredToastId((prev) => (prev === toastItem.id ? null : prev))}
             >
+              <span
+                className="pointer-events-none absolute top-0 bottom-0 left-0 w-1"
+                style={{ backgroundColor: getBorderLeftColor() }}
+              />
               <motion.div
                 initial={{ scale: 0, rotate: -10 }}
                 animate={{ scale: 1, rotate: 0 }}
@@ -206,6 +448,9 @@ export function LauncherAppShell({
                 </div>
               </div>
               {toastItem.type !== "loading" && (
+                <ToastCopyButton text={typeof messageText === "string" ? messageText : ""} color={colors.onSurfaceVariant} />
+              )}
+              {toastItem.type !== "loading" && (
                 <button
                   onClick={() => toast.dismiss(toastItem.id)}
                   className="shrink-0 p-0.5 rounded-lg text-opacity-60 hover:text-opacity-100 hover:bg-white/5 transition-all cursor-pointer"
@@ -217,10 +462,19 @@ export function LauncherAppShell({
                   </svg>
                 </button>
               )}
+              {toastItem.type !== "loading" && (
+                <ToastCountdownBar
+                  duration={toastItem.duration ?? 4000}
+                  color={getBorderLeftColor()}
+                  paused={hoveredToastId === toastItem.id}
+                />
+              )}
             </motion.div>
           );
         }}
-      </Toaster>
+      </Toaster>,
+      document.body
+      )}
 
       <div className={`flex-1 flex flex-col overflow-hidden ml-app-shell ${config.rainbowMode ? "rainbow-mode" : ""}`}>
         <LauncherAppTitleBar
@@ -251,7 +505,14 @@ export function LauncherAppShell({
                     {contentTab === "explore" && <UIErrorBoundary><Explore colors={colors} config={config} /></UIErrorBoundary>}
                     {contentTab === "admin" && isAdmin && adminToken && <AdminPanel colors={colors} adminToken={adminToken} language={config.language} />}
                     {contentTab === "about" && <About colors={colors} config={config} />}
-                    {contentTab === "wardrobe" && <Wardrobe colors={colors} selectedInstance={selectedInstance} />}
+                    {contentTab === "wardrobe" && (
+                      <Wardrobe
+                        colors={colors}
+                        selectedInstance={selectedInstance}
+                        onLinkMicrosoft={handleLinkMicrosoft}
+                        setLoginDialogOpen={setLoginDialogOpen}
+                      />
+                    )}
                   </React.Suspense>
                 </motion.div>
               </AnimatePresence>
@@ -285,166 +546,6 @@ export function LauncherAppShell({
         </React.Suspense>
       )}
 
-      {isExporting && exportProgress && !isExportMinimized && (
-        <InstallProgressModal
-          colors={colors}
-          installProgress={exportProgress}
-          title={t("export_modpack")}
-          isBytes={true}
-          onCancel={() => handleCancelExport(exportingInstanceId || "")}
-          onMinimize={() => setExportMinimized(true)}
-          language={config.language}
-        />
-      )}
-
-      {isExporting && exportProgress && isExportMinimized && (
-        <div
-          className="fixed bottom-6 right-6 z-50 w-80 rounded-2xl shadow-2xl overflow-hidden border border-white/10 animate-fade-in-up cursor-pointer transition-transform hover:scale-105"
-          style={{ backgroundColor: colors.surfaceContainer }}
-          onClick={() => setExportMinimized(false)}
-        >
-          <div className="p-4 flex items-center gap-3">
-            <div
-              className="w-10 h-10 rounded-full flex items-center justify-center relative shrink-0"
-              style={{ backgroundColor: colors.surfaceContainerHighest }}
-            >
-              {exportProgress.percent !== undefined ? (
-                <svg className="w-10 h-10 -rotate-90 transform" viewBox="0 0 36 36">
-                  <path
-                    className="text-gray-200 opacity-20"
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                  />
-                  <path
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    fill="none"
-                    stroke={colors.secondary}
-                    strokeWidth="3"
-                    strokeDasharray={`${exportProgress.percent}, 100`}
-                  />
-                </svg>
-              ) : (
-                <div
-                  className="animate-spin rounded-full h-5 w-5 border-b-2"
-                  style={{ borderColor: colors.secondary }}
-                />
-              )}
-              <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold" style={{ color: colors.onSurface }}>
-                {exportProgress.percent}%
-              </div>
-            </div>
-            <div className="flex-1 min-w-0">
-              <h4 className="font-medium text-sm truncate" style={{ color: colors.onSurface }}>
-                {t("exporting" as any)}
-              </h4>
-              <p className="text-xs truncate" style={{ color: colors.onSurfaceVariant }}>
-                {exportProgress.message}
-              </p>
-            </div>
-            <button
-              onClick={(event) => {
-                event.stopPropagation();
-                setExportMinimized(false);
-              }}
-              className="p-2 rounded-lg hover:bg-white/10"
-              title="Expand"
-            >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" style={{ color: colors.onSurfaceVariant }}>
-                <path d="M12 8l-6 6 1.41 1.41L12 10.83l4.59 4.58L18 14z" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {isInstalling && installProgress && !isInstallMinimized && (
-        <InstallProgressModal
-          colors={colors}
-          installProgress={installProgress}
-          title={operationType === "repair" ? t("repairing_instance") : undefined}
-          onCancel={handleCancelInstall}
-          onMinimize={() => setInstallMinimized(true)}
-          disableBackdropClick={operationType === "sync" || operationType === "repair"}
-          language={config.language}
-        />
-      )}
-
-      {isInstalling && installProgress && isInstallMinimized && (
-        <div
-          className="fixed bottom-6 right-6 z-50 w-80 rounded-2xl shadow-2xl overflow-hidden border border-white/10 animate-fade-in-up cursor-pointer transition-transform hover:scale-105"
-          style={{ backgroundColor: colors.surfaceContainer }}
-          onClick={() => setInstallMinimized(false)}
-        >
-          <div className="p-4 flex items-center gap-3">
-            <div
-              className="w-10 h-10 rounded-full flex items-center justify-center relative shrink-0"
-              style={{ backgroundColor: colors.surfaceContainerHighest }}
-            >
-              {installProgress.percent !== undefined ? (
-                <svg className="w-10 h-10 -rotate-90 transform" viewBox="0 0 36 36">
-                  <path
-                    className="text-gray-200 opacity-20"
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                  />
-                  <path
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    fill="none"
-                    stroke={colors.secondary}
-                    strokeWidth="3"
-                    strokeDasharray={`${installProgress.percent}, 100`}
-                  />
-                </svg>
-              ) : (
-                <div
-                  className="animate-spin rounded-full h-5 w-5 border-b-2"
-                  style={{ borderColor: colors.secondary }}
-                />
-              )}
-              <div className="absolute inset-0 flex items-center justify-center text-[10px] font-bold" style={{ color: colors.onSurface }}>
-                {installProgress.percent}%
-              </div>
-            </div>
-            <div className="flex-1 min-w-0">
-              <h4 className="font-medium text-sm truncate" style={{ color: colors.onSurface }}>
-                {operationType === "repair"
-                  ? t("repairing_instance")
-                  : operationType === "sync"
-                    ? t("checking_data")
-                    : t("installing")}
-              </h4>
-              <p className="text-xs truncate" style={{ color: colors.onSurfaceVariant }}>
-                {installProgress.type
-                  ? t(
-                      installProgress.type as any,
-                      {
-                        filename: installProgress.filename,
-                        current: installProgress.current,
-                        total: installProgress.total,
-                      } as any,
-                    )
-                  : installProgress.message}
-              </p>
-            </div>
-            <button
-              onClick={(event) => {
-                event.stopPropagation();
-                setInstallMinimized(false);
-              }}
-              className="p-2 rounded-lg hover:bg-white/10"
-              title="Expand"
-            >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" style={{ color: colors.onSurfaceVariant }}>
-                <path d="M12 8l-6 6 1.41 1.41L12 10.83l4.59 4.58L18 14z" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      )}
     </>
   );
 }

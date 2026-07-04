@@ -91,8 +91,8 @@ export function MCHead({ username, size = 48, className = "" }: { username: stri
     let isMinecraftHead = false;
 
     if (session && session.username === username) {
-        const isLinked = session.type === "catid" ? !!session.minecraftUuid : !!session.catidLinked;
-        const defaultSource = isLinked ? "minecraft_skin" : (session.type === "catid" ? "catid_avatar" : "minecraft_skin");
+        const isLinked = session.authType === "catid" ? !!session.minecraftUuid : !!session.catidLinked;
+        const defaultSource = isLinked ? "minecraft_skin" : (session.authType === "catid" ? "catid_avatar" : "minecraft_skin");
         const source = session.avatarSource || defaultSource;
         if (source === "catid_avatar" && session.avatarUrl) {
             avatarUrl = session.avatarUrl;
@@ -106,8 +106,8 @@ export function MCHead({ username, size = 48, className = "" }: { username: stri
     } else {
         const matchingAccount = accounts.find((a) => a.username === username);
         if (matchingAccount) {
-            const isLinked = matchingAccount.type === "catid" ? !!matchingAccount.minecraftUuid : !!matchingAccount.catidLinked;
-            const defaultSource = isLinked ? "minecraft_skin" : (matchingAccount.type === "catid" ? "catid_avatar" : "minecraft_skin");
+            const isLinked = matchingAccount.authType === "catid" ? !!matchingAccount.minecraftUuid : !!matchingAccount.catidLinked;
+            const defaultSource = isLinked ? "minecraft_skin" : (matchingAccount.authType === "catid" ? "catid_avatar" : "minecraft_skin");
             const source = matchingAccount.avatarSource || defaultSource;
             if (source === "catid_avatar" && matchingAccount.avatarUrl) {
                 avatarUrl = matchingAccount.avatarUrl;

@@ -1,7 +1,4 @@
 
-
-
-
 type ColorTheme =
   | "yellow"
   | "purple"
@@ -31,7 +28,7 @@ interface LauncherConfig {
 }
 
 interface AuthSession {
-  type: "catid" | "microsoft";
+  authType: "catid" | "microsoft";
   username: string;
   uuid: string;
   accessToken?: string;
@@ -238,6 +235,7 @@ declare global {
           | "browsing_servers",
         serverName?: string,
         serverIcon?: string,
+        pingMs?: number,
       ) => Promise<void>;
       discordRPCIsConnected: () => Promise<boolean>;
       
@@ -272,11 +270,14 @@ declare global {
           refreshToken?: string;
           expiresIn?: number;
           apiToken?: string;
-          apiTokenExpiresAt?: number;
+          
+          
+          
+          apiTokenExpiresAt?: number | string;
           catidLinked?: boolean;
         };
       }>;
-      
+
       loginCatID: (
         username: string,
         password: string,
@@ -344,10 +345,7 @@ declare global {
       
       authRefreshToken: () => Promise<{
         ok: boolean;
-        refreshed?: boolean;
-        newAccessToken?: string;
-        newApiToken?: string;
-        requiresRelogin?: boolean;
+        account?: AuthSession | null;
         error?: string;
       }>;
       authUpdateAvatarSource: (
@@ -540,7 +538,7 @@ declare global {
         options: CreateInstanceOptions,
       ) => Promise<GameInstance>;
       instancesGet: (id: string) => Promise<GameInstance | null>;
-      instancesPreInstall: (id: string) => Promise<{ ok: boolean; message?: string }>;
+      instancesPreInstall: (id: string) => Promise<{ ok: boolean; name: string; version: string; loaders: string[]; filesCount: number; error?: string }>;
       instancesUpdate: (
         id: string,
         updates: UpdateInstanceOptions,
@@ -549,6 +547,10 @@ declare global {
         id: string,
       ) => Promise<{ ok: boolean; error?: string }>;
       instancesDelete: (id: string) => Promise<boolean>;
+      instancesSetIcon: (
+        id: string,
+        iconData: string,
+      ) => Promise<{ ok: boolean; error?: string | null }>;
       instancesDuplicate: (id: string) => Promise<GameInstance | null>;
       instancesOpenFolder: (id: string) => Promise<void>;
       instancesLaunch: (
@@ -571,7 +573,26 @@ declare global {
       instanceJoin: (key: string) => Promise<{
         ok: boolean;
         message?: string;
-        instance?: any;
+        error?: string;
+      }>;
+      instanceLeave: (instanceId: string) => Promise<{
+        ok: boolean;
+        message?: string;
+        error?: string;
+      }>;
+      instancesGetJoinedServers: () => Promise<{
+        ok: boolean;
+        data?: { owned: any[]; member: any[] };
+        error?: string;
+      }>;
+      instancesCloudInstall: (id: string) => Promise<{
+        ok: boolean;
+        message?: string;
+        error?: string;
+      }>;
+      instancesCloudSync: () => Promise<{
+        ok: boolean;
+        message?: string;
         error?: string;
       }>;
       
@@ -612,27 +633,38 @@ declare global {
       
       modpackInstall: (
         mrpackPath: string,
-      ) => Promise<{ ok: boolean; instance?: GameInstance; error?: string }>;
+      ) => Promise<{ ok: boolean; instanceId?: string; instance?: GameInstance; name?: string; error?: string; failedFiles?: string[] }>;
       modpackInstallFromModrinth: (
         versionId: string,
-      ) => Promise<{ ok: boolean; instance?: GameInstance; error?: string }>;
+      ) => Promise<{ ok: boolean; instanceId?: string; instance?: GameInstance; name?: string; error?: string; failedFiles?: string[] }>;
       modpackInstallFromCurseforge: (
         projectId: string,
         fileId: string,
-      ) => Promise<{ ok: boolean; instance?: GameInstance; error?: string }>;
+      ) => Promise<{ ok: boolean; instanceId?: string; instance?: GameInstance; name?: string; error?: string; failedFiles?: string[] }>;
       modpackCheckConflicts: (
         instanceId: string,
       ) => Promise<
         { type: string; file1: string; file2?: string; reason: string }[]
       >;
       modpackParseInfo: (mrpackPath: string) => Promise<any>;
+      modpackCancelInstall: () => Promise<{ ok: boolean; error: string | null }>;
+      onInstallProgress: (
+        callback: (data: {
+          type: string;
+          task: string;
+          current?: number;
+          total?: number;
+          percent?: number;
+          filename?: string;
+        }) => void,
+      ) => () => void;
       onModpackInstallProgress: (
         callback: (data: {
           stage: string;
           message: string;
+          percent: number;
           current?: number;
           total?: number;
-          percent?: number;
         }) => void,
       ) => () => void;
       
@@ -733,7 +765,17 @@ declare global {
       notificationsFetchAnnouncements: () => Promise<any[]>;
       notificationsFetchUser: () => Promise<any[]>;
       notificationsSync: () => Promise<{
-        notifications: any[];
+        notifications: Array<{
+          id: string;
+          userId: string;
+          type: string;
+          title: string;
+          message?: string | null;
+          data?: string | null;
+          actionUrl?: string | null;
+          isRead: boolean;
+          createdAt: string;
+        }>;
         invitations: Array<{
           id: string;
           instanceId: string;
@@ -749,7 +791,7 @@ declare global {
       }>;
       notificationsMarkRead: (notificationId: string) => Promise<boolean>;
       notificationsDelete: (notificationId: string) => Promise<boolean>;
-      
+
       invitationsFetch: () => Promise<
         {
           id: string;
@@ -757,7 +799,7 @@ declare global {
           instanceName: string;
           instanceIcon?: string | null;
           invitedBy: string;
-          inviterName?: string;
+          inviterName?: string | null;
           role: "member" | "admin";
           message?: string | null;
           status: "pending" | "accepted" | "rejected";
@@ -768,6 +810,31 @@ declare global {
       invitationsReject: (invitationId: string) => Promise<boolean>;
     };
   }
+}
+
+declare module "*.png" {
+  const content: string;
+  export default content;
+}
+
+declare module "*.svg" {
+  const content: string;
+  export default content;
+}
+
+declare module "*.jpg" {
+  const content: string;
+  export default content;
+  }
+
+declare module "*.jpeg" {
+  const content: string;
+  export default content;
+}
+
+declare module "*.mp3" {
+  const content: string;
+  export default content;
 }
 
 export {};

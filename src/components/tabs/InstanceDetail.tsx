@@ -1,10 +1,3 @@
-/**
- * ========================================
- * InstanceDetail - หน้าแสดงรายละเอียด Instance และจัดการ Mods
- * Refactored to use ModPackTabs components
- * ========================================
- */
-
 import { useState, useEffect, useRef } from "react";
 import toast from "react-hot-toast";
 import { Icons } from "../ui/Icons";
@@ -24,7 +17,6 @@ import bannerImage from "../../assets/banner.png";
 
 type InstalledBrowserContentType = "mod" | "resourcepack" | "shader" | "datapack";
 
-// Import from ModPackTabs
 import {
     ContentTabs,
     ModsList,
@@ -40,10 +32,6 @@ import {
     type DatapackItem,
     type ContentCategory,
 } from "./ModPackTabs";
-
-// ========================================
-// Types
-// ========================================
 
 interface InstanceDetailProps {
     instance: GameInstance;
@@ -65,10 +53,6 @@ interface InstanceDetailProps {
     isInstallLocked?: boolean;
 }
 
-// ========================================
-// Component
-// ========================================
-
 export function InstanceDetail({
     instance,
     colors,
@@ -89,19 +73,15 @@ export function InstanceDetail({
     isInstallLocked = false,
 }: InstanceDetailProps) {
     const { t } = useTranslation(config.language);
-    // Mods state
     const [mods, setMods] = useState<ModInfo[]>([]);
     const [modsLoading, setModsLoading] = useState(true);
 
-    // Settings state
     const [showSettings, setShowSettings] = useState(false);
 
-    // Content category tabs - default to resourcepacks for vanilla (no mods support)
     const [contentTab, setContentTab] = useState<ContentCategory>(
         instance.loader === "vanilla" ? "resourcepacks" : "mods"
     );
 
-    // Content state
     const [resourcepacks, setResourcepacks] = useState<ContentItem[]>([]);
     const [resourcepacksLoading, setResourcepacksLoading] = useState(false);
     const [shaders, setShaders] = useState<ContentItem[]>([]);
@@ -109,7 +89,6 @@ export function InstanceDetail({
     const [datapacks, setDatapacks] = useState<DatapackItem[]>([]);
     const [datapacksLoading, setDatapacksLoading] = useState(false);
 
-    // Content browser modal state
     const [showContentBrowser, setShowContentBrowser] = useState(false);
     const [browserContentType, setBrowserContentType] = useState<InstalledBrowserContentType>("mod");
     const [installedDetailProject, setInstalledDetailProject] = useState<ModrinthProject | null>(null);
@@ -118,8 +97,7 @@ export function InstanceDetail({
     const [isInstallingInstalledVersion, setIsInstallingInstalledVersion] = useState(false);
     const [installedVersionProgress, setInstalledVersionProgress] = useState<{ stage: string; message: string } | null>(null);
 
-    // Check if this instance is currently playing
-    // Check playingInstanceId directly as fallback for when isGameRunning hasn't updated yet
+    
     const isThisInstancePlaying = playingInstanceId === instance.id;
     const isThisInstanceLaunching = launchingId === instance.id;
     const showStopAction = shouldShowStopButton(isThisInstanceLaunching, isThisInstancePlaying);
@@ -130,20 +108,14 @@ export function InstanceDetail({
             !isThisInstancePlaying &&
             !isThisInstanceLaunching);
 
-    // Track which tabs have been loaded
     const [loadedTabs, setLoadedTabs] = useState<Set<ContentCategory>>(new Set());
 
-    // Ref to cancel recursive metadata refresh on unmount/instance change
-    // Debounce timer for mod list refreshes
     const modRefreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Drag & drop state
     const [isDragging, setIsDragging] = useState(false);
 
-    // Track which filenames are currently being checked/updated
     const [updatingFilenames, setUpdatingFilenames] = useState<Set<string>>(new Set());
 
-    // Version switcher modal state
     const [switcherTarget, setSwitcherTarget] = useState<{
         item: ModInfo | ContentItem | DatapackItem;
         contentType: InstalledBrowserContentType;
@@ -152,7 +124,6 @@ export function InstanceDetail({
     } | null>(null);
     const [switcherInstalling, setSwitcherInstalling] = useState(false);
 
-    // Get content type name for current tab
     const getContentTypeForTab = (tab: ContentCategory): "mod" | "resourcepack" | "shader" | "datapack" => {
         const map: Record<ContentCategory, "mod" | "resourcepack" | "shader" | "datapack"> = {
             mods: "mod",
@@ -163,7 +134,6 @@ export function InstanceDetail({
         return map[tab];
     };
 
-    // Get valid extensions for current tab
     const getValidExtensions = (tab: ContentCategory): string[] => {
         const map: Record<ContentCategory, string[]> = {
             mods: [".jar"],
@@ -618,7 +588,6 @@ export function InstanceDetail({
         }
     };
 
-    // Drag handlers
     const handleDragOver = (e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
@@ -646,14 +615,11 @@ export function InstanceDetail({
         let errorMessages: string[] = [];
 
         for (const file of files) {
-            // In Electron, File object has a path property directly
             let filePath: string | undefined;
 
-            // Method 1: Direct path property (Electron adds this)
             filePath = (file as any).path;
             console.log("[Drop] File path from .path:", filePath);
 
-            // Method 2: Try webUtils if available and path is empty
             if (!filePath && window.api?.getPathForFile) {
                 try {
                     filePath = window.api.getPathForFile(file);
@@ -668,14 +634,12 @@ export function InstanceDetail({
                 continue;
             }
 
-            // Check extension
             const ext = "." + file.name.split(".").pop()?.toLowerCase();
             if (!validExts.includes(ext)) {
                 errorMessages.push(`${file.name}: ไม่รองรับ ${ext}`);
                 continue;
             }
 
-            // Add file via IPC
             console.log("[Drop] Adding file:", filePath, "as", contentType);
             const result = await (window.api as any)?.instanceAddContentFile?.(instance.id, filePath, contentType);
             console.log("[Drop] Result:", result);
@@ -683,7 +647,6 @@ export function InstanceDetail({
             if (result?.ok) {
                 successCount++;
                 
-                // Auto-lock for cloud instances
                 if (instance.cloudId && result.filename) {
                     try {
                         const lockedMods = new Set(instance.lockedMods || []);
@@ -702,10 +665,8 @@ export function InstanceDetail({
             }
         }
 
-        // Show results
         if (successCount > 0) {
             toast.success(t('files_added_success'));
-            // Refresh current tab
             switch (contentTab) {
                 case "mods": loadMods(); break;
                 case "resourcepacks": loadResourcepacks(); break;
@@ -718,11 +679,6 @@ export function InstanceDetail({
         }
     };
 
-    // ========================================
-    // Effects
-    // ========================================
-
-    // Reset tab/data state when switching instance
     useEffect(() => {
         if (modRefreshDebounceRef.current) {
             clearTimeout(modRefreshDebounceRef.current);
@@ -746,10 +702,6 @@ export function InstanceDetail({
         };
     }, [instance.id, instance.loader]);
 
-    // ========================================
-    // Data Loading
-    // ========================================
-
     const loadMods = async (options?: { silent?: boolean; metadataRetry?: number }) => {
         const silent = options?.silent === true;
         const metadataRetry = options?.metadataRetry ?? 0;
@@ -759,11 +711,11 @@ export function InstanceDetail({
             const result = await (window.api as any)?.instanceListMods?.(instance.id);
 
             if (result?.ok) {
-                // Show mods immediately (with whatever metadata is currently available)
-                setMods(result.mods);
+                const loaded: ModInfo[] = result.mods || [];
+                setMods(loaded);
                 if (result.hasUncached) {
-                    const MAX_RETRIES = result.mods.length > 120 ? 8 : 20;
-                    const retryDelay = result.mods.length > 120 ? 1800 : 600;
+                    const MAX_RETRIES = loaded.length > 120 ? 8 : 20;
+                    const retryDelay = loaded.length > 120 ? 1800 : 600;
                     if (metadataRetry < MAX_RETRIES) {
                         if (modRefreshDebounceRef.current) {
                             clearTimeout(modRefreshDebounceRef.current);
@@ -790,7 +742,7 @@ export function InstanceDetail({
         setResourcepacksLoading(true);
         try {
             const result = await (window.api as any)?.instanceListResourcepacks?.(instance.id);
-            if (result?.ok) setResourcepacks(result.items);
+            if (result?.ok) setResourcepacks(result.items || []);
         } catch (error) {
             console.error("[InstanceDetail] Failed to load resourcepacks:", error);
         } finally {
@@ -802,7 +754,7 @@ export function InstanceDetail({
         setShadersLoading(true);
         try {
             const result = await (window.api as any)?.instanceListShaders?.(instance.id);
-            if (result?.ok) setShaders(result.items);
+            if (result?.ok) setShaders(result.items || []);
         } catch (error) {
             console.error("[InstanceDetail] Failed to load shaders:", error);
         } finally {
@@ -814,7 +766,7 @@ export function InstanceDetail({
         setDatapacksLoading(true);
         try {
             const result = await (window.api as any)?.instanceListDatapacks?.(instance.id);
-            if (result?.ok) setDatapacks(result.items);
+            if (result?.ok) setDatapacks(result.items || []);
         } catch (error) {
             console.error("[InstanceDetail] Failed to load datapacks:", error);
         } finally {
@@ -822,7 +774,6 @@ export function InstanceDetail({
         }
     };
 
-    // Listen for mod metadata updates via event rather than polling
     useEffect(() => {
         const unbind = (window.api as any)?.onModsIconsUpdated?.((updatedInstanceId: string) => {
             if (updatedInstanceId === instance.id) {
@@ -879,10 +830,6 @@ export function InstanceDetail({
             cancelled = true;
         };
     }, [contentTab, instance.id, loadedTabs]);
-
-    // ========================================
-    // Handlers
-    // ========================================
 
     const handleToggleMod = async (filename: string) => {
         try {
@@ -1031,10 +978,6 @@ export function InstanceDetail({
         }
     };
 
-    // ========================================
-    // Render
-    // ========================================
-
     const validExtsLabel = getValidExtensions(contentTab).join(", ");
     const contentTypeLabel = {
         mods: t('mods'),
@@ -1050,7 +993,6 @@ export function InstanceDetail({
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
         >
-            {/* Drag indicator */}
             {isDragging && (
                 <div
                     className="fixed top-20 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-6 py-3 rounded-full pointer-events-none animate-pulse"
@@ -1061,9 +1003,7 @@ export function InstanceDetail({
                 </div>
             )}
 
-            {/* Conditional Header: Hero (if has banner) vs Compact (if no banner) - hidden when content browser is open */}
             {!showContentBrowser && !installedDetailProject && (instance.banner ? (
-                /* Hero Header */
                 <div className="rounded-2xl overflow-hidden relative mb-6 border" style={{ borderColor: colors.outline + "30", backgroundColor: colors.surfaceContainer }}>
                     <div className="relative h-48 w-full bg-cover bg-center"
                         style={{
@@ -1079,7 +1019,6 @@ export function InstanceDetail({
                         />
                         <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent" />
 
-                        {/* Back Button (Absolute Top Left) */}
                         <button
                             onClick={() => { playClick(); onBack(); }}
                             className="absolute top-4 left-4 w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95 z-20 backdrop-blur-md"
@@ -1090,7 +1029,6 @@ export function InstanceDetail({
                             </svg>
                         </button>
 
-                        {/* Floating Icon */}
                         <div className="absolute -bottom-8 left-8 w-24 h-24 rounded-2xl p-1 z-10"
                             style={{ backgroundColor: (instance.icon?.startsWith("data:") || instance.icon?.startsWith("file://") || instance.icon?.startsWith("http")) ? 'transparent' : colors.surface }}>
                             <div className="w-full h-full rounded-[14px] bg-cover bg-center overflow-hidden flex items-center justify-center"
@@ -1107,7 +1045,6 @@ export function InstanceDetail({
                     </div>
 
                     <div className="pt-12 px-8 pb-8 flex flex-col md:flex-row md:items-end gap-6">
-                        {/* Info */}
                         <div className="flex-1 min-w-0">
                             <h2 className="text-3xl font-black tracking-tight mb-2 truncate" style={{ color: colors.onSurface }}>{instance.name}</h2>
                             <div className="flex flex-wrap items-center gap-4 text-sm font-medium" style={{ color: colors.onSurfaceVariant }}>
@@ -1126,9 +1063,7 @@ export function InstanceDetail({
                             </div>
                         </div>
 
-                        {/* Actions */}
                         <div className="flex items-center gap-3">
-                            {/* Open folder button */}
                             <button
                                 onClick={() => { playClick(); onOpenFolder(instance.id); }}
                                 className="w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:bg-white/5 active:scale-95"
@@ -1138,7 +1073,6 @@ export function InstanceDetail({
                                 <Icons.Folder className="w-5 h-5" />
                             </button>
 
-                            {/* View Logs button */}
                             <button
                                 onClick={() => { playClick(); onViewLogs(instance.id); }}
                                 className="w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:bg-white/5 active:scale-95"
@@ -1148,7 +1082,6 @@ export function InstanceDetail({
                                 <Icons.Terminal className="w-5 h-5" />
                             </button>
 
-                            {/* Settings button */}
                             <button
                                 onClick={() => { playClick(); setShowSettings(true); }}
                                 className="w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:bg-white/5 active:scale-95"
@@ -1160,7 +1093,6 @@ export function InstanceDetail({
                                 </svg>
                             </button>
 
-                            {/* Play/Stop button */}
                             <button
                                 onClick={() => { playClick(); handlePlayStop(); }}
                                 disabled={disablePlayStopButton || isInstallLocked}
@@ -1199,7 +1131,6 @@ export function InstanceDetail({
                     </div>
                 </div>
             ) : (
-                /* Compact Header: Simple Row (No Banner) */
                 <div className="flex flex-col md:flex-row items-start md:items-center gap-6 mb-8 pt-2">
                     <button
                         onClick={() => { playClick(); onBack(); }}
@@ -1239,7 +1170,6 @@ export function InstanceDetail({
                     </div>
 
                     <div className="flex items-center gap-3">
-                        {/* Open folder button */}
                         <button
                             onClick={() => { playClick(); onOpenFolder(instance.id); }}
                             className="w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:bg-white/5 active:scale-95"
@@ -1249,7 +1179,6 @@ export function InstanceDetail({
                             <Icons.Folder className="w-5 h-5" />
                         </button>
 
-                        {/* View Logs button */}
                         <button
                             onClick={() => { playClick(); onViewLogs(instance.id); }}
                             className="w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:bg-white/5 active:scale-95"
@@ -1259,7 +1188,6 @@ export function InstanceDetail({
                             <Icons.Terminal className="w-5 h-5" />
                         </button>
 
-                        {/* Settings button */}
                         <button
                             onClick={() => { playClick(); setShowSettings(true); }}
                             className="w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:bg-white/5 active:scale-95"
@@ -1271,7 +1199,6 @@ export function InstanceDetail({
                             </svg>
                         </button>
 
-                        {/* Play/Stop button */}
                         <button
                             onClick={() => { playClick(); handlePlayStop(); }}
                             disabled={disablePlayStopButton || isInstallLocked}
@@ -1311,7 +1238,6 @@ export function InstanceDetail({
             ))}
 
 
-            {/* Conditional: Content Browser (inline) or Content Tabs + Lists */}
             {installedDetailProject ? (
                 <ProjectDetailPage
                     colors={colors}
@@ -1334,7 +1260,6 @@ export function InstanceDetail({
                     config={config}
                     onClose={() => setShowContentBrowser(false)}
                     onInstalled={() => {
-                        // Don't close - just refresh the relevant content
                         switch (browserContentType) {
                             case "mod": loadMods(); break;
                             case "resourcepack": loadResourcepacks(); break;
@@ -1346,7 +1271,6 @@ export function InstanceDetail({
                 />
             ) : (
                 <>
-                    {/* Content Category Tabs */}
                     <ContentTabs
                         colors={colors}
                         activeTab={contentTab}
@@ -1359,9 +1283,7 @@ export function InstanceDetail({
                         loader={instance.loader}
                     />
 
-                    {/* Content Section */}
                     <div>
-                        {/* Mods Tab */}
                         {contentTab === "mods" && (
                             <ModsList
                                 colors={colors}
@@ -1379,7 +1301,6 @@ export function InstanceDetail({
                                 onUpdate={(mod) => handleUpdateContent(mod, "mod")}
                                 updatingFilenames={updatingFilenames}
                                 onSwitchVersion={(mod) => handleOpenSwitcher(mod, "mod")}
-                                // Only show lock UI for Cloud/Server instances
                                 lockedMods={new Set(instance.cloudId ? (instance.lockedMods || []) : [])}
                                 isServerManaged={!!instance.cloudId}
                                 onToggleLock={instance.cloudId ? async (filename) => {
@@ -1414,7 +1335,6 @@ export function InstanceDetail({
                             />
                         )}
 
-                        {/* Resource Packs Tab */}
                         {contentTab === "resourcepacks" && (
                             <ContentList
                                 colors={colors}
@@ -1437,7 +1357,6 @@ export function InstanceDetail({
                             />
                         )}
 
-                        {/* Datapacks Tab */}
                         {contentTab === "datapacks" && (
                             <ContentList
                                 colors={colors}
@@ -1460,7 +1379,6 @@ export function InstanceDetail({
                             />
                         )}
 
-                        {/* Shaders Tab */}
                         {contentTab === "shaders" && (
                             <ContentList
                                 colors={colors}
@@ -1486,7 +1404,6 @@ export function InstanceDetail({
                 </>
             )}
 
-            {/* Version Switcher Modal */}
             {switcherTarget && (
                 <VersionSwitcherModal
                     colors={colors}
@@ -1509,7 +1426,6 @@ export function InstanceDetail({
                 />
             )}
 
-            {/* Settings Modal */}
             {
                 showSettings && (
                     <InstanceSettingsModal

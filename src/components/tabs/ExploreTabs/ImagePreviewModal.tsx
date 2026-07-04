@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { useTranslation } from "../../../hooks/useTranslation";
 
@@ -19,7 +18,6 @@ export function ImagePreviewModal({ colors, imageUrl, onClose, onNext, onPrev, h
     const [isLoading, setIsLoading] = useState(true);
     const { t } = useTranslation();
 
-    // Preload images
     React.useEffect(() => {
         if (preloadUrls && preloadUrls.length > 0) {
             preloadUrls.forEach(url => {
@@ -62,11 +60,9 @@ export function ImagePreviewModal({ colors, imageUrl, onClose, onNext, onPrev, h
 
             {isLoading && (
                 <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none">
-                    {/* Skeleton Screen */}
-                    <div className="w-[60vw] h-[60vh] bg-white/5 rounded-lg animate-pulse overflow-hidden relative">
-                        <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/5 to-transparent skew-x-12 -translate-x-full animate-[shimmer_1.5s_infinite]"></div>
-                        {/* Skeleton Icon */}
-                        <div className="absolute inset-0 flex items-center justify-center opacity-20">
+                        <div className="w-[60vw] h-[60vh] bg-white/5 rounded-lg animate-pulse overflow-hidden relative">
+                            <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/5 to-transparent skew-x-12 -translate-x-full animate-[shimmer_1.5s_infinite]"></div>
+                            <div className="absolute inset-0 flex items-center justify-center opacity-20">
                             <i className="fa-regular fa-image text-6xl text-white"></i>
                         </div>
                     </div>
@@ -77,14 +73,13 @@ export function ImagePreviewModal({ colors, imageUrl, onClose, onNext, onPrev, h
                 onClick={e => e.stopPropagation()}>
 
                 <img
-                    key={imageUrl} // Force re-render on URL change to restart animation/loading
+                    key={imageUrl} 
                     src={imageUrl}
                     alt="Preview"
                     className={`max-w-[min(92vw,1400px)] max-h-[calc(100dvh-160px)] object-contain duration-300 ${isLoading ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}
                     onLoad={() => setIsLoading(false)}
                 />
 
-                {/* Image Counter / Pagination Toolbar - Only show when loaded */}
                 {!isLoading && (
                     <div className="mt-4 flex items-center gap-4 px-4 py-2 rounded-full bg-black/60 backdrop-blur-md border border-white/10 z-50">
                         <button
@@ -109,10 +104,8 @@ export function ImagePreviewModal({ colors, imageUrl, onClose, onNext, onPrev, h
                             <i className="fa-solid fa-chevron-right text-sm"></i>
                         </button>
 
-                        {/* Divider */}
                         <div className="w-px h-6 bg-white/20 mx-1"></div>
 
-                        {/* Close Button */}
                         <button
                             onClick={onClose}
                             className="w-8 h-8 rounded-full flex items-center justify-center bg-white/10 text-white hover:bg-red-500/80 hover:scale-110 active:scale-95 transition-all cursor-pointer"

@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import toast from "react-hot-toast";
 import type { GameInstance, Server, AuthSession } from "../types/launcher";
 
-// Module-level cache — shared across all hook instances, survives tab switches
 let _instancesCache: GameInstance[] | null = null;
 let _joinedServersCache: Server[] | null = null;
 const RUNNING_STATUS_CHECK_CONCURRENCY = 8;
@@ -62,14 +61,17 @@ async function syncRunningInstanceIds(instances: GameInstance[]) {
                 if (await api.isGameRunning(instance.id)) {
                     runningIds.add(instance.id);
                 }
-            } catch {
-                // Ignore per-instance status errors; launch/stop events keep state fresh.
-            }
+            } catch {}
         }
     });
 
     await Promise.all(workers);
     return runningIds;
+}
+
+function mergeWithOwnedServers(owned: any[], member: any[]): Server[] {
+    const merged = [...(owned || []), ...(member || [])];
+    return merged.filter((v: Server, i: number, a: Server[]) => a.findIndex(t => t.id === v.id) === i);
 }
 
 export function useInstances({ session, t, isActive, selectedInstance, setSelectedInstance }: UseInstancesProps) {
@@ -107,8 +109,7 @@ export function useInstances({ session, t, isActive, selectedInstance, setSelect
         try {
             const result = await (window.api as any)?.instancesGetJoinedServers?.();
             if (result?.ok && result.data) {
-                const all = [...(result.data.owned || []), ...(result.data.member || [])];
-                const unique = all.filter((v: Server, i: number, a: Server[]) => a.findIndex(t => t.id === v.id) === i);
+                const unique = mergeWithOwnedServers(result.data.owned, result.data.member);
                 _joinedServersCache = unique;
                 hasLoadedJoinedServersRef.current = true;
                 setJoinedServers(unique);
@@ -129,7 +130,6 @@ export function useInstances({ session, t, isActive, selectedInstance, setSelect
         }
     }, []);
 
-    
     useEffect(() => {
         loadJoinedServers();
         loadInstances();
@@ -142,7 +142,6 @@ export function useInstances({ session, t, isActive, selectedInstance, setSelect
         return () => cleanup?.();
     }, [session, loadJoinedServers, loadInstances]);
 
-    
     useEffect(() => {
         if (isActive && !wasActiveRef.current) {
             if (!selectedInstance && !hasLoadedRef.current) {
@@ -153,7 +152,6 @@ export function useInstances({ session, t, isActive, selectedInstance, setSelect
         wasActiveRef.current = isActive;
     }, [isActive, selectedInstance, loadInstances, loadJoinedServers]);
 
-    
     useEffect(() => {
         if (selectedInstance && setSelectedInstance && instances.length > 0) {
             const fresh = instances.find(i => i.id === selectedInstance.id);
@@ -164,7 +162,6 @@ export function useInstances({ session, t, isActive, selectedInstance, setSelect
         }
     }, [instances, selectedInstance, setSelectedInstance]);
 
-    
     useEffect(() => {
         if (instances.length === 0) {
             setPlayingInstances(prev => (prev.size === 0 ? prev : new Set()));
@@ -183,7 +180,6 @@ export function useInstances({ session, t, isActive, selectedInstance, setSelect
         };
     }, [instances]);
 
-    
     useEffect(() => {
         const removeStartedListener = (window.api as any).onGameStarted((data: any) => {
             console.log("[useInstances] Game Started Event:", data);
@@ -214,7 +210,7 @@ export function useInstances({ session, t, isActive, selectedInstance, setSelect
                 toast.success(t('instance_delete_success'));
             } else {
                 toast.error(t('instance_delete_failed'));
-                loadInstances(); 
+                loadInstances();
             }
         } catch (error) {
             toast.error(t('error_occurred'));

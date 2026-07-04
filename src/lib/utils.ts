@@ -2,9 +2,7 @@ export function cn(...inputs: (string | undefined | null | false)[]) {
   return inputs.filter(Boolean).join(" ");
 }
 
-
 export function getContrastColor(hexColor: string) {
-  
   if (!hexColor || !/^#([A-Fa-f0-9]{3}){1,2}$/.test(hexColor)) return "#000000";
 
   const hex = hexColor.replace("#", "");
@@ -21,7 +19,6 @@ export function getContrastColor(hexColor: string) {
     16,
   );
 
-  
   const yiq = (r * 299 + g * 587 + b * 114) / 1000;
   return yiq >= 128 ? "#000000" : "#ffffff";
 }

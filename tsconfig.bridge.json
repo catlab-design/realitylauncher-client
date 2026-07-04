@@ -1,0 +1,18 @@
+{
+    // Scoped typecheck for the UI↔Rust bridge contract only: api.ts carries a
+    // `satisfies Partial<Window['api']>` clause against env.d.ts (the
+    // Electron-era surface the copied UI expects), so running this catches
+    // argument/return shape drift without wading through the app's unused-var
+    // noise. Run with: bun run check:bridge
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "noUnusedLocals": false,
+        "noUnusedParameters": false
+    },
+    "include": [
+        "src/api.ts",
+        "src/env.d.ts",
+        "src/types/launcher.ts"
+    ],
+    "exclude": []
+}

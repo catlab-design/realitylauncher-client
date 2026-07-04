@@ -1,7 +1,3 @@
-// ========================================
-// Project Card Component
-// ========================================
-
 import React, { useState } from "react";
 import { useTranslation } from "../../../hooks/useTranslation";
 import type { ModrinthProject, InstallProgress } from "./types";
@@ -22,7 +18,7 @@ export function ProjectCard({ colors, project, isActive, onClick, isInstalling, 
     const [isHovered, setIsHovered] = useState(false);
     const { t } = useTranslation();
 
-    // Convert integer color to hex string if available
+    
     const accentColor = project.color
         ? `#${project.color.toString(16).padStart(6, '0')}`
         : colors.secondary;
@@ -34,13 +30,12 @@ export function ProjectCard({ colors, project, isActive, onClick, isInstalling, 
             onMouseLeave={() => setIsHovered(false)}
             className="group relative w-full text-left rounded-xl overflow-hidden transition-all duration-300"
             style={{
-                backgroundColor: isActive ? `${colors.primary}15` : `${colors.surfaceContainer}60`, // Glassmorphism base
+                                backgroundColor: isActive ? `${colors.primary}15` : `${colors.surfaceContainer}60`,
                 border: `1px solid ${isActive ? colors.primary : colors.outline + "20"}`,
                 transform: isHovered ? "translateY(-2px)" : "none",
                 willChange: "transform",
             }}
         >
-            {/* Accent Glow on Hover */}
             <div
                 className="absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity duration-500 pointer-events-none"
                 style={{
@@ -48,7 +43,6 @@ export function ProjectCard({ colors, project, isActive, onClick, isInstalling, 
                 }}
             />
 
-            {/* Active Installation Overlay/Indicator */}
             {isInstalling && (
                 <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/40 backdrop-blur-[2px]">
                     <div className="flex flex-col items-center gap-2 p-3 rounded-lg"
@@ -73,7 +67,6 @@ export function ProjectCard({ colors, project, isActive, onClick, isInstalling, 
             )}
 
             <div className="p-4 flex items-start gap-4 relative z-10">
-                {/* Icon */}
                 <div
                     className="w-12 h-12 rounded-xl bg-cover bg-center shrink-0 overflow-hidden"
                     style={{
@@ -91,7 +84,6 @@ export function ProjectCard({ colors, project, isActive, onClick, isInstalling, 
                     )}
                 </div>
 
-                {/* Content */}
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-0.5">
                         <h3 className="text-[15px] font-semibold truncate pr-2 transition-colors"
@@ -109,7 +101,6 @@ export function ProjectCard({ colors, project, isActive, onClick, isInstalling, 
                         {project.description}
                     </p>
 
-                    {/* Stats Badges */}
                     <div className="flex items-center gap-2">
                         <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium"
                             style={{ backgroundColor: `${colors.secondary}15`, color: colors.onSurface }}>

@@ -17,9 +17,9 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
 
     const windowApi = (window as any).api;
 
-    // Check ml-api (published via ml-admin) for the latest release and compare
-    // against the installed version. This is the source of truth for whether an
-    // update is available, independent of electron-updater's own feed.
+    
+    
+    
     const checkLatestFromApi = async (): Promise<boolean> => {
         const result = await windowApi?.checkLatestVersion?.();
         if (!result?.ok) {
@@ -42,11 +42,11 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
             if (version) setAppVersion(version);
             if (devMode !== undefined) setIsDevMode(devMode);
 
-            // Report availability from ml-api on open (best-effort).
+            
             try {
                 await checkLatestFromApi();
             } catch {
-                // Network/manifest error — stay on installed version silently.
+                
             }
         })();
 
@@ -81,7 +81,7 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
 
     return (
         <>
-            {/* Version Info Card */}
+            {}
             <div
                 className="rounded-xl overflow-hidden"
                 style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}30` }}
@@ -96,7 +96,7 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
                             className="w-12 h-12 rounded-md flex items-center justify-center"
                             style={{ backgroundColor: colors.secondary }}
                         >
-                            <img src={rIcon.src} alt="Reality" className="w-7 h-7 object-contain" />
+                            <img src={rIcon} alt="Reality" className="w-7 h-7 object-contain" />
                         </div>
                         <div className="flex-1">
                             <p className="font-semibold text-sm" style={{ color: colors.onSurface }}>Reality Launcher</p>
@@ -122,7 +122,6 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
                 </div>
             </div>
 
-            {/* Dev Mode Warning */}
             {isDevMode && (
                 <div
                     className="rounded-md p-3 flex items-center gap-3 mt-3"
@@ -135,7 +134,6 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
                 </div>
             )}
 
-            {/* Update Available */}
             {updateStatus === "available" && updateInfo && (
                 <div
                     className="rounded-lg p-4 mt-3"
@@ -172,7 +170,6 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
                 </div>
             )}
 
-            {/* Downloading */}
             {updateStatus === "downloading" && (
                 <div
                     className="rounded-lg p-4 mt-3"
@@ -192,7 +189,6 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
                 </div>
             )}
 
-            {/* Ready to Install */}
             {updateStatus === "ready" && updateInfo && (
                 <div
                     className="rounded-lg p-4 mt-3"
@@ -228,10 +224,8 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
                 </div>
             )}
 
-            {/* Update Settings */}
             <div className="rounded-xl overflow-hidden mt-3" style={{ backgroundColor: colors.surfaceContainer }}>
                 <div className="p-4 space-y-4">
-                    {/* Auto Update Toggle */}
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('auto_update')}</p>
@@ -255,7 +249,6 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
 
                     <div className="h-px" style={{ backgroundColor: colors.outline + "20" }} />
 
-                    {/* Manual Check */}
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('check_for_updates')}</p>

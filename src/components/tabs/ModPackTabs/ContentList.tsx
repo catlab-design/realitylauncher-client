@@ -9,9 +9,7 @@ import { useTranslation } from "../../../hooks/useTranslation";
 import { LazyContentItem } from "./LazyContentItem";
 import { runBulkDelete, type DeleteResult } from "../../../lib/bulkDelete";
 
-// ฟังก์ชันลบอักขระพิเศษ (เช่น §, $, |) ออกจากชื่อไฟล์ เพื่อให้แสดงผลอ่านง่าย
 function cleanName(name: string = ""): string {
-    // ลบอักขระ Minecraft formatting (§...) และอักขระพิเศษทั่วไป
     return name.replace(/§[0-9a-fklmnor]/gi, "")
         .replace(/[\$\|]/g, " ")
         .replace(/[_]+/g, " ")
@@ -66,7 +64,6 @@ export function ContentList({
 
 
 
-    // Reset page when search changes
     useEffect(() => {
         setPage(1);
         setSelectedFilenames(new Set());
@@ -136,7 +133,6 @@ export function ContentList({
     return (
         <>
             <div className="flex items-center justify-between gap-4 mb-4 w-full overflow-x-auto no-scrollbar pb-1">
-                {/* Left Side: Select All & Title OR Pagination */}
                 <div className="flex items-center gap-4 shrink-0">
                     <button
                         onClick={() => handleSelectAll(filteredItems)}
@@ -202,7 +198,6 @@ export function ContentList({
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0 max-w-full overflow-hidden">
-                    {/* Search */}
                     <div
                         className="min-h-11 flex items-center gap-2 px-4 lg:px-5 py-2.5 rounded-xl transition-colors focus-within:ring-1 focus-within:ring-white/20 min-w-0 flex-1 lg:flex-none"
                         style={{ backgroundColor: colors.surfaceContainerHighest }}
@@ -238,7 +233,6 @@ export function ContentList({
                 </div>
             </div>
 
-            {/* Content Area */}
             {items.length === 0 && !isLoading ? (
                 <div className="text-center py-12 rounded-2xl" style={{ backgroundColor: colors.surfaceContainer }}>
                     <Icons.Box className="w-12 h-12 mx-auto mb-3" style={{ color: colors.onSurfaceVariant, opacity: 0.5 }} />
@@ -253,7 +247,6 @@ export function ContentList({
                         let content = null;
 
                         if (item) {
-                            // Real Item Logic
                             content = (
                                 <LazyContentItem
                                     item={item as ContentItem | DatapackItem}
@@ -293,7 +286,6 @@ export function ContentList({
                 </div>
             )}
                 
-            {/* Bottom Pagination */}
             {!isLoading && totalPages > 1 && (
                 <div className="flex justify-center mt-6 animate-fade-in" style={{ animationDelay: '300ms' }}>
                     <div className="flex items-center gap-2 p-1.5 rounded-2xl"

@@ -1,10 +1,3 @@
-/**
- * InstanceSettingsModal - Modal แสดงการตั้งค่า Instance
- */
-/**
- * InstanceSettingsModal - Modal แสดงการตั้งค่า Instance
- */
-
 import React, { useState, useEffect } from "react";
 import toast from "react-hot-toast";
 import { Icons } from "../../ui/Icons";
@@ -52,7 +45,6 @@ export function InstanceSettingsModal({
     const [editedName, setEditedName] = useState(instance.name);
     const [deleteConfirm, setDeleteConfirm] = useState(false);
 
-    // Export state
     const [exportStep, setExportStep] = useState<"format" | "config">("format");
     const [selectedFormat, setSelectedFormat] = useState<"zip" | "mrpack">("zip");
     const [exportOptions, setExportOptions] = useState({
@@ -62,13 +54,11 @@ export function InstanceSettingsModal({
         includedPaths: ["mods", "config", "resourcepacks", "shaderpacks"]
     });
     
-    // File Tree State
     const [fileTree, setFileTree] = useState<FileNode[]>([]);
     const [loadingFiles, setLoadingFiles] = useState(false);
     
-    // Reset export state when tab changes
     useEffect(() => {
-        if (!isExporting && settingsTab !== "export") { // Don't reset if actively exporting or just switching sub-steps
+        if (!isExporting && settingsTab !== "export") { 
             setExportStep("format");
             setExportOptions({
                 name: instance.name,
@@ -80,7 +70,6 @@ export function InstanceSettingsModal({
         }
     }, [settingsTab]);
 
-    // Fetch files when entering config step
     useEffect(() => {
         if (settingsTab === "export" && exportStep === "config") {
             const fetchFiles = async () => {
@@ -91,18 +80,18 @@ export function InstanceSettingsModal({
                     if (result.ok && result.files) {
                         setFileTree(result.files);
                         
-                        // Expand default folders to files
+                        
                         setExportOptions(prev => {
                             const newPaths = new Set<string>();
                             const currentPaths = prev.includedPaths;
                             
-                            // Helper to collect files from tree based on folder match
+                            
                             const collectFiles = (nodes: FileNode[]) => {
                                 for (const node of nodes) {
                                     if (node.type === "file") {
-                                        // If explicit file match OR parent folder match
+                                        
                                         const isExplicit = currentPaths.includes(node.path);
-                                        // Check if any default folder covers this file
+                                        
                                         const isCovered = currentPaths.some(p => node.path.startsWith(p + "/"));
                                         
                                         if (isExplicit || isCovered) {
@@ -141,8 +130,7 @@ export function InstanceSettingsModal({
             return;
         }
 
-        // Subscribe to progress events
-        const cleanup = window.api?.onExportProgress?.((_id, progress) => {
+            const cleanup = window.api?.onExportProgress?.((_id, progress) => {
             setExportProgress({
                 stage: "copying",
                 message: `${t('export')}...`,
@@ -166,13 +154,11 @@ export function InstanceSettingsModal({
     const handleExport = async () => {
         playClick();
         
-        // Prepare options
         const options = {
             format: selectedFormat,
             ...exportOptions
         };
         
-        // Close modal immediately and trigger export in background
         onClose();
         onExport(instance.id, options);
     };
@@ -188,7 +174,6 @@ export function InstanceSettingsModal({
     
 
 
-    // Helpers
     const formatBytes = (bytes: number) => {
         if (bytes === 0) return "0 B";
         const k = 1024;
@@ -197,35 +182,17 @@ export function InstanceSettingsModal({
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
     };
 
-    // ... rest of code ...
 
-    // START OF UI REPLACEMENT
-    /* This replacement targets the "Files Section" in the render method */
-    /* Check previous content to match lines */
-    
-    // Actually, I can't replace scattered parts easily.
-    // I will use multiple replace calls or handle them conceptually.
-    // Let's first remove the helpers.
-
-
-
-
-
-
-    // Installation settings state
     const [editedLoader, setEditedLoader] = useState<LoaderType>(instance.loader as LoaderType);
     const [editedVersion, setEditedVersion] = useState(instance.minecraftVersion);
     const [editedLoaderVersion, setEditedLoaderVersion] = useState(instance.loaderVersion);
-    // Java settings
     const [editedJavaPath, setEditedJavaPath] = useState(instance.javaPath || "");
     const [editedRam, setEditedRam] = useState(instance.ramMB || config.ramMB);
     const [editedJavaArgs, setEditedJavaArgs] = useState(instance.javaArguments || instance.javaArguments === "" ? instance.javaArguments : config.javaArguments);
-    // Advanced settings
     const [loaderVersions, setLoaderVersions] = useState<string[]>([]);
     const [loadingLoaderVersions, setLoadingLoaderVersions] = useState(false);
-    const [maxRamMB, setMaxRamMB] = useState(0);
+    const [maxRamMB, setMaxRamMB] = useState(16384);
 
-    // Fetch system info
     useEffect(() => {
         (async () => {
             if (window.api) {
@@ -246,7 +213,6 @@ export function InstanceSettingsModal({
         setEditedJavaArgs(instance.javaArguments || instance.javaArguments === "" ? instance.javaArguments : config.javaArguments);
     }, [instance, config]);
 
-    // Fetch loader versions when loader or mc version changes
     useEffect(() => {
         if (editedLoader === "vanilla") {
             setLoaderVersions([]);
@@ -258,7 +224,6 @@ export function InstanceSettingsModal({
             if (!window.api) return;
             setLoadingLoaderVersions(true);
             try {
-                // Check if API exists (it should now)
                 const versions = await window.api.modrinthGetLoaderVersions(editedLoader, editedVersion);
                 setLoaderVersions(versions);
 
@@ -281,10 +246,8 @@ export function InstanceSettingsModal({
     const [showAllVersions, setShowAllVersions] = useState(false);
     const [isSavingInstallation, setIsSavingInstallation] = useState(false);
 
-    // Check if installation settings changed
     const hasInstallationChanges = editedLoader !== instance.loader || editedVersion !== instance.minecraftVersion || editedLoaderVersion !== instance.loaderVersion;
 
-    // Load game versions when installation tab is opened
     useEffect(() => {
         if (settingsTab === "installation" && gameVersions.length === 0) {
             loadGameVersions();
@@ -362,7 +325,6 @@ export function InstanceSettingsModal({
                     className="w-[90%] max-w-[1400px] h-[65vh] min-h-[480px] rounded-2xl overflow-hidden shadow-2xl flex flex-col"
                     style={{ backgroundColor: colors.surface }}
                 >
-                    {/* Modal Header */}
                     <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: colors.outline + "30" }}>
                         <div className="flex items-center gap-3">
                             {instance.icon?.startsWith("data:") || instance.icon?.startsWith("http") ? (
@@ -385,8 +347,7 @@ export function InstanceSettingsModal({
                         </button>
                     </div>
 
-                    <div className="flex flex-1 overflow-hidden">
-                        {/* Sidebar */}
+                    <div className="flex flex-1 overflow-hidden" style={{ fontSize: 15 }}>
                         <div className="w-[22%] min-w-[240px] p-4 border-r flex flex-col" style={{ borderColor: colors.outline + "30" }}>
                             <button
                                 onClick={() => { playClick(); setSettingsTab("general"); }}
@@ -430,10 +391,7 @@ export function InstanceSettingsModal({
                             </button>
                         </div>
 
-                        {/* Content */}
                         <div className="flex-1 p-6 overflow-y-auto">
-                            {/* Define a helper for dark mode within the component scope if needed, 
-                                but since we follow the user request, we'll force icons to be white in certain conditions */}
                             
                             {settingsTab === "export" && (
                                 <div className="h-full flex flex-col">
@@ -462,7 +420,6 @@ export function InstanceSettingsModal({
 
                                             {!isExporting && (
                                                 <div className="grid grid-cols-2 gap-6 pb-4">
-                                                    {/* MRPack Option */}
                                                     <button
                                                         onClick={() => handleFormatSelect('mrpack')}
                                                         className="group relative flex flex-col items-start p-6 rounded-2xl transition-all hover:scale-[1.02] border-2 text-left shrink-0"
@@ -473,7 +430,7 @@ export function InstanceSettingsModal({
                                                     >
                                                         <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-[#1bd96a]/15 mb-6 group-hover:bg-[#1bd96a] transition-all shadow-lg shadow-[#1bd96a]/10 overflow-hidden p-3.5">
                                                             <img 
-                                                                src={modrinthIcon.src} 
+                                                                src={modrinthIcon} 
                                                                 alt="Modrinth" 
                                                                 className={`w-full h-full object-contain transition-all group-hover:brightness-0 group-hover:invert opacity-95 group-hover:opacity-100 ${colors.surface !== '#ffffff' ? 'brightness-0 invert' : ''}`} 
                                                             />
@@ -488,7 +445,6 @@ export function InstanceSettingsModal({
                                                             {t('choose_format')} <i className="fa-solid fa-arrow-right ml-1" />
                                                         </div>
                                                     </button>
-                                                    {/* ZIP Option */}
                                                     <button
                                                         onClick={() => handleFormatSelect('zip')}
                                                         className="group relative flex flex-col items-start p-6 rounded-2xl transition-all hover:scale-[1.02] border-2 text-left shrink-0"
@@ -499,7 +455,7 @@ export function InstanceSettingsModal({
                                                     >
                                                         <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-[#f16436]/15 mb-6 group-hover:bg-[#f16436] transition-all shadow-lg shadow-[#f16436]/10 overflow-hidden p-3.5">
                                                             <img 
-                                                                src={curseforgeIcon.src} 
+                                                                src={curseforgeIcon} 
                                                                 alt="CurseForge" 
                                                                 className={`w-full h-full object-contain transition-all group-hover:brightness-0 group-hover:invert opacity-95 group-hover:opacity-100 ${colors.surface !== '#ffffff' ? 'brightness-0 invert' : ''}`} 
                                                             />
@@ -517,11 +473,9 @@ export function InstanceSettingsModal({
                                                 </div>
                                             )}
                                         </>
-                                    ) : (
-                                        /* Configuration Step */
+                                        ) : (
                                         <div className="flex flex-col h-full">
                                             {isExporting && !minimized ? (
-                                                /* Show progress during export */
                                                 <div className="flex-1 flex items-center justify-center">
                                                     <InstallProgressModal
                                                         colors={colors}
@@ -556,7 +510,6 @@ export function InstanceSettingsModal({
                                                 </div>
                                             </div>
                                             <div className="flex-1 overflow-y-auto pr-2 space-y-6">
-                                                {/* Metadata Section */}
                                                 <div className="space-y-4">
                                                     <h4 className="text-sm font-bold uppercase opacity-70 tracking-wider" style={{ color: colors.onSurfaceVariant }}>
                                                         Metadata
@@ -606,7 +559,6 @@ export function InstanceSettingsModal({
                                                         />
                                                     </div>
                                                 </div>
-                                                {/* Files Section */}
                                                 <div className="space-y-4">
                                                     <div className="flex items-center justify-between">
                                                         <h4 className="text-sm font-bold uppercase opacity-70 tracking-wider" style={{ color: colors.onSurfaceVariant }}>
@@ -616,7 +568,6 @@ export function InstanceSettingsModal({
                                                             <button 
                                                                 onClick={() => { 
                                                                     playClick(); 
-                                                                    // Select all files in tree
                                                                     const allFiles: string[] = [];
                                                                     const traverse = (nodes: FileNode[]) => {
                                                                         nodes.forEach(n => {
@@ -655,7 +606,6 @@ export function InstanceSettingsModal({
                                                     )}
                                                 </div>
                                             </div>
-                                            {/* Action Bar */}
                                             <div className="pt-6 mt-2 border-t flex justify-end gap-3" style={{ borderColor: colors.outline + "15" }}>
                                                 <button
                                                     onClick={() => { playClick(); setExportStep("format"); }}
@@ -681,7 +631,6 @@ export function InstanceSettingsModal({
                             )}
                             {settingsTab === "general" && (
                                 <div className="space-y-4">
-                                    {/* Name & Icon Row */}
                                     <div className="flex items-start gap-8">
                                         <div className="flex-1 space-y-4">
                                             <div>
@@ -706,7 +655,6 @@ export function InstanceSettingsModal({
                                                     )}
                                                 </div>
                                             </div>
-                                            {/* Duplicate & Delete - Internal space reduction */}
                                             <div className="space-y-4 pt-2">
                                                 {!instance.cloudId && (
                                                     <div>
@@ -763,7 +711,6 @@ export function InstanceSettingsModal({
                                                 </div>
                                             </div>
                                         </div>
-                                        {/* Icon Column */}
                                         <div className="shrink-0">
                                             <label className="block text-sm font-medium mb-1.5" style={{ color: colors.onSurface }}>{t('icon')}</label>
                                             <div className="relative group">
@@ -781,7 +728,7 @@ export function InstanceSettingsModal({
                                                             const saveResult = await (window.api as any)?.instancesSetIcon?.(instance.id, result);
                                                             if (saveResult?.ok) {
                                                                 toast.success(t('icon_saved_success'));
-                                                                onUpdate(instance.id, {});
+                                                                onUpdate(instance.id, { icon: result });
                                                             } else {
                                                                 toast.error(saveResult?.error || t('icon_save_failed'));
                                                             }
@@ -808,7 +755,7 @@ export function InstanceSettingsModal({
                                                                 const saveResult = await (window.api as any)?.instancesSetIcon?.(instance.id, result);
                                                                     if (saveResult?.ok) {
                                                                         toast.success(t('icon_saved_success'));
-                                                                        onUpdate(instance.id, {});
+                                                                        onUpdate(instance.id, { icon: result });
                                                                     } else {
                                                                         toast.error(saveResult?.error || t('icon_save_failed'));
                                                                     }
@@ -821,7 +768,6 @@ export function InstanceSettingsModal({
                                             </div>
                                         </div>
                                     </div>
-                                    {/* Banner Section */}
                                     {!instance.cloudId && (
                                         <div className="mt-5">
                                             <label className="block text-sm font-medium mb-1.5" style={{ color: colors.onSurface }}>
@@ -850,7 +796,6 @@ export function InstanceSettingsModal({
                                                                 <Icons.Edit className="w-4 h-4" /> เปลี่ยน Banner
                                                             </span>
                                                         </div>
-                                                        {/* Remove banner button */}
                                                         <button
                                                             type="button"
                                                             className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 hover:bg-red-500/80 flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100"
@@ -858,7 +803,7 @@ export function InstanceSettingsModal({
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 playClick();
-                                                                onUpdate(instance.id, { banner: undefined });
+                                                                onUpdate(instance.id, { banner: null });
                                                                 toast.success("ลบ Banner แล้ว");
                                                             }}
                                                         >
@@ -880,7 +825,6 @@ export function InstanceSettingsModal({
                             )}
                             {settingsTab === "installation" && (
                                 <div className="space-y-6">
-                                    {/* Currently installed */}
                                     <div>
                                         <h4 className="font-medium mb-3" style={{ color: colors.onSurface }}>{t('currently_installed')}</h4>
                                         <div
@@ -900,10 +844,8 @@ export function InstanceSettingsModal({
                                             </div>
                                         </div>
                                     </div>
-                                    {/* Edit Controls - Only for Local Instances */}
                                     {!instance.cloudId ? (
                                         <>
-                                            {/* Platform */}
                                             <div>
                                                 <h4 className="font-medium mb-3" style={{ color: colors.onSurface }}>{t('platform')}</h4>
                                                 <div className="flex flex-wrap gap-2">
@@ -913,8 +855,8 @@ export function InstanceSettingsModal({
                                                             onClick={() => {
                                                                 playClick();
                                                                 setEditedLoader(loader);
-                                                                setLoaderVersions([]); // Clear list
-                                                                setEditedLoaderVersion(undefined); // Clear selection
+                                                                setLoaderVersions([]);
+                                                                setEditedLoaderVersion(undefined);
                                                             }}
                                                             className="px-4 py-2 rounded-lg text-sm transition-all hover:opacity-80"
                                                             style={{
@@ -929,7 +871,6 @@ export function InstanceSettingsModal({
                                                     ))}
                                                 </div>
                                             </div>
-                                            {/* Game version */}
                                             <div>
                                                 <div className="flex items-center justify-between mb-2">
                                                     <h4 className="font-medium" style={{ color: colors.onSurface }}>{t('minecraft_version_label')}</h4>
@@ -949,7 +890,6 @@ export function InstanceSettingsModal({
                                                     className="w-full px-4 py-3 rounded-xl border cursor-pointer"
                                                     style={{ backgroundColor: colors.surfaceContainerHighest, borderColor: colors.outline + "30", color: colors.onSurface }}
                                                 >
-                                                    {/* Always include current version */}
                                                     {!filteredVersions.find(v => v.version === editedVersion) && (
                                                         <option value={editedVersion}>{editedVersion}</option>
                                                     )}
@@ -960,7 +900,6 @@ export function InstanceSettingsModal({
                                                     ))}
                                                 </select>
                                             </div>
-                                            {/* Loader Version Selection */}
                                             {editedLoader !== "vanilla" && (
                                                 <div className="mt-4">
                                                     <label className="block text-sm font-medium mb-2" style={{ color: colors.onSurface }}>{t('loader_version')}</label>
@@ -981,14 +920,12 @@ export function InstanceSettingsModal({
                                                     </select>
                                                 </div>
                                             )}
-                                            {/* Warning about changing settings */}
                                             {hasInstallationChanges && (
                                                 <div className="p-3 rounded-xl text-sm" style={{ backgroundColor: "#f59e0b20", color: "#f59e0b" }}>
                                                     <i className="fa-solid fa-triangle-exclamation mr-2" />
                                                     {t('installation_change_warning')}
                                                 </div>
                                             )}
-                                            {/* Save button */}
                                             {hasInstallationChanges && (
                                                 <button
                                                     onClick={handleSaveInstallation}
@@ -1000,8 +937,6 @@ export function InstanceSettingsModal({
                                             )}
                                         </>
                                     ) : (
-                                        /* Server Managed Message */
-                                        /* Server Managed Section */
                                         <div className="space-y-6">
                                             <div className="flex flex-col items-center justify-center py-12 text-center space-y-4 rounded-2xl border-2 border-dashed"
                                                 style={{ borderColor: colors.outline + "40" }}>
@@ -1015,7 +950,6 @@ export function InstanceSettingsModal({
                                                     </p>
                                                 </div>
                                             </div>
-                                            {/* Auto Update - Only for Server Instances */}
                                             <div className="p-4 rounded-xl flex items-center justify-between transition-colors" style={{ backgroundColor: colors.surfaceContainerHighest }}>
                                                 <div>
                                                     <h4 className="font-medium" style={{ color: colors.onSurface }}>{t('auto_update')}</h4>
@@ -1036,7 +970,6 @@ export function InstanceSettingsModal({
                                                     <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
                                                 </label>
                                             </div>
-                                            {/* Repair Files - Only for Server Instances */}
                                             <div className="p-4 rounded-xl flex items-center justify-between transition-colors" style={{ backgroundColor: colors.surfaceContainerHighest }}>
                                                 <div className="flex-1 mr-4">
                                                     <h4 className="font-medium" style={{ color: colors.onSurface }}>{t('repair_files')}</h4>
@@ -1059,7 +992,6 @@ export function InstanceSettingsModal({
                             )}
                             {settingsTab === "java" && (
                                 <div className="space-y-6">
-                                    {/* Java Path */}
                                     <div>
                                         <label className="block text-sm font-medium mb-1.5" style={{ color: colors.onSurface }}>
                                             {t('java_install_path', { version: "" })}
@@ -1098,7 +1030,6 @@ export function InstanceSettingsModal({
                                             {t('leave_empty_to_use_default')}
                                         </p>
                                     </div>
-                                    {/* RAM */}
                                     <div>
                                         <div className="flex items-center gap-2 mb-4">
                                             <div 
@@ -1110,11 +1041,9 @@ export function InstanceSettingsModal({
                                                 onClick={() => {
                                                     const isCustom = instance.ramMB !== 0;
                                                     if (isCustom) {
-                                                        // Disable custom (revert to default)
                                                         onUpdate(instance.id, { ramMB: 0 });
                                                         setEditedRam(config.ramMB);
                                                     } else {
-                                                        // Enable custom (start with current/default)
                                                         onUpdate(instance.id, { ramMB: config.ramMB });
                                                         setEditedRam(config.ramMB);
                                                     }
@@ -1126,8 +1055,7 @@ export function InstanceSettingsModal({
                                                 {t('custom_memory_allocation' as any)}
                                             </span>
                                         </div>
-                                        <div className={`transition-all duration-200 space-y-3 ${instance.ramMB === 0 ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
-                                            {/* Header & Input */}
+                                        <div className="transition-all duration-200 space-y-3">
                                             <div className="flex items-center justify-between">
                                                 <div>
                                                     <div className="font-medium text-sm flex items-center gap-2" style={{ color: colors.onSurface }}>
@@ -1158,9 +1086,7 @@ export function InstanceSettingsModal({
                                                     <span className="text-xs opacity-70">MB</span>
                                                 </div>
                                             </div>
-                                            {/* Slider */}
                                             <div className="relative pt-2 pb-1">
-                                                {/* Track */}
                                                 <div className="h-3 w-full rounded-full relative overflow-hidden" 
                                                     style={{ backgroundColor: colors.surfaceContainerHighest }}>
                                                     <div 
@@ -1171,7 +1097,6 @@ export function InstanceSettingsModal({
                                                         }}
                                                     />
                                                 </div>
-                                                {/* Tick Marks (20%, 40%, 60%, 80%) */}
                                                 <div className="absolute top-[14px] w-full h-3 pointer-events-none px-[6px]">
                                                     {[0.2, 0.4, 0.6, 0.8].map((tick) => (
                                                         <div 
@@ -1181,7 +1106,6 @@ export function InstanceSettingsModal({
                                                         />
                                                     ))}
                                                 </div>
-                                                {/* Slider Input */}
                                                 <input
                                                     type="range"
                                                     min={512}
@@ -1194,7 +1118,6 @@ export function InstanceSettingsModal({
                                                     className="absolute top-2 left-0 w-full h-3 opacity-0 cursor-pointer"
                                                     style={{ margin: 0 }}
                                                 />
-                                                {/* Labels */}
                                                 <div className="flex justify-between text-[10px] mt-2 font-medium px-1" style={{ color: colors.onSurfaceVariant }}>
                                                     <span>512 MB</span>
                                                     <span className="text-center absolute left-1/2 -translate-x-1/2" style={{ opacity: 0.5 }}>
@@ -1203,7 +1126,6 @@ export function InstanceSettingsModal({
                                                     <span>{maxRamMB ? `${(maxRamMB / 1024).toFixed(1)} GB` : "8.0 GB"}</span>
                                                 </div>
                                             </div>
-                                            {/* Presets */}
                                             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
                                                 <button
                                                     onClick={() => {
@@ -1249,7 +1171,7 @@ export function InstanceSettingsModal({
                                                         style={{ 
                                                             backgroundColor: editedRam === preset.value ? "#10b981" : colors.surface,
                                                             borderColor: editedRam === preset.value ? "#10b981" : colors.outline + "30",
-                                                            color: editedRam === preset.value ? '#ffffff' : colors.onSurface,
+                                                            color: colors.onSurface,
                                                             boxShadow: editedRam === preset.value ? "0 0 0 2px #10b981" : "none"
                                                         }}
                                                     >
@@ -1260,7 +1182,6 @@ export function InstanceSettingsModal({
                                             </div>
                                         </div>
                                     </div>
-                                    {/* Java Arguments */}
                                     <div>
                                         <label className="block text-sm font-medium mb-1.5" style={{ color: colors.onSurface }}>
                                             {t('java_args')}
@@ -1284,7 +1205,6 @@ export function InstanceSettingsModal({
                             </div>
                         </div>
                     </div>
-                {/* Minimized floating progress widget */}
                 {isExporting && minimized && (
                     <div
                         className="fixed bottom-6 right-6 z-60 w-80 rounded-2xl shadow-2xl overflow-hidden border border-white/10 animate-fade-in-up cursor-pointer transition-transform hover:scale-105"

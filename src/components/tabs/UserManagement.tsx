@@ -1,8 +1,3 @@
-/**
- * UserManagement - User Management Section for Admin Panel
- * Features like ml-admin: search, ban/unban with reason, add user, view details
- */
-
 import { useState, useEffect } from "react";
 import { Icons } from "../ui/Icons";
 import { Skeleton } from "../ui/Skeleton";
@@ -45,12 +40,10 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
     const [totalPages, setTotalPages] = useState(1);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-    // Ban Modal State
     const [banModalOpen, setBanModalOpen] = useState(false);
     const [banUserId, setBanUserId] = useState<string | null>(null);
     const [banReason, setBanReason] = useState("");
 
-    // Add User Modal State
     const [addModalOpen, setAddModalOpen] = useState(false);
     const [newUserEmail, setNewUserEmail] = useState("");
     const [newUserUsername, setNewUserUsername] = useState("");
@@ -59,7 +52,6 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
     const [addUserLoading, setAddUserLoading] = useState(false);
     const [addUserError, setAddUserError] = useState("");
 
-    // View Details Modal State
     const [viewModalOpen, setViewModalOpen] = useState(false);
     const [viewUser, setViewUser] = useState<any>(null);
     const [viewSessions, setViewSessions] = useState<any[]>([]);
@@ -210,7 +202,6 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
                 {t('user_management')}
             </h3>
 
-            {/* Search + Add User */}
             <div className="flex gap-2 mb-4">
                 <input
                     type="text"
@@ -229,7 +220,6 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
                 </button>
             </div>
 
-            {/* User List */}
             {loading ? (
                 <div className="space-y-2">
                     {Array.from({ length: 8 }).map((_, i) => (
@@ -270,11 +260,9 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
                                     <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{user.email}</p>
                                 </div>
                                 <div className="flex gap-1">
-                                    {/* View Details */}
                                     <button onClick={() => openViewModal(user.id)} className="p-2 rounded-lg" style={{ backgroundColor: colors.surface }} title={t('view_details')}>
                                         <Icons.Info className="w-4 h-4" style={{ color: colors.onSurface }} />
                                     </button>
-                                    {/* Toggle Admin */}
                                     <button
                                         onClick={() => handleToggleAdmin(user.id)}
                                         disabled={actionLoading === user.id}
@@ -288,7 +276,6 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
                                             <Icons.Admin className="w-4 h-4" style={{ color: user.isAdmin ? colors.onPrimary : colors.onSurface }} />
                                         )}
                                     </button>
-                                    {/* Ban/Unban */}
                                     {user.isBanned ? (
                                         <button onClick={() => handleUnban(user.id)} disabled={actionLoading === user.id} className="p-2 rounded-lg bg-green-500/20 hover:bg-green-500/30" title={t('unban')}>
                                             <Icons.Check className="w-4 h-4 text-green-500" />
@@ -305,7 +292,6 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
                 </div>
             )}
 
-            {/* Pagination */}
             {totalPages > 1 && (
                 <div className="flex justify-center gap-2 mt-4">
                     <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 rounded" style={{ backgroundColor: colors.surface, color: colors.onSurface, opacity: page === 1 ? 0.5 : 1 }}>←</button>
@@ -314,7 +300,6 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
                 </div>
             )}
 
-            {/* Ban Reason Modal */}
             {banModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
                     <div className="rounded-xl p-6 w-full max-w-md mx-4" style={{ backgroundColor: colors.surfaceContainer }}>
@@ -335,7 +320,6 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
                 </div>
             )}
 
-            {/* Add User Modal */}
             {addModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
                     <div className="rounded-xl p-6 w-full max-w-md mx-4" style={{ backgroundColor: colors.surfaceContainer }}>
@@ -372,7 +356,6 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
                 </div>
             )}
 
-            {/* View User Details Modal */}
             {viewModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
                     <div className="rounded-xl p-6 w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto" style={{ backgroundColor: colors.surfaceContainer }}>

@@ -1,7 +1,3 @@
-/**
- * DeleteConfirmModal - Modal ยืนยันการลบ instance
- */
-
 import React from "react";
 import { useTranslation } from "../../../hooks/useTranslation";
 import { Portal } from "../../ui/Portal";

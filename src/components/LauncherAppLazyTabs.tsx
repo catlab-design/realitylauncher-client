@@ -1,41 +1,19 @@
 import React from "react";
+import { ServerMenu as ServerMenuComp } from "./tabs/ServerMenu";
+import { ModPack as ModPackComp } from "./tabs/ModPack";
+import { Explore as ExploreComp } from "./tabs/Explore";
+import { About as AboutComp } from "./tabs/About";
+import { Wardrobe as WardrobeComp } from "./tabs/Wardrobe";
+import { SettingsDialog as SettingsDialogComp } from "./SettingsDialog";
+import AdminPanelComp from "./tabs/AdminPanel";
 
-const lazyNamed = <T extends React.ComponentType<any>>(
-  load: () => Promise<any>,
-  exportName: string,
-) =>
-  React.lazy(async (): Promise<{ default: T }> => {
-    const module = await load();
-    return { default: module[exportName] };
-  });
-
-export const ServerMenu = lazyNamed<typeof import("./tabs/ServerMenu").ServerMenu>(
-  () => import("./tabs/ServerMenu"),
-  "ServerMenu",
-);
-export const ModPack = lazyNamed<typeof import("./tabs/ModPack").ModPack>(
-  () => import("./tabs/ModPack"),
-  "ModPack",
-);
-export const Explore = lazyNamed<typeof import("./tabs/Explore").Explore>(
-  () => import("./tabs/Explore"),
-  "Explore",
-);
-export const About = lazyNamed<typeof import("./tabs/About").About>(
-  () => import("./tabs/About"),
-  "About",
-);
-export const Wardrobe = lazyNamed<typeof import("./tabs/Wardrobe").Wardrobe>(
-  () => import("./tabs/Wardrobe"),
-  "Wardrobe",
-);
-export const SettingsDialog = lazyNamed<typeof import("./SettingsDialog").SettingsDialog>(
-  () => import("./SettingsDialog"),
-  "SettingsDialog",
-);
-export const AdminPanel = React.lazy(
-  () => import("./tabs/AdminPanel"),
-) as React.LazyExoticComponent<typeof import("./tabs/AdminPanel").default>;
+export const ServerMenu = ServerMenuComp;
+export const ModPack = ModPackComp;
+export const Explore = ExploreComp;
+export const About = AboutComp;
+export const Wardrobe = WardrobeComp;
+export const SettingsDialog = SettingsDialogComp;
+export const AdminPanel = AdminPanelComp;
 
 export function TabLoadingFallback({ colors }: { colors: any }) {
   return (
@@ -46,4 +24,7 @@ export function TabLoadingFallback({ colors }: { colors: any }) {
       />
     </div>
   );
+}
+
+export function preloadTabs() {
 }

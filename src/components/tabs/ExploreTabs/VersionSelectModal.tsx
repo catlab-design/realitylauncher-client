@@ -1,7 +1,3 @@
-// ========================================
-// Version Selection Modal
-// ========================================
-
 import React, { useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "../../../hooks/useTranslation";
@@ -17,15 +13,15 @@ interface VersionSelectModalProps {
     versions: ModVersion[];
     isLoading: boolean;
     isDownloading?: boolean;
-    // For content (non-modpack) — filter by instance compatibility
+    
     targetInstance?: GameInstance;
     projectType?: ProjectType;
     onClose: () => void;
     onSelectVersion: (versionId: string) => void;
 }
 
-// CurseForge/Modrinth both expose a release channel field on individual versions;
-// for ModVersion (used here for installs) we infer it from the version name as a fallback.
+
+
 function detectChannel(v: ModVersion): "release" | "beta" | "alpha" {
     const anyV = v as any;
     if (anyV.version_type === "alpha" || anyV.version_type === "beta" || anyV.version_type === "release") {
@@ -53,7 +49,6 @@ export function VersionSelectModal({
     const [filter, setFilter] = useState("");
     const [channel, setChannel] = useState<"all" | "release" | "beta" | "alpha">("all");
 
-    // Filter versions: instance compatibility (if provided), channel, then free-text search.
     const filteredVersions = useMemo(() => {
         return versions.filter((v) => {
             if (targetInstance) {
@@ -112,7 +107,6 @@ export function VersionSelectModal({
                     </p>
                 )}
 
-                {/* Search + channel filter */}
                 <div className="flex items-center gap-2 mb-3 flex-wrap">
                     <div className="relative flex-1 min-w-[180px]">
                         <input

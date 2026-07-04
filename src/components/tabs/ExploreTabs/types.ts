@@ -1,7 +1,3 @@
-// ========================================
-// Types for Explore Component
-// ========================================
-
 export const CONTENT_SOURCES = {
   MODRINTH: "modrinth",
   CURSEFORGE: "curseforge",
@@ -28,17 +24,16 @@ export interface ModrinthProject {
   project_id: string;
   author: string;
   versions: string[];
-  game_versions?: string[]; // Added
-  loaders?: string[]; // Added
+  game_versions?: string[];
+  loaders?: string[];
   follows: number;
   client_side?: string;
   server_side?: string;
   gallery?: ModrinthGalleryItem[];
   featured_gallery?: string | null;
-  color?: number | null; // Integer color from Rust
+  color?: number | null; 
   latest_version?: string | null;
-  // Full detail fields
-  body?: string; // Full markdown description
+  body?: string;
   source_url?: string;
   wiki_url?: string;
   discord_url?: string;
@@ -60,8 +55,8 @@ export interface ModrinthGalleryItem {
   description?: string;
   created: string;
   ordering: number;
-  raw_url?: string; // From JS backend
-  rawUrl?: string; // From Native backend (camelCase)
+  raw_url?: string; 
+  rawUrl?: string; 
 }
 
 export interface ExploreProps {

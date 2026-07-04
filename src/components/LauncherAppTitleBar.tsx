@@ -89,7 +89,8 @@ export function LauncherAppTitleBar({
 }: LauncherAppTitleBarProps) {
   return (
     <header
-      className="h-10 flex items-center justify-between pr-0 drag-region transition-all duration-300"
+      data-tauri-drag-region
+      className="h-10 flex items-center justify-between pr-0 drag-region transition-[background] duration-300"
       style={{
         background: config.backgroundImage ? "transparent" : titleBarColors.background,
       }}
@@ -100,7 +101,7 @@ export function LauncherAppTitleBar({
           style={{ backgroundColor: colors.secondary }}
         >
           <img
-            src={rIcon.src}
+            src={rIcon}
             alt="Logo"
             className="w-13 h-13 object-contain select-none transform translate-y-2"
             draggable={false}
@@ -216,17 +217,17 @@ export function LauncherAppTitleBar({
               >
                 <Icons.Check className="w-3 h-3 text-gray-900" />
               </span>
-            ) : session?.type === "catid" ? (
+            ) : session?.authType === "catid" ? (
               <span
                 className="inline-flex items-center justify-center w-4 h-4 rounded-full"
                 style={{ backgroundColor: "#3b82f6" }}
               >
                 <Icons.Check className="w-3 h-3 text-white" />
               </span>
-            ) : session?.type === "microsoft" ? (
+            ) : session?.authType === "microsoft" ? (
               <>
                 <img
-                  src={microsoftIcon.src}
+                  src={microsoftIcon}
                   alt="Microsoft"
                   className="w-5 h-5"
                 />
@@ -269,7 +270,7 @@ export function LauncherAppTitleBar({
                 {accounts.length > 0 ? (
                   accounts.map((account, index) => (
                     <div
-                      key={`${account.type}-${account.username}-${index}`}
+                      key={`${account.authType}-${account.username}-${index}`}
                       className="flex items-center gap-3 p-2 rounded-xl cursor-pointer transition-all hover:bg-gray-500/10"
                       style={{
                         backgroundColor:
@@ -304,21 +305,21 @@ export function LauncherAppTitleBar({
                             >
                               <Icons.Check className="w-2.5 h-2.5 text-gray-900" />
                             </span>
-                          ) : account.type === "catid" ? (
+                          ) : account.authType === "catid" ? (
                             <span
                               className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full shrink-0"
                               style={{ backgroundColor: "#3b82f6" }}
                             >
                               <Icons.Check className="w-2.5 h-2.5 text-white" />
                             </span>
-                          ) : account.type === "microsoft" ? (
+                          ) : account.authType === "microsoft" ? (
                             <img
-                              src={microsoftIcon.src}
+                              src={microsoftIcon}
                               alt="Microsoft"
                               className="w-5 h-5"
                             />
                           ) : null}
-                          {account.type === "microsoft" && account.catidLinked && (
+                          {account.authType === "microsoft" && account.catidLinked && (
                             <span
                               title={t("linked_with_catid")}
                               className="ml-1 opacity-80 inline-flex items-center justify-center w-4 h-4 rounded-full"
@@ -332,9 +333,9 @@ export function LauncherAppTitleBar({
                           className="text-xs"
                           style={{ color: colors.onSurfaceVariant }}
                         >
-                          {account.type === "microsoft"
+                          {account.authType === "microsoft"
                             ? "Microsoft"
-                            : account.type === "catid"
+                            : account.authType === "catid"
                               ? "CatID Account"
                               : "Account"}
                         </div>
@@ -387,7 +388,7 @@ export function LauncherAppTitleBar({
                   <span className="text-sm">{t("add_account")}</span>
                 </button>
 
-                {session && session.type === "microsoft" && !session.catidLinked && (
+                {session && session.authType === "microsoft" && !session.catidLinked && (
                   <button
                     onClick={() => {
                       setAccountDropdownOpen(false);
@@ -406,7 +407,7 @@ export function LauncherAppTitleBar({
                   </button>
                 )}
 
-                {session && session.type === "catid" && (
+                {session && session.authType === "catid" && (
                   <button
                     onClick={async () => {
                       playClick();

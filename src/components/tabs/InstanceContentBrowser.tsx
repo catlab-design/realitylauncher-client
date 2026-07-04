@@ -1,9 +1,4 @@
-/**
- * InstanceContentBrowser - Browse and install content to a specific instance
- * Uses same design as Explore page, pre-filtered by instance's MC version and loader
- */
-
-import { useState, useEffect, useRef, useCallback } from "react";
+﻿import { useState, useEffect, useRef, useCallback } from "react";
 import toast from "react-hot-toast";
 import type { GameInstance, LauncherConfig } from "../../types/launcher";
 import { playClick } from "../../lib/sounds";
@@ -11,11 +6,9 @@ import { useTranslation } from "../../hooks/useTranslation";
 import { motion } from "framer-motion";
 import type { TranslationKey } from "../../i18n/translations";
 
-// Icons for content sources
 import modrinthIcon from "../../assets/modrinth.svg";
 import curseforgeIcon from "../../assets/curseforge.svg";
 
-// Import shared components from ExploreTabs
 import {
     type ModrinthProject,
     type ModVersion,
@@ -44,10 +37,6 @@ interface InstanceContentBrowserProps {
     onUpdate?: (id: string, updates: Partial<GameInstance>) => void;
 }
 
-// ========================================
-// Constants
-// ========================================
-
 const SORT_OPTIONS = [
     { value: "relevance", labelKey: "sort.relevance" },
     { value: "downloads", labelKey: "sort.downloads" },
@@ -63,18 +52,13 @@ const CONTENT_TABS: { type: ContentType; labelKey: string; icon: React.Component
     { type: "shader", labelKey: "shaders", icon: Icons.Sun },
 ];
 
-// Filter tabs based on instance loader
 const getAvailableTabs = (loader: string) => {
     if (loader === "vanilla") {
-        // Vanilla doesn't support mods
+        
         return CONTENT_TABS.filter(tab => tab.type !== "mod");
     }
     return CONTENT_TABS;
 };
-
-// ========================================
-// Component
-// ========================================
 
 export function InstanceContentBrowser({
     instance,
@@ -86,93 +70,72 @@ export function InstanceContentBrowser({
     onUpdate,
 }: InstanceContentBrowserProps) {
     const { t } = useTranslation(config?.language);
-    // Content state
     const [contentType, setContentType] = useState<ContentType>(initialContentType);
     const [contentSource, setContentSource] = useState<ContentSource>(CONTENT_SOURCES.MODRINTH);
 
-    // Filter state (like Explore tab)
-    // Arrays for multi-select. Start with empty filters by default.
     const [mcVersionFilters, setMcVersionFilters] = useState<string[]>([]);
     const [loaderFilters, setLoaderFilters] = useState<string[]>([]);
     const [categoryFilters, setCategoryFilters] = useState<string[]>([]);
     const [environmentFilters, setEnvironmentFilters] = useState<string[]>([]);
 
-    // Search state
     const [searchQuery, setSearchQuery] = useState("");
     const [sortBy, setSortBy] = useState("relevance");
     const [page, setPage] = useState(1);
     const [viewCount, setViewCount] = useState(20);
 
-    // Results state
     const [results, setResults] = useState<ModrinthProject[]>([]);
     const [totalHits, setTotalHits] = useState(0);
     const [isLoading, setIsLoading] = useState(false);
 
-    // Preview state
     const [previewProject, setPreviewProject] = useState<ModrinthProject | null>(null);
 
-    // Install state
     const [isInstalling, setIsInstalling] = useState(false);
     const [selectedProject, setSelectedProject] = useState<ModrinthProject | null>(null);
     const [installedIds, setInstalledIds] = useState<Set<string>>(new Set());
     const [installedNames, setInstalledNames] = useState<Set<string>>(new Set());
     const [installedProjects, setInstalledProjects] = useState<ModrinthProject[]>([]);
 
-    // Detail Page State
     const [detailProject, setDetailProject] = useState<ModrinthProject | null>(null);
     const [isInstallingVersion, setIsInstallingVersion] = useState(false);
     const [installVersionProgress, setInstallVersionProgress] = useState<{stage: string, message: string} | null>(null);
 
-    // Refs
-    const debounceRef = useRef<NodeJS.Timeout | null>(null);
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const contentListRef = useRef<HTMLDivElement | null>(null);
-    // Race-condition guard: stale search requests are silently ignored.
+    
     const searchTokenRef = useRef(0);
 
-    // Lightbox state
     const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
 
-    // Helper to get URL from raw image item - normalize to absolute URL when possible
     const getImageUrl = (item: any) => {
         if (!item) return null;
         if (typeof item === 'string') return normalizeImageUrl(item, 'modrinth');
 
-        // Use raw_url (or rawUrl from native) if available (high res), otherwise fallback to url
-        // Then normalize the resulting URL
+        
+        
         const candidate = item.rawUrl || item.raw_url || item.url || null;
         return normalizeImageUrl(candidate, 'modrinth');
     };
 
     const totalPages = Math.ceil(totalHits / viewCount);
 
-    // ========================================
-    // Data Loading
-    // ========================================
-
-    // Fetch full project details for better images (Modrinth only)
     const fetchFullProjectDetails = async (project: ModrinthProject) => {
-        // Skip for CurseForge or if we already have gallery objects and high-res icon
+        
         if (contentSource !== CONTENT_SOURCES.MODRINTH) return;
 
-        // If we already have object-type gallery items (contain 'ordering/created'), likely already fetched
-        // Check first item type
-
-
+        
         try {
             const rawProject = await window.api?.modrinthGetProject?.(project.project_id);
             if (rawProject) {
-                // Normalize and merge
                 const fullProject: ModrinthProject = {
                     ...project,
-                    gallery: rawProject.gallery || [], // Native now returns objects
-                    // Preserve existing featured_gallery (from search) to prevent banner reload/flash
-                    // Only update if currently null
+                    gallery: rawProject.gallery || [], 
+                    
+                    
                     featured_gallery: project.featured_gallery || rawProject.featured_gallery || null,
-                    icon_url: rawProject.icon_url || project.icon_url, // Prefer full resolution
+                    icon_url: rawProject.icon_url || project.icon_url, 
                 };
 
-                // Fetch full details in background to upgrade images
-                // Update preview if still selected (avoid race condition)
+                
                 setPreviewProject(prev => {
                     if (prev && prev.project_id === project.project_id) {
                         return fullProject;
@@ -185,7 +148,6 @@ export function InstanceContentBrowser({
         }
     };
 
-    // Load installed content names from instance
     const loadInstalledContent = useCallback(async () => {
         try {
             let items: any[] = [];
@@ -211,14 +173,13 @@ export function InstanceContentBrowser({
                     break;
                 }
             }
-            // Extract names and slugs (lowercase for comparison)
             const names = new Set<string>();
             for (const item of items) {
                 const filename = (item.filename || "").toLowerCase().replace(/\.jar$|\.zip$/, "");
                 const name = (item.name || "").toLowerCase();
                 if (filename) names.add(filename);
                 if (name) names.add(name);
-                // Also add slug-like version (replace spaces with -)
+                
                 if (name) names.add(name.replace(/\s+/g, "-"));
             }
             setInstalledNames(names);
@@ -227,24 +188,20 @@ export function InstanceContentBrowser({
         }
     }, [instance.id, contentType]);
 
-    // Normalize string for comparison
     const normalizeForMatch = (str: string): string => {
         return str.toLowerCase()
-            .replace(/[^a-z0-9]/g, "") // Remove all non-alphanumeric
+            .replace(/[^a-z0-9]/g, "")
             .trim();
     };
 
-    // Check if a project is installed (by matching name)
     const isProjectInstalled = useCallback((project: ModrinthProject): boolean => {
         if (installedIds.has(project.project_id)) return true;
 
-        // Normalize project title and slug
         const projectTitle = normalizeForMatch(project.title);
         const projectSlug = project.slug ? normalizeForMatch(project.slug) : "";
 
         for (const name of installedNames) {
             const normalizedName = normalizeForMatch(name);
-            // Check various matches
             if (normalizedName.includes(projectTitle) || projectTitle.includes(normalizedName)) {
                 return true;
             }
@@ -255,7 +212,6 @@ export function InstanceContentBrowser({
         return false;
     }, [installedIds, installedNames]);
 
-    // Load installed content on mount and when content type changes
     useEffect(() => {
         loadInstalledContent();
     }, [loadInstalledContent]);
@@ -272,8 +228,8 @@ export function InstanceContentBrowser({
                     'neoforge': 6
                 };
 
-                // CurseForge only takes single gameVersion + single modLoaderType. Since these
-                // are pinned to the instance there's at most one entry anyway.
+                
+                
                 const cfVersion = mcVersionFilters[0];
                 const cfLoader = loaderFilters[0];
                 const result = await window.api?.curseforgeSearch?.({
@@ -286,7 +242,7 @@ export function InstanceContentBrowser({
                     index: (page - 1) * viewCount,
                 });
 
-                // Stale request — a newer loadProjects has been fired; discard.
+                
                 if (searchTokenRef.current !== myToken) return;
 
                 if (result?.data) {
@@ -310,7 +266,7 @@ export function InstanceContentBrowser({
                     setTotalHits(result.pagination?.totalCount || mapped.length);
                 }
             } else {
-                // Build Modrinth facets — multi-select OR within each group.
+                
                 const facets: string[][] = [];
                 if (mcVersionFilters.length) facets.push(mcVersionFilters.map(v => `versions:${v}`));
                 if (loaderFilters.length) facets.push(loaderFilters.map(l => `categories:${l}`));
@@ -331,7 +287,7 @@ export function InstanceContentBrowser({
                     facets: facets.length > 0 ? JSON.stringify(facets) : undefined,
                 });
 
-                // Stale request — discard.
+                // Stale request โ€” discard.
                 if (searchTokenRef.current !== myToken) return;
 
                 if (result?.hits) {
@@ -359,23 +315,18 @@ export function InstanceContentBrowser({
                 }
             }
         } catch (error) {
-            // Only show error for the latest request — stale requests fail silently.
+            // Only show error for the latest request โ€” stale requests fail silently.
             if (searchTokenRef.current !== myToken) return;
             console.error("[ContentBrowser] Search error:", error);
             toast.error(t("search_failed"));
         } finally {
-            // Only clear loading for the latest request.
             if (searchTokenRef.current === myToken) {
                 setIsLoading(false);
             }
         }
     }, [searchQuery, contentSource, contentType, sortBy, page, viewCount, mcVersionFilters, loaderFilters, categoryFilters, environmentFilters, instance]);
 
-    // Fetch full project details for gallery
-
-
-    // Debounce ref for filter changes
-    const filterDebounceRef = useRef<NodeJS.Timeout | null>(null);
+    const filterDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isFirstFilterLoadRef = useRef(true);
 
     useEffect(() => {
@@ -393,7 +344,6 @@ export function InstanceContentBrowser({
         };
     }, [contentSource, contentType, sortBy, page, viewCount, mcVersionFilters, loaderFilters, categoryFilters, environmentFilters]);
 
-    // Update preview when results change
     useEffect(() => {
         if (!results || results.length === 0) {
             setPreviewProject(null);
@@ -406,10 +356,6 @@ export function InstanceContentBrowser({
         const stillExists = results.some((p) => p.project_id === previewProject.project_id);
         if (!stillExists) handleSelectProject(results[0]);
     }, [results]);
-
-    // ========================================
-    // Handlers
-    // ========================================
 
     const handleDebouncedSearch = useCallback((value: string) => {
         setSearchQuery(value);
@@ -425,7 +371,6 @@ export function InstanceContentBrowser({
             handleOpenDetail(project);
         } else {
             setPreviewProject(project);
-            // Fetch full details in background to upgrade images
             fetchFullProjectDetails(project);
         }
     };
@@ -511,7 +456,6 @@ export function InstanceContentBrowser({
                 toast.success(t("install_success_name").replace("{name}", project.title));
                 setInstalledIds(prev => new Set(prev).add(project.project_id));
                 
-                // Auto-lock for cloud instances
                 if (instance.cloudId && result.filename) {
                     try {
                         const lockedMods = new Set(instance.lockedMods || []);
@@ -539,7 +483,6 @@ export function InstanceContentBrowser({
         }
     };
 
-    // Find best compatible version for instance
     const findCompatibleVersion = (versions: ModVersion[]): ModVersion | null => {
         const instanceLoader = instance.loader?.toLowerCase() || "vanilla";
         const instanceVersion = instance.minecraftVersion;
@@ -564,9 +507,7 @@ export function InstanceContentBrowser({
         return null;
     };
 
-    // Handle install button click - auto install best compatible version
     const handleAddToInstance = async (project: ModrinthProject) => {
-        // Block mod installation on vanilla instances
         if (contentType === "mod" && instance.loader === "vanilla") {
             toast.error(t("cannot_install_mod_vanilla"));
             return;
@@ -625,7 +566,6 @@ export function InstanceContentBrowser({
                 }
             }
 
-            // Find best compatible version automatically
             const bestVersion = findCompatibleVersion(loadedVersions);
 
             if (!bestVersion) {
@@ -635,7 +575,6 @@ export function InstanceContentBrowser({
                 return;
             }
 
-            // Install directly
             const result = await window.api?.contentDownloadToInstance?.({
                 projectId: project.project_id,
                 versionId: bestVersion.id,
@@ -646,10 +585,8 @@ export function InstanceContentBrowser({
 
             if (result?.ok) {
                 toast.success(t("install_success_name").replace("{name}", project.title));
-                // Track installed project
                 setInstalledIds(prev => new Set(prev).add(project.project_id));
                 
-                // Auto-lock for cloud instances
                 if (instance.cloudId && result.filename) {
                     try {
                         const lockedMods = new Set(instance.lockedMods || []);
@@ -664,9 +601,7 @@ export function InstanceContentBrowser({
                     }
                 }
                 
-                // Refresh installed content list
                 loadInstalledContent();
-                // Notify parent but don't close
                 onInstalled();
             } else {
                 toast.error(result?.error || t("install_failed"));
@@ -679,11 +614,6 @@ export function InstanceContentBrowser({
             setSelectedProject(null);
         }
     };
-
-    // ========================================
-    // Render
-    // ========================================
-
 
     return (
         <div className="space-y-4">
@@ -707,12 +637,10 @@ export function InstanceContentBrowser({
                     preloadUrls={(() => {
                         const urls: string[] = [];
                         if (previewProject?.gallery && selectedImageIndex !== null) {
-                            // Preload Next
                             if (selectedImageIndex < previewProject.gallery.length - 1) {
                                 const next = getImageUrl(previewProject.gallery[selectedImageIndex + 1]);
                                 if (next) urls.push(next);
                             }
-                            // Preload Prev
                             if (selectedImageIndex > 0) {
                                 const prev = getImageUrl(previewProject.gallery[selectedImageIndex - 1]);
                                 if (prev) urls.push(prev);
@@ -740,9 +668,7 @@ export function InstanceContentBrowser({
                 />
             ) : (
                 <>
-                {/* Toolbar */}
                 <div className="rounded-2xl" style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}30` }}>
-                    {/* Top row: Back + Instance Info + Search + Source */}
                     <div className="px-3 py-3 sm:px-4 flex flex-col md:flex-row md:items-center gap-3 border-b" style={{ borderColor: colors.outline + "30" }}>
                         <button
                             onClick={() => { playClick(); onClose(); }}
@@ -760,7 +686,6 @@ export function InstanceContentBrowser({
                             </span>
                         </div>
 
-                        {/* Search - flex-1 to fill space */}
                         <div className="flex-1 relative min-w-[220px]">
                             <input
                                 type="text"
@@ -779,7 +704,7 @@ export function InstanceContentBrowser({
                             <i className="fa-solid fa-search text-sm absolute left-4 top-1/2 -translate-y-1/2" style={{ color: colors.onSurfaceVariant }}></i>
                         </div>
 
-                        {/* Single filter trigger — opens a popover with all sections (loader/version
+                        {/* Single filter trigger โ€” opens a popover with all sections (loader/version
                             are locked to the instance and hidden here). */}
                         <FilterMenu
                             colors={colors}
@@ -799,7 +724,6 @@ export function InstanceContentBrowser({
                             showVersionFilter={true}
                         />
 
-                        {/* Source Toggle - right side */}
                         <div className="grid grid-cols-2 gap-2 w-full sm:w-auto md:min-w-[260px]">
                             <button
                                 onClick={() => { playClick(); setContentSource(CONTENT_SOURCES.MODRINTH); setPage(1); }}
@@ -816,7 +740,7 @@ export function InstanceContentBrowser({
                                         style={{ backgroundColor: "#1bd96a" }}
                                     />
                                 )}
-                                <img src={modrinthIcon.src} alt="" className="w-4 h-4 z-10 relative" />
+                                <img src={modrinthIcon} alt="" className="w-4 h-4 z-10 relative" />
                                 <span className="z-10 relative">Modrinth</span>
                             </button>
                             <button
@@ -834,15 +758,13 @@ export function InstanceContentBrowser({
                                         style={{ backgroundColor: "#f16436" }}
                                     />
                                 )}
-                                <img src={curseforgeIcon.src} alt="" className="w-4 h-4 z-10 relative" />
+                                <img src={curseforgeIcon} alt="" className="w-4 h-4 z-10 relative" />
                                 <span className="z-10 relative">CurseForge</span>
                             </button>
                         </div>
                     </div>
 
-                    {/* Bottom row: Tabs + Filters */}
                     <div className="px-3 py-3 sm:px-4 flex flex-col lg:flex-row lg:items-center gap-3">
-                        {/* Type tabs */}
                         <div className="overflow-x-auto no-scrollbar">
                         <div className="flex items-center gap-2 min-w-max">
                             {getAvailableTabs(instance.loader).map((tab) => {
@@ -876,7 +798,6 @@ export function InstanceContentBrowser({
                         <div className="hidden lg:block flex-1" />
 
                         <div className="flex items-center justify-between lg:justify-end gap-2 flex-wrap">
-                             {/* View Count Select */}
                              <select
                                  value={viewCount}
                                  onChange={(e) => { playClick(); setViewCount(Number(e.target.value)); setPage(1); }}
@@ -893,7 +814,6 @@ export function InstanceContentBrowser({
                                  ))}
                              </select>
 
-                             {/* Active filter indicator */}
                              {!!(mcVersionFilters.length || loaderFilters.length || categoryFilters.length || environmentFilters.length) && (
                                  <span
                                      className="text-xs font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1.5"
@@ -904,7 +824,6 @@ export function InstanceContentBrowser({
                                  </span>
                              )}
 
-                             {/* Pagination */}
                              {totalPages > 0 && (
                                  <div className="flex items-center gap-1 ml-1">
                                      <button
@@ -932,12 +851,9 @@ export function InstanceContentBrowser({
                     </div>
                 </div>
 
-                {/* Main Content - Grid layout like Explore */}
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mt-4">
-                    {/* Project List */}
                     <div ref={contentListRef} className="lg:col-span-8 xl:col-span-9">
                         <div className="flex flex-col gap-4">
-                            {/* Header Stats */}
                             {!isLoading && (
                                 <div className="flex items-center justify-between px-1">
                                     <span className="text-xs font-medium" style={{ color: colors.onSurfaceVariant }}>
@@ -950,7 +866,6 @@ export function InstanceContentBrowser({
                                 </div>
                             )}
 
-                            {/* Grid Content */}
                             {isLoading ? (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3">
                                     {Array.from({ length: 9 }).map((_, i) => (
@@ -963,21 +878,19 @@ export function InstanceContentBrowser({
                                                 animationDelay: `${Math.min(i * 30, 150)}ms`
                                             }}
                                         >
-                                            {/* Icon skeleton */}
-                                            <div className="w-12 h-12 rounded-xl shrink-0 overflow-hidden relative"
+                                        <div className="w-12 h-12 rounded-xl shrink-0 overflow-hidden relative"
                                                 style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                                                {/* Gradient removed */}
+                                                
                                             </div>
-                                            {/* Text skeleton */}
                                             <div className="flex-1 space-y-2">
                                                 <div className="h-4 rounded overflow-hidden relative" style={{ width: `${60 + (i % 3) * 15}%`, backgroundColor: colors.surfaceContainerHighest }}>
-                                                    {/* Gradient removed */}
+                                                    
                                                 </div>
                                                 <div className="h-3 rounded overflow-hidden relative" style={{ width: `${40 + (i % 4) * 10}%`, backgroundColor: colors.surfaceContainerHighest }}>
-                                                    {/* Gradient removed */}
+                                                    
                                                 </div>
                                                 <div className="h-3 rounded overflow-hidden relative mt-2" style={{ width: '100%', backgroundColor: colors.surfaceContainerHighest }}>
-                                                    {/* Gradient removed */}
+                                                    
                                                 </div>
                                             </div>
                                         </div>
@@ -1012,7 +925,6 @@ export function InstanceContentBrowser({
                                 </div>
                             )}
 
-                            {/* Pagination Bottom */}
                             {totalPages > 1 && (
                                 <div className="flex justify-center mt-6">
                                     <div className="flex items-center gap-2 p-1 rounded-lg"
@@ -1023,7 +935,6 @@ export function InstanceContentBrowser({
                                                 playClick();
                                                 const newPage = Math.max(1, page - 1);
                                                 setPage(newPage);
-                                                // Scroll to top of list
                                                 contentListRef.current?.scrollIntoView({ behavior: 'smooth' });
                                             }}
                                             disabled={page === 1}
@@ -1045,7 +956,6 @@ export function InstanceContentBrowser({
                                                 playClick();
                                                 const newPage = Math.min(totalPages, page + 1);
                                                 setPage(newPage);
-                                                // Scroll to top of list
                                                 contentListRef.current?.scrollIntoView({ behavior: 'smooth' });
                                             }}
                                             disabled={page >= totalPages}
@@ -1061,7 +971,6 @@ export function InstanceContentBrowser({
                         </div>
                     </div>
 
-                    {/* Preview Panel */}
                     <div className="lg:col-span-4 xl:col-span-3">
                         {previewProject ? (
                             <div className="rounded-2xl overflow-hidden sticky top-4 flex flex-col"
@@ -1070,7 +979,6 @@ export function InstanceContentBrowser({
                                     border: `1px solid ${colors.outline}20`,
                                     minHeight: "400px"
                                 }}>
-                                {/* Hero Header */}
                                 <div className="relative h-48 w-full bg-cover bg-center shrink-0"
                                     style={{
                                         backgroundColor: colors.surfaceContainerHighest,
@@ -1078,14 +986,13 @@ export function InstanceContentBrowser({
                                             const raw = previewProject.featured_gallery || (previewProject.gallery && previewProject.gallery.length > 0 ? previewProject.gallery[0] : null);
                                             let url = getImageUrl(raw);
                                             if (!url) {
-                                                url = bannerImage.src;
+                                                url = bannerImage;
                                             }
                                             return `url(${url})`;
                                         })()
                                     }}>
                                     <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent" />
 
-                                    {/* Installed Badge */}
                                     {isProjectInstalled(previewProject) && (
                                         <div className="absolute top-3 right-3 px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1"
                                             style={{ backgroundColor: "#22c55e", color: "#fff" }}>
@@ -1094,7 +1001,6 @@ export function InstanceContentBrowser({
                                         </div>
                                     )}
 
-                                    {/* Floating Icon */}
                                     <div className="absolute -bottom-8 left-6 w-20 h-20 rounded-2xl p-0.5 z-10"
                                         style={{ backgroundColor: colors.surface }}>
                                         <div className="w-full h-full rounded-[14px] bg-cover bg-center overflow-hidden"
@@ -1112,7 +1018,6 @@ export function InstanceContentBrowser({
                                 </div>
 
                                 <div className="pt-10 px-6 pb-6 flex-1 flex flex-col">
-                                    {/* Header Content */}
                                     <div className="mb-4">
                                         <h2 className="text-xl font-bold mb-1 leading-tight" style={{ color: colors.onSurface }}>
                                             {previewProject.title}
@@ -1138,7 +1043,6 @@ export function InstanceContentBrowser({
                                         </div>
                                     </div>
 
-                                    {/* Categories */}
                                     {previewProject.categories && previewProject.categories.length > 0 && (
                                         <div className="flex flex-wrap gap-1.5 mb-5">
                                             {previewProject.categories.slice(0, 6).map((cat) => (
@@ -1151,7 +1055,6 @@ export function InstanceContentBrowser({
                                         </div>
                                     )}
 
-                                    {/* Action Button */}
                                     <div className="mb-6">
                                         {isProjectInstalled(previewProject) ? (
                                             <div className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
@@ -1187,7 +1090,6 @@ export function InstanceContentBrowser({
                                         )}
                                     </div>
 
-                                    {/* Description */}
                                     <div className="mb-6 flex-1">
                                         <h4 className="text-sm font-black uppercase tracking-[0.25em] mb-4 flex items-center gap-3" style={{ color: colors.onSurface }}>
                                             <span className="w-1 h-4 rounded-full" style={{ backgroundColor: colors.secondary }} />
@@ -1198,7 +1100,6 @@ export function InstanceContentBrowser({
                                         </p>
                                     </div>
 
-                                    {/* Gallery Preview */}
                                     {previewProject.gallery && previewProject.gallery.length > 0 && (
                                         <div className="mb-4">
                                             <h4 className="text-sm font-black uppercase tracking-[0.25em] mb-4 flex items-center gap-3" style={{ color: colors.onSurface }}>
@@ -1230,7 +1131,6 @@ export function InstanceContentBrowser({
                                         </div>
                                     )}
 
-                                    {/* Footer Info */}
                                     <div className="pt-4 mt-auto border-t text-[10px]"
                                         style={{ borderColor: `${colors.outline}20`, color: colors.onSurfaceVariant }}>
                                         <span>ID: {previewProject.project_id}</span>

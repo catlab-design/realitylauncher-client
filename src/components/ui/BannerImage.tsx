@@ -22,22 +22,19 @@ export const BannerImage = React.memo(({
     const [isLoaded, setIsLoaded] = useState(false);
     const [error, setError] = useState(false);
     const imgRef = useRef<HTMLImageElement>(null);
-    
-    // Check if image is already loaded (cached)
+
     useEffect(() => {
         if (imgRef.current?.complete && imgRef.current.naturalWidth > 0) {
             setIsLoaded(true);
         }
     }, [src]);
 
-    // Reset state when src changes
     useEffect(() => {
         setIsLoaded(false);
         setError(false);
         
         if (!src) return;
 
-        // If priority is true, preload image immediately
         if (priority) {
             const img = new Image();
             img.src = src;
@@ -59,7 +56,6 @@ export const BannerImage = React.memo(({
 
     return (
         <div className={cn("relative w-full h-full overflow-hidden", className)} style={style}>
-            {/* Low Quality Placeholder / Background Color */}
             <div 
                 className={cn(
                     "absolute inset-0 bg-gray-800 transition-opacity duration-700",
@@ -67,7 +63,6 @@ export const BannerImage = React.memo(({
                 )} 
             />
             
-            {/* Main Image - Use ref to check complete status */}
             <img
                 ref={imgRef}
                 src={src}

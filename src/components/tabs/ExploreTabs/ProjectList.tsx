@@ -1,7 +1,3 @@
-// ========================================
-// Project List Component
-// ========================================
-
 import React, { useRef } from "react";
 import { useTranslation } from "../../../hooks/useTranslation";
 import type { ModrinthProject, InstallProgress } from "./types";
@@ -42,7 +38,6 @@ export function ProjectList({
 
     const handlePageChange = (newPage: number) => {
         onPageChange(newPage);
-        // Scroll to top of list container
         if (containerRef.current) {
             containerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
@@ -50,7 +45,6 @@ export function ProjectList({
 
     return (
         <div ref={containerRef} className="flex flex-col h-full gap-4">
-            {/* Header Stats */}
             {!isLoading && (
                 <div className="flex items-center justify-between px-1">
                     <span className="text-sm font-medium" style={{ color: colors.onSurfaceVariant }}>
@@ -63,7 +57,6 @@ export function ProjectList({
                 </div>
             )}
 
-            {/* Grid Content */}
             {isLoading ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3">
                     {Array.from({ length: viewCount }).map((_, i) => (
@@ -76,21 +69,15 @@ export function ProjectList({
                                 animationDelay: `${Math.min(i * 30, 150)}ms`
                             }}
                         >
-                            {/* Icon skeleton with shimmer */}
                             <div className="w-12 h-12 rounded-xl shrink-0 overflow-hidden relative"
                                 style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                                {/* Gradient removed */}
                             </div>
-                            {/* Text skeleton */}
                             <div className="flex-1 space-y-2">
                                 <div className="h-4 rounded overflow-hidden relative" style={{ width: `${60 + (i % 3) * 15}%`, backgroundColor: colors.surfaceContainerHighest }}>
-                                    {/* Gradient removed */}
                                 </div>
                                 <div className="h-3 rounded overflow-hidden relative" style={{ width: `${40 + (i % 4) * 10}%`, backgroundColor: colors.surfaceContainerHighest }}>
-                                    {/* Gradient removed */}
                                 </div>
                                 <div className="h-3 rounded overflow-hidden relative mt-2" style={{ width: '100%', backgroundColor: colors.surfaceContainerHighest }}>
-                                    {/* Gradient removed */}
                                 </div>
                             </div>
                         </div>
@@ -127,7 +114,6 @@ export function ProjectList({
                 </div>
             )}
 
-            {/* Pagination - Bottom */}
             {!isLoading && results.length > 0 && totalPages > 1 && (
                 <div className="flex justify-center mt-6 pb-2">
                     <div className="flex items-center gap-2 p-1 rounded-lg"

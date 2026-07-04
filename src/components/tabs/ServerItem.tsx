@@ -31,10 +31,9 @@ interface ServerItemProps {
     colors: any;
     getWithTimestamp: (url: string | null | undefined) => string;
     onSelect: (instance: Instance) => void;
-    /** Open the full detail view for this instance */
     onViewDetail?: (instance: Instance) => void;
     onPlay: (e: React.MouseEvent, instance: any) => void;
-    onStop: (e: React.MouseEvent, instanceId: string) => void;
+    onStop: (e: React.MouseEvent, instance: any) => void;
     onJoin: (instance: Instance) => void;
     onInstall: (e: React.MouseEvent, instance: any) => void;
     onLeave: (e: React.MouseEvent, instance: any) => void;
@@ -68,7 +67,6 @@ export function ServerItem({
     const iconUrl = instance.iconUrl ? getWithTimestamp(instance.iconUrl) : null;
     const bannerImg = instance.bannerUrl || instance.iconUrl;
 
-    // ── Tiles View Mode ──
     if (viewMode === "tiles") {
         return (
             <div
@@ -85,7 +83,6 @@ export function ServerItem({
                         border: `1.5px solid ${colors.outline}12`,
                     }}
                 >
-                    {/* Background Banner Image */}
                     {bannerImg ? (
                         <img
                             src={getWithTimestamp(bannerImg)}
@@ -105,11 +102,9 @@ export function ServerItem({
                         />
                     )}
 
-                    {/* Subtle bottom-up dark gradient overlay */}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent z-0" />
 
 
-                    {/* Top-Left Icon (Absolute) */}
                     {iconUrl ? (
                         <img
                             src={iconUrl}
@@ -129,7 +124,6 @@ export function ServerItem({
                         </div>
                     )}
 
-                    {/* Server IP Badge (Absolute Top-Right) */}
                     {instance.serverIps && instance.serverIps.length > 0 && (
                         <div className="absolute top-4 right-4 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded bg-black/40 border border-white/10 text-white/90 font-mono text-[11px] sm:text-xs">
                             <Icons.Dns className="w-3.5 h-3.5 text-white/60 shrink-0" />
@@ -137,7 +131,6 @@ export function ServerItem({
                         </div>
                     )}
 
-                    {/* Name & Desc (Absolute Bottom-Left) */}
                     <div className="absolute bottom-4 left-5 z-10 pr-36 max-w-[65%] flex flex-col min-w-0">
                         <h3 className="font-black text-lg md:text-xl text-white truncate leading-tight drop-shadow-md">
                             {instance.name}
@@ -147,7 +140,6 @@ export function ServerItem({
                         </p>
                     </div>
 
-                    {/* Actions (Absolute Bottom-Right) */}
                     <div className="absolute bottom-0 right-0 z-10 flex items-center" onClick={(e) => e.stopPropagation()}>
                         {!isMember ? (
                             <button
@@ -166,7 +158,7 @@ export function ServerItem({
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         playClick();
-                                        isActive ? onStop(e, instance.storagePath || instance.id) : onPlay(e, instance);
+                                        isActive ? onStop(e, instance) : onPlay(e, instance);
                                     }}
                                     className="h-12 px-6 rounded-tl-2xl flex items-center gap-1.5 transition-all active:scale-95 hover:brightness-110 font-extrabold text-sm shadow-md"
                                     style={{
@@ -193,7 +185,6 @@ export function ServerItem({
                                         </>
                                     )}
                                 </button>
-                                {/* Divider */}
                                 <div className="w-[1px] h-12 bg-black/20 z-20 self-stretch" />
                                 <button
                                     type="button"
@@ -219,7 +210,6 @@ export function ServerItem({
                                     <Icons.Download className="w-5 h-5" />
                                     <span>{t('install')}</span>
                                 </button>
-                                {/* Divider */}
                                 <div className="w-[1px] h-12 bg-black/20 z-20 self-stretch" />
                                 <button
                                     type="button"
@@ -241,7 +231,6 @@ export function ServerItem({
         );
     }
 
-    // ── Table View Mode ──
     if (viewMode === "table") {
         return (
             <div
@@ -258,7 +247,6 @@ export function ServerItem({
                         border: `1.5px solid ${colors.outline}12`,
                     }}
                 >
-                    {/* Server Info (40% width) */}
                     <div className="w-2/5 flex items-center gap-4 min-w-0">
                         {iconUrl ? (
                             <img
@@ -285,7 +273,6 @@ export function ServerItem({
                             >
                                 {instance.name}
                             </span>
-                            {/* Badges inline */}
                             <div className="flex gap-1.5 mt-1.5">
                                 {(showPublic || !!instance.isPublic) && (
                                     <span className="text-[10px] px-2 py-0.5 rounded-md bg-blue-500/15 text-blue-300 border border-blue-500/25">
@@ -305,7 +292,6 @@ export function ServerItem({
                         </div>
                     </div>
 
-                    {/* Version column (20% width) */}
                     <div 
                         className="w-1/5 text-base font-bold truncate pr-2"
                         style={{ color: colors.onSurface, opacity: 0.7 }}
@@ -321,7 +307,6 @@ export function ServerItem({
                         )}
                     </div>
 
-                    {/* Status/IP column (20% width) */}
                     <div 
                         className="w-1/5 text-base font-mono truncate pr-2"
                         style={{ color: colors.onSurface, opacity: 0.5 }}
@@ -333,7 +318,6 @@ export function ServerItem({
                         )}
                     </div>
 
-                    {/* Actions column (20% width) */}
                     <div className="w-1/5 flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                         {!isMember ? (
                             <button
@@ -352,7 +336,7 @@ export function ServerItem({
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         playClick();
-                                        isActive ? onStop(e, instance.storagePath || instance.id) : onPlay(e, instance);
+                                        isActive ? onStop(e, instance) : onPlay(e, instance);
                                     }}
                                     className="h-11 px-5 rounded-xl flex items-center gap-1.5 transition-all active:scale-95 hover:brightness-110 font-extrabold text-sm shadow-sm"
                                     style={{
@@ -430,7 +414,6 @@ export function ServerItem({
                     border: `1.5px solid ${colors.outline}12`,
                 }}
             >
-                {/* ── Badges (Absolute Top-Left, Transparent with Border) ── */}
                 <div className="absolute top-4 left-4 z-20 flex flex-row gap-2">
                     {(showPublic || !!instance.isPublic) && (
                         <span className="text-[10px] sm:text-xs px-3 py-1 font-black uppercase tracking-wider rounded-none bg-blue-500/15 text-blue-300 border border-blue-500/35 backdrop-blur-md shadow-sm">
@@ -447,7 +430,6 @@ export function ServerItem({
                         </span>
                     ) : null}
                 </div>
-                {/* ── Background Banner Image ── */}
                 {bannerImg ? (
                     <img
                         src={getWithTimestamp(bannerImg)}
@@ -459,7 +441,6 @@ export function ServerItem({
                         loading="lazy"
                     />
                 ) : (
-                    /* Fallback subtle pattern/gradient */
                     <div 
                         className="absolute inset-0 opacity-10"
                         style={{
@@ -468,10 +449,8 @@ export function ServerItem({
                     />
                 )}
 
-                {/* ── Dark Gradient Overlays for Readability ── */}
                 <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/30 to-transparent z-0" />
 
-                {/* ── Server IP Badge (Top-Right) ── */}
                 {instance.serverIps && instance.serverIps.length > 0 && (
                     <div className="absolute top-4 right-4 z-20 flex items-center gap-2 px-3 py-1.5 rounded-md backdrop-blur-md bg-black/40 border border-white/15">
                         <Icons.Dns className="w-4 h-4 text-white/60 shrink-0" />
@@ -486,9 +465,7 @@ export function ServerItem({
                     </div>
                 )}
 
-                {/* ── Server Info (Absolute Bottom-Left) ── */}
                 <div className="absolute bottom-5 left-6 z-10 max-w-[240px] sm:max-w-md md:max-w-lg lg:max-w-xl flex items-center gap-4">
-                    {/* Icon */}
                     {iconUrl ? (
                         <img
                             src={iconUrl}
@@ -508,15 +485,12 @@ export function ServerItem({
                         </div>
                     )}
 
-                    {/* Details column */}
                     <div className="flex flex-col gap-1">
-                        {/* Title Row */}
                         <div className="flex items-center gap-2 flex-wrap">
                             <h3 className="font-black text-xl md:text-2xl text-white drop-shadow-md leading-tight">
                                 {instance.name}
                             </h3>
                         </div>
-                        {/* Description */}
                         {instance.description ? (
                             <p className="text-white/80 text-xs md:text-sm font-semibold line-clamp-2 leading-relaxed drop-shadow-sm">
                                 {instance.description}
@@ -531,10 +505,8 @@ export function ServerItem({
                     </div>
                 </div>
 
-                {/* ── Right Actions (Absolute Bottom-Right) ── */}
                 <div className="absolute bottom-0 right-0 z-10 flex items-center">
                     {!isMember ? (
-                        /* JOIN */
                         <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); playClick(); onJoin(instance); }}
@@ -546,13 +518,12 @@ export function ServerItem({
                         </button>
                     ) : isInstalled ? (
                         <>
-                            {/* PLAY / LAUNCHING / STOP */}
                             <button
                                 type="button"
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     playClick();
-                                    isActive ? onStop(e, instance.storagePath || instance.id) : onPlay(e, instance);
+                                    isActive ? onStop(e, instance) : onPlay(e, instance);
                                 }}
                                 className="h-14 px-8 rounded-tl-2xl flex items-center gap-2 transition-all active:scale-95 hover:brightness-110 font-extrabold text-sm shadow-md"
                                 style={{
@@ -579,9 +550,7 @@ export function ServerItem({
                                     </>
                                 )}
                             </button>
-                            {/* Divider */}
                             <div className="w-[1px] h-14 bg-black/20 z-20 self-stretch" />
-                            {/* LEAVE */}
                             <button
                                 type="button"
                                 onClick={(e) => { e.stopPropagation(); playClick(); onLeave(e, instance); }}
@@ -596,7 +565,6 @@ export function ServerItem({
                             </button>
                         </>
                     ) : (
-                        /* INSTALL + LEAVE */
                         <>
                             <button
                                 type="button"
@@ -607,9 +575,7 @@ export function ServerItem({
                                 <Icons.Download className="w-5 h-5" />
                                 <span>{t('install')}</span>
                             </button>
-                            {/* Divider */}
                             <div className="w-[1px] h-14 bg-black/20 z-20 self-stretch" />
-                            {/* LEAVE */}
                             <button
                                 type="button"
                                 onClick={(e) => { e.stopPropagation(); playClick(); onLeave(e, instance); }}

@@ -1,14 +1,10 @@
-/**
- * ModItem - Component for displaying a single mod item
- */
-
 import React, { useEffect, useState } from "react";
 import { Icons } from "../../ui/Icons";
 import { playClick } from "../../../lib/sounds";
 import { useTranslation } from "../../../hooks/useTranslation";
 
-// Normalize for lenient compare: strip leading v, take base before +/-/_, lowercase.
-// e.g. "1.5.4+1.21" / "v1.5.4-fabric" / "1.5.4_release" -> "1.5.4"
+
+
 function normalizeVer(v: string): string {
     return String(v || "")
         .toLowerCase()
@@ -22,7 +18,7 @@ function isSameVersion(a: string, b: string): boolean {
     const nb = normalizeVer(b);
     if (!na || !nb) return false;
     if (na === nb) return true;
-    // Either side contains the other (covers "1.5" vs "1.5.4")
+    
     return na.startsWith(nb) || nb.startsWith(na);
 }
 
@@ -105,7 +101,7 @@ export function LazyModItem({
     instanceLoader,
 }: LazyModItemProps) {
     const { t } = useTranslation();
-    // null = unknown / not yet checked, true = newer available, false = up-to-date
+    
     const [hasUpdate, setHasUpdate] = useState<boolean | null>(null);
 
     useEffect(() => {
@@ -175,10 +171,10 @@ export function LazyModItem({
         };
     }, [mod?.filename, mod?.version, mod?.installedVersionId, mod?.modrinthProjectId, mod?.curseforgeProjectId, instanceMcVersion, instanceLoader]);
 
-    // Safety check for undefined mod (can happen during loading skeleton states if rendered prematurely)
+    
     if (!mod) return null;
 
-    // Data is cache-first from backend and may be enriched progressively.
+    
     const displayName = mod.displayName || mod.name;
     const author = mod.author || "";
     const icon = mod.icon;
@@ -210,7 +206,6 @@ export function LazyModItem({
                 marginBottom: "4px"
             }}
         >
-            {/* Checkbox */}
             <div
                 onClick={(e) => {
                     e.stopPropagation();
@@ -226,7 +221,6 @@ export function LazyModItem({
                 {isSelected && <Icons.Check className="w-3.5 h-3.5" style={{ color: "#1a1a1a" }} />}
             </div>
 
-            {/* Mod icon */}
             {icon ? (
                 <img
                     src={icon}
@@ -242,7 +236,6 @@ export function LazyModItem({
                 </div>
             )}
 
-            {/* Mod info (Name & Author) */}
             <div className="min-w-0 pr-4">
                 <div className="flex items-center gap-2">
                     <p className="font-bold text-[15px] truncate" style={{ color: colors.onSurface }}>
@@ -260,7 +253,6 @@ export function LazyModItem({
                 </p>
             </div>
 
-            {/* Updated / Filename Column */}
             <div className="min-w-0 pr-4 hidden md:block">
                 <p className="text-sm font-bold truncate mb-0.5 flex items-center gap-1.5" style={{ color: colors.onSurface }}>
                     {mod.version ? `v${mod.version}` : "Unknown Version"}
@@ -271,9 +263,8 @@ export function LazyModItem({
                 </p>
             </div>
 
-            {/* Actions (Toggle, Trash, Menu, Lock) */}
             <div className="flex items-center gap-2 shrink-0">
-                {/* Toggle switch (Modrinth style: Accent when active, dark grey when inactive) */}
+                
                 <button
                     onClick={(e) => { e.stopPropagation(); playClick(); onToggle(mod.filename); }}
                     className="relative w-11 h-6 rounded-full transition-colors shrink-0"
@@ -337,7 +328,6 @@ export function LazyModItem({
                     return null;
                 })()}
 
-                {/* Delete button (Outline trash) */}
                 <button
                     onClick={(e) => { e.stopPropagation(); playClick(); onDelete(mod.filename); }}
                     className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:bg-white/10 shrink-0"
@@ -353,7 +343,6 @@ export function LazyModItem({
                     </svg>
                 </button>
 
-                {/* Three Dots Placeholder */}
                 <button onClick={(e) => e.stopPropagation()} className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:bg-white/10 shrink-0" style={{ color: colors.onSurfaceVariant }}>
                     <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
                         <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"></path>

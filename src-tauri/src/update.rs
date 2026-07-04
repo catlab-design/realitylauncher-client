@@ -1,0 +1,342 @@
+
+
+
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+
+use once_cell::sync::Lazy;
+
+const API_URL: &str = "https://api.reality.catlabdesign.space";
+
+
+static DOWNLOADED_INSTALLER: Lazy<Mutex<Option<PathBuf>>> = Lazy::new(|| Mutex::new(None));
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LatestReleasePayload {
+    pub version: String,
+    pub release_date: Option<String>,
+    pub changelog: Option<String>,
+    pub downloads: Option<HashMap<String, String>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LatestVersionResult {
+    pub ok: bool,
+    pub current: String,
+    pub latest: Option<String>,
+    pub update_available: Option<bool>,
+    pub release_date: Option<String>,
+    pub changelog: Option<String>,
+    pub download_url: Option<String>,
+    pub error: Option<String>,
+}
+
+
+
+fn compare_versions(a: &str, b: &str) -> i32 {
+    let parse = |v: &str| -> Vec<u32> {
+        v.trim()
+            .strip_prefix('v')
+            .unwrap_or(v)
+            .split(&['-', '+'][..])
+            .next()
+            .unwrap_or("")
+            .split('.')
+            .map(|n| n.parse::<u32>().unwrap_or(0))
+            .collect()
+    };
+    let pa = parse(a);
+    let pb = parse(b);
+    let len = std::cmp::max(pa.len(), pb.len());
+    for i in 0..len {
+        let da = pa.get(i).copied().unwrap_or(0);
+        let db = pb.get(i).copied().unwrap_or(0);
+        if da > db {
+            return 1;
+        }
+        if da < db {
+            return -1;
+        }
+    }
+    0
+}
+
+fn get_platform_key() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "macos"
+    } else if cfg!(target_os = "linux") {
+        "linux"
+    } else {
+        "windows"
+    }
+}
+
+#[tauri::command]
+pub async fn check_latest_version(app: tauri::AppHandle) -> LatestVersionResult {
+    let current = app.package_info().version.to_string();
+    let url = format!("{}/launcher/latest", API_URL);
+
+    let client = reqwest::Client::new();
+    match client.get(&url).send().await {
+        Ok(response) => {
+            if !response.status().is_success() {
+                return LatestVersionResult {
+                    ok: false,
+                    current,
+                    latest: None,
+                    update_available: None,
+                    release_date: None,
+                    changelog: None,
+                    download_url: None,
+                    error: Some(format!("HTTP {}", response.status())),
+                };
+            }
+
+            match response.json::<LatestReleasePayload>().await {
+                Ok(data) => {
+                    let latest = data.version.trim().to_string();
+                    let update_available = compare_versions(&latest, &current) > 0;
+                    let download_url = data
+                        .downloads
+                        .as_ref()
+                        .and_then(|d| d.get(get_platform_key()).cloned());
+
+                    // Push-style events for the Electron-era listeners
+                    // (UpdateTab/LauncherApp register onUpdateAvailable etc.);
+                    // the returned result stays the primary channel.
+                    {
+                        use tauri::Emitter;
+                        if update_available {
+                            let _ = app.emit(
+                                "update-available",
+                                serde_json::json!({
+                                    "version": latest.clone(),
+                                    "releaseDate": data.release_date.clone(),
+                                }),
+                            );
+                        } else {
+                            let _ = app.emit("update-not-available", serde_json::json!({}));
+                        }
+                    }
+
+                    LatestVersionResult {
+                        ok: true,
+                        current,
+                        latest: Some(latest),
+                        update_available: Some(update_available),
+                        release_date: data.release_date,
+                        changelog: data.changelog,
+                        download_url,
+                        error: None,
+                    }
+                }
+                Err(e) => {
+                    use tauri::Emitter;
+                    let _ = app.emit(
+                        "update-error",
+                        serde_json::json!({ "message": format!("Failed to parse response: {}", e) }),
+                    );
+                    LatestVersionResult {
+                        ok: false,
+                        current,
+                        latest: None,
+                        update_available: None,
+                        release_date: None,
+                        changelog: None,
+                        download_url: None,
+                        error: Some(format!("Failed to parse response: {}", e)),
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            use tauri::Emitter;
+            let _ = app.emit(
+                "update-error",
+                serde_json::json!({ "message": format!("Failed to connect to API: {}", e) }),
+            );
+            LatestVersionResult {
+                ok: false,
+                current,
+                latest: None,
+                update_available: None,
+                release_date: None,
+                changelog: None,
+                download_url: None,
+                error: Some(format!("Failed to connect to API: {}", e)),
+            }
+        }
+    }
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct UpdateDownloadProgress {
+    percent: u32,
+    downloaded: u64,
+    total: u64,
+}
+
+async fn fetch_latest_release() -> Result<LatestReleasePayload, String> {
+    let resp = reqwest::Client::new()
+        .get(format!("{}/launcher/latest", API_URL))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    resp.json::<LatestReleasePayload>()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Download the OS-appropriate installer to a temp file, emitting
+/// `update-progress`. The path is stashed for `install_update`.
+#[tauri::command]
+pub async fn download_update(app: tauri::AppHandle) -> serde_json::Value {
+    use futures_util::StreamExt;
+    use std::io::Write;
+    use tauri::Emitter;
+
+    let payload = match fetch_latest_release().await {
+        Ok(p) => p,
+        Err(e) => return serde_json::json!({ "ok": false, "error": e }),
+    };
+
+    let url = match payload
+        .downloads
+        .as_ref()
+        .and_then(|d| d.get(get_platform_key()).cloned())
+    {
+        Some(u) => u,
+        None => {
+            return serde_json::json!({ "ok": false, "error": "No download available for this platform" })
+        }
+    };
+
+    let filename = url
+        .rsplit('/')
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("reality-launcher-update");
+    let dest = std::env::temp_dir().join(format!("reality-update-{filename}"));
+
+    let resp = match reqwest::Client::new().get(&url).send().await {
+        Ok(r) => r,
+        Err(e) => return serde_json::json!({ "ok": false, "error": e.to_string() }),
+    };
+    if !resp.status().is_success() {
+        return serde_json::json!({ "ok": false, "error": format!("HTTP {}", resp.status()) });
+    }
+
+    let total = resp.content_length().unwrap_or(0);
+    let mut file = match std::fs::File::create(&dest) {
+        Ok(f) => f,
+        Err(e) => return serde_json::json!({ "ok": false, "error": e.to_string() }),
+    };
+    let mut downloaded: u64 = 0;
+    let mut last_percent = 0u32;
+    let mut stream = resp.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = match chunk {
+            Ok(c) => c,
+            Err(e) => return serde_json::json!({ "ok": false, "error": e.to_string() }),
+        };
+        if let Err(e) = file.write_all(&chunk) {
+            return serde_json::json!({ "ok": false, "error": e.to_string() });
+        }
+        downloaded += chunk.len() as u64;
+        if total > 0 {
+            let percent = ((downloaded * 100) / total) as u32;
+            if percent >= last_percent + 2 || percent == 100 {
+                last_percent = percent;
+                let _ = app.emit(
+                    "update-progress",
+                    UpdateDownloadProgress {
+                        percent,
+                        downloaded,
+                        total,
+                    },
+                );
+            }
+        }
+    }
+
+    *DOWNLOADED_INSTALLER.lock().unwrap() = Some(dest.clone());
+
+    #[derive(Serialize, Clone)]
+    #[serde(rename_all = "camelCase")]
+    struct UpdateDownloadedPayload {
+        version: String,
+        release_date: Option<String>,
+    }
+    let _ = app.emit(
+        "update-downloaded",
+        UpdateDownloadedPayload {
+            version: payload.version,
+            release_date: payload.release_date,
+        },
+    );
+
+    serde_json::json!({ "ok": true, "path": dest.to_string_lossy() })
+}
+
+/// Launch the downloaded installer and quit so it can replace the app.
+#[tauri::command]
+pub fn install_update(app: tauri::AppHandle) -> serde_json::Value {
+    let path = match DOWNLOADED_INSTALLER.lock().unwrap().clone() {
+        Some(p) => p,
+        None => return serde_json::json!({ "ok": false, "error": "No update downloaded" }),
+    };
+    if !path.exists() {
+        return serde_json::json!({ "ok": false, "error": "Downloaded installer missing" });
+    }
+    if let Err(e) = open_installer(&path) {
+        return serde_json::json!({ "ok": false, "error": e });
+    }
+    app.exit(0);
+    serde_json::json!({ "ok": true })
+}
+
+fn open_installer(path: &Path) -> Result<(), String> {
+    let target = path.to_string_lossy().to_string();
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("cmd");
+        c.args(["/C", "start", "", &target]);
+        c
+    };
+    #[cfg(target_os = "macos")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("open");
+        c.arg(&target);
+        c
+    };
+    #[cfg(target_os = "linux")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(&target);
+        c
+    };
+    cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compare_versions() {
+        assert_eq!(compare_versions("3.3.2", "3.3.1"), 1);
+        assert_eq!(compare_versions("3.3.2", "3.3.2"), 0);
+        assert_eq!(compare_versions("3.3.2", "3.4.0"), -1);
+        assert_eq!(compare_versions("3.3.2-beta.1", "3.3.2"), 0);
+        assert_eq!(compare_versions("v3.3.2", "3.3.2"), 0);
+        assert_eq!(compare_versions("3.3", "3.3.1"), -1);
+    }
+}

@@ -1,7 +1,3 @@
-/**
- * InstanceHeader - Header section for instance detail view
- */
-
 import React from "react";
 import { Icons } from "../../ui/Icons";
 import type { GameInstance } from "../../../types/launcher";
@@ -35,7 +31,6 @@ export function InstanceHeader({
 
     return (
         <div className="flex items-center gap-4 pb-4 border-b" style={{ borderColor: colors.outline + "30" }}>
-            {/* Back button */}
             <button
                 onClick={onBack}
                 className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-105"
@@ -46,7 +41,6 @@ export function InstanceHeader({
                 </svg>
             </button>
 
-            {/* Instance icon */}
             <div
                 className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl overflow-hidden"
                 style={{ backgroundColor: (instance.icon?.startsWith("data:") || instance.icon?.startsWith("file://") || instance.icon?.startsWith("http")) ? 'transparent' : colors.surfaceContainer }}
@@ -58,7 +52,6 @@ export function InstanceHeader({
                 )}
             </div>
 
-            {/* Instance info */}
             <div className="flex-1">
                 <h2 className="text-xl font-bold" style={{ color: colors.onSurface }}>{instance.name}</h2>
                 <div className="flex items-center gap-3 text-sm" style={{ color: colors.onSurfaceVariant }}>
@@ -69,7 +62,6 @@ export function InstanceHeader({
                 </div>
             </div>
 
-            {/* Play/Stop button */}
             <button
                 onClick={onPlayStop}
                 disabled={launchingId !== null || (isGameRunning && !isThisInstancePlaying)}
@@ -101,7 +93,6 @@ export function InstanceHeader({
                 )}
             </button>
 
-            {/* Settings button */}
             <button
                 onClick={onOpenSettings}
                 className="w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:opacity-80"
@@ -113,7 +104,6 @@ export function InstanceHeader({
                 </svg>
             </button>
 
-            {/* Open folder button */}
             <button
                 onClick={onOpenFolder}
                 className="w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:opacity-80"

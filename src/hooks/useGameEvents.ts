@@ -67,7 +67,7 @@ export function useGameEvents({
             current ?? "",
             total ?? "",
         ].join("|");
-        
+
         const critical =
             next.type === "sync-start" ||
             next.type === "sync-complete" ||
@@ -78,7 +78,7 @@ export function useGameEvents({
             next.stage === "error" ||
             next.stage === "cancelled" ||
             next.stage === "complete";
-            
+
         const due = now - lastInstallProgressRef.current.sentAt >= 120;
         const milestone = percent === undefined || percent === 0 || percent === 100 || percent % 5 === 0;
 
@@ -93,9 +93,8 @@ export function useGameEvents({
             if (isCancellingRef.current) return;
 
             setInstallProgressThrottled({
-                stage: data.type,
-                message: data.task,
                 type: data.type,
+                task: data.task,
                 filename: data.filename,
                 current: data.current,
                 total: data.total,
@@ -134,9 +133,9 @@ export function useGameEvents({
             setInstallProgressThrottled({
                 stage: data.stage,
                 message: data.message,
+                percent: data.percent,
                 current: data.current,
-                total: data.total,
-                percent: data.percent
+                total: data.total
             });
 
             if (data.percent === 100 || data.stage === "complete") {
@@ -172,6 +171,7 @@ export function useGameEvents({
     }, [loadInstances, setInstallMinimized, setInstallProgress, setInstallingInstanceId, setInstallingSafe, setInstallProgressThrottled, setOperationTypeSafe]);
 
     const handleCancelInstall = async () => {
+        if (isCancellingRef.current) return;
         isCancellingRef.current = true;
         try {
             if (installingInstanceId) {
@@ -179,7 +179,7 @@ export function useGameEvents({
             }
             await (window.api as any)?.modpackCancelInstall?.();
 
-            toast.error(t('cancel_install_success'));
+            toast(t('cancel_install_success'));
             setInstalling(false);
             setInstallProgress(null);
             setInstallingInstanceId(null);
@@ -197,7 +197,7 @@ export function useGameEvents({
         setOperationType("repair");
         setInstalling(true);
         setInstallMinimized(false);
-        setInstallProgress({ stage: "sync-start", message: t('sync-start' as any) });
+        setInstallProgress({ type: "sync-start", task: t('sync-start' as any) });
 
         try {
             const result = await (window.api as any)?.instanceCheckIntegrity?.(id);

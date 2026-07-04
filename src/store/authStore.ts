@@ -6,11 +6,10 @@ interface AuthState {
   session: AuthSession | null;
   accounts: AuthSession[];
 
-  
   setSession: (session: AuthSession | null) => void;
   setAccounts: (accounts: AuthSession[]) => void;
   addAccount: (account: AuthSession) => void;
-  removeAccount: (uuid: string, type: string) => void;
+  removeAccount: (uuid: string, authType: string) => void;
   updateAccount: (account: AuthSession) => void;
   logout: () => void;
 }
@@ -28,26 +27,16 @@ export const useAuthStore = create<AuthState>()(
       addAccount: (account) => {
         const { accounts } = get();
 
-        
-        
-        
-
         let filteredAccounts = accounts.filter((a) => {
-          // Same provider account — replace the stale copy
-          if (a.uuid === account.uuid && a.type === account.type) return false;
-
-          // Re-login of the same provider + username — replace
-          if (a.type === account.type && a.username === account.username) {
+          if (a.uuid === account.uuid && a.authType === account.authType) return false;
+          if (a.uuid === account.uuid && !a.authType) return false;
+          if (a.authType === account.authType && a.username === account.username) {
             return false;
           }
-
-          // Absorb a standalone (unlinked) CatID only when the incoming
-          // Microsoft account is explicitly linked to it. Don't merge across
-          // providers just because the display name happens to match.
           if (
-            account.type === "microsoft" &&
+            account.authType === "microsoft" &&
             account.catidLinked &&
-            a.type === "catid" &&
+            a.authType === "catid" &&
             !a.minecraftUuid &&
             a.username === account.username
           ) {
@@ -57,43 +46,40 @@ export const useAuthStore = create<AuthState>()(
           return true;
         });
 
-        
         set({ accounts: [...filteredAccounts, account] });
       },
 
-      removeAccount: (uuid, type) => {
+      removeAccount: (uuid, authType) => {
         const { session, accounts } = get();
         const newAccounts = accounts.filter(
-          (a) => !(a.uuid === uuid && a.type === type),
+          (a) => !(a.uuid === uuid && a.authType === authType),
         );
         set({ accounts: newAccounts });
 
-        
-        if (session?.uuid === uuid && session?.type === type) {
+        if (session?.uuid === uuid && session?.authType === authType) {
           set({ session: null });
         }
       },
 
       updateAccount: (updatedAccount) => {
         set((state) => {
-          
           const filteredAccounts = state.accounts.filter((a) => {
             if (
               a.uuid === updatedAccount.uuid &&
-              a.type === updatedAccount.type
+              a.authType === updatedAccount.authType
             )
               return false;
 
             if (
-              a.type === updatedAccount.type &&
+              a.authType === updatedAccount.authType &&
               a.username === updatedAccount.username
             )
               return false;
 
             if (
-              updatedAccount.type === "microsoft" &&
+              updatedAccount.authType === "microsoft" &&
               updatedAccount.catidLinked &&
-              a.type === "catid" &&
+              a.authType === "catid" &&
               !a.minecraftUuid &&
               a.username === updatedAccount.username
             )
@@ -118,7 +104,6 @@ export const useAuthStore = create<AuthState>()(
       logout: () => set({ session: null }),
     }),
     {
-      
       name: "reality_auth_store",
     },
   ),

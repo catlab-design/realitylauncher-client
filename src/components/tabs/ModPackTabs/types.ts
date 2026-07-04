@@ -1,7 +1,3 @@
-// ========================================
-// Types for Instance/ModPack Management
-// ========================================
-
 import type { GameInstance } from "../../../types/launcher";
 
 export interface ModInfo {
@@ -28,9 +24,9 @@ export interface ContentItem {
   modifiedAt: string;
   enabled: boolean;
   icon: string | null;
-  version?: string; // Parsed from pack.mcmeta pack_format
-  modrinthProjectId?: string; // สำหรับ fallback icon Modrinth
-  curseforgeProjectId?: string; // สำหรับ fallback icon CurseForge
+  version?: string; 
+  modrinthProjectId?: string; 
+  curseforgeProjectId?: string; 
   installedVersionId?: string;
 }
 

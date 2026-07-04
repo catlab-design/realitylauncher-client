@@ -3,9 +3,23 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "../../hooks/useTranslation";
 import { Icons } from "../ui/Icons";
 import { MCHead } from "../ui/MCHead";
+import rLogo from "../../assets/r.png";
 
 import rdcwLogo from "../../assets/rdcw_logo_transparent.webp";
 import blueMemoryLogo from "../../assets/icon.webp";
+
+interface Partner {
+    id: string;
+    name: string;
+    slug: string;
+    role: string;
+    roleTh?: string | null;
+    roleJp?: string | null;
+    imageUrl: string;
+    websiteUrl?: string | null;
+    socials?: string | null;
+    displayOrder: number;
+}
 
 interface TeamMember {
     name: string;
@@ -45,6 +59,27 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
     const { t } = useTranslation(config?.language);
     const containerRef = useRef<HTMLDivElement>(null);
     const [version, setVersion] = React.useState("v0.3.5");
+    const [partners, setPartners] = React.useState<Partner[]>(() => {
+        try {
+            const cached = localStorage.getItem("cached_partners");
+            return cached ? JSON.parse(cached) : [];
+        } catch {
+            return [];
+        }
+    });
+
+    useEffect(() => {
+        const API_URL = (window as any).API_URL || "https://api.reality.catlabdesign.space";
+        fetch(`${API_URL}/partners?t=${Date.now()}`)
+            .then(res => res.ok ? res.json() : Promise.reject("Status not OK"))
+            .then(data => {
+                if (Array.isArray(data)) {
+                    setPartners(data);
+                    localStorage.setItem("cached_partners", JSON.stringify(data));
+                }
+            })
+            .catch(err => console.error("Failed to fetch partners:", err));
+    }, []);
 
     const TEAM: TeamMember[] = [
         {
@@ -69,7 +104,6 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
     ];
 
     useEffect(() => {
-        // Fetch dynamic version
         (window as any).api?.getAppVersion()?.then((v: string) => {
             setVersion(`v${v}`);
         }).catch(() => {
@@ -77,7 +111,6 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
         });
     }, []);
 
-    // Minimal Web Font Stack
     const fontStack = "'Inter', 'Prompt', sans-serif";
 
     const containerVariants = {
@@ -114,10 +147,9 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
                 animate="visible"
                 className="max-w-3xl mx-auto w-full space-y-16 pb-24"
             >
-                {/* Original Horizontal Header */}
                 <motion.div variants={itemVariants} className="flex items-center gap-6 pt-4">
                     <img
-                        src="/r.png"
+                        src={rLogo}
                         alt="Reality"
                         className="w-14 h-14 rounded-2xl border border-white/10"
                     />
@@ -129,7 +161,6 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
                     </div>
                 </motion.div>
 
-                {/* Original Mission Style */}
                 <motion.div variants={itemVariants} className="relative">
                     <div className="absolute left-0 top-0 w-1.5 h-full rounded-full opacity-40" style={{ backgroundColor: colors.primary }} />
                     <div className="pl-8 space-y-3">
@@ -140,7 +171,6 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
                     </div>
                 </motion.div>
 
-                {/* Partners Section (Reverted to original look) */}
                 <motion.div variants={itemVariants} className="space-y-12 py-4 text-center">
                     <div className="flex flex-col items-center gap-3">
                         <h2 className="text-xs font-black uppercase opacity-50 tracking-widest" style={{ color: colors.onSurface }}>{t('about_partners_title')}</h2>
@@ -148,47 +178,48 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
                     </div>
 
                     <div className="flex flex-wrap items-center justify-center gap-10 px-2 text-center">
-                        {/* RDCW */}
-                        <div
-                            className="group flex flex-col items-center gap-4 cursor-pointer"
-                            onClick={() => (window as any).api.openExternal('https://rdcw.co.th/')}
-                        >
-                            <img
-                                src={rdcwLogo.src}
-                                alt="RDCW"
-                                className="h-12 w-auto transition-all duration-500 group-hover:scale-110"
-                            />
-                            <div className="flex flex-col items-center gap-1 transition-all">
-                                <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-all">
-                                    <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: colors.onSurface }}>Ren Dear Co(de) Working Studio</span>
-                                    <Icons.ExternalLink className="w-2.5 h-2.5" />
-                                </div>
-                                <span className="text-[9px] font-bold opacity-40 uppercase tracking-widest" style={{ color: colors.onSurface }}>{t('partner_special_thanks')}</span>
-                            </div>
-                        </div>
-
-                        {/* Blue Memory */}
-                        <div
-                            className="group flex flex-col items-center gap-4 cursor-pointer"
-                            onClick={() => (window as any).api.openExternal('https://www.tiktok.com/@bluememory_project')}
-                        >
-                            <img
-                                src={blueMemoryLogo.src}
-                                alt="Blue Memory"
-                                className="h-12 w-auto transition-all duration-500 group-hover:scale-110 rounded-[10px] border border-white/10"
-                            />
-                            <div className="flex flex-col items-center gap-1 transition-all">
-                                <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-all">
-                                    <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: colors.onSurface }}>Blue Memory</span>
-                                    <Icons.ExternalLink className="w-2.5 h-2.5" />
-                                </div>
-                                <span className="text-[9px] font-bold opacity-40 uppercase tracking-widest" style={{ color: colors.onSurface }}>{t('alliance')}</span>
-                            </div>
-                        </div>
+                        {partners.length === 0 ? (
+                            <p className="text-xs opacity-40 italic" style={{ color: colors.onSurface }}>
+                                {t('common.no_data') || 'No partners'}
+                            </p>
+                        ) : (
+                            partners.map((partner) => {
+                                const handlePartnerClick = () => {
+                                    const url = partner.websiteUrl || (partner.socials ? JSON.parse(partner.socials)?.[0]?.link : null);
+                                    if (url) {
+                                        (window as any).api?.openExternal(url);
+                                    }
+                                };
+                                const roleText = config?.language === "th" ? (partner.roleTh || partner.role) : (config?.language === "jp" ? (partner.roleJp || partner.role) : partner.role);
+                                return (
+                                    <div
+                                        key={partner.id}
+                                        className="group flex flex-col items-center gap-4 cursor-pointer"
+                                        onClick={handlePartnerClick}
+                                    >
+                                        <img
+                                            src={partner.imageUrl}
+                                            alt={partner.name}
+                                            className="h-12 w-auto transition-all duration-500 group-hover:scale-110 object-contain rounded-[10px]"
+                                        />
+                                        <div className="flex flex-col items-center gap-1 transition-all">
+                                            <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-all">
+                                                <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: colors.onSurface }}>
+                                                    {partner.name}
+                                                </span>
+                                                <Icons.ExternalLink className="w-2.5 h-2.5" />
+                                            </div>
+                                            <span className="text-[9px] font-bold opacity-40 uppercase tracking-widest" style={{ color: colors.onSurface }}>
+                                                {roleText}
+                                            </span>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
                     </div>
                 </motion.div>
 
-                {/* Team Section */}
                 <motion.div variants={itemVariants} className="space-y-8">
                     <div className="flex items-center gap-4 px-4">
                         <h2 className="text-xs font-black uppercase opacity-50 tracking-widest whitespace-nowrap" style={{ color: colors.onSurface }}>
@@ -238,7 +269,6 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
                     </div>
                 </motion.div>
 
-                {/* Footer Section */}
                 <motion.div 
                     variants={itemVariants} 
                     className="pt-12 border-t flex flex-col items-center justify-between gap-6" 

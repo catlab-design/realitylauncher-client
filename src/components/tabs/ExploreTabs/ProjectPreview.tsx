@@ -1,7 +1,3 @@
-// ========================================
-// Project Preview Panel - Redesigned
-// ========================================
-
 import React from "react";
 import { useTranslation } from "../../../hooks/useTranslation";
 import type { ModrinthProject, ProjectType, InstallProgress } from "./types";
@@ -18,15 +14,9 @@ interface ProjectPreviewProps {
     installProgress: InstallProgress | null;
     onInstallModpack: (project: ModrinthProject) => void;
     onAddToInstance: (project: ModrinthProject) => void;
-    isLoading?: boolean; // Add optional isLoading prop
+    isLoading?: boolean;
     showFollows?: boolean;
 }
-
-// ========================================
-// Image Preview Modal
-// ========================================
-
-
 
 export function ProjectPreview({
     colors,
@@ -42,12 +32,10 @@ export function ProjectPreview({
     const { t } = useTranslation();
     const [selectedImageIndex, setSelectedImageIndex] = React.useState<number | null>(null);
 
-    // Reset selected image when project changes
     React.useEffect(() => {
         setSelectedImageIndex(null);
     }, [project?.project_id]);
 
-    // Loading Skeleton state
     if (isLoading) {
         return (
             <div className="rounded-2xl overflow-hidden sticky top-4 flex flex-col h-[calc(100vh-2rem)] animate-pulse"
@@ -56,10 +44,8 @@ export function ProjectPreview({
                     border: `1px solid ${colors.outline}20`,
                     minHeight: "400px"
                 }}>
-                {/* Hero Header Skeleton */}
                 <div className="relative h-48 w-full shrink-0"
                     style={{ backgroundColor: `${colors.surfaceContainerHighest}` }}>
-                    {/* Floating Icon Base */}
                     <div className="absolute -bottom-8 left-6 w-20 h-20 rounded-2xl p-0.5 z-10"
                         style={{ backgroundColor: colors.surface }}>
                         <div className="w-full h-full rounded-[14px]"
@@ -68,22 +54,18 @@ export function ProjectPreview({
                 </div>
 
                 <div className="pt-10 px-6 pb-6 flex-1 flex flex-col space-y-4">
-                    {/* Title & Meta Skeleton */}
                     <div className="space-y-2 mt-2">
                         <div className="h-7 w-3/4 rounded-md" style={{ backgroundColor: `${colors.surfaceContainerHighest}80` }} />
                         <div className="h-4 w-1/2 rounded-md" style={{ backgroundColor: `${colors.surfaceContainerHighest}80` }} />
                     </div>
 
-                    {/* Tags Skeleton */}
                     <div className="flex gap-2">
                         <div className="h-5 w-16 rounded-md" style={{ backgroundColor: `${colors.surfaceContainerHighest}80` }} />
                         <div className="h-5 w-20 rounded-md" style={{ backgroundColor: `${colors.surfaceContainerHighest}80` }} />
                     </div>
 
-                    {/* Button Skeleton */}
                     <div className="h-12 w-full rounded-xl" style={{ backgroundColor: `${colors.surfaceContainerHighest}80` }} />
 
-                    {/* Description Skeleton */}
                     <div className="space-y-2 pt-2">
                         <div className="h-3 w-1/4 mb-2 rounded-md" style={{ backgroundColor: `${colors.surfaceContainerHighest}80` }} />
                         <div className="h-3 w-full rounded-md" style={{ backgroundColor: `${colors.surfaceContainerHighest}80` }} />
@@ -91,7 +73,6 @@ export function ProjectPreview({
                         <div className="h-3 w-2/3 rounded-md" style={{ backgroundColor: `${colors.surfaceContainerHighest}80` }} />
                     </div>
 
-                    {/* Gallery Skeleton */}
                     <div className="pt-2">
                         <div className="h-3 w-1/4 mb-3 rounded-md" style={{ backgroundColor: `${colors.surfaceContainerHighest}80` }} />
                         <div className="grid grid-cols-2 gap-2">
@@ -134,10 +115,8 @@ export function ProjectPreview({
         }
     };
 
-    // Use featured gallery image or fallback to icon
     const heroImageRaw = project.featured_gallery || (project.gallery && project.gallery.length > 0 ? project.gallery[0] : null);
 
-    // Helper to get URL from raw image item (which could be string or object)
     const getImageUrl = (item: any) => {
         if (!item) return null;
         if (typeof item === 'string') return item;
@@ -145,7 +124,7 @@ export function ProjectPreview({
         return item.rawUrl || item.raw_url || item.url || null;
     };
 
-    const heroImage = getImageUrl(heroImageRaw) || bannerImage.src;
+    const heroImage = getImageUrl(heroImageRaw) || bannerImage;
 
     return (
         <>
@@ -169,12 +148,10 @@ export function ProjectPreview({
                     preloadUrls={(() => {
                         const urls: string[] = [];
                         if (project.gallery && selectedImageIndex !== null) {
-                            // Preload Next
                             if (selectedImageIndex < project.gallery.length - 1) {
                                 const next = getImageUrl(project.gallery[selectedImageIndex + 1]);
                                 if (next) urls.push(next);
                             }
-                            // Preload Prev
                             if (selectedImageIndex > 0) {
                                 const prev = getImageUrl(project.gallery[selectedImageIndex - 1]);
                                 if (prev) urls.push(prev);
@@ -195,7 +172,6 @@ export function ProjectPreview({
                     isolation: "isolate",
                 }}>
 
-                {/* Hero Header */}
                 <div className="relative h-48 w-full bg-cover bg-center shrink-0"
                     style={{
                         backgroundColor: colors.surfaceContainerHighest,
@@ -203,7 +179,6 @@ export function ProjectPreview({
                     }}>
                     <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent" />
 
-                    {/* Floating Icon */}
                     <div className="absolute -bottom-8 left-6 w-20 h-20 rounded-2xl p-0.5 z-10"
                         style={{ backgroundColor: colors.surface }}>
                         <div className="w-full h-full rounded-[14px] bg-cover bg-center overflow-hidden"
@@ -223,7 +198,6 @@ export function ProjectPreview({
                 </div>
 
                 <div className="pt-10 px-6 pb-6 flex-1 flex flex-col">
-                    {/* Header Content */}
                     <div className="mb-4">
                         <h2 className="text-2xl font-bold mb-1 leading-tight" style={{ color: colors.onSurface }}>
                             {project.title}
@@ -247,7 +221,6 @@ export function ProjectPreview({
                         </div>
                     </div>
 
-                    {/* Categories */}
                     {project.categories && project.categories.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 mb-5">
                             {project.categories.slice(0, 6).map((cat) => (
@@ -260,7 +233,6 @@ export function ProjectPreview({
                         </div>
                     )}
 
-                    {/* Action Button */}
                     <div className="mb-6">
                         {isInstallingModpack || installProgress ? (
                             <div className="rounded-xl p-4 border border-dashed text-center"
@@ -285,7 +257,7 @@ export function ProjectPreview({
                                 className="w-full py-3 rounded-xl text-[15px] font-bold hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 active:scale-95"
                                 style={{
                                     backgroundColor: colors.secondary,
-                                    color: "#1a1a1a" // Ensure contrast on bright buttons
+                                    color: "#1a1a1a"
                                 }}
                             >
                                 {projectType === "modpack" ? (
@@ -303,7 +275,6 @@ export function ProjectPreview({
                         )}
                     </div>
 
-                    {/* Description */}
                     <div className="mb-6">
                         <h4 className="text-[13px] font-bold uppercase tracking-wider mb-2 opacity-70" style={{ color: colors.onSurfaceVariant }}>
                             {t('about')}
@@ -313,7 +284,6 @@ export function ProjectPreview({
                         </p>
                     </div>
 
-                    {/* Gallery Preview (Mini) */}
                     {project.gallery && project.gallery.length > 0 && (
                         <div className="mb-4">
                             <h4 className="text-[13px] font-bold uppercase tracking-wider mb-2 opacity-70" style={{ color: colors.onSurfaceVariant }}>
@@ -323,8 +293,6 @@ export function ProjectPreview({
                                 {project.gallery.slice(0, 4).map((img, idx) => {
                                     const isString = typeof img === 'string';
                                     const url = isString ? img : img.url;
-                                    // Native module returns camelCase 'rawUrl'
-                                    const rawUrl = isString ? img : (img.rawUrl || img.raw_url || img.url);
 
                                     return (
                                         <div
@@ -345,7 +313,6 @@ export function ProjectPreview({
                         </div>
                     )}
 
-                    {/* Footer Info */}
                     <div className="pt-4 mt-auto border-t flex justify-between items-center text-xs"
                         style={{ borderColor: `${colors.outline}20`, color: colors.onSurfaceVariant }}>
                         <span>ID: {project.project_id}</span>
@@ -355,7 +322,6 @@ export function ProjectPreview({
                         <span>{project.client_side === "required" ? t('client_required') : t('client_optional')}</span>
                     </div>
 
-                    {/* Supported Versions (Footer/Extra) */}
                     {(project.game_versions || project.loaders) && (
                         <div className="pt-2 text-xs opacity-70 flex flex-wrap gap-2" style={{ color: colors.onSurfaceVariant }}>
                             {project.loaders && project.loaders.length > 0 && (

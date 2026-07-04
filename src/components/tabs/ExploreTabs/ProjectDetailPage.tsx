@@ -1,8 +1,3 @@
-// ========================================
-// Project Detail Page - Full page view
-// Inspired by Modrinth App project detail
-// ========================================
-
 import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
@@ -41,8 +36,8 @@ interface ProjectDetailPageProps {
 
 type DetailTab = "description" | "versions" | "gallery";
 
-// Allow common content tags + safe iframes (YouTube embeds) for project descriptions.
-// Strips <script>, on* handlers, javascript: URLs etc. Mitigates B-grade XSS in Electron renderer.
+
+
 const markdownSanitizeSchema: any = {
     ...defaultSchema,
     tagNames: [...(defaultSchema.tagNames || []), "iframe", "video", "source", "center", "details", "summary"],
@@ -60,14 +55,12 @@ const markdownSanitizeSchema: any = {
     },
 };
 
-// Format file size (kept for potential future use)
 function _formatSize(bytes: number): string {
     if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
     if (bytes >= 1_000) return `${(bytes / 1_000).toFixed(1)} KB`;
     return `${bytes} B`;
 }
 
-// Format date
 function formatDate(dateStr: string): string {
     try {
         const d = new Date(dateStr);
@@ -77,7 +70,6 @@ function formatDate(dateStr: string): string {
     }
 }
 
-// Format relative time
 function formatRelativeTime(dateStr: string): string {
     try {
         const d = new Date(dateStr);
@@ -124,10 +116,8 @@ export function ProjectDetailPage({
     const versionControlColor = colors.onSurface === "#ffffff" ? colors.onSurface : "#000";
     const [fullProject, setFullProject] = useState<ModrinthProject | null>(null);
 
-    // Use either fullProject if fetched, or fallback to the initial project from props
     const currentProject = fullProject || project;
 
-    // Fetch full project details if possible (to get more accurate links/versions)
     useEffect(() => {
         let isMounted = true;
 
@@ -183,7 +173,6 @@ export function ProjectDetailPage({
         return () => { isMounted = false; };
     }, [project.project_id]);
 
-    // Helper to get URL from raw image item
     const getImageUrl = (item: any, isThumbnail = true) => {
         if (!item) return null;
         if (typeof item === 'string') return item;
@@ -198,10 +187,9 @@ export function ProjectDetailPage({
 
     const heroImage = (() => {
         const raw = project.featured_gallery || (project.gallery && project.gallery.length > 0 ? project.gallery[0] : null);
-        return getImageUrl(raw) || bannerImage.src;
+        return getImageUrl(raw) || bannerImage;
     })();
 
-    // Fetch full body (description) when tab switches.
     // - When the body was already provided by the parent (preloaded), use it directly.
     // - Otherwise hit the API. Resetting bodyHtml on project change prevents flashing the
     //   previous project's body during a fast back-forth between detail pages (B6).
@@ -217,7 +205,6 @@ export function ProjectDetailPage({
         if (!bodyHtml) fetchBody();
     }, [activeTab, project.project_id, project.body, contentSource]);
 
-    // Fetch versions when tab switches
     useEffect(() => {
         if (activeTab === "versions" && versions.length === 0) {
             fetchVersions();
@@ -264,7 +251,6 @@ export function ProjectDetailPage({
         }
     };
 
-    // Filtered and paginated versions
     const filteredVersions = versions.filter(v => {
         if (channelFilter !== "all" && v.version_type !== channelFilter) return false;
         if (versionFilter) {
@@ -303,7 +289,6 @@ export function ProjectDetailPage({
 
     return (
         <>
-            {/* Image Preview Modal */}
             {selectedImageIndex !== null && project?.gallery && (
                 <ImagePreviewModal
                     colors={colors}
@@ -331,7 +316,6 @@ export function ProjectDetailPage({
             )}
 
             <div className="space-y-0">
-                {/* Hero Header */}
                 <div className="relative h-52 w-full rounded-t-2xl overflow-hidden bg-cover bg-center"
                     style={{
                         backgroundImage: `url(${heroImage})`,
@@ -339,7 +323,6 @@ export function ProjectDetailPage({
                     }}>
                     <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/40 to-transparent" />
 
-                    {/* Back Button */}
                     <button
                         onClick={() => { playClick(); onBack(); }}
                         className="absolute top-4 left-4 z-20 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold backdrop-blur-md transition-all hover:scale-105 active:scale-95 group"
@@ -353,9 +336,7 @@ export function ProjectDetailPage({
                         {t('back')}
                     </button>
 
-                    {/* Project Info Overlay */}
                     <div className="absolute bottom-0 left-0 right-0 p-6 flex items-end gap-5 z-10">
-                        {/* Icon */}
                         <div className="w-20 h-20 rounded-2xl overflow-hidden shrink-0 border-2 border-white/10"
                             style={{ backgroundColor: colors.surfaceContainerHighest }}>
                             {project.icon_url ? (
@@ -367,7 +348,6 @@ export function ProjectDetailPage({
                             )}
                         </div>
 
-                        {/* Title & Meta */}
                         <div className="flex-1 min-w-0">
                             <h1 className="text-3xl font-bold text-white mb-1.5 truncate">
                                 {currentProject.title}
@@ -398,7 +378,6 @@ export function ProjectDetailPage({
                             </div>
                         </div>
 
-                        {/* Install Button */}
                         <div className="shrink-0">
                             {isInstallingModpack || installProgress ? (
                                 <div className="px-6 py-3 rounded-xl flex items-center gap-3 backdrop-blur-md"
@@ -422,7 +401,6 @@ export function ProjectDetailPage({
                     </div>
                 </div>
 
-                {/* Categories Strip */}
                 {currentProject.categories && currentProject.categories.length > 0 && (
                     <div className="px-7 py-3.5 flex items-center gap-2.5 flex-wrap rounded-b-none"
                         style={{ backgroundColor: colors.surfaceContainer, borderBottom: `1px solid ${colors.outline}15` }}>
@@ -436,7 +414,6 @@ export function ProjectDetailPage({
                     </div>
                 )}
 
-                {/* Tabs */}
                 <div className="flex items-center gap-1 px-6 py-2"
                     style={{ backgroundColor: colors.surfaceContainer, borderBottom: `1px solid ${colors.outline}15` }}>
                     {tabs.map((tab) => (
@@ -455,11 +432,8 @@ export function ProjectDetailPage({
                     ))}
                 </div>
 
-                {/* Content Area with Sidebar */}
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-0 overflow-hidden rounded-b-2xl">
-                    {/* Main Content */}
                     <div className="lg:col-span-9 p-7" style={{ backgroundColor: `${colors.surface}` }}>
-                        {/* Description Tab */}
                         {activeTab === "description" && (
                             <div className="animate-fade-in">
                                 {bodyLoading ? (
@@ -598,12 +572,9 @@ export function ProjectDetailPage({
                             </div>
                         )}
 
-                        {/* Versions Tab */}
                         {activeTab === "versions" && (
                             <div className="animate-fade-in space-y-4">
-                                {/* Filters Bar */}
                                 <div className="flex items-center gap-3 flex-wrap">
-                                    {/* Search versions */}
                                     <div className="flex items-center gap-2 px-3 py-2 rounded-xl flex-1 min-w-[200px] transition-all focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-offset-black"
                                         style={{ 
                                             backgroundColor: colors.surfaceContainerHighest, 
@@ -621,7 +592,6 @@ export function ProjectDetailPage({
                                         />
                                     </div>
 
-                                    {/* Channel filter */}
                                     <div className="flex items-center gap-1 rounded-xl p-1"
                                         style={{ backgroundColor: colors.surfaceContainerHighest }}>
                                         {(["all", "release", "beta", "alpha"] as const).map((ch) => (
@@ -639,7 +609,6 @@ export function ProjectDetailPage({
                                         ))}
                                     </div>
 
-                                    {/* Pagination Controls */}
                                     {!versionsLoading && totalVersionPages > 1 && (
                                         <div className="flex items-center gap-1 p-1 rounded-xl ml-auto"
                                             style={{ backgroundColor: colors.surfaceContainerHighest }}>
@@ -668,7 +637,6 @@ export function ProjectDetailPage({
                                     )}
                                 </div>
 
-                                {/* Versions Table */}
                                 {versionsLoading ? (
                                     <div className="space-y-3 animate-pulse">
                                         {Array.from({ length: 6 }).map((_, i) => (
@@ -685,7 +653,6 @@ export function ProjectDetailPage({
                                     </div>
                                 ) : (
                                     <div className="rounded-xl overflow-hidden border" style={{ borderColor: `${colors.outline}15` }}>
-                                        {/* Table Header */}
                                         <div className="grid grid-cols-12 gap-2 px-4 py-3 text-[11px] font-bold uppercase tracking-wider"
                                             style={{ backgroundColor: colors.surfaceContainer, color: colors.onSurfaceVariant }}>
                                             <div className="col-span-4">{t('name' as any) || "Name"}</div>
@@ -696,7 +663,6 @@ export function ProjectDetailPage({
                                             <div className="col-span-1" />
                                         </div>
 
-                                        {/* Version Rows */}
                                         {paginatedVersions.map((v, i) => (
                                             <div key={v.id}
                                                 className="grid grid-cols-12 gap-2 items-center px-4 py-3.5 transition-colors hover:bg-white/3 group"
@@ -704,7 +670,6 @@ export function ProjectDetailPage({
                                                     borderTop: i > 0 ? `1px solid ${colors.outline}10` : 'none',
                                                     backgroundColor: i % 2 === 0 ? 'transparent' : `${colors.surfaceContainer}30`,
                                                 }}>
-                                                {/* Name */}
                                                 <div className="col-span-4 flex items-center gap-3 min-w-0">
                                                     <div className={`w-2 h-2 rounded-full shrink-0 ${v.version_type === 'release' ? 'bg-emerald-400' : v.version_type === 'beta' ? 'bg-amber-400' : 'bg-red-400'}`} />
                                                     <div className="min-w-0">
@@ -719,12 +684,10 @@ export function ProjectDetailPage({
                                                     </div>
                                                 </div>
 
-                                                {/* Game Version */}
                                                 <div className="col-span-2 text-xs" style={{ color: colors.onSurfaceVariant }}>
                                                     <span className="truncate block">{v.game_versions.slice(0, 3).join(", ")}{v.game_versions.length > 3 ? "..." : ""}</span>
                                                 </div>
 
-                                                {/* Loaders */}
                                                 <div className="col-span-2 flex items-center gap-1.5 flex-wrap">
                                                     {v.loaders.slice(0, 3).map((l) => {
                                                         const loaderId = l.toLowerCase();
@@ -751,17 +714,14 @@ export function ProjectDetailPage({
                                                     })}
                                                 </div>
 
-                                                {/* Published */}
                                                 <div className="col-span-2 text-xs" style={{ color: colors.onSurfaceVariant }}>
                                                     {formatRelativeTime(v.date_published)}
                                                 </div>
 
-                                                {/* Downloads */}
                                                 <div className="col-span-1 text-right text-xs" style={{ color: colors.onSurfaceVariant }}>
                                                     {formatNumber(v.downloads)}
                                                 </div>
 
-                                                {/* Actions */}
                                                 <div className="col-span-1 flex justify-end gap-1">
                                                     <button
                                                         onClick={() => { playClick(); onInstallVersion(project, v.id); }}
@@ -779,7 +739,6 @@ export function ProjectDetailPage({
                             </div>
                         )}
 
-                        {/* Gallery Tab */}
                         {activeTab === "gallery" && project.gallery && (
                             <div className="animate-fade-in">
                                 <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
@@ -808,11 +767,9 @@ export function ProjectDetailPage({
                         )}
                     </div>
 
-                    {/* Right Sidebar */}
                     <div className="lg:col-span-3 p-7 space-y-8 border-l flex flex-col"
                         style={{ backgroundColor: colors.surfaceContainer, borderColor: `${colors.outline}15` }}>
 
-                        {/* Compatibility */}
                         <div>
                             <h4 className="text-sm font-black uppercase tracking-[0.25em] mb-6 flex items-center gap-3" style={{ color: colors.onSurface }}>
                                 <span className="w-1 h-4 rounded-full" style={{ backgroundColor: accentColor }} />
@@ -820,7 +777,6 @@ export function ProjectDetailPage({
                             </h4>
 
                             <div className="space-y-6">
-                                {/* MC Versions */}
                                 {currentProject.game_versions && currentProject.game_versions.length > 0 && (
                                     <div>
                                         <p className="text-xs font-bold opacity-60 mb-3 uppercase tracking-[0.05em]" style={{ color: colors.onSurfaceVariant }}>
@@ -843,7 +799,6 @@ export function ProjectDetailPage({
                                     </div>
                                 )}
 
-                                {/* Loaders */}
                                 {currentProject.loaders && currentProject.loaders.length > 0 && (
                                     <div>
                                         <p className="text-xs font-bold opacity-60 mb-3 uppercase tracking-[0.05em]" style={{ color: colors.onSurfaceVariant }}>
@@ -877,7 +832,6 @@ export function ProjectDetailPage({
                                     </div>
                                 )}
 
-                                {/* Client/Server */}
                                 {(currentProject.client_side || currentProject.server_side) && (
                                     <div>
                                         <p className="text-xs font-bold opacity-60 mb-3 uppercase tracking-[0.05em]" style={{ color: colors.onSurfaceVariant }}>
@@ -904,7 +858,6 @@ export function ProjectDetailPage({
                             </div>
                         </div>
 
-                        {/* Links */}
                         {(currentProject.source_url || currentProject.wiki_url || currentProject.discord_url || currentProject.issues_url) && (
                             <div>
                                 <h4 className="text-sm font-black uppercase tracking-[0.25em] mb-6 flex items-center gap-3" style={{ color: colors.onSurface }}>
@@ -964,7 +917,6 @@ export function ProjectDetailPage({
                             </div>
                         )}
 
-                        {/* Creators */}
                         {((currentProject.team_members && currentProject.team_members.length > 0) || currentProject.author) && (
                             <div>
                                 <h4 className="text-sm font-black uppercase tracking-[0.25em] mb-6 flex items-center gap-3" style={{ color: colors.onSurface }}>
@@ -998,7 +950,6 @@ export function ProjectDetailPage({
                             </div>
                         )}
 
-                        {/* Project Info */}
                         <div className="pt-8 border-t space-y-4" style={{ borderColor: `${accentColor}15` }}>
                             <div className="flex items-center justify-between">
                                 <span className="text-[10px] font-black opacity-50 uppercase tracking-[0.25em]" style={{ color: colors.onSurface }}>ID</span>

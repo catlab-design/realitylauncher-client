@@ -1,9 +1,3 @@
-// ========================================
-// FilterMenu — a single "ตัวกรอง" trigger that opens one popover containing
-// Sort / Category / Loader / Version / Environment stacked in a single column.
-// Each section supports multi-select (Sort stays single-select).
-// ========================================
-
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useTranslation } from "../../../hooks/useTranslation";
@@ -30,8 +24,6 @@ interface FilterMenuProps {
     showVersionFilter?: boolean;
 }
 
-// Section header used inside a column. Title only — sections are always expanded since
-// the panel is wide enough to fit everything.
 function SectionTitle({ colors, label }: { colors: any; label: string }) {
     return (
         <div
@@ -43,7 +35,6 @@ function SectionTitle({ colors, label }: { colors: any; label: string }) {
     );
 }
 
-// Helper that toggles a value in/out of a multi-select array.
 function toggle<T>(arr: T[], v: T): T[] {
     return arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v];
 }
@@ -92,8 +83,6 @@ export function FilterMenu({
         return MC_VERSIONS.filter(v => v.includes(q));
     }, [versionSearch]);
 
-    // Count active filter values (not categories). Sort doesn't count as a filter unless changed
-    // from default "relevance".
     const activeCount =
         (sortBy && sortBy !== "relevance" ? 1 : 0) +
         categoryFilters.length +
@@ -144,8 +133,6 @@ export function FilterMenu({
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -4 }}
                         transition={{ duration: 0.12 }}
-                        // Single column. right-0 keeps the panel inside the toolbar bounds since
-                        // this trigger sits in the middle/right area.
                         className="absolute z-50 mt-2 right-0 w-[320px] max-w-[calc(100vw-2rem)] rounded-2xl overflow-hidden"
                         style={{
                             backgroundColor: colors.surface,
@@ -153,7 +140,6 @@ export function FilterMenu({
                             boxShadow: "0 24px 48px -16px rgba(0,0,0,0.4), 0 8px 16px -4px rgba(0,0,0,0.2)",
                         }}
                     >
-                        {/* Header */}
                         <div
                             className="px-4 py-2.5 flex items-center justify-between border-b"
                             style={{ borderColor: colors.outline + "30" }}
@@ -173,7 +159,6 @@ export function FilterMenu({
                             )}
                         </div>
 
-                        {/* Single column body */}
                         <div className="p-3 max-h-[65vh] overflow-y-auto">
                             <div className="mb-4">
                                 <SectionTitle colors={colors} label={t("sort_by" as TranslationKey)} />

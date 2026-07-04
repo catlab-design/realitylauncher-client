@@ -1,14 +1,8 @@
-// ========================================
-// Explore Component - Refactored
-// ========================================
-
-import React, { useEffect, useState, useRef, useCallback } from "react";
+﻿import React, { useEffect, useState, useRef, useCallback } from "react";
 import toast from "react-hot-toast";
 import { useTranslation } from "../../hooks/useTranslation";
 
-// Local components
 import {
-    // Types
     CONTENT_SOURCES,
     type ContentSource,
     type ProjectType,
@@ -18,12 +12,9 @@ import {
     type InstanceCompatibility,
     type InstallProgress,
     type ExploreProps,
-    // Helpers
     hasValidFilesForType,
     matchesVersion,
-    // Constants
     SEARCH_DEBOUNCE_MS,
-    // Components
     InstanceSelectModal,
     VersionSelectModal,
     ExploreToolbar,
@@ -37,16 +28,9 @@ import {
     normalizeCurseforgeSearchHit,
 } from "./ExploreTabs";
 
-// ========================================
-// Component
-// ========================================
-
 export function Explore({ colors, config }: ExploreProps) {
     const { t } = useTranslation(config?.language);
-    // Content source state
     const [contentSource, setContentSource] = useState<ContentSource>(CONTENT_SOURCES.MODRINTH);
-
-    // Main state
     const [projectType, setProjectType] = useState<ProjectType>("modpack");
     const [searchQuery, setSearchQuery] = useState("");
     const [results, setResults] = useState<ModrinthProject[]>([]);
@@ -56,27 +40,22 @@ export function Explore({ colors, config }: ExploreProps) {
     const [totalHits, setTotalHits] = useState(0);
     const [viewCount, setViewCount] = useState(20);
 
-    // Total pages (derived) - use totalHits when available, otherwise fallback to result length
     const totalPages = Math.max(1, Math.ceil((totalHits || results.length) / viewCount));
 
-    // Instance selection state
     const [instances, setInstances] = useState<GameInstance[]>([]);
     const [isLoadingInstances, setIsLoadingInstances] = useState(false);
     const [selectedProject, setSelectedProject] = useState<ModrinthProject | null>(null);
     const [showInstanceModal, setShowInstanceModal] = useState(false);
     const [isDownloading, setIsDownloading] = useState(false);
 
-    // Compatibility checking state
     const [modVersions, setModVersions] = useState<ModVersion[]>([]);
     const [instanceCompatibility, setInstanceCompatibility] = useState<InstanceCompatibility[]>([]);
     const [isCheckingCompatibility, setIsCheckingCompatibility] = useState(false);
 
-    // Modpack installation state
     const [isInstallingModpack, setIsInstallingModpack] = useState(false);
     const [installingProjectId, setInstallingProjectId] = useState<string | null>(null);
     const [installProgress, setInstallProgress] = useState<InstallProgress | null>(null);
 
-    // Version selection state
     const [showVersionModal, setShowVersionModal] = useState(false);
     const [versionModalVersions, setVersionModalVersions] = useState<ModVersion[]>([]);
     const [versionModalTitle, setVersionModalTitle] = useState("");
@@ -84,31 +63,26 @@ export function Explore({ colors, config }: ExploreProps) {
     const [versionModalTarget, setVersionModalTarget] = useState<"modpack" | "content">("modpack");
     const [isLoadingVersions, setIsLoadingVersions] = useState(false);
 
-    // Content version selection state
     const [selectedInstanceForDownload, setSelectedInstanceForDownload] = useState<GameInstance | null>(null);
 
-    // Preview state
     const [previewProject, setPreviewProject] = useState<ModrinthProject | null>(null);
 
-    // Detail page state
     const [detailProject, setDetailProject] = useState<ModrinthProject | null>(null);
 
-    // Filter state — arrays so each filter category supports multi-select. Modrinth handles
-    // multi-value as OR within the same facet group; CurseForge's API is single-value only so
-    // we degrade gracefully (see loadProjects).
+    
+    
+    
     const [mcVersionFilters, setMcVersionFilters] = useState<string[]>([]);
     const [loaderFilters, setLoaderFilters] = useState<string[]>([]);
     const [categoryFilters, setCategoryFilters] = useState<string[]>([]);
     const [environmentFilters, setEnvironmentFilters] = useState<string[]>([]);
 
-    // Debounce timer ref for search
-    const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
-    // Debounce timer ref for filter changes (prevents rapid-fire API calls)
-    const filterDebounceRef = useRef<NodeJS.Timeout | null>(null);
-    // Race-condition guard for search requests. Each loadProjects call increments this;
-    // only the latest request may update results or show error toasts.
+    const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const filterDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    
+    
     const searchTokenRef = useRef(0);
-    // Cached parameters of the last successful fetch to prevent redundant API calls
+    
     const lastFetchedParamsRef = useRef<{
         query: string;
         page: number;
@@ -121,18 +95,13 @@ export function Explore({ colors, config }: ExploreProps) {
         categoryFilters: string[];
         environmentFilters: string[];
     } | null>(null);
-    // Race-condition guard for project-detail fetches (preview/list).
-    // Each fetchFullProjectDetails increments this; only the latest reply may update state.
+    
+    
     const fetchTokenRef = useRef(0);
-    // Latest in-flight project_id whose preview was requested. Used to drop stale responses.
+    
     const activePreviewIdRef = useRef<string | null>(null);
 
-    // Confirm-install modal state (U1)
     const [pendingInstall, setPendingInstall] = useState<{ project: ModrinthProject; duplicate: boolean } | null>(null);
-
-    // ========================================
-    // Data Loading (must be defined before effects that use them)
-    // ========================================
 
     const loadInstances = useCallback(async () => {
         setIsLoadingInstances(true);
@@ -147,16 +116,10 @@ export function Explore({ colors, config }: ExploreProps) {
         }
     }, [t]);
 
-    // ========================================
-    // Effects
-    // ========================================
-
-    // Load instances on mount
     useEffect(() => {
         loadInstances();
     }, [loadInstances]);
 
-    // Listen for modpack install progress
     useEffect(() => {
         const cleanup = window.api?.onModpackInstallProgress?.((progress) => {
             setInstallProgress(progress);
@@ -164,8 +127,7 @@ export function Explore({ colors, config }: ExploreProps) {
         return () => cleanup?.();
     }, []);
 
-    // Load on mount and when filters change — debounce to avoid rapid-fire API calls
-    // (e.g. toggling multiple filter checkboxes quickly causes HTTP 520/525 from Cloudflare).
+    
     const isFirstLoadRef = useRef(true);
     useEffect(() => {
         if (isFirstLoadRef.current) {
@@ -182,15 +144,15 @@ export function Explore({ colors, config }: ExploreProps) {
         };
     }, [projectType, sortBy, page, viewCount, contentSource, mcVersionFilters, loaderFilters, categoryFilters, environmentFilters]);
 
-    // Reset preview/detail when switching source or project type (B8)
+    
     useEffect(() => {
         setPreviewProject(null);
         setDetailProject(null);
         activePreviewIdRef.current = null;
     }, [contentSource, projectType]);
 
-    // Auto-select first item when results change. Track the id we just promoted so we
-    // don't re-promote it on every fetch tick (avoid B4 loop).
+    
+    
     const lastAutoSelectedRef = useRef<string | null>(null);
     useEffect(() => {
         if (!results || results.length === 0) {
@@ -210,10 +172,9 @@ export function Explore({ colors, config }: ExploreProps) {
     }, [results]);
 
     const fetchFullProjectDetails = async (project: ModrinthProject) => {
-        // Fetch for both Modrinth and CurseForge
         if (!project.project_id) return;
 
-        // Token-based race guard (B3). Each call gets a new token; only the latest may apply.
+        
         const myToken = ++fetchTokenRef.current;
         const myProjectId = project.project_id;
         activePreviewIdRef.current = myProjectId;
@@ -233,7 +194,7 @@ export function Explore({ colors, config }: ExploreProps) {
             }
             if (!normalized) return;
             const final = normalized;
-            // Only patch in place — don't replace the row if the user has clicked away.
+            
             setPreviewProject(prev => (prev && prev.project_id === final.project_id ? final : prev));
             setResults(prev => prev.map(p => (p.project_id === final.project_id ? final : p)));
         } catch (error) {
@@ -242,7 +203,7 @@ export function Explore({ colors, config }: ExploreProps) {
     };
 
     const handleSelectProject = (project: ModrinthProject) => {
-        // Two-click navigation: first click = sidebar preview, second click on same project = full detail page (U2)
+        
         if (previewProject?.project_id === project.project_id) {
             handleOpenDetail(project);
         } else {
@@ -292,8 +253,8 @@ export function Explore({ colors, config }: ExploreProps) {
         setIsLoading(true);
         try {
             if (contentSource === CONTENT_SOURCES.MODRINTH) {
-                // Build facets: each inner array is OR within a category; outer arrays are AND'd.
-                // E.g. selecting Fabric + Forge -> [["categories:fabric","categories:forge"]].
+                
+                
                 const extraFacets: string[][] = [];
                 if (categoryFilters.length) extraFacets.push(categoryFilters.map(c => `categories:${c}`));
                 if (loaderFilters.length) extraFacets.push(loaderFilters.map(l => `categories:${l}`));
@@ -311,12 +272,11 @@ export function Explore({ colors, config }: ExploreProps) {
                     sortBy: sortBy,
                     limit: viewCount,
                     offset: (activePage - 1) * viewCount,
-                    // gameVersion/loader on the helper are AND-only single values — leave them
+                    // gameVersion/loader on the helper are AND-only single values โ€” leave them
                     // empty when we have selections; the full OR list goes through `facets`.
-                    facets: extraFacets.length > 0 ? JSON.stringify(extraFacets) : undefined,
+                facets: extraFacets.length > 0 ? JSON.stringify(extraFacets) : undefined,
                 });
 
-                // Stale request — a newer loadProjects has been fired; discard this result.
                 if (searchTokenRef.current !== myToken) return;
 
                 if (result?.hits) {
@@ -328,7 +288,6 @@ export function Explore({ colors, config }: ExploreProps) {
                     setTotalHits(result.total_hits ?? result.totalHits ?? 0);
                 }
             } else {
-                // Map loader string to CurseForge numeric modLoaderType
                 const modLoaderMapping: Record<string, number> = {
                     'forge': 1,
                     'fabric': 4,
@@ -351,7 +310,6 @@ export function Explore({ colors, config }: ExploreProps) {
                     modLoaderType: cfLoader ? modLoaderMapping[cfLoader.toLowerCase()] : undefined,
                 });
 
-                // Stale request — discard.
                 if (searchTokenRef.current !== myToken) return;
 
                 if (result?.data) {
@@ -363,21 +321,16 @@ export function Explore({ colors, config }: ExploreProps) {
                 }
             }
         } catch (error) {
-            // Only show error for the latest request — stale requests fail silently.
+            // Only show error for the latest request โ€” stale requests fail silently.
             if (searchTokenRef.current !== myToken) return;
             console.error("[Explore] Load failed:", error);
             toast.error(t('load_data_failed'));
         } finally {
-            // Only clear loading for the latest request.
             if (searchTokenRef.current === myToken) {
                 setIsLoading(false);
             }
         }
     };
-
-    // ========================================
-    // Search Handlers
-    // ========================================
 
     const handleSearch = () => {
         setPage(1);
@@ -398,16 +351,11 @@ export function Explore({ colors, config }: ExploreProps) {
         }, SEARCH_DEBOUNCE_MS);
     }, [projectType, sortBy, viewCount, contentSource, mcVersionFilters, loaderFilters, categoryFilters, environmentFilters]);
 
-    // ========================================
-    // Compatibility Checking
-    // ========================================
-
     const checkCompatibility = (instance: GameInstance, versions: ModVersion[]): InstanceCompatibility => {
         const instanceLoader = instance.loader?.toLowerCase() || "vanilla";
         const instanceVersion = instance.minecraftVersion;
         const isResourceContent = projectType === "resourcepack" || projectType === "shader" || projectType === "datapack";
 
-        // Vanilla instances cannot install mods
         if (instanceLoader === "vanilla" && projectType === "mod") {
             return { instance, compatible: false, reason: t('not_support_mod') };
         }
@@ -445,10 +393,6 @@ export function Explore({ colors, config }: ExploreProps) {
         return { instance, compatible: false, reason: t('not_supported') };
     };
 
-    // ========================================
-    // Modpack Installation
-    // ========================================
-
     const handleInstallModpack = async (project: ModrinthProject) => {
         // Concurrent-install guard (U4): block while another modpack install is in flight.
         if (isInstallingModpack) {
@@ -483,7 +427,6 @@ export function Explore({ colors, config }: ExploreProps) {
                 if (result?.data) {
                     const KNOWN_LOADERS = ["fabric", "forge", "neoforge", "quilt"];
                     versions = result.data.map((f: any) => {
-                        // Extract loaders and game versions from gameVersions array
                         const loaders: string[] = [];
                         const gameVersions: string[] = [];
 
@@ -500,7 +443,6 @@ export function Explore({ colors, config }: ExploreProps) {
                             }
                         }
 
-                        // Also check sortableGameVersions if available
                         if (f.sortableGameVersions) {
                             for (const sv of f.sortableGameVersions) {
                                 const name = sv.gameVersionName?.toLowerCase();
@@ -538,7 +480,6 @@ export function Explore({ colors, config }: ExploreProps) {
                 return;
             }
 
-            // Validate versions have valid IDs
             const validVersions = versions.filter(v => v.id && v.id.trim() !== "");
             if (validVersions.length === 0) {
                 toast.error(t('no_valid_version'));
@@ -576,11 +517,37 @@ export function Explore({ colors, config }: ExploreProps) {
                 result = await window.api?.modpackInstallFromModrinth?.(versionId);
             }
 
-            if (result?.ok && result.instance) {
-                toast.success(t('install_complete'));
+            if (result?.ok && (result.instanceId || result.instance)) {
+                const failed = (result as any)?.failedFiles as string[] | undefined;
+                if (failed && failed.length > 0) {
+                    // Install succeeded but some mods are missing โ€” warn instead of
+                    // claiming a clean install so the user can re-download.
+                    toast(
+                        `${t('install_complete')} โ€” ${failed.length} ${t('files_failed_to_download') || 'เนเธเธฅเนเนเธซเธฅเธ”เนเธกเนเธชเธณเน€เธฃเนเธ'}`,
+                        { duration: 8000, icon: 'โ ๏ธ' },
+                    );
+                } else {
+                    toast.success(t('install_complete'));
+                }
                 loadInstances();
             } else {
-                toast.error(t('install_failed_server'));
+                const errMsg = result?.error || t('install_failed_server');
+                toast((_toast) => (
+                    <div className="flex items-center justify-between gap-4 w-full text-sm">
+                        <span className="flex-1 text-red-500 font-medium break-all">{errMsg}</span>
+                        <button
+                            onClick={() => {
+                                navigator.clipboard.writeText(errMsg);
+                            }}
+                            className="px-2.5 py-1 text-xs font-semibold rounded-md border border-neutral-300 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 transition-colors cursor-pointer"
+                        >
+                            {t('copy') || 'เธเธฑเธ”เธฅเธญเธ'}
+                        </button>
+                    </div>
+                ), {
+                    duration: 10000,
+                    icon: 'โ',
+                });
             }
         } catch (error: any) {
             toast.error(error?.message || t('error_occurred'));
@@ -591,10 +558,6 @@ export function Explore({ colors, config }: ExploreProps) {
             setVersionModalProject(null);
         }
     };
-
-    // ========================================
-    // Add to Instance
-    // ========================================
 
     const handleAddToInstance = async (project: ModrinthProject) => {
         setSelectedProject(project);
@@ -615,7 +578,6 @@ export function Explore({ colors, config }: ExploreProps) {
 
                 const KNOWN_LOADERS = ["fabric", "forge", "neoforge", "quilt"];
                 modVers = result.data.map((f: any) => {
-                    // Extract loaders and game versions from gameVersions array
                     // CurseForge mixes them together like ["1.20.1", "Fabric", "Forge"]
                     const loaders: string[] = [];
                     const gameVersions: string[] = [];
@@ -628,13 +590,11 @@ export function Explore({ colors, config }: ExploreProps) {
                                     loaders.push(lower);
                                 }
                             } else if (gv) {
-                                // It's a game version (like "1.20.1")
                                 gameVersions.push(gv);
                             }
                         }
                     }
 
-                    // Also check sortableGameVersions if available
                     if (f.sortableGameVersions) {
                         for (const sv of f.sortableGameVersions) {
                             const name = sv.gameVersionName?.toLowerCase();
@@ -762,12 +722,7 @@ export function Explore({ colors, config }: ExploreProps) {
         }
     };
 
-    // ========================================
-    // Detail Page Handlers
-    // ========================================
-
     const handleOpenDetail = (project: ModrinthProject) => {
-        // Fetch full project with body, links, team etc.
         setDetailProject(project);
         fetchFullProjectForDetail(project);
     };
@@ -778,7 +733,7 @@ export function Explore({ colors, config }: ExploreProps) {
                 const fullProject = await window.api?.modrinthGetProject?.(project.project_id);
                 if (!fullProject) return;
                 const normalized = normalizeModrinthFull(fullProject, project, t('unknown'));
-                // Team is a separate Modrinth endpoint and optional — don't block the page on it.
+                // Team is a separate Modrinth endpoint and optional โ€” don't block the page on it.
                 try {
                     const team = await (window.api as any)?.modrinthGetTeam?.(project.project_id);
                     if (Array.isArray(team)) {
@@ -804,28 +759,16 @@ export function Explore({ colors, config }: ExploreProps) {
     };
 
     const handleInstallVersionFromDetail = (project: ModrinthProject, versionId: string) => {
-        // For modpacks: direct install
         if (projectType === "modpack") {
             handleInstallModpackVersion(versionId);
         } else {
-            // For content: need to select instance first
             setSelectedProject(project);
             handleAddToInstance(project);
         }
     };
 
-    // ========================================
-    // Computed Values
-    // (Computed earlier near state declarations: const totalPages = Math.max(1, Math.ceil((totalHits || results.length) / viewCount)); )
-    // ========================================
-
-    // ========================================
-    // Render
-    // ========================================
-
     return (
         <div className="space-y-4">
-            {/* Confirm-install modal (U1, U3) */}
             {pendingInstall && (
                 <ConfirmInstallDialog
                     colors={colors}
@@ -836,7 +779,6 @@ export function Explore({ colors, config }: ExploreProps) {
                 />
             )}
 
-            {/* Instance Selection Modal */}
             {showInstanceModal && selectedProject && (
                 <InstanceSelectModal
                     colors={colors}
@@ -854,7 +796,6 @@ export function Explore({ colors, config }: ExploreProps) {
                 />
             )}
 
-            {/* Version Selection Modal */}
             {showVersionModal && versionModalProject && (
                 <VersionSelectModal
                     colors={colors}
@@ -880,7 +821,6 @@ export function Explore({ colors, config }: ExploreProps) {
                 />
             )}
 
-            {/* Detail Page View */}
             {detailProject ? (
                 <ProjectDetailPage
                     colors={colors}
@@ -896,7 +836,6 @@ export function Explore({ colors, config }: ExploreProps) {
                 />
             ) : (
                 <>
-                    {/* Toolbar */}
                     <ExploreToolbar
                         colors={colors}
                         contentSource={contentSource}
@@ -926,7 +865,6 @@ export function Explore({ colors, config }: ExploreProps) {
                         hideFilterMenu={showInstanceModal || showVersionModal}
                     />
 
-                    {/* Main layout: list + preview (sidebar removed, list now takes ~2/3) */}
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mt-4">
                         <div className="lg:col-span-8 xl:col-span-9">
                             <ProjectList
@@ -954,7 +892,7 @@ export function Explore({ colors, config }: ExploreProps) {
                                 installProgress={installProgress}
                                 onInstallModpack={handleInstallModpack}
                                 onAddToInstance={handleAddToInstance}
-                                // Only show preview skeleton during the initial search load — not
+                                // Only show preview skeleton during the initial search load โ€” not
                                 // every time fetchFullProjectDetails patches the row (U19).
                                 isLoading={isLoading && !previewProject}
                                 showFollows={contentSource === CONTENT_SOURCES.MODRINTH}

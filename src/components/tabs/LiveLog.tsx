@@ -3,10 +3,6 @@ import { Icons } from "../ui/Icons";
 import { useTranslation } from "../../hooks/useTranslation";
 import { Portal } from "../ui/Portal";
 
-// ========================================
-// Types
-// ========================================
-
 interface LogEntry {
     id: number;
     timestamp: string;
@@ -18,12 +14,8 @@ interface LiveLogProps {
     colors: any;
     isOpen: boolean;
     onClose: () => void;
-    instanceId?: string | null; // Instance to load logs for
+    instanceId?: string | null;
 }
-
-// ========================================
-// Component
-// ========================================
 
 export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
     const { t } = useTranslation();
@@ -35,86 +27,93 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
     const logContainerRef = useRef<HTMLDivElement>(null);
     const logIdRef = useRef(0);
 
-    // Auto scroll to bottom
     useEffect(() => {
         if (autoScroll && logContainerRef.current) {
             logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
         }
     }, [logs, autoScroll]);
 
-    // Load latest.log from file when opened (for each instance separately)
+    
+    const parseLines = useCallback((content: string): LogEntry[] => {
+        return content
+            .split("\n")
+            .filter((line) => line.trim())
+            .map((line) => {
+                let level: LogEntry["level"] = "info";
+                if (line.includes("/ERROR]") || line.includes("/FATAL]")) level = "error";
+                else if (line.includes("/WARN]")) level = "warn";
+                else if (line.includes("/DEBUG]")) level = "debug";
+
+                const timeMatch = line.match(/\[(\d{2}:\d{2}:\d{2})\]/);
+                return {
+                    id: logIdRef.current++,
+                    timestamp: timeMatch ? timeMatch[1] : "",
+                    level,
+                    message: line,
+                };
+            });
+    }, []);
+
+    
+    
+    
     useEffect(() => {
         if (!isOpen || !instanceId) return;
 
-        // Clear previous logs when opening a different instance
-        setLogs([]);
+        let cancelled = false;
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        let offset = 0;
         logIdRef.current = 0;
+        setLogs([]);
 
-        const loadLogFile = async () => {
+        const append = (content: string) => {
+            const entries = parseLines(content);
+            if (entries.length === 0) return;
+            setLogs((prev) => {
+                const merged = [...prev, ...entries];
+                return merged.length > 1000 ? merged.slice(-1000) : merged;
+            });
+        };
+
+        const poll = async () => {
+            if (cancelled) return;
+            try {
+                if (!isPaused) {
+                    const res = await (window.api as any)?.instanceTailLog?.(instanceId, offset);
+                    if (!cancelled && res?.ok) {
+                        if (typeof res.size === "number") offset = res.size;
+                        if (res.content) append(res.content);
+                    }
+                }
+            } catch {
+                
+            }
+            if (!cancelled) timer = setTimeout(poll, 1000);
+        };
+
+        const init = async () => {
             setIsLoadingFile(true);
             try {
                 const result = await (window.api as any)?.instanceReadLatestLog?.(instanceId);
-                if (result?.ok && result.content) {
-                    const lines = result.content.split("\n").filter((line: string) => line.trim());
-                    const entries: LogEntry[] = lines.map((line: string, idx: number) => {
-                        // Parse log level from Minecraft log format
-                        let level: LogEntry["level"] = "info";
-                        if (line.includes("/ERROR]") || line.includes("/FATAL]")) level = "error";
-                        else if (line.includes("/WARN]")) level = "warn";
-                        else if (line.includes("/DEBUG]")) level = "debug";
-
-                        // Extract timestamp
-                        const timeMatch = line.match(/\[(\d{2}:\d{2}:\d{2})\]/);
-                        const timestamp = timeMatch ? timeMatch[1] : "";
-
-                        return {
-                            id: idx,
-                            timestamp,
-                            level,
-                            message: line,
-                        };
-                    });
-                    setLogs(entries);
-                    logIdRef.current = entries.length;
+                if (!cancelled && result?.ok) {
+                    if (typeof result.size === "number") offset = result.size;
+                    if (result.content) append(result.content);
                 }
             } catch (error) {
                 console.error("[LiveLog] Failed to load log file:", error);
             } finally {
-                setIsLoadingFile(false);
+                if (!cancelled) setIsLoadingFile(false);
             }
+            if (!cancelled) timer = setTimeout(poll, 1000);
         };
 
-        loadLogFile();
-    }, [isOpen, instanceId]);
-
-    // Subscribe to game logs (for live updates while game is running)
-    useEffect(() => {
-        if (!isOpen) return;
-
-        const unsubscribe = (window.api as any)?.onGameLog?.((data: { level: string; message: string }) => {
-            if (isPaused) return;
-
-            const entry: LogEntry = {
-                id: logIdRef.current++,
-                timestamp: new Date().toLocaleTimeString(),
-                level: data.level as LogEntry["level"],
-                message: data.message,
-            };
-
-            setLogs(prev => {
-                // Keep last 1000 logs to prevent memory issues
-                const newLogs = [...prev, entry];
-                if (newLogs.length > 1000) {
-                    return newLogs.slice(-1000);
-                }
-                return newLogs;
-            });
-        });
+        init();
 
         return () => {
-            unsubscribe?.();
+            cancelled = true;
+            if (timer) clearTimeout(timer);
         };
-    }, [isOpen, isPaused]);
+    }, [isOpen, instanceId, isPaused, parseLines]);
 
     const clearLogs = useCallback(() => {
         setLogs([]);
@@ -199,7 +198,6 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
                     className="w-[94vw] max-w-[1500px] h-[76vh] min-h-[620px] max-h-[860px] rounded-2xl flex flex-col overflow-hidden relative z-51"
                     style={{ backgroundColor: colors.surfaceContainer }}
                 >
-                    {/* Header */}
                     <div
                         className="flex items-center justify-between gap-4 px-5 py-4 border-b shrink-0"
                         style={{ borderColor: colors.outline }}
@@ -224,7 +222,6 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
                         </div>
 
                         <div className="flex items-center gap-2 min-w-0 overflow-x-auto no-scrollbar">
-                            {/* Filter buttons */}
                             <div className="flex rounded-lg overflow-hidden shrink-0" style={{ backgroundColor: colors.surfaceContainerHighest }}>
                                 {(["all", "info", "warn", "error"] as const).map((f) => (
                                     <button
@@ -241,7 +238,6 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
                                 ))}
                             </div>
 
-                            {/* Control buttons */}
                             <button
                                 onClick={() => setAutoScroll(!autoScroll)}
                                 className="w-9 h-9 rounded-lg flex items-center justify-center transition-all shrink-0"
@@ -305,7 +301,6 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
                         </div>
                     </div>
 
-                    {/* Log content */}
                     <div
                         ref={logContainerRef}
                         className="flex-1 overflow-auto font-mono text-sm p-4 space-y-1"
@@ -346,7 +341,6 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
                         )}
                     </div>
 
-                    {/* Status bar */}
                     <div
                         className="flex items-center justify-between px-4 py-2 text-xs border-t shrink-0"
                         style={{ borderColor: colors.outline, backgroundColor: colors.surfaceContainer }}

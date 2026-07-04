@@ -1,10 +1,3 @@
-// ========================================
-// Helper Functions for Instance/ModPack
-// ========================================
-
-/**
- * Format bytes to human readable size
- */
 export function formatSize(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -24,9 +17,6 @@ export function formatPlayTime(
     return `${hours} ${units.hours}`;
 }
 
-/**
- * Get display label for loader type
- */
 export function getLoaderLabel(loader: string): string {
     const labels: Record<string, string> = {
         vanilla: "Vanilla",

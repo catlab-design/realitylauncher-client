@@ -1,6 +1,3 @@
-
-
-
 export type ColorTheme =
   | "yellow"
   | "purple"
@@ -15,17 +12,16 @@ export interface ExportOptions {
   name: string;
   version: string;
   description?: string;
-  includedPaths: string[]; 
+  includedPaths: string[];
 }
 
 export type LauncherCloseMode = "keep-open" | "hide-reopen" | "close";
 
-
 export interface AuthSession {
-  type: "catid" | "microsoft";
+  authType: "catid" | "microsoft";
   username: string;
   uuid: string;
-  minecraftUuid?: string; 
+  minecraftUuid?: string;
   accessToken?: string;
   refreshToken?: string;
   expiresAt?: number;
@@ -40,18 +36,17 @@ export interface AuthSession {
   avatarSource?: string;
 }
 
-
 export interface Server {
   id: string;
   name: string;
   version?: string;
   icon?: string;
-  iconUrl?: string; 
+  iconUrl?: string;
   image?: string;
-  bannerUrl?: string; 
+  bannerUrl?: string;
   description?: string;
   websiteUrl?: string;
-  socials?: string | null; 
+  socials?: string | null;
   richDescription?: string;
   playerCount?: number;
   maxPlayers?: number;
@@ -65,7 +60,6 @@ export interface Server {
   storagePath?: string;
 }
 
-
 export interface NewsItem {
   id: string;
   title: string;
@@ -77,15 +71,13 @@ export interface NewsItem {
   tags?: string[];
 }
 
-
 export interface JavaInstallation {
-  path: string; 
-  version: string; 
-  majorVersion: number; 
-  vendor?: string; 
-  isValid: boolean; 
+  path: string;
+  version: string;
+  majorVersion: number;
+  vendor?: string;
+  isValid: boolean;
 }
-
 
 export interface JavaPaths {
   java8?: string;
@@ -94,13 +86,12 @@ export interface JavaPaths {
   java25?: string;
 }
 
-
 export interface LauncherConfig {
   username: string;
   selectedVersion: string;
   ramMB: number;
   javaPath?: string;
-  javaPaths?: JavaPaths; 
+  javaPaths?: JavaPaths;
   minecraftDir?: string;
   theme: "dark" | "light" | "oled" | "auto";
   colorTheme: ColorTheme;
@@ -112,21 +103,18 @@ export interface LauncherConfig {
   closeOnLaunch: LauncherCloseMode;
   downloadSpeedLimit: number;
   discordRPCEnabled: boolean;
-  
   fullscreen: boolean;
   javaArguments: string;
   maxConcurrentDownloads: number;
   telemetryEnabled: boolean;
   autoUpdateEnabled: boolean;
-  lastSeenVersion?: string; 
-  
-  clickSoundEnabled: boolean; 
-  notificationSoundEnabled: boolean; 
-  rainbowMode: boolean; 
+  lastSeenVersion?: string;
+  clickSoundEnabled: boolean;
+  notificationSoundEnabled: boolean;
+  rainbowMode: boolean;
   backgroundImage?: string;
   backgroundImageOpacity?: number;
 }
-
 
 export interface LauncherInfo {
   javaOK: boolean;
@@ -134,18 +122,15 @@ export interface LauncherInfo {
   minecraftDir: string;
 }
 
-
 export interface LaunchResult {
   ok: boolean;
   message?: string;
 }
 
-
 export interface ColorThemeInfo {
   primary: string;
   name: string;
 }
-
 
 export type LoaderType = "vanilla" | "fabric" | "forge" | "neoforge" | "quilt";
 
@@ -177,8 +162,6 @@ export interface CreateInstanceOptions {
   loader?: LoaderType;
   loaderVersion?: string;
   icon?: string;
-  javaPath?: string;
-  ramMB?: number;
 }
 
 export interface UpdateInstanceOptions {
@@ -196,12 +179,12 @@ export interface UpdateInstanceOptions {
 }
 
 export interface InstallProgress {
-  stage: string;
-  message: string;
+  type?: string;
+  task?: string;
+  stage?: string;
+  message?: string;
+  filename?: string;
   current?: number;
   total?: number;
   percent?: number;
-  
-  type?: string;
-  filename?: string;
 }

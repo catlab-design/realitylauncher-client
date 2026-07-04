@@ -51,7 +51,8 @@ interface ModPackProps {
 
 const isCancellationError = (msg: unknown): boolean => {
     if (typeof msg !== "string" || !msg) return false;
-    return msg.includes("cancelled") || msg.includes("cancel");
+    const lower = msg.toLowerCase();
+    return lower.includes("cancelled") || lower.includes("cancel");
 };
 
 const Spinner = ({ className = "w-4 h-4" }: { className?: string }) => (
@@ -181,7 +182,7 @@ export function ModPack({
 
 
     const launchCancelledRef = useRef(false);
-    const launchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const launchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const handlePlay = async (id: string) => {
         if (launchingId !== null) return;
@@ -190,11 +191,40 @@ export function ModPack({
         launchCancelledRef.current = false;
         setLaunchingId(id);
 
+        // instances_launch resolves only once the JVM is spawned, so surface the
+        // backend's prepare stages (download/extract) while we wait.
+        const removeLaunchProgress = (window.api as any)?.onLaunchProgress?.(
+            (progress: { stage?: string; message?: string; progress?: number }) => {
+                if (progress?.stage === "running") {
+                    setInstallProgress(null);
+                    return;
+                }
+                setInstallProgress({
+                    stage: progress?.stage || "preparing",
+                    message: progress?.message || t('launching'),
+                    percent: Math.round((progress?.progress ?? 0) * 100),
+                });
+            },
+        );
+
+        // Server-backed instances sync mods first; that step reports on the
+        // install-progress channel, so mirror it into the same modal.
+        const removeSyncProgress = (window.api as any)?.onInstallProgress?.(
+            (p: { type?: string; task?: string; percent?: number; current?: number; total?: number }) => {
+                if (p?.type === "sync-complete") return;
+                setInstallProgress({
+                    stage: p?.type || "sync",
+                    message: p?.task || t('syncing') || 'เธเธณเธฅเธฑเธเธเธดเธเธเน...',
+                    percent: typeof p?.percent === "number" ? p.percent : 0,
+                });
+            },
+        );
+
         launchTimeoutRef.current = setTimeout(() => {
             console.warn(`[ModPack] Launch timeout for instance ${id}`);
             setLaunchingId(null);
             toastError(t('launch_timeout'));
-        }, 60000);
+        }, 120000);
 
         try {
             const targetInstance = instances.find((item) => item.id === id);
@@ -209,9 +239,9 @@ export function ModPack({
                 setInstallingInstanceId(null);
             }
 
-            if (isServerInstance && session?.type === "catid" && session.minecraftUuid) {
+            if (isServerInstance && session?.authType === "catid" && session.minecraftUuid) {
                 const linkedMsAccount = accounts.find(
-                    (account) => account.type === "microsoft" && account.uuid === session.minecraftUuid,
+                    (account) => account.authType === "microsoft" && account.uuid === session.minecraftUuid,
                 );
 
                 if (linkedMsAccount) {
@@ -228,13 +258,8 @@ export function ModPack({
 
             const refreshResult = await window.api?.authRefreshToken?.();
             if (refreshResult && refreshResult.ok === false) {
-                const requiresRelogin = refreshResult.requiresRelogin === true;
                 const refreshErr = typeof refreshResult.error === "string" ? refreshResult.error : "";
-                toastError(
-                    requiresRelogin
-                        ? t('session_expired_login_server')
-                        : (refreshErr || t('session_expired_login_server')),
-                );
+                toastError(refreshErr || t('session_expired_login_server'));
                 return;
             }
 
@@ -315,6 +340,9 @@ export function ModPack({
             removeFromPlaying(id);
         } finally {
             setLaunchingId(null);
+            removeLaunchProgress?.();
+            removeSyncProgress?.();
+            setInstallProgress(null);
             if (launchTimeoutRef.current) {
                 clearTimeout(launchTimeoutRef.current);
                 launchTimeoutRef.current = null;
@@ -382,41 +410,41 @@ export function ModPack({
         setOperationType("install");
         setInstalling(true);
         setInstallMinimized(false);
+        setInstallProgress({ stage: "sync-start", type: "sync-start", message: t('starting_install') });
         if (id) setInstallingInstanceId(id);
 
-        const toastId = toast.loading(id ? t('installing') : t('loading'));
+        // Interim progress is driven by the install-progress/modpack-install-progress
+        // events useGameEvents subscribes to globally (rendered as the toast progress
+        // card in LauncherAppShell) — a second toast.loading() here used to fight it
+        // for the same corner of the screen with no percent/cancel of its own.
         try {
             const result = id
                 ? await (window.api as any)?.instancesCloudInstall?.(id)
                 : await (window.api as any)?.instancesCloudSync?.();
 
             if (result?.ok) {
-                toast.success(t('install_complete'), { id: toastId });
+                toast.success(t('install_complete'));
                 loadInstances();
             } else {
                 const installErr = typeof result?.error === 'string' ? result.error : '';
-                if (isCancellationError(installErr)) {
-                    toast.dismiss(toastId);
-                    return;
-                }
+                if (isCancellationError(installErr)) return;
                 const errMsg = installErr || t('install_failed');
                 if (errMsg.includes("401") || errMsg.includes("Unauthorized")) {
-                    toast.error(t('session_expired'), { id: toastId });
+                    toast.error(t('session_expired'));
                 } else if (errMsg.includes("Not logged in")) {
-                    toast.error(t('login_before_use'), { id: toastId });
+                    toast.error(t('login_before_use'));
                 } else {
-                    toast.error(errMsg, { id: toastId });
+                    toast.error(errMsg);
                 }
             }
         } catch (error: any) {
-            if (isCancellationError(error?.message)) {
-                toast.dismiss(toastId);
-            } else {
-                toast.error(error?.message || t('error_occurred'), { id: toastId });
+            if (!isCancellationError(error?.message)) {
+                toast.error(error?.message || t('error_occurred'));
             }
         } finally {
             setInstalling(false);
             setInstallingInstanceId(null);
+            setInstallProgress(null);
             setInstallMinimized(false);
             setOperationType(null);
         }
@@ -526,13 +554,10 @@ export function ModPack({
                 className="group relative rounded-2xl overflow-hidden cursor-pointer h-48 transition-all"
                 style={getModPackCardFrameStyle()}
             >
-                {/* Background scale on hover */}
                 <div className="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105"
                     style={{ backgroundImage: "inherit" }} />
-                {/* Gradient overlay */}
                 <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/50 to-transparent" />
 
-                {/* Static bottom-left: icon + name */}
                 <div className="absolute left-2 bottom-2 right-12 flex items-center gap-3 z-20 transition-all duration-500 ease-in-out group-hover:-translate-y-21 pointer-events-none">
                     <div className={`w-12 h-12 rounded-xl overflow-hidden shrink-0 ${instance.icon ? "" : "bg-black/20 backdrop-blur-md border border-white/10"}`}>
                         {instance.icon ? (
@@ -548,14 +573,13 @@ export function ModPack({
                     </h3>
                 </div>
 
-                {/* Hover reveal: version + action buttons */}
                 <div className="absolute bottom-0 left-0 right-0 p-4 z-10 w-full transition-all duration-500 ease-in-out transform translate-y-full opacity-0 group-hover:translate-y-0 group-hover:opacity-100">
                     <div className="mb-2 pl-1">
                         <p className="text-sm text-gray-300 truncate">
                             {instance.minecraftVersion} • {getLoaderLabel(instance.loader)}
                             {instance.totalPlayTime > 0 && (
                                 <span className="ml-2 opacity-70">
-                                    · {formatPlayTime(instance.totalPlayTime, { minutes: t('minutes_unit'), hours: t('hours_unit') })}
+                                    • {formatPlayTime(instance.totalPlayTime, { minutes: t('minutes_unit'), hours: t('hours_unit') })}
                                 </span>
                             )}
                         </p>

@@ -1,8 +1,3 @@
-/**
- * CreateInstanceModal - Modal สำหรับสร้าง Instance ใหม่
- * ปรับปรุง UX: เพิ่มคำอธิบาย, tooltips, และ preview
- */
-
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import toast from "react-hot-toast";
@@ -22,7 +17,6 @@ export interface CreateInstanceModalProps {
     colors: any;
     config?: LauncherConfig;
     onClose: () => void;
-    /** Called with the new instance's id after successful creation */
     onCreated: (instanceId?: string) => void;
     language: "th" | "en";
 }
@@ -46,7 +40,6 @@ function ScrollableSelect({ value, onChange, options, disabled, colors, placehol
 
     useEffect(() => {
         if (!open) return;
-        // Scroll selected item into view
         const idx = options.findIndex(o => o.value === value);
         if (idx >= 0 && listRef.current) {
             const item = listRef.current.children[idx] as HTMLElement;
@@ -170,12 +163,10 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [onClose, config]);
 
-    // Loader Version State
     const [loaderVersion, setLoaderVersion] = useState<string | undefined>(undefined);
     const [loaderVersions, setLoaderVersions] = useState<string[]>([]);
     const [loadingLoaderVersions, setLoadingLoaderVersions] = useState(false);
 
-    // Fetch loader versions when loader or mc version changes
     useEffect(() => {
         if (loader === "vanilla") {
             setLoaderVersions([]);
@@ -256,7 +247,6 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
         ? gameVersions
         : gameVersions.filter((v) => v.version_type === "release");
 
-    // Loader info with descriptions (use translations)
     const LOADER_INFO: Record<string, { name: string; description: string; color: string }> = {
         vanilla: { name: t('vanilla'), description: t('vanilla_desc'), color: "#4CAF50" },
         fabric: { name: t('fabric'), description: t('fabric_desc'), color: "#DBD0AB" },
@@ -266,11 +256,11 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
     };
 
     const loaders = [
-        { id: "vanilla", icon: <img src={minecraftIcon.src} alt={t('vanilla')} className="w-5 h-5" /> },
-        { id: "fabric", icon: <img src={fabricIcon.src} alt={t('fabric')} className="w-5 h-5" /> },
-        { id: "forge", icon: <img src={forgeIcon.src} alt={t('forge')} className="w-5 h-5" /> },
-        { id: "neoforge", icon: <img src={neoforgeIcon.src} alt={t('neoforge')} className="w-5 h-5" /> },
-        { id: "quilt", icon: <img src={quiltIcon.src} alt={t('quilt')} className="w-5 h-5" /> },
+        { id: "vanilla", icon: <img src={minecraftIcon} alt={t('vanilla')} className="w-5 h-5" /> },
+        { id: "fabric", icon: <img src={fabricIcon} alt={t('fabric')} className="w-5 h-5" /> },
+        { id: "forge", icon: <img src={forgeIcon} alt={t('forge')} className="w-5 h-5" /> },
+        { id: "neoforge", icon: <img src={neoforgeIcon} alt={t('neoforge')} className="w-5 h-5" /> },
+        { id: "quilt", icon: <img src={quiltIcon} alt={t('quilt')} className="w-5 h-5" /> },
     ];
 
     const currentLoaderInfo = LOADER_INFO[hoveredLoader || loader];
@@ -295,7 +285,6 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     transition={{ type: "spring", stiffness: 260, damping: 28, mass: 0.9 }}
                 >
-                    {/* Header */}
                     <div
                         className="flex items-center justify-between border-b px-6 py-3.5 sm:px-7 shrink-0"
                         style={{
@@ -344,9 +333,7 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
                         </button>
                     </div>
 
-                    {/* Scrollable Body */}
                     <div className="flex-1 overflow-y-auto px-6 pb-6 pt-5 sm:px-7 sm:pb-7 sm:pt-6 custom-scrollbar">
-                        {/* Name Input */}
                         <div className="mb-6">
                             <label className="flex items-center gap-2 text-sm font-semibold mb-2" style={{ color: colors.onSurfaceVariant }}>
                                 <Icons.Edit className="w-4 h-4" />
@@ -367,7 +354,6 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                            {/* Minecraft Version */}
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
                                     <label className="flex items-center gap-2 text-sm font-semibold" style={{ color: colors.onSurfaceVariant }}>
@@ -395,7 +381,6 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
                                 />
                             </div>
 
-                            {/* Loader Version Selection (if not vanilla) */}
                             {loader !== "vanilla" && (
                                 <div className="space-y-2">
                                     <label className="flex items-center gap-2 text-sm font-semibold" style={{ color: colors.onSurfaceVariant }}>
@@ -421,7 +406,6 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
                             )}
                         </div>
 
-                        {/* Loader Selection */}
                         <div className="mb-8">
                             <label className="flex items-center gap-2 text-sm font-semibold mb-4" style={{ color: colors.onSurfaceVariant }}>
                                 <Icons.Box className="w-4 h-4" />
@@ -463,7 +447,6 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
                                 })}
                             </div>
 
-                            {/* Loader Description Box */}
                             <div
                                 className="px-4 py-3 rounded-xl text-sm transition-all border"
                                 style={{
@@ -477,7 +460,6 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
                             </div>
                         </div>
 
-                        {/* Create Button */}
                         <button
                             onClick={() => { handleSound(); handleCreate(); }}
                             disabled={isLoading || !name.trim() || (loader !== "vanilla" && !loaderVersion && loaderVersions.length > 0)}
@@ -501,7 +483,6 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
                             )}
                         </button>
 
-                        {/* Help Text */}
                         <p className="text-xs text-center mt-4 opacity-50" style={{ color: colors.onSurfaceVariant }}>
                             {t('create_instance_footer')}
                         </p>

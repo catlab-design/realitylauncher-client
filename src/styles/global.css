@@ -319,6 +319,53 @@ body {
   animation: card-appear 0.4s ease-out forwards;
 }
 
+/* Home header time-of-day scene: night shooting stars streaking across, and
+   daytime leaves drifting down. Kept subtle/slow so the header stays calm. */
+@keyframes comet-streak {
+  0% {
+    transform: translate(0, 0) rotate(149deg);
+    opacity: 0;
+  }
+  5% {
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  40% {
+    opacity: 0.9;
+  }
+  60%, 100% {
+    transform: translate(-360px, 200px) rotate(149deg);
+    opacity: 0;
+  }
+}
+
+.animate-comet {
+  animation: comet-streak 7s ease-in-out infinite backwards;
+}
+
+@keyframes leaf-fall {
+  0% {
+    transform: translateY(-20px) translateX(0) rotate(0deg);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.9;
+  }
+  88% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateY(120px) translateX(24px) rotate(220deg);
+    opacity: 0;
+  }
+}
+
+.animate-leaf {
+  animation: leaf-fall linear infinite;
+}
+
 /* Skeleton wave effect */
 @keyframes skeleton-wave {
   0% {
@@ -529,4 +576,12 @@ div[role="status"] > div {
 .custom-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: rgba(155, 155, 155, 0.2) transparent;
+}
+
+/* Toast countdown bar — drains left-to-right over the toast's duration.
+   scaleX (with origin-left) is GPU-composited, so it stays smooth and
+   animation-play-state: paused freezes it exactly in place on hover. */
+@keyframes toast-countdown {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
 }

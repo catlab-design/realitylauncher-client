@@ -40,7 +40,6 @@ export const useConfigStore = create<ConfigState>()(
             ...defaultConfig,
             setConfig: (newConfig) => set((state) => ({ ...state, ...newConfig })),
             resetConfig: () => {
-                
                 const stored = localStorage.getItem('reality_config');
                 let preservedJavaPath: string | undefined;
                 let preservedJavaPaths: any | undefined;
@@ -52,22 +51,19 @@ export const useConfigStore = create<ConfigState>()(
                     } catch {}
                 }
                 localStorage.removeItem('reality_config');
-                set({ 
-                    ...defaultConfig, 
+                set({
+                    ...defaultConfig,
                     javaPath: preservedJavaPath,
-                    javaPaths: preservedJavaPaths 
+                    javaPaths: preservedJavaPaths
                 });
             },
             setTheme: (theme) => set({ theme }),
             setLanguage: (language) => set({ language }),
         }),
         {
-            name: 'reality_config', 
-            
-            
+            name: 'reality_config',
             migrate: (persistedState: any) => {
                 if (persistedState && typeof persistedState.closeOnLaunch === 'boolean') {
-                    
                     persistedState.closeOnLaunch = persistedState.closeOnLaunch ? 'hide-reopen' : 'keep-open';
                 }
                 return persistedState;

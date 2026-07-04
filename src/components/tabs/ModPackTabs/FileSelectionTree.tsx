@@ -4,7 +4,7 @@ import { useTranslation } from "../../../hooks/useTranslation";
 
 export interface FileNode {
     name: string;
-    path: string; // relative path using forward slashes
+    path: string; 
     type: "directory" | "file";
     size?: number;
     children?: FileNode[];
@@ -20,20 +20,18 @@ interface FileSelectionTreeProps {
 export function FileSelectionTree({ data, includedPaths, onChange, colors }: FileSelectionTreeProps) {
     const { t } = useTranslation();
 
-    // Helper to get all file paths recursively from a node
     const getAllFilePaths = (node: FileNode): string[] => {
         if (node.type === "file") return [node.path];
         return node.children?.flatMap(getAllFilePaths) || [];
     };
 
-    // Helper to check if a node is selected (all descendants selected)
     const getNodeState = (node: FileNode): "checked" | "unchecked" | "indeterminate" => {
         if (node.type === "file") {
             return includedPaths.includes(node.path) ? "checked" : "unchecked";
         }
         
         const children = node.children || [];
-        if (children.length === 0) return "unchecked"; // Empty folder?
+        if (children.length === 0) return "unchecked";
 
         const childStates = children.map(getNodeState);
         const allChecked = childStates.every(s => s === "checked");
@@ -48,8 +46,8 @@ export function FileSelectionTree({ data, includedPaths, onChange, colors }: Fil
         const state = getNodeState(node);
         const allNodePaths = getAllFilePaths(node);
         
-        // If checked or indeterminate -> uncheck all
-        // If unchecked -> check all
+        
+        
         const shouldCheck = state === "unchecked";
 
         const newSet = new Set(includedPaths);
@@ -89,7 +87,7 @@ interface TreeNodeProps {
 }
 
 function TreeNode({ node, includedPaths, onToggle, colors, getNodeState, level = 0 }: TreeNodeProps) {
-    const [expanded, setExpanded] = useState(level < 1); // Default expand top level
+    const [expanded, setExpanded] = useState(level < 1);
     const state = getNodeState(node);
     const hasChildren = node.type === "directory" && (node.children?.length || 0) > 0;
 
@@ -99,14 +97,8 @@ function TreeNode({ node, includedPaths, onToggle, colors, getNodeState, level =
                 className="flex items-center gap-2 py-1 px-2 rounded hover:bg-white/5 cursor-pointer select-none"
                 style={{ paddingLeft: `${(level * 16) + 8}px` }}
                 onClick={() => {
-                   if (hasChildren && node.type === "directory") {
-                      // If clicking anywhere on the row, toggle expand? 
-                      // Or should we have separate click targets for expand vs check?
-                      // Let's make the whole row toggle selection EXCEPT the chevron
-                   }
                 }}
             >
-                {/* Expand Toggle */}
                 <div 
                     className={`w-4 h-4 flex items-center justify-center transition-transform ${expanded ? "rotate-90" : ""} ${hasChildren ? "cursor-pointer hover:text-white" : "opacity-0 pointer-events-none"}`}
                     onClick={(e) => {
@@ -118,7 +110,6 @@ function TreeNode({ node, includedPaths, onToggle, colors, getNodeState, level =
                     <i className="fa-solid fa-chevron-right text-[10px]" />
                 </div>
 
-                {/* Checkbox */}
                 <div 
                     className="w-4 h-4 rounded border flex items-center justify-center transition-colors cursor-pointer"
                     style={{ 
@@ -134,12 +125,10 @@ function TreeNode({ node, includedPaths, onToggle, colors, getNodeState, level =
                     {state === "indeterminate" && <div className="w-2 h-0.5 bg-white rounded-full" />}
                 </div>
 
-                {/* Icon */}
                 <div className="w-5 flex justify-center opacity-70" style={{ color: colors.secondary }}>
                     {node.type === "directory" ? <Icons.Folder className="w-4 h-4" /> : <i className="fa-regular fa-file text-xs" />}
                 </div>
 
-                {/* Name */}
                 <span 
                     className="text-sm truncate flex-1" 
                     style={{ color: colors.onSurface }}
@@ -148,7 +137,6 @@ function TreeNode({ node, includedPaths, onToggle, colors, getNodeState, level =
                     {node.name}
                 </span>
 
-                {/* Size (optional) */}
                 {node.size !== undefined && (
                     <span className="text-xs opacity-50" style={{ color: colors.onSurfaceVariant }}>
                         {formatBytes(node.size)}
@@ -156,7 +144,6 @@ function TreeNode({ node, includedPaths, onToggle, colors, getNodeState, level =
                 )}
             </div>
 
-            {/* Children */}
             {expanded && node.children && (
                 <div>
                     {node.children.map(child => (

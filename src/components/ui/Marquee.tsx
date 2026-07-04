@@ -2,8 +2,8 @@ import React, { useEffect, useRef, useState, useId } from "react";
 import { cn } from "../../lib/utils";
 
 interface MarqueeProps extends React.HTMLAttributes<HTMLDivElement> {
-  speed?: number; // pixels per second
-  delay?: number; // seconds before starting
+  speed?: number; 
+  delay?: number; 
   gradient?: boolean;
   gradientWidth?: number;
   pauseOnHover?: boolean;
@@ -12,14 +12,14 @@ interface MarqueeProps extends React.HTMLAttributes<HTMLDivElement> {
 export const Marquee: React.FC<MarqueeProps> = ({
   children,
   className,
-  speed = 30, // Default slow speed for readability
+  speed = 30, 
   delay = 0,
   gradient = false,
   gradientWidth = 20,
   pauseOnHover = true,
   ...props
 }) => {
-  const checkboxId = useId().replace(/:/g, ""); // Create valid CSS ID
+  const checkboxId = useId().replace(/:/g, ""); 
   const animationName = `marquee-${checkboxId}`;
   
   const containerRef = useRef<HTMLDivElement>(null);
@@ -53,7 +53,6 @@ export const Marquee: React.FC<MarqueeProps> = ({
       }
     };
 
-    // Initial check
     calculateOverflow();
 
     // Use ResizeObserver for more robust monitoring
@@ -95,7 +94,6 @@ export const Marquee: React.FC<MarqueeProps> = ({
         }
       `}</style>
       
-      {/* Ghost Element for Measurement - Absolute to not affect layout, hidden */}
       <span 
         ref={measureRef} 
         className="absolute top-0 left-0 opacity-0 pointer-events-none whitespace-nowrap"

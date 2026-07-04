@@ -16,7 +16,7 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
         if (updates.clickSoundEnabled === true || updates.notificationSoundEnabled === true) {
             playClick(true);
         } else if (updates.clickSoundEnabled === false || updates.notificationSoundEnabled === false) {
-            // Turning off -> Be silent
+            
         } else {
             playClick();
         }
@@ -25,14 +25,14 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
 
     return (
         <div className="rounded-xl overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300" style={{ backgroundColor: colors.surfaceContainer }}>
-            {/* Standard Header */}
+            {}
             <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "40" }}>
                 <i className="fa-solid fa-palette text-lg" style={{ color: colors.secondary }}></i>
                 <h3 className="font-medium" style={{ color: colors.onSurface }}>{t('appearance_and_themes')}</h3>
             </div>
 
             <div className="p-6 space-y-8">
-                {/* Theme Mode Section */}
+                {}
                 <section>
                     <div className="flex items-center gap-2 mb-4">
                         <i className="fa-solid fa-moon text-xs opacity-40" style={{ color: colors.onSurface }}></i>
@@ -57,7 +57,7 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
                                         borderColor: isActive ? colors.primary : colors.outline + "20"
                                     } as React.CSSProperties}
                                 >
-                                    {/* Top Preview Block */}
+                                    {}
                                     <div className="w-full flex-1 min-h-[76px] relative flex items-center justify-center p-2.5"
                                          style={{ 
                                              backgroundColor: item.id === "light" 
@@ -75,7 +75,7 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
                                             </div>
                                         )}
                                         
-                                        {/* Simulated UI Card */}
+                                        {}
                                         <div className="relative z-10 w-full h-full rounded border flex items-center p-2 gap-2 shadow-none"
                                              style={{
                                                  backgroundColor: item.id === "light" 
@@ -107,13 +107,13 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
                                         </div>
                                     </div>
 
-                                    {/* Bottom Label Block */}
+                                    {}
                                     <div className="w-full py-2 px-3 flex items-center gap-2 border-t"
                                          style={{ 
                                              borderColor: colors.outline + "15",
                                              backgroundColor: colors.surfaceContainerLow || colors.surfaceContainer
                                          }}>
-                                        {/* Radio Circle */}
+                                        {}
                                         <div className="w-3.5 h-3.5 rounded-full border flex items-center justify-center flex-shrink-0"
                                              style={{ 
                                                  borderColor: isActive ? colors.primary : colors.outline + "60",
@@ -126,7 +126,7 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
                                             )}
                                         </div>
                                         
-                                        {/* Label Text */}
+                                        {}
                                         <span className="text-[11px] font-bold truncate"
                                               style={{ 
                                                   color: isActive ? colors.primary : colors.onSurface
@@ -142,7 +142,7 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
 
                 <div className="h-px w-full" style={{ backgroundColor: colors.outline + "15" }}></div>
 
-                {/* Colors Section */}
+                {}
                 <section>
                     <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-2">
@@ -191,7 +191,6 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
                                     );
                                 })}
 
-                                {/* Custom Color Button */}
                                 <div className="relative w-12 h-12">
                                     <input
                                         type="color"
@@ -293,7 +292,6 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
 
                 <div className="h-px w-full" style={{ backgroundColor: colors.outline + "15" }}></div>
 
-                {/* Background Image Section */}
                 <section>
                     <div className="flex items-center gap-2 mb-4">
                         <i className="fa-solid fa-image text-xs opacity-40" style={{ color: colors.onSurface }}></i>
@@ -302,7 +300,6 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
 
                     <div className="space-y-6">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            {/* Upload image area */}
                             <div className="flex flex-col gap-3 p-4 rounded-md border border-dashed transition-all"
                                 style={{ 
                                     backgroundColor: colors.surfaceContainerHigh,
@@ -357,7 +354,6 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
                                 </span>
                             </div>
 
-                            {/* Preview Area */}
                             <div className="flex items-center justify-center p-4 rounded-md border"
                                 style={{ 
                                     backgroundColor: colors.surface,
@@ -390,7 +386,6 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
                             </div>
                         </div>
 
-                        {/* Opacity Control */}
                         {config.backgroundImage && (
                             <div className="p-4 rounded-md flex flex-col gap-2"
                                 style={{ backgroundColor: colors.surfaceContainerHigh }}>
@@ -422,7 +417,6 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
 
                 <div className="h-px w-full" style={{ backgroundColor: colors.outline + "15" }}></div>
 
-                {/* Audio Section */}
                 <section>
                     <div className="flex items-center gap-2 mb-4">
                         <i className="fa-solid fa-volume-high text-xs opacity-40" style={{ color: colors.onSurface }}></i>
