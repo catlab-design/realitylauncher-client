@@ -1,5 +1,8 @@
 
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// Always build as a GUI (windows) subsystem app — even in debug — so no console
+// window ever pops up. stdout is still piped when launched via `tauri dev`, so
+// logs stay visible during development.
+#![windows_subsystem = "windows"]
 
 mod admin;
 mod auth;

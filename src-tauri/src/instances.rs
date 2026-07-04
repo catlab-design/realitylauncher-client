@@ -95,7 +95,6 @@ fn detect_image_mime(bytes: &[u8]) -> &'static str {
     }
 }
 
-/// Load instances from disk
 fn load_instances_from_disk() -> Vec<GameInstance> {
     let instances_dir = get_instances_dir();
 
@@ -131,9 +130,6 @@ fn load_instances_from_disk() -> Vec<GameInstance> {
         let icon_path = entry.path().join("icon.png");
         if icon_path.exists() && instance.icon.as_ref().map_or(true, |i| i.is_empty()) {
             if let Ok(icon_data) = fs::read(&icon_path) {
-                // The file is named icon.png but may hold webp/jpeg bytes (server
-                // icons are webp). A data URL trusts its declared mime, so detect the
-                // real format — otherwise the browser refuses to render it.
                 let mime = detect_image_mime(&icon_data);
                 let base64 = base64::engine::general_purpose::STANDARD.encode(&icon_data);
                 instance.icon = Some(format!("data:{};base64,{}", mime, base64));
@@ -147,12 +143,11 @@ fn load_instances_from_disk() -> Vec<GameInstance> {
     instances
 }
 
-/// Save instance to disk
 fn save_instance(instance: &GameInstance) -> Result<(), String> {
     let instance_dir = get_instance_dir(&instance.id);
     fs::create_dir_all(&instance_dir).map_err(|e| e.to_string())?;
 
-    // Save without icon if it is a local data/file icon (icon is saved as file)
+  
     let mut save_data = instance.clone();
     if let Some(ref icon) = save_data.icon {
         if icon.starts_with("data:") || icon.starts_with("file://") {
@@ -167,7 +162,7 @@ fn save_instance(instance: &GameInstance) -> Result<(), String> {
     Ok(())
 }
 
-/// Sanitize name for folder
+
 fn sanitize_name(name: &str) -> String {
     name.chars()
         .filter(|c| !['<', '>', ':', '"', '/', '\\', '|', '?', '*'].contains(c))
@@ -178,7 +173,7 @@ fn sanitize_name(name: &str) -> String {
         .collect()
 }
 
-/// Generate unique ID from name
+
 fn generate_unique_id(name: &str, existing: &[GameInstance]) -> String {
     let base = sanitize_name(name);
 
@@ -218,9 +213,7 @@ pub fn instances_get(id: String) -> Option<GameInstance> {
     instances.iter().find(|i| i.id == id).cloned()
 }
 
-/// Stamp an instance as played now, persisting last_played_at. Drives Home's
-/// "Jump Back In" list, which sorts by this field — without it the list is always
-/// empty because nothing ever set it.
+
 pub fn mark_played(id: &str) {
     if let Ok(mut instances) = INSTANCES.lock() {
         if let Some(instance) = instances.iter_mut().find(|i| i.id == id) {
@@ -339,22 +332,32 @@ pub fn instances_update(
 }
 
 #[tauri::command]
-pub fn instances_delete(id: String) -> Result<bool, String> {
-    let mut instances = INSTANCES.lock().map_err(|e| e.to_string())?;
-
-    if let Some(pos) = instances.iter().position(|i| i.id == id) {
-        let instance = instances.remove(pos);
-
-        let dir = get_instance_dir(&id);
-        if dir.exists() {
-            fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
+pub async fn instances_delete(id: String) -> Result<bool, String> {
+    let existed = {
+        let mut instances = INSTANCES.lock().map_err(|e| e.to_string())?;
+        match instances.iter().position(|i| i.id == id) {
+            Some(pos) => {
+                let instance = instances.remove(pos);
+                println!("[Instances] Deleted: {} ({})", instance.name, id);
+                true
+            }
+            None => false,
         }
+    };
 
-        println!("[Instances] Deleted: {} ({})", instance.name, id);
-        return Ok(true);
+    if !existed {
+        return Ok(false);
     }
 
-    Ok(false)
+    let dir = get_instance_dir(&id);
+    if dir.exists() {
+        tauri::async_runtime::spawn_blocking(move || fs::remove_dir_all(&dir))
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(true)
 }
 
 #[tauri::command]

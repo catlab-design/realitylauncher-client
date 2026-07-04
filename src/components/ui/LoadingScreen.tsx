@@ -8,7 +8,7 @@ interface LoadingScreenProps {
     themeColor: string;
 }
 
-const SPLASH_DURATION_S = 3;
+const SPLASH_DURATION_S = 1.2;
 
 export function LoadingScreen({ onComplete, themeColor }: LoadingScreenProps) {
     const { t } = useTranslation();

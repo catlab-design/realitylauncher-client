@@ -1,6 +1,6 @@
 [package]
 name = "ml-tauri-poc"
-version = "4.0.0"
+version = "4.0.1"
 description = "ML-Launcher POC with Tauri + Rust"
 edition = "2021"
 

@@ -40,9 +40,12 @@ pub async fn open_folder(app: tauri::AppHandle, path: String) -> Result<(), Stri
 pub async fn open_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        app.shell()
-            .command("cmd")
+        let _ = &app;
+        // Spawn via std with CREATE_NO_WINDOW so the cmd console never flashes.
+        use std::os::windows::process::CommandExt;
+        std::process::Command::new("cmd")
             .args(["/C", "start", "", &url])
+            .creation_flags(0x08000000)
             .spawn()
             .map_err(|e| e.to_string())?;
     }

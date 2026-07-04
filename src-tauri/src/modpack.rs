@@ -604,7 +604,7 @@ async fn install_mrpack(app: &tauri::AppHandle, file_path: &str) -> ModpackInsta
         
         
         
-        crate::instances::instances_delete(instance.id.clone()).ok();
+        let _ = crate::instances::instances_delete(instance.id.clone()).await;
         return ModpackInstallResult::fail(CANCELLED_SENTINEL);
     }
 
@@ -740,7 +740,7 @@ async fn install_cf_modpack(app: &tauri::AppHandle, file_path: &str) -> ModpackI
     }
 
     if is_cancelled() {
-        crate::instances::instances_delete(instance.id.clone()).ok();
+        let _ = crate::instances::instances_delete(instance.id.clone()).await;
         emit_progress(app, "cancelled", "ยกเลิกการติดตั้ง", 0);
         return ModpackInstallResult::fail(CANCELLED_SENTINEL);
     }

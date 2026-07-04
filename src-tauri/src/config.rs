@@ -203,24 +203,37 @@ pub fn reset_config() -> Result<LauncherConfig, String> {
 
 #[cfg(target_os = "windows")]
 fn get_system_ram_bytes() -> u64 {
-    if let Ok(output) = std::process::Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-Command",
-            "(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory",
-        ])
-        .output()
-    {
-        let out_str = String::from_utf8_lossy(&output.stdout);
-        for line in out_str.lines() {
-            let line = line.trim();
-            if !line.is_empty() && line.chars().all(|c| c.is_ascii_digit()) {
-                if let Ok(val) = line.parse::<u64>() {
-                    return val;
-                }
-            }
+    // Read total physical memory straight from the Win32 API. The previous
+    // implementation shelled out to `powershell`, which popped a console window
+    // at startup (CREATE_NO_WINDOW was not reliably suppressing it on Win11),
+    // and this runs at boot via the RAM pre-fetch in api.ts.
+    #[allow(non_snake_case)]
+    #[repr(C)]
+    struct MEMORYSTATUSEX {
+        dwLength: u32,
+        dwMemoryLoad: u32,
+        ullTotalPhys: u64,
+        ullAvailPhys: u64,
+        ullTotalPageFile: u64,
+        ullAvailPageFile: u64,
+        ullTotalVirtual: u64,
+        ullAvailVirtual: u64,
+        ullAvailExtendedVirtual: u64,
+    }
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GlobalMemoryStatusEx(lpBuffer: *mut MEMORYSTATUSEX) -> i32;
+    }
+
+    unsafe {
+        let mut status: MEMORYSTATUSEX = std::mem::zeroed();
+        status.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
+        if GlobalMemoryStatusEx(&mut status) != 0 && status.ullTotalPhys > 0 {
+            return status.ullTotalPhys;
         }
     }
+
     16 * 1024 * 1024 * 1024
 }
 

@@ -241,7 +241,11 @@ export function ServerMenu({
                 setPlayingInstances(prev => new Set(prev).add(targetId));
             } else {
                 const errorMessage = res?.message || t('launch_failed_server') || t('error_occurred');
-                const isJavaError = errorMessage.toLowerCase().includes("java") || errorMessage.toLowerCase().includes("jre") || errorMessage.toLowerCase().includes("java_home");
+                const lowerMsg = errorMessage.toLowerCase();
+                // Forge/NeoForge installer failures mention "JVM"/"java.net..." in their
+                // log dump — don't misread those as a missing-Java problem.
+                const isInstallerError = lowerMsg.includes("installer exited") || lowerMsg.includes("installer finished");
+                const isJavaError = !isInstallerError && (lowerMsg.includes("java") || lowerMsg.includes("jre") || lowerMsg.includes("java_home"));
                 if (isJavaError) {
                     const javaVersionMatch = errorMessage.match(/Java (\d+)/i);
                     const requiredVersion = javaVersionMatch ? parseInt(javaVersionMatch[1]) : 0;

@@ -309,6 +309,9 @@ fn open_installer(path: &Path) -> Result<(), String> {
     let mut cmd = {
         let mut c = std::process::Command::new("cmd");
         c.args(["/C", "start", "", &target]);
+        // Suppress the cmd console flash (CREATE_NO_WINDOW).
+        use std::os::windows::process::CommandExt;
+        c.creation_flags(0x08000000);
         c
     };
     #[cfg(target_os = "macos")]

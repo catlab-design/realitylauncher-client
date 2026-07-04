@@ -503,12 +503,17 @@ pub fn test_java_execution(java_path: String) -> serde_json::Value {
         return serde_json::json!({ "ok": false, "error": "ไม่พบ Java" });
     }
 
-    match std::process::Command::new(&java_path)
-        .arg("-version")
+    let mut cmd = std::process::Command::new(&java_path);
+    cmd.arg("-version")
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .output()
+        .stderr(std::process::Stdio::piped());
+    #[cfg(windows)]
     {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+
+    match cmd.output() {
         Ok(out) => {
             let combined = format!(
                 "{}{}",
@@ -545,7 +550,14 @@ pub fn auto_detect_java() -> Option<String> {
     } else {
         "which"
     };
-    if let Ok(output) = std::process::Command::new(cmd).arg("java").output() {
+    let mut command = std::process::Command::new(cmd);
+    command.arg("java");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000);
+    }
+    if let Ok(output) = command.output() {
         let out_str = String::from_utf8_lossy(&output.stdout);
         let first_line = out_str.lines().next().unwrap_or("").trim();
         if !first_line.is_empty() && std::path::Path::new(first_line).exists() {

@@ -96,9 +96,14 @@ pub fn kill_game() -> Result<(), String> {
         #[cfg(target_os = "windows")]
         {
             let pid = child.id();
-            let _ = Command::new("taskkill")
-                .args(["/F", "/T", "/PID", &pid.to_string()])
-                .output();
+            let mut cmd = Command::new("taskkill");
+            cmd.args(["/F", "/T", "/PID", &pid.to_string()]);
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                cmd.creation_flags(0x08000000);
+            }
+            let _ = cmd.output();
         }
         #[cfg(not(target_os = "windows"))]
         {
@@ -281,10 +286,14 @@ pub(crate) fn get_java_path() -> Option<String> {
         }
     }
 
-    if let Ok(output) = Command::new(if cfg!(windows) { "where" } else { "which" })
-        .arg("java")
-        .output()
+    let mut cmd = Command::new(if cfg!(windows) { "where" } else { "which" });
+    cmd.arg("java");
+    #[cfg(windows)]
     {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+    if let Ok(output) = cmd.output() {
         if output.status.success() {
             let path = String::from_utf8_lossy(&output.stdout)
                 .lines()
@@ -330,11 +339,22 @@ fn parse_java_version(output: &str) -> Option<i32> {
 }
 
 pub fn get_java_major_version(java_path: &str) -> Result<i32, String> {
-    let output = Command::new(java_path)
-        .arg("-version")
+    let check_path = if cfg!(windows) && java_path.to_lowercase().ends_with("javaw.exe") {
+        java_path.to_lowercase().replace("javaw.exe", "java.exe")
+    } else {
+        java_path.to_string()
+    };
+
+    let mut cmd = Command::new(&check_path);
+    cmd.arg("-version")
         .stderr(Stdio::piped())
-        .stdout(Stdio::piped())
-        .output()
+        .stdout(Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+    let output = cmd.output()
         .map_err(|e| format!("Failed to execute Java: {e}"))?;
 
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -471,12 +491,17 @@ async fn launch_game(app: tauri::AppHandle, instance: GameInstance) -> Result<()
     println!("[Launcher] Args: {}", all_args.join(" "));
 
 
-    let mut child = Command::new(&java_path)
-        .args(&all_args)
+    let mut cmd = Command::new(&java_path);
+    cmd.args(&all_args)
         .current_dir(&instance_dir)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+    let mut child = cmd.spawn()
         .map_err(|e| format!("Failed to spawn Java: {e}"))?;
 
     let pid = child.id();
@@ -827,6 +852,19 @@ async fn install_fabric(
 
 
 
+/// Forge/NeoForge --installClient refuses to run when the target dir has no
+/// launcher_profiles.json ("you need to run the launcher first!"), which is
+/// always the case on a fresh machine that never ran the vanilla launcher.
+/// A minimal stub is enough to satisfy the check.
+fn ensure_launcher_profiles(minecraft_dir: &Path) -> Result<(), String> {
+    let profiles_path = minecraft_dir.join("launcher_profiles.json");
+    if !profiles_path.exists() {
+        fs::create_dir_all(minecraft_dir).map_err(|e| e.to_string())?;
+        fs::write(&profiles_path, "{\"profiles\":{}}").map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 async fn install_forge(
     mc_version: &str,
     forge_version: &str,
@@ -880,15 +918,22 @@ async fn install_forge(
     let installer_path = installer_dir.join(&installer_filename);
     fs::write(&installer_path, &bytes).map_err(|e| e.to_string())?;
 
-    let output = Command::new(java_path)
-        .args([
-            "-jar",
-            &installer_path.to_string_lossy(),
-            "--installClient",
-            &minecraft_dir.to_string_lossy(),
-        ])
-        .current_dir(&installer_dir)
-        .output()
+    ensure_launcher_profiles(minecraft_dir)?;
+
+    let mut cmd = Command::new(java_path);
+    cmd.args([
+        "-jar",
+        &installer_path.to_string_lossy(),
+        "--installClient",
+        &minecraft_dir.to_string_lossy(),
+    ])
+    .current_dir(&installer_dir);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+    let output = cmd.output()
         .map_err(|e| format!("Failed to run Forge installer: {e}"))?;
 
     if !output.status.success() {
@@ -957,15 +1002,22 @@ async fn install_neoforge(
     let installer_path = installer_dir.join(&installer_filename);
     fs::write(&installer_path, &bytes).map_err(|e| e.to_string())?;
 
-    let output = Command::new(java_path)
-        .args([
-            "-jar",
-            &installer_path.to_string_lossy(),
-            "--installClient",
-            &minecraft_dir.to_string_lossy(),
-        ])
-        .current_dir(&installer_dir)
-        .output()
+    ensure_launcher_profiles(minecraft_dir)?;
+
+    let mut cmd = Command::new(java_path);
+    cmd.args([
+        "-jar",
+        &installer_path.to_string_lossy(),
+        "--installClient",
+        &minecraft_dir.to_string_lossy(),
+    ])
+    .current_dir(&installer_dir);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+    let output = cmd.output()
         .map_err(|e| format!("Failed to run NeoForge installer: {e}"))?;
 
     if !output.status.success() {

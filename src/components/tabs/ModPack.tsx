@@ -278,7 +278,10 @@ export function ModPack({
             } else {
                 const errorMessage = result?.message || t('launch_failed');
                 const lowerMsg = errorMessage.toLowerCase();
-                const isJavaError = lowerMsg.includes("java") || lowerMsg.includes("jre") || lowerMsg.includes("java_home");
+                // Forge/NeoForge installer failures mention "JVM"/"java.net..." in their
+                // log dump — don't misread those as a missing-Java problem.
+                const isInstallerError = lowerMsg.includes("installer exited") || lowerMsg.includes("installer finished");
+                const isJavaError = !isInstallerError && (lowerMsg.includes("java") || lowerMsg.includes("jre") || lowerMsg.includes("java_home"));
 
                 if (isJavaError && onShowConfirm && setSettingsTab) {
                     const javaVersionMatch = errorMessage.match(/Java (\d+)/i);
