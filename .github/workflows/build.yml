@@ -1,0 +1,439 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 4.0.0)'
+        required: false
+      changelog:
+        description: 'Changelog (markdown format)'
+        required: false
+        default: ''
+      build_windows:
+        description: 'Also build Windows artifacts'
+        required: false
+        type: boolean
+        default: true
+      build_macos:
+        description: 'Also build macOS artifacts'
+        required: false
+        type: boolean
+        default: false
+      publish_release:
+        description: 'Publish release assets to R2 and GitHub Release'
+        required: false
+        type: boolean
+        default: true
+  repository_dispatch:
+    types: [trigger-release]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  R2_BUCKET: realitystorage
+  CDN_URL: https://cdn.reality.catlabdesign.space
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Determine build matrix
+        id: set-matrix
+        env:
+          BUILD_WINDOWS: ${{ github.event.inputs.build_windows || github.event.client_payload.build_windows || 'true' }}
+          BUILD_MACOS: ${{ github.event.inputs.build_macos || github.event.client_payload.build_macos || 'false' }}
+          ENABLE_WINDOWS: ${{ vars.ENABLE_WINDOWS_RELEASE }}
+          ENABLE_MACOS: ${{ vars.ENABLE_MACOS_RUNNER }}
+        run: |
+          PLATFORMS='[{"platform":"linux","runs_on":"ubuntu-latest"}]'
+      
+          if [[ "$ENABLE_WINDOWS" == "true" || "$BUILD_WINDOWS" == "true" ]]; then
+            PLATFORMS=$(echo "$PLATFORMS" | jq -c '. + [{"platform":"win","runs_on":"windows-latest"}]')
+          fi
+      
+          if [[ "$ENABLE_MACOS" == "true" || "$BUILD_MACOS" == "true" ]]; then
+            PLATFORMS=$(echo "$PLATFORMS" | jq -c '. + [{"platform":"mac","runs_on":"macos-latest"}]')
+          fi
+      
+          MATRIX=$(jq -cn --argjson p "$PLATFORMS" '{"include":$p}')
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "Matrix: $MATRIX"
+
+  build:
+    needs: setup
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+    runs-on: ${{ matrix.runs_on }}
+    
+    permissions:
+      contents: read
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Bun package downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-cache-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-cache-
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Resolve build version
+        id: resolve_version
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          DISPATCH_VERSION: ${{ github.event.client_payload.version }}
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          set -euo pipefail
+          VERSION=""
+          if [ -n "${INPUT_VERSION:-}" ]; then
+            VERSION="$INPUT_VERSION"
+          elif [ -n "${DISPATCH_VERSION:-}" ]; then
+            VERSION="$DISPATCH_VERSION"
+          elif [ "${REF_TYPE:-}" = "tag" ] && [[ "${REF_NAME:-}" == v* ]]; then
+            VERSION="${REF_NAME#v}"
+          else
+            VERSION="$(node -p "require('./package.json').version")"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved build version: $VERSION"
+
+      - name: Update configuration versions
+        shell: bash
+        env:
+          RESOLVED_VERSION: ${{ steps.resolve_version.outputs.version }}
+        run: |
+          set -euo pipefail
+          node -e "
+            const fs = require('fs');
+            const pkgPath = './package.json';
+            const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+            pkg.version = process.env.RESOLVED_VERSION;
+            fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 4) + '\n');
+            
+            const tauriPath = './src-tauri/tauri.conf.json';
+            const tauri = JSON.parse(fs.readFileSync(tauriPath, 'utf8'));
+            tauri.version = process.env.RESOLVED_VERSION;
+            fs.writeFileSync(tauriPath, JSON.stringify(tauri, null, 4) + '\n');
+          "
+
+      - name: Build Tauri App
+        run: bun run tauri build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Prepare Windows Artifacts
+        if: matrix.platform == 'win'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist-artifacts -Force | Out-Null
+          Copy-Item -Path src-tauri/target/release/bundle/nsis/*.exe -Destination dist-artifacts/ -ErrorAction SilentlyContinue
+          Copy-Item -Path src-tauri/target/release/bundle/msi/*.msi -Destination dist-artifacts/ -ErrorAction SilentlyContinue
+
+      - name: Prepare Linux Artifacts
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          mkdir -p dist-artifacts
+          cp src-tauri/target/release/bundle/appimage/*.AppImage dist-artifacts/ 2>/dev/null || true
+          cp src-tauri/target/release/bundle/deb/*.deb dist-artifacts/ 2>/dev/null || true
+
+      - name: Prepare macOS Artifacts
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: |
+          mkdir -p dist-artifacts
+          cp src-tauri/target/release/bundle/dmg/*.dmg dist-artifacts/ 2>/dev/null || true
+
+      - name: Upload Windows artifacts
+        if: matrix.platform == 'win'
+        uses: actions/upload-artifact@v4
+        with:
+          name: reality-launcher-windows
+          path: dist-artifacts/*
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload Linux artifacts
+        if: matrix.platform == 'linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: reality-launcher-linux
+          path: dist-artifacts/*
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload macOS artifacts
+        if: matrix.platform == 'mac'
+        uses: actions/upload-artifact@v4
+        with:
+          name: reality-launcher-macos
+          path: dist-artifacts/*
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: |
+      (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'repository_dispatch') &&
+      (
+        github.event_name != 'workflow_dispatch' ||
+        github.event.inputs.publish_release == 'true'
+      )
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Resolve release version
+        id: version
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          DISPATCH_VERSION: ${{ github.event.client_payload.version }}
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT_VERSION:-}" ]; then
+            VERSION="${INPUT_VERSION}"
+          elif [ -n "${DISPATCH_VERSION:-}" ]; then
+            VERSION="${DISPATCH_VERSION}"
+          elif [ "${REF_TYPE:-}" = "tag" ] && [[ "${REF_NAME:-}" == v* ]]; then
+            VERSION="${REF_NAME#v}"
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: |
+          echo "=== Downloaded artifacts ==="
+          ls -R artifacts
+
+      - name: Check R2 credentials
+        id: r2
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ENABLE_R2_RELEASE: ${{ vars.ENABLE_R2_RELEASE }}
+        run: |
+          set -euo pipefail
+          if [ "${ENABLE_R2_RELEASE:-true}" = "true" ] && [ -n "${CLOUDFLARE_API_TOKEN:-}" ] && [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "R2 credentials are configured; CDN upload will run."
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "R2 release upload is disabled or credentials are missing."
+          fi
+
+      - name: Install wrangler
+        if: steps.r2.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun install -g wrangler
+          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+
+      - name: Verify R2 credentials
+        if: steps.r2.outputs.enabled == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -e
+          wrangler r2 bucket list
+          echo "✓ R2 authentication successful"
+
+      - name: Upload Windows build to R2
+        if: steps.r2.outputs.enabled == 'true' && hashFiles('artifacts/reality-launcher-windows/**') != ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -e
+          VERSION=${{ steps.version.outputs.version }}
+          for file in artifacts/reality-launcher-windows/*; do
+            if [ -f "$file" ]; then
+              FILENAME=$(basename "$file")
+              wrangler r2 object put --remote "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file" --content-type="application/octet-stream"
+              echo "✓ Uploaded $FILENAME"
+            fi
+          done
+
+      - name: Upload macOS build to R2
+        if: steps.r2.outputs.enabled == 'true' && hashFiles('artifacts/reality-launcher-macos/**') != ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -e
+          VERSION=${{ steps.version.outputs.version }}
+          for file in artifacts/reality-launcher-macos/*; do
+            if [ -f "$file" ]; then
+              FILENAME=$(basename "$file")
+              wrangler r2 object put --remote "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file" --content-type="application/octet-stream"
+              echo "✓ Uploaded $FILENAME"
+            fi
+          done
+
+      - name: Upload Linux builds to R2
+        if: steps.r2.outputs.enabled == 'true' && hashFiles('artifacts/reality-launcher-linux/**') != ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -e
+          VERSION=${{ steps.version.outputs.version }}
+          for file in artifacts/reality-launcher-linux/*; do
+            if [ -f "$file" ]; then
+              FILENAME=$(basename "$file")
+              wrangler r2 object put --remote "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file" --content-type="application/octet-stream"
+              echo "✓ Uploaded $FILENAME"
+            fi
+          done
+
+      - name: Create latest.json
+        if: steps.r2.outputs.enabled == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          INPUT_CHANGELOG: ${{ github.event.inputs.changelog }}
+          DISPATCH_CHANGELOG: ${{ github.event.client_payload.changelog }}
+        run: |
+          set -e
+          VERSION=${{ steps.version.outputs.version }}
+          CHANGELOG="${INPUT_CHANGELOG:-${DISPATCH_CHANGELOG:-}}"
+          
+          WIN_PATH=$(find artifacts/reality-launcher-windows -name "*.exe" | head -n 1 || true)
+          # fallback to msi if no exe
+          if [ -z "$WIN_PATH" ]; then
+            WIN_PATH=$(find artifacts/reality-launcher-windows -name "*.msi" | head -n 1 || true)
+          fi
+          
+          MAC_PATH=$(find artifacts/reality-launcher-macos -name "*.dmg" | head -n 1 || true)
+          
+          LINUX_PATH=$(find artifacts/reality-launcher-linux -name "*.AppImage" | head -n 1 || true)
+          # fallback to deb if no AppImage
+          if [ -z "$LINUX_PATH" ]; then
+            LINUX_PATH=$(find artifacts/reality-launcher-linux -name "*.deb" | head -n 1 || true)
+          fi
+          
+          WIN_URL=""
+          if [ -n "$WIN_PATH" ]; then
+            WIN_FILE=$(basename "$WIN_PATH")
+            WIN_URL="$CDN_URL/client/$VERSION/$(echo "$WIN_FILE" | sed 's/ /%20/g')"
+          fi
+          
+          MAC_URL=""
+          if [ -n "$MAC_PATH" ]; then
+            MAC_FILE=$(basename "$MAC_PATH")
+            MAC_URL="$CDN_URL/client/$VERSION/$(echo "$MAC_FILE" | sed 's/ /%20/g')"
+          fi
+          
+          LINUX_URL=""
+          if [ -n "$LINUX_PATH" ]; then
+            LINUX_FILE=$(basename "$LINUX_PATH")
+            LINUX_URL="$CDN_URL/client/$VERSION/$(echo "$LINUX_FILE" | sed 's/ /%20/g')"
+          fi
+
+          jq -n \
+            --arg version "$VERSION" \
+            --arg releaseDate "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg changelog "$CHANGELOG" \
+            --arg windows "$WIN_URL" \
+            --arg mac "$MAC_URL" \
+            --arg linux "$LINUX_URL" \
+            '{
+              version: $version,
+              releaseDate: $releaseDate,
+              changelog: $changelog,
+              downloads: (
+                (if $windows == "" then {} else { windows: $windows } end) +
+                (if $linux == "" then {} else { linux: $linux } end) +
+                (if $mac == "" then {} else { mac: $mac } end)
+              )
+            }' > latest.json
+          
+          echo "=== latest.json ==="
+          cat latest.json
+          
+          wrangler r2 object put --remote "$R2_BUCKET/client/latest.json" --file="latest.json" --content-type="application/json"
+          echo "✓ Uploaded latest.json"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Reality Launcher v${{ steps.version.outputs.version }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+          files: |
+            artifacts/reality-launcher-windows/*
+            artifacts/reality-launcher-macos/*
+            artifacts/reality-launcher-linux/*
+            latest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
