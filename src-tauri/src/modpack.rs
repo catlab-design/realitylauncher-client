@@ -73,7 +73,12 @@ pub struct CfMinecraft {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CfFileEntry {
+    // CurseForge's manifest.json uses uppercase `projectID`/`fileID`, which the
+    // struct's camelCase rule (projectId/fileId) does NOT match — deserializing
+    // failed with "missing field projectId". Pin the real CF keys explicitly.
+    #[serde(rename = "projectID")]
     pub project_id: i32,
+    #[serde(rename = "fileID")]
     pub file_id: i32,
     pub required: Option<bool>,
 }
