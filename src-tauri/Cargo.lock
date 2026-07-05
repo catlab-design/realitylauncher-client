@@ -2336,7 +2336,7 @@ dependencies = [
 
 [[package]]
 name = "ml-tauri-poc"
-version = "4.0.1"
+version = "4.0.2"
 dependencies = [
  "base64 0.22.1",
  "chrono",

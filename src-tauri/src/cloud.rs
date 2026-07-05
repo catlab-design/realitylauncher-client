@@ -959,6 +959,10 @@ pub async fn sync_instance_for_launch(
     let Some(cloud_id) = instance.cloud_id.as_deref() else {
         return Ok(Vec::new());
     };
+    // Reset cancel here (play/repair entry) so a fresh sync starts uncancelled
+    // and any Cancel arriving during it sticks — reset must not live deeper in
+    // the flow where the UI could have already sent a Cancel.
+    crate::modpack::reset_cancel_flag();
     let api_token = get_api_token()?;
     sync_server_mods(app_handle, &instance.game_directory, cloud_id, &api_token).await
 }
@@ -1028,6 +1032,10 @@ async fn sync_server_mods(
     cloud_id: &str,
     auth_token: &str,
 ) -> Result<Vec<(String, String)>, String> {
+    // NOTE: the cancel flag is reset by the entry commands (instances_cloud_install
+    // / sync_instance_for_launch), NOT here — the UI shows Cancel optimistically
+    // the instant the user clicks, so resetting this deep in the flow would wipe
+    // a Cancel that already arrived (pressing Cancel immediately did nothing).
     emit_sync_progress(app_handle, "sync-start", "", None, None, None, None);
 
     let (manifest_data, _manifest_not_modified) =
@@ -1206,6 +1214,11 @@ async fn sync_server_mods(
     let mut completed = 0u32;
 
     for m in &queue {
+        // Honor Cancel in the per-file fallback too — otherwise cancelling a
+        // sync that missed the .mrpack fast path did nothing and ran to the end.
+        if crate::modpack::is_cancelled() {
+            return Err(crate::modpack::CANCELLED_SENTINEL.to_string());
+        }
         let url = match m.url.as_ref() {
             Some(u) => u.clone(),
             None => {
@@ -1361,7 +1374,9 @@ async fn import_cloud_instance(
     
     let existing = matches.pop();
     for dupe in matches {
-        let _ = crate::instances::instances_delete(dupe.id);
+        // .await required — a bare call drops the async future unrun, leaving
+        // duplicate instances behind instead of pruning them.
+        let _ = crate::instances::instances_delete(dupe.id).await;
     }
 
     let instance_id = match existing {
@@ -1673,6 +1688,11 @@ pub async fn instance_leave(instance_id: String) -> SimpleResult {
 
 #[tauri::command]
 pub async fn instances_cloud_install(app_handle: tauri::AppHandle, id: String) -> SimpleResult {
+    // Reset the cancel flag at the command entry — the earliest point, before
+    // any progress event exposes the Cancel button — so a Cancel pressed during
+    // this install is never wiped by a reset happening later in the flow.
+    crate::modpack::reset_cancel_flag();
+
     let api_token = match get_api_token() {
         Ok(t) => t,
         Err(e) => {
@@ -1802,7 +1822,10 @@ pub async fn instances_cloud_install(app_handle: tauri::AppHandle, id: String) -
             
             
             if !existed_before {
-                let _ = crate::instances::instances_delete(instance.id.clone());
+                // Must .await — instances_delete is async; without it the
+                // future is dropped unrun and the instance survives, so a
+                // cancelled install still shows as "installed".
+                let _ = crate::instances::instances_delete(instance.id.clone()).await;
             }
             emit_instances_updated(&app_handle);
             SimpleResult {

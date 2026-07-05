@@ -15,13 +15,13 @@ static INSTALL_CANCELLED: AtomicBool = AtomicBool::new(false);
 
 
 
-const CANCELLED_SENTINEL: &str = "Cancelled";
+pub(crate) const CANCELLED_SENTINEL: &str = "Cancelled";
 
-fn reset_cancel_flag() {
+pub(crate) fn reset_cancel_flag() {
     INSTALL_CANCELLED.store(false, Ordering::SeqCst);
 }
 
-fn is_cancelled() -> bool {
+pub(crate) fn is_cancelled() -> bool {
     INSTALL_CANCELLED.load(Ordering::SeqCst)
 }
 
@@ -481,7 +481,9 @@ pub async fn install_mrpack_url_into_dir(
     url: &str,
     target_dir: &std::path::Path,
 ) -> Result<MrpackApplyReport, String> {
-    reset_cancel_flag();
+    // Cancel flag is reset by the caller's entry command, not here — this runs
+    // deep in the sync flow, well after the UI exposed the Cancel button, so a
+    // reset here would clobber a Cancel the user already pressed.
     let client = reqwest::Client::new();
     let resp = client
         .get(url)
@@ -492,7 +494,21 @@ pub async fn install_mrpack_url_into_dir(
     if !resp.status().is_success() {
         return Err(format!("HTTP {}", resp.status()));
     }
-    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    // Stream the (potentially large, fully-embedded) server .mrpack in chunks
+    // so Cancel is honored mid-download — reading it as one blob left cancel
+    // dead until the whole pack finished downloading.
+    let mut bytes: Vec<u8> = Vec::with_capacity(resp.content_length().unwrap_or(0) as usize);
+    {
+        use futures_util::StreamExt;
+        let mut stream = resp.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            if is_cancelled() {
+                return Err(CANCELLED_SENTINEL.to_string());
+            }
+            let chunk = chunk.map_err(|e| e.to_string())?;
+            bytes.extend_from_slice(&chunk);
+        }
+    }
 
     let temp_dir = std::env::temp_dir().join("mlauncher-modpacks");
     fs::create_dir_all(&temp_dir).map_err(|e| e.to_string())?;

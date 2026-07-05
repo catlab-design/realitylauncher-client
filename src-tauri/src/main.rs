@@ -25,6 +25,13 @@ mod wardrobe;
 mod window;
 
 fn main() {
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        }
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
@@ -187,8 +194,6 @@ fn main() {
             wardrobe::auth_update_avatar_source,
         ])
         .setup(|_app| {
-            // Record every app open (version, session start). The Electron client
-            // did this; the Tauri port had only game_launch/close telemetry.
             telemetry::track_app_open();
             Ok(())
         })
