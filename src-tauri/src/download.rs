@@ -1,6 +1,9 @@
+use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
+
+use sha1::Digest as Sha1Digest;
 
 /// Configuration for batch downloads.
 #[derive(Debug, Clone)]
@@ -215,6 +218,31 @@ async fn download_file_with_retry(
     Err(last_err)
 }
 
+fn select_hash_algo(
+    expected_sha1: Option<&str>,
+    hashes: &std::collections::HashMap<String, String>,
+) -> Option<(HashVariant, String)> {
+    if let Some(sha1) = expected_sha1 {
+        return Some((HashVariant::Sha1, sha1.to_string()));
+    }
+    if let Some(sha1) = hashes.get("sha1") {
+        return Some((HashVariant::Sha1, sha1.clone()));
+    }
+    if let Some(sha256) = hashes.get("sha256") {
+        return Some((HashVariant::Sha256, sha256.clone()));
+    }
+    if let Some(sha512) = hashes.get("sha512") {
+        return Some((HashVariant::Sha512, sha512.clone()));
+    }
+    None
+}
+
+enum HashVariant {
+    Sha1,
+    Sha256,
+    Sha512,
+}
+
 async fn download_file_once(
     client: &reqwest::Client,
     item: &DownloadItem,
@@ -239,29 +267,81 @@ async fn download_file_once(
         return Err(format!("HTTP_STATUS:{} {}", status.as_u16(), snippet));
     }
 
-    let bytes = resp
-        .bytes()
-        .await
-        .map_err(|e| format!("HTTP_STATUS:0 Read error: {e}"))?;
-    let size = bytes.len() as u64;
+    let hash_info = select_hash_algo(item.expected_sha1.as_deref(), &item.hashes);
+    let is_jar = item.url.ends_with(".jar") || item.dest.to_string_lossy().ends_with(".jar");
 
-    if let Some(ref sha1) = item.expected_sha1 {
-        let actual = sha1_bytes(&bytes);
-        if &actual != sha1 {
-            return Err(format!("SHA1 mismatch: expected {sha1}, got {actual}"));
+    let mut file =
+        std::fs::File::create(&tmp_path).map_err(|e| format!("Create error: {e}"))?;
+    let mut stream = resp.bytes_stream();
+    let mut size: u64 = 0;
+
+    use futures_util::StreamExt;
+
+    match hash_info {
+        Some((HashVariant::Sha1, ref expected)) => {
+            let mut hasher = sha1::Sha1::new();
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(|e| format!("HTTP_STATUS:0 Read error: {e}"))?;
+                file.write_all(&chunk)
+                    .map_err(|e| format!("Write error: {e}"))?;
+                size += chunk.len() as u64;
+                hasher.update(&chunk);
+            }
+            let actual = hex::encode(hasher.finalize());
+            if !actual.eq_ignore_ascii_case(expected) {
+                let _ = std::fs::remove_file(&tmp_path);
+                return Err(format!("SHA1 mismatch: expected {expected}, got {actual}"));
+            }
+        }
+        Some((HashVariant::Sha256, ref expected)) => {
+            let mut hasher = sha2::Sha256::new();
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(|e| format!("HTTP_STATUS:0 Read error: {e}"))?;
+                file.write_all(&chunk)
+                    .map_err(|e| format!("Write error: {e}"))?;
+                size += chunk.len() as u64;
+                hasher.update(&chunk);
+            }
+            let actual = hex::encode(hasher.finalize());
+            if !actual.eq_ignore_ascii_case(expected) {
+                let _ = std::fs::remove_file(&tmp_path);
+                return Err(format!("sha256 mismatch: expected {expected}, got {actual}"));
+            }
+        }
+        Some((HashVariant::Sha512, ref expected)) => {
+            let mut hasher = sha2::Sha512::new();
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(|e| format!("HTTP_STATUS:0 Read error: {e}"))?;
+                file.write_all(&chunk)
+                    .map_err(|e| format!("Write error: {e}"))?;
+                size += chunk.len() as u64;
+                hasher.update(&chunk);
+            }
+            let actual = hex::encode(hasher.finalize());
+            if !actual.eq_ignore_ascii_case(expected) {
+                let _ = std::fs::remove_file(&tmp_path);
+                return Err(format!("sha512 mismatch: expected {expected}, got {actual}"));
+            }
+        }
+        None => {
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(|e| format!("HTTP_STATUS:0 Read error: {e}"))?;
+                file.write_all(&chunk)
+                    .map_err(|e| format!("Write error: {e}"))?;
+                size += chunk.len() as u64;
+            }
         }
     }
-    if !item.hashes.is_empty() {
-        verify_hashes(&bytes, &item.hashes)?;
-    }
 
-    if item.url.ends_with(".jar") || item.dest.to_string_lossy().ends_with(".jar") {
-        if zip::ZipArchive::new(std::io::Cursor::new(&bytes)).is_err() {
+    drop(file);
+
+    if is_jar {
+        let f = std::fs::File::open(&tmp_path).map_err(|e| format!("Open error: {e}"))?;
+        if zip::ZipArchive::new(f).is_err() {
+            let _ = std::fs::remove_file(&tmp_path);
             return Err("Not a valid ZIP/JAR archive".into());
         }
     }
-
-    std::fs::write(&tmp_path, &bytes).map_err(|e| format!("Write error: {e}"))?;
 
     if item.dest.exists() {
         std::fs::remove_file(&item.dest).ok();
@@ -289,32 +369,4 @@ fn is_missing_on_server(err: &str) -> bool {
     false
 }
 
-fn sha1_bytes(bytes: &[u8]) -> String {
-    use sha1::{Digest, Sha1};
-    hex::encode(Sha1::digest(bytes))
-}
 
-fn verify_hashes(
-    bytes: &[u8],
-    hashes: &std::collections::HashMap<String, String>,
-) -> Result<(), String> {
-    if let Some(expected) = hashes.get("sha1") {
-        let got = sha1_bytes(bytes);
-        if !got.eq_ignore_ascii_case(expected) {
-            return Err(format!("sha1 mismatch (expected {expected}, got {got})"));
-        }
-    } else if let Some(expected) = hashes.get("sha256") {
-        use sha2::{Digest, Sha256};
-        let got = hex::encode(Sha256::digest(bytes));
-        if !got.eq_ignore_ascii_case(expected) {
-            return Err("sha256 mismatch".to_string());
-        }
-    } else if let Some(expected) = hashes.get("sha512") {
-        use sha2::{Digest, Sha512};
-        let got = hex::encode(Sha512::digest(bytes));
-        if !got.eq_ignore_ascii_case(expected) {
-            return Err("sha512 mismatch".to_string());
-        }
-    }
-    Ok(())
-}
