@@ -161,7 +161,7 @@ export const api = {
     modpackCancelInstall: () => invoke<{ ok: boolean; error: string | null }>('modpack_cancel_install'),
 
     isGameRunning: (instanceId?: string) => invoke<boolean>('is_game_running', { instanceId }),
-    killGame: (instanceId?: string) => invoke<void>('kill_game', { instanceId }).then(() => true),
+    killGame: (_instanceId?: string) => invoke<void>('kill_game').then(() => true),
     getPlayingInstanceId: () => invoke<string | null>('get_playing_instance_id'),
     instanceReadLatestLog: (instanceId: string) =>
         invoke<{ ok: boolean; content: string; size: number }>('instance_read_latest_log', { instanceId }),
@@ -488,7 +488,9 @@ export let cachedSystemRam = 0;
         ]);
         cachedMaxRam = maxRam;
         cachedSystemRam = systemRam;
-    } catch {}
+    } catch {
+        console.warn('[api] Failed to pre-fetch RAM info');
+    }
 })();
 
 if (typeof window !== 'undefined') {

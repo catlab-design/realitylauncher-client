@@ -9,10 +9,13 @@ use std::time::Duration;
 /// - DNS caching
 /// - HTTP/2 multiplexing (one TCP connection for concurrent downloads)
 /// - Consistent timeouts and headers
+///
+/// Note: no total request timeout is set here — large file downloads (modpacks, JARs,
+/// assets) can take minutes on slow connections. The connect_timeout prevents hanging
+/// on unresponsive servers; per-request deadlines should use tokio::time::timeout.
 pub static HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
     reqwest::Client::builder()
         .user_agent("RealityLauncher/2.0")
-        .timeout(Duration::from_secs(30))
         .connect_timeout(Duration::from_secs(10))
         .pool_max_idle_per_host(10)
         .pool_idle_timeout(Duration::from_secs(90))

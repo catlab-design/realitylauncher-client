@@ -994,7 +994,7 @@ async fn sync_server_mods(
                 );
                 return Ok(report.failed);
             }
-            Err(e) if e == "Cancelled" => {
+            Err(e) if e == crate::modpack::CANCELLED_SENTINEL => {
                 
                 
                 

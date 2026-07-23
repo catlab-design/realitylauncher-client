@@ -1661,7 +1661,7 @@ async fn download_files(
         let sem = concurrency.clone();
 
         handles.push(tokio::spawn(async move {
-            let _permit = sem.acquire().await.unwrap();
+            let _permit = sem.acquire().await.map_err(|e| e.to_string())?;
             if let Some(parent) = dest.parent() {
                 fs::create_dir_all(parent).ok();
             }
@@ -2080,8 +2080,11 @@ async fn extract_natives(
         "arch": arch_bits,
         "extractedAt": chrono::Utc::now().to_rfc3339(),
     });
-    fs::write(&meta_path, serde_json::to_string_pretty(&meta).unwrap())
-        .map_err(|e| e.to_string())?;
+    fs::write(
+        &meta_path,
+        serde_json::to_string_pretty(&meta).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }

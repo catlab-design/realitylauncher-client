@@ -740,7 +740,7 @@ async fn install_cf_modpack(app: &tauri::AppHandle, file_path: &str) -> ModpackI
             let label = format!("{}_{}.jar", proj, fid);
 
             tokio::spawn(async move {
-                let _permit = sem.acquire().await.unwrap();
+                let _permit = sem.acquire().await.map_err(|e| e.to_string())?;
                 let url = format!("{API_URL}/curseforge/download/{proj}/{fid}");
                 let resp = client
                     .get(&url)
