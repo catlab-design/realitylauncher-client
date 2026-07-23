@@ -537,7 +537,8 @@ declare global {
       instancesCreate: (
         options: CreateInstanceOptions,
       ) => Promise<GameInstance>;
-      instancesGet: (id: string) => Promise<GameInstance | null>;
+
+
       instancesPreInstall: (id: string) => Promise<{ ok: boolean; name: string; version: string; loaders: string[]; filesCount: number; error?: string }>;
       instancesUpdate: (
         id: string,

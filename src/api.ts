@@ -67,25 +67,8 @@ interface NotificationSyncResult {
 }
 
 export const api = {
-    authLogin: (type: 'microsoft' | 'catid' | 'offline', credentials?: any) => {
-        if (type === 'microsoft') {
-            return invoke<AuthResult>('login_microsoft');
-        } else if (type === 'catid') {
-            return invoke<AuthResult>('login_catid', {
-                username: credentials?.username || '',
-                password: credentials?.password || '',
-            });
-        } else {
-            return Promise.resolve({ ok: false, error: 'Offline login not implemented' });
-        }
-    },
-    authLogout: (_uuid: string) => invoke<void>('logout'),
     logout: () => invoke<void>('logout'),
     authRefreshToken: (_uuid?: string) => invoke<AuthResult>('auth_refresh'),
-    authGetAccount: async (_uuid: string) => {
-        const r = await invoke<AuthResult>('get_session');
-        return r.account ?? null;
-    },
     getSession: async () => {
         const r = await invoke<AuthResult>('get_session');
         return r.account ?? null;
@@ -126,7 +109,6 @@ export const api = {
         })),
 
     instancesList: () => invoke<GameInstance[]>('instances_list'),
-    instancesGet: (id: string) => invoke<GameInstance | null>('instances_get', { id }),
     instancesCreate: (options: {
         name: string;
         minecraftVersion: string;
@@ -162,7 +144,6 @@ export const api = {
 
     isGameRunning: (instanceId?: string) => invoke<boolean>('is_game_running', { instanceId }),
     killGame: (_instanceId?: string) => invoke<void>('kill_game').then(() => true),
-    getPlayingInstanceId: () => invoke<string | null>('get_playing_instance_id'),
     instanceReadLatestLog: (instanceId: string) =>
         invoke<{ ok: boolean; content: string; size: number }>('instance_read_latest_log', { instanceId }),
     instanceTailLog: (instanceId: string, from: number) =>
@@ -181,21 +162,10 @@ export const api = {
     getSystemRam: () => invoke<number>('get_system_ram'),
     getMaxRam: () => invoke<number>('get_max_ram'),
 
-    instanceGetMods: (instanceId: string) => invoke<any[]>('instance_get_mods', { instanceId }),
     instanceToggleMod: (instanceId: string, filename: string) =>
         invoke<{ ok: boolean; newFilename?: string; enabled?: boolean; error?: string }>('instance_toggle_mod', { instanceId, filename }),
     instanceDeleteMod: (instanceId: string, filename: string) =>
         invoke<boolean>('instance_delete_mod', { instanceId, modFileName: filename }).then((ok) => ({ ok })),
-    instanceGetResourcePacks: (instanceId: string) => invoke<any[]>('instance_get_resource_packs', { instanceId }),
-    instanceGetShaders: (instanceId: string) => invoke<any[]>('instance_get_shaders', { instanceId }),
-    instanceGetDatapacks: (instanceId: string) => invoke<any[]>('instance_get_datapacks', { instanceId }),
-    instanceInstallContent: (instanceId: string, contentType: string, projectId: string, versionId: string) =>
-        invoke<{ ok: boolean; error?: string }>('instance_install_content', {
-            instanceId,
-            contentType,
-            projectId,
-            versionId,
-        }),
     instanceListMods: (instanceId: string) =>
         invoke<{ ok: boolean; mods: any[]; hasUncached?: boolean; error?: string }>('instance_list_mods', { instanceId }),
     instanceListResourcepacks: (instanceId: string) =>
@@ -325,7 +295,6 @@ export const api = {
         }
         return invoke<void>('open_folder', { path: targetPath });
     },
-    openUrl: (url: string) => invoke<void>('open_url', { url }),
     openExternal: (url: string) => invoke<void>('open_url', { url }),
     selectFile: async (filters?: any) => {
         if (filters?.filters?.some((f: any) => f.extensions?.includes('png') || f.extensions?.includes('jpg'))) {

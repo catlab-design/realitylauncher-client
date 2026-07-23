@@ -1636,24 +1636,37 @@ async fn download_client_jar(
 
     fs::create_dir_all(versions_dir).map_err(|e| e.to_string())?;
 
+    use sha1::Digest as Sha1Digest;
+    use std::io::Write;
+
     let response = crate::http_client::HTTP_CLIENT.get(url).send()
         .await
         .map_err(|e| format!("Failed to download client jar: {e}"))?;
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| format!("Failed to read client jar: {e}"))?;
 
-    if let Some(sha1) = expected_sha1 {
-        let actual = sha1_bytes(&bytes);
-        if actual != sha1 {
-            return Err(format!(
-                "Client jar SHA1 mismatch: expected {sha1}, got {actual}"
-            ));
+    let tmp_path = jar_path.with_extension("tmp");
+    let mut file = std::fs::File::create(&tmp_path).map_err(|e| e.to_string())?;
+    let mut stream = response.bytes_stream();
+    let mut hasher = expected_sha1.map(|_| sha1::Sha1::new());
+
+    use futures_util::StreamExt;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("Failed to read client jar: {e}"))?;
+        file.write_all(&chunk).map_err(|e| e.to_string())?;
+        if let Some(ref mut h) = hasher {
+            h.update(&chunk);
+        }
+    }
+    drop(file);
+
+    if let (Some(ref expected), Some(h)) = (expected_sha1, hasher) {
+        let actual = hex::encode(h.finalize());
+        if &actual != expected {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(format!("Client jar SHA1 mismatch: expected {expected}, got {actual}"));
         }
     }
 
-    fs::write(&jar_path, &bytes).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp_path, &jar_path).map_err(|e| e.to_string())?;
     Ok(jar_path)
 }
 
@@ -1661,6 +1674,9 @@ async fn download_files(
     client: &reqwest::Client,
     files: &[(String, PathBuf, Option<String>)],
 ) -> Result<(), String> {
+    use sha1::Digest as Sha1Digest;
+    use std::io::Write;
+
     let concurrency = std::sync::Arc::new(tokio::sync::Semaphore::new(crate::config::get_max_concurrent_downloads()));
     let mut handles = Vec::new();
 
@@ -1682,22 +1698,39 @@ async fn download_files(
                 .send()
                 .await
                 .map_err(|e| format!("Download failed: {url} - {e}"))?;
-            let bytes = resp
-                .bytes()
-                .await
-                .map_err(|e| format!("Read failed: {url} - {e}"))?;
 
-            if let Some(ref sha1) = expected {
-                let actual = sha1_bytes(&bytes);
-                if &actual != sha1 {
+            let tmp_path = dest.with_extension("tmp");
+            let mut file = std::fs::File::create(&tmp_path)
+                .map_err(|e| format!("Create error: {}", e))?;
+            let mut stream = resp.bytes_stream();
+            let mut hasher = expected.as_ref().map(|_| sha1::Sha1::new());
+
+            use futures_util::StreamExt;
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(|e| format!("Read failed: {url} - {e}"))?;
+                file.write_all(&chunk)
+                    .map_err(|e| format!("Write error: {}", e))?;
+                if let Some(ref mut h) = hasher {
+                    h.update(&chunk);
+                }
+            }
+            drop(file);
+
+            if let (Some(ref expected), Some(h)) = (expected, hasher) {
+                let actual = hex::encode(h.finalize());
+                if &actual != expected {
+                    let _ = std::fs::remove_file(&tmp_path);
                     return Err(format!(
-                        "SHA1 mismatch for {url}: expected {sha1}, got {actual}"
+                        "SHA1 mismatch for {url}: expected {expected}, got {actual}"
                     ));
                 }
             }
 
-            fs::write(&dest, &bytes)
-                .map_err(|e| format!("Write failed: {} - {e}", dest.display()))?;
+            if dest.exists() {
+                let _ = std::fs::remove_file(&dest);
+            }
+            std::fs::rename(&tmp_path, &dest)
+                .map_err(|e| format!("Rename error: {} - {e}", dest.display()))?;
             Ok::<_, String>(())
         }));
     }

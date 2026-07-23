@@ -344,6 +344,9 @@ async fn download_mrpack_file(
     mod_file: &ModpackFile,
     instance_dir: &std::path::Path,
 ) -> Result<(), String> {
+    use sha1::Digest as Sha1Digest;
+    use std::io::Write;
+
     let target = safe_instance_path(instance_dir, &mod_file.path).ok_or("Unsafe file path")?;
     if local_file_matches(&target, mod_file) {
         return Ok(());
@@ -363,13 +366,72 @@ async fn download_mrpack_file(
     if !resp.status().is_success() {
         return Err(format!("HTTP {}", resp.status()));
     }
-    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
-    verify_hashes(&bytes, &mod_file.hashes)?;
 
+    let tmp_path = target.with_extension("tmp");
+    if tmp_path.exists() {
+        let _ = std::fs::remove_file(&tmp_path);
+    }
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent).ok();
     }
-    fs::write(&target, &bytes).map_err(|e| e.to_string())
+
+    let mut file = std::fs::File::create(&tmp_path).map_err(|e| e.to_string())?;
+    let mut stream = resp.bytes_stream();
+    let is_jar = target.to_string_lossy().ends_with(".jar");
+    let mut hash_algo = if let Some(s) = mod_file.hashes.get("sha1") {
+        Some((HashState::Sha1(sha1::Sha1::new()), s.clone()))
+    } else if let Some(s) = mod_file.hashes.get("sha256") {
+        Some((HashState::Sha256(sha2::Sha256::new()), s.clone()))
+    } else if let Some(s) = mod_file.hashes.get("sha512") {
+        Some((HashState::Sha512(sha2::Sha512::new()), s.clone()))
+    } else {
+        None
+    };
+
+    use futures_util::StreamExt;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| e.to_string())?;
+        file.write_all(&chunk).map_err(|e| e.to_string())?;
+        if let Some((ref mut state, _)) = hash_algo {
+            match state {
+                HashState::Sha1(h) => h.update(&chunk),
+                HashState::Sha256(h) => h.update(&chunk),
+                HashState::Sha512(h) => h.update(&chunk),
+            }
+        }
+    }
+    drop(file);
+
+    if let Some((state, expected)) = hash_algo {
+        let actual = match state {
+            HashState::Sha1(h) => hex::encode(h.finalize()),
+            HashState::Sha256(h) => hex::encode(h.finalize()),
+            HashState::Sha512(h) => hex::encode(h.finalize()),
+        };
+        if !actual.eq_ignore_ascii_case(&expected) {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err(format!("hash mismatch (expected {expected}, got {actual})"));
+        }
+    }
+
+    if is_jar {
+        let f = std::fs::File::open(&tmp_path).map_err(|e| e.to_string())?;
+        if zip::ZipArchive::new(f).is_err() {
+            let _ = std::fs::remove_file(&tmp_path);
+            return Err("Not a valid ZIP/JAR archive".into());
+        }
+    }
+
+    if target.exists() {
+        let _ = std::fs::remove_file(&target);
+    }
+    std::fs::rename(&tmp_path, &target).map_err(|e| e.to_string())
+}
+
+enum HashState {
+    Sha1(sha1::Sha1),
+    Sha256(sha2::Sha256),
+    Sha512(sha2::Sha512),
 }
 
 
