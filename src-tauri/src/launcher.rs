@@ -508,8 +508,19 @@ async fn launch_game(app: tauri::AppHandle, instance: GameInstance) -> Result<()
     let child_stdout = child.stdout.take();
     let child_stderr = child.stderr.take();
 
-    *GAME_PROCESS.lock().unwrap() = Some(child);
-    *LAUNCHING.lock().unwrap() = false;
+    // Atomically register the child under GAME_PROCESS lock.
+    // kill_game() always locks GAME_PROCESS before clearing LAUNCHING,
+    // so if LAUNCHING was set false while we were spawning we must
+    // abort — otherwise the child would be orphaned.
+    {
+        let mut game = GAME_PROCESS.lock().unwrap();
+        if !*LAUNCHING.lock().unwrap() {
+            let _ = child.kill();
+            return Err("Launch cancelled".to_string());
+        }
+        *game = Some(child);
+        *LAUNCHING.lock().unwrap() = false;
+    }
 
     
     crate::instances::mark_played(&instance.id);
