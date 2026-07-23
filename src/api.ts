@@ -338,6 +338,7 @@ export const api = {
     browseIcon: () => invoke<string | null>('browse_icon'),
     browseModpack: () => invoke<string | null>('browse_modpack'),
     launcherClearCache: () => invoke<void>('launcher_clear_cache').then(() => ({ ok: true })),
+    cleanupTempFiles: () => invoke<number>('cleanup_temp_files'),
     curseforgeClearCache: () => invoke<void>('curseforge_clear_cache'),
     modrinthClearCache: () => invoke<void>('modrinth_clear_cache'),
     getPathForFile: (file: any) => file.path || null,

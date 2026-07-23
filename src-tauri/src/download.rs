@@ -246,6 +246,11 @@ async fn download_file_once(
 
     let tmp_path = item.dest.with_extension("tmp");
 
+    // Clean up any leftover temp file from a previous crash/interrupt
+    if tmp_path.exists() {
+        let _ = std::fs::remove_file(&tmp_path);
+    }
+
     let resp = client
         .get(&item.url)
         .header("User-Agent", "RealityLauncher/2.0")

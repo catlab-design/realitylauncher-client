@@ -183,3 +183,45 @@ pub async fn launcher_clear_cache(app: tauri::AppHandle) -> Result<(), String> {
 
     Ok(())
 }
+
+fn collect_temp_files(dir: &std::path::Path, cleaned: &mut u32, depth: u32) {
+    if depth > 5 {
+        return;
+    }
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_temp_files(&path, cleaned, depth + 1);
+            } else if path.extension().is_some_and(|ext| ext == "tmp")
+                && path.file_stem().is_some()
+            {
+                let _ = std::fs::remove_file(&path);
+                *cleaned += 1;
+            }
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn cleanup_temp_files() -> Result<u32, String> {
+    let minecraft_dir = crate::config::get_minecraft_dir();
+    let mut cleaned: u32 = 0;
+
+    let dirs_to_sweep = [
+        minecraft_dir.join("instances"),
+        minecraft_dir.join("libraries"),
+        minecraft_dir.join("assets"),
+        minecraft_dir.join("cache"),
+        crate::config::default_launcher_dir().join("cache"),
+    ];
+
+    for dir in &dirs_to_sweep {
+        if !dir.exists() {
+            continue;
+        }
+        collect_temp_files(dir, &mut cleaned, 0);
+    }
+
+    Ok(cleaned)
+}

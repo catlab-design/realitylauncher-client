@@ -154,6 +154,7 @@ fn main() {
             fs_utils::browse_icon,
             fs_utils::browse_modpack,
             fs_utils::launcher_clear_cache,
+            fs_utils::cleanup_temp_files,
             
             window::window_minimize,
             window::window_maximize,
