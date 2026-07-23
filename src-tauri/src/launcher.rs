@@ -1650,7 +1650,7 @@ async fn download_files(
     client: &reqwest::Client,
     files: &[(String, PathBuf, Option<String>)],
 ) -> Result<(), String> {
-    let concurrency = std::sync::Arc::new(tokio::sync::Semaphore::new(8));
+    let concurrency = std::sync::Arc::new(tokio::sync::Semaphore::new(crate::config::get_max_concurrent_downloads()));
     let mut handles = Vec::new();
 
     for (url, dest, expected_sha1) in files {

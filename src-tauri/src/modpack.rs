@@ -727,7 +727,7 @@ async fn install_cf_modpack(app: &tauri::AppHandle, file_path: &str) -> ModpackI
     emit_progress(app, "resolving", "Resolving download URLs...", 0);
     let client = crate::http_client::HTTP_CLIENT.clone();
 
-    let concurrency = std::sync::Arc::new(tokio::sync::Semaphore::new(8));
+    let concurrency = std::sync::Arc::new(tokio::sync::Semaphore::new(crate::config::get_max_concurrent_downloads()));
     let resolve_handles: Vec<_> = manifest
         .files
         .iter()
@@ -790,7 +790,7 @@ async fn install_cf_modpack(app: &tauri::AppHandle, file_path: &str) -> ModpackI
     // Phase 2: download all files concurrently
     if !items.is_empty() {
         let config = crate::download::DownloadConfig {
-            concurrency: 6,
+            concurrency: crate::config::get_max_concurrent_downloads(),
             max_retries: 2,
         };
         let result = crate::download::download_batch(

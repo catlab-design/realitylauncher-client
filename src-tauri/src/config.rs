@@ -19,6 +19,10 @@ pub struct JavaPaths {
 }
 
 
+fn default_max_concurrent_downloads() -> u32 {
+    8
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LauncherConfig {
@@ -32,7 +36,8 @@ pub struct LauncherConfig {
     pub discord_rpc_enabled: bool,
     pub auto_update_enabled: bool,
     pub theme: String,
-    
+    #[serde(rename = "maxConcurrentDownloads", default = "default_max_concurrent_downloads")]
+    pub max_concurrent_downloads: u32,
     
     
     #[serde(flatten)]
@@ -50,6 +55,7 @@ impl Default for LauncherConfig {
             discord_rpc_enabled: true,
             auto_update_enabled: true,
             theme: "dark".to_string(),
+            max_concurrent_downloads: 8,
             extra: std::collections::HashMap::new(),
         }
     }
@@ -85,6 +91,10 @@ pub fn get_minecraft_dir() -> PathBuf {
         return PathBuf::from(dir);
     }
     default_launcher_dir()
+}
+
+pub fn get_max_concurrent_downloads() -> usize {
+    CONFIG.lock().unwrap().max_concurrent_downloads as usize
 }
 
 

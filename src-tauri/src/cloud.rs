@@ -768,7 +768,7 @@ async fn sync_managed_mods(
     // Download all needed files concurrently
     if !items.is_empty() {
         let config = crate::download::DownloadConfig {
-            concurrency: 8,
+            concurrency: crate::config::get_max_concurrent_downloads(),
             max_retries: 3,
         };
         let result = crate::download::download_batch(
@@ -1133,7 +1133,7 @@ async fn sync_server_mods(
     let total_items = items.len() as u32;
     if !items.is_empty() {
         let config = crate::download::DownloadConfig {
-            concurrency: 8,
+            concurrency: crate::config::get_max_concurrent_downloads(),
             max_retries: 3,
         };
         let result = crate::download::download_batch(
