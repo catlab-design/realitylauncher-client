@@ -80,7 +80,7 @@ pub async fn check_latest_version(app: tauri::AppHandle) -> LatestVersionResult 
     let current = app.package_info().version.to_string();
     let url = format!("{}/launcher/latest", API_URL);
 
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     match client.get(&url).send().await {
         Ok(response) => {
             if !response.status().is_success() {
@@ -182,7 +182,7 @@ struct UpdateDownloadProgress {
 }
 
 async fn fetch_latest_release() -> Result<LatestReleasePayload, String> {
-    let resp = reqwest::Client::new()
+    let resp = crate::http_client::HTTP_CLIENT.clone()
         .get(format!("{}/launcher/latest", API_URL))
         .send()
         .await
@@ -226,7 +226,7 @@ pub async fn download_update(app: tauri::AppHandle) -> serde_json::Value {
         .unwrap_or("reality-launcher-update");
     let dest = std::env::temp_dir().join(format!("reality-update-{filename}"));
 
-    let resp = match reqwest::Client::new().get(&url).send().await {
+    let resp = match crate::http_client::HTTP_CLIENT.clone().get(&url).send().await {
         Ok(r) => r,
         Err(e) => return serde_json::json!({ "ok": false, "error": e.to_string() }),
     };

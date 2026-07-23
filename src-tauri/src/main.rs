@@ -13,6 +13,7 @@ mod curseforge;
 mod discord;
 mod download;
 mod fs_utils;
+mod http_client;
 mod instances;
 mod java;
 mod launcher;

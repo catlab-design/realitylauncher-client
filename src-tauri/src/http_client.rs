@@ -1,0 +1,23 @@
+use once_cell::sync::Lazy;
+use std::time::Duration;
+
+/// Global HTTP client shared across the entire application.
+///
+/// Using a single client provides:
+/// - Connection pooling (reuse TCP connections across requests)
+/// - TLS session caching
+/// - DNS caching
+/// - HTTP/2 multiplexing (one TCP connection for concurrent downloads)
+/// - Consistent timeouts and headers
+pub static HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
+    reqwest::Client::builder()
+        .user_agent("RealityLauncher/2.0")
+        .timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(10))
+        .pool_max_idle_per_host(10)
+        .pool_idle_timeout(Duration::from_secs(90))
+        .tcp_keepalive(Duration::from_secs(15))
+        .redirect(reqwest::redirect::Policy::limited(10))
+        .build()
+        .expect("Failed to build HTTP client")
+});

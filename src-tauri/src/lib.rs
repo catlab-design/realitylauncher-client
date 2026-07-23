@@ -1,6 +1,5 @@
 
 
-
 pub mod admin;
 pub mod auth;
 pub mod cloud;
@@ -10,6 +9,7 @@ pub mod curseforge;
 pub mod discord;
 pub mod download;
 pub mod fs_utils;
+pub mod http_client;
 pub mod instances;
 pub mod java;
 pub mod launcher;

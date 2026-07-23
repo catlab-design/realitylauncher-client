@@ -401,7 +401,7 @@ async fn apply_mrpack_to_dir(
     use futures_util::StreamExt;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let total = index.files.len();
     let done = AtomicUsize::new(0);
     let target_dir_owned = target_dir.to_path_buf();
@@ -489,7 +489,7 @@ pub async fn install_mrpack_url_into_dir(
     // Cancel flag is reset by the caller's entry command, not here — this runs
     // deep in the sync flow, well after the UI exposed the Cancel button, so a
     // reset here would clobber a Cancel the user already pressed.
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let resp = client
         .get(url)
         .header("User-Agent", "RealityLauncher/2.0")
@@ -725,7 +725,7 @@ async fn install_cf_modpack(app: &tauri::AppHandle, file_path: &str) -> ModpackI
 
     // Phase 1: resolve all CurseForge download URLs concurrently
     emit_progress(app, "resolving", "Resolving download URLs...", 0);
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
 
     let concurrency = std::sync::Arc::new(tokio::sync::Semaphore::new(8));
     let resolve_handles: Vec<_> = manifest
@@ -869,7 +869,7 @@ pub async fn modpack_install_from_modrinth(
     version_id: String,
 ) -> ModpackInstallResult {
     reset_cancel_flag();
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let url = format!("https://api.modrinth.com/v2/version/{version_id}");
 
     let resp = match client
@@ -965,7 +965,7 @@ pub async fn modpack_install_from_curseforge(
     file_id: i32,
 ) -> ModpackInstallResult {
     reset_cancel_flag();
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
 
     let download_url = format!("{API_URL}/curseforge/download/{project_id}/{file_id}");
     let resp = match client
@@ -1207,7 +1207,7 @@ fn extract_zip_folder<T: std::io::Read + std::io::Seek>(
 }
 
 async fn fetch_and_set_assets(instance_id: &str, source: &str, project_id: &str) {
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let instance_dir = crate::instances::get_instance_dir(instance_id);
     let mut icon_url: Option<String> = None;
     let mut banner_url: Option<String> = None;

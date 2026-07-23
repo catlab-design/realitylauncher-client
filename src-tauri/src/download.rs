@@ -88,7 +88,7 @@ pub async fn download_batch(
     }
 
     let total = items.len() as u32;
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let done = Arc::new(AtomicU32::new(0));
     let bytes_dl = Arc::new(AtomicU64::new(0));
     let missing_set: Arc<std::sync::Mutex<Vec<(String, String)>>> =

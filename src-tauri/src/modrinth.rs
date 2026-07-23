@@ -53,7 +53,7 @@ pub async fn modrinth_search(
     sort_by: Option<String>,
     facets: Option<String>,
 ) -> Result<SearchResult, String> {
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
 
     
     let mut facets_list: Vec<Vec<String>> = vec![vec![format!("project_type:{}", project_type)]];
@@ -108,7 +108,7 @@ pub async fn modrinth_search(
 
 #[tauri::command]
 pub async fn modrinth_get_project(id: String) -> Result<serde_json::Value, String> {
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
 
     let url = format!("{}/project/{}", MODRINTH_API_BASE, id);
 
@@ -132,7 +132,7 @@ pub async fn modrinth_get_project_versions(
     loaders: Option<Vec<String>>,
     game_versions: Option<Vec<String>>,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
 
     let mut url = format!("{}/project/{}/version", MODRINTH_API_BASE, id);
     let mut params = Vec::new();
@@ -176,7 +176,7 @@ pub async fn modrinth_get_project_versions(
 
 #[tauri::command]
 pub async fn modrinth_get_game_versions() -> Result<Vec<GameVersion>, String> {
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
 
     let url = format!("{}/tag/game_version", MODRINTH_API_BASE);
 
@@ -196,7 +196,7 @@ pub async fn modrinth_get_game_versions() -> Result<Vec<GameVersion>, String> {
 
 #[tauri::command]
 pub async fn modrinth_get_versions(project_id: String) -> Result<Vec<serde_json::Value>, String> {
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let url = format!("{MODRINTH_API_BASE}/project/{project_id}/version");
 
     let resp = client
@@ -231,7 +231,7 @@ pub async fn modrinth_get_loader_versions(
 
 async fn get_fabric_loader_versions(game_version: &str) -> Result<Vec<String>, String> {
     let url = format!("https://meta.fabricmc.net/v2/versions/loader/{game_version}");
-    let resp = reqwest::get(&url)
+    let resp = crate::http_client::HTTP_CLIENT.get(&url).send()
         .await
         .map_err(|e| format!("Fabric meta request failed: {e}"))?;
 
@@ -256,7 +256,7 @@ async fn get_fabric_loader_versions(game_version: &str) -> Result<Vec<String>, S
 
 async fn get_quilt_loader_versions(game_version: &str) -> Result<Vec<String>, String> {
     let url = format!("https://meta.quiltmc.org/v3/versions/loader/{game_version}");
-    let resp = reqwest::get(&url)
+    let resp = crate::http_client::HTTP_CLIENT.get(&url).send()
         .await
         .map_err(|e| format!("Quilt meta request failed: {e}"))?;
 
@@ -281,7 +281,7 @@ async fn get_quilt_loader_versions(game_version: &str) -> Result<Vec<String>, St
 
 async fn get_forge_versions(game_version: &str) -> Result<Vec<String>, String> {
     let url = "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json";
-    let resp = reqwest::get(url)
+    let resp = crate::http_client::HTTP_CLIENT.get(url).send()
         .await
         .map_err(|e| format!("Forge promotions slim request failed: {e}"))?;
 
@@ -310,7 +310,7 @@ async fn get_forge_versions(game_version: &str) -> Result<Vec<String>, String> {
 
 async fn get_neoforge_versions(game_version: &str) -> Result<Vec<String>, String> {
     let url = "https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml";
-    let resp = reqwest::get(url)
+    let resp = crate::http_client::HTTP_CLIENT.get(url).send()
         .await
         .map_err(|e| format!("NeoForge releases maven request failed: {e}"))?;
 
@@ -365,7 +365,7 @@ pub fn modrinth_clear_cache() -> Result<(), String> {
 
 #[tauri::command]
 pub async fn modrinth_get_team(project_id: String) -> Result<serde_json::Value, String> {
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let url = format!("https://api.modrinth.com/v2/project/{project_id}/members");
     let resp = client
         .get(&url)

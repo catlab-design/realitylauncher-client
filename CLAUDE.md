@@ -136,6 +136,7 @@ src-tauri/
 └── src/
     ├── main.rs                       # Entry point, 93+ command registrations
     ├── lib.rs                        # Module declarations
+    ├── http_client.rs                # (23 lines) Global shared reqwest::Client (pooled, HTTP/2, gzip, brotli)
     ├── download.rs                   # (315 lines) Shared concurrent download engine
     ├── launcher.rs                   # (2127 lines) Game launch — largest module
     ├── auth.rs                       # Microsoft OAuth + CatID auth

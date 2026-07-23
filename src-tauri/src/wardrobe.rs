@@ -220,7 +220,7 @@ fn build_multipart_body(
 }
 
 async fn fetch_url_as_data_url(url: &str) -> Option<String> {
-    let resp = reqwest::Client::new()
+    let resp = crate::http_client::HTTP_CLIENT.clone()
         .get(url)
         .header("x-catskinc-protocol", "2")
         .send()
@@ -242,7 +242,7 @@ async fn mojang_join_server(uuid: &str, access_token: &str) -> Result<String, St
         "serverId": server_id,
     });
 
-    let resp = reqwest::Client::new()
+    let resp = crate::http_client::HTTP_CLIENT.clone()
         .post("https://sessionserver.mojang.com/session/minecraft/join")
         .header("Content-Type", "application/json")
         .json(&body)
@@ -276,7 +276,7 @@ async fn catskinc_auth_session(
     let auth_hash = sha256_hex(&auth_body);
     let request_id = generate_id();
 
-    let resp = reqwest::Client::new()
+    let resp = crate::http_client::HTTP_CLIENT.clone()
         .post(format!("{}/auth/session", base_url))
         .header("Content-Type", "application/json; charset=utf-8")
         .header("x-catskinc-protocol", "2")
@@ -328,7 +328,7 @@ fn append_hash_field(output: &mut Vec<u8>, name: &str, value: &[u8]) {
 }
 
 async fn fetch_minecraft_profile(access_token: &str) -> Result<serde_json::Value, String> {
-    let resp = reqwest::Client::new()
+    let resp = crate::http_client::HTTP_CLIENT.clone()
         .get("https://api.minecraftservices.com/minecraft/profile")
         .header("Authorization", format!("Bearer {}", access_token))
         .header("Accept", "application/json")
@@ -466,7 +466,7 @@ pub async fn catskinc_get_selected_skin(
     let request_id = generate_id();
     let empty_hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
-    let resp = reqwest::Client::new()
+    let resp = crate::http_client::HTTP_CLIENT.clone()
         .get(format!("{}/selected?uuid={}", base_url, formatted_uuid))
         .header("User-Agent", "catskinc/ServerApiClient")
         .header("x-catskinc-protocol", "2")
@@ -586,7 +586,7 @@ pub async fn catskinc_upload_skin(
         compute_upload_content_hash(&formatted_uuid, slim, &skin_bytes, mouth_bytes.as_deref());
     let upload_request_id = generate_id();
 
-    let resp = reqwest::Client::new()
+    let resp = crate::http_client::HTTP_CLIENT.clone()
         .post(format!("{}/upload", base_url))
         .header(
             "Content-Type",
@@ -641,7 +641,7 @@ pub async fn catskinc_clear_assets(
     let select_hash = sha256_hex(&select_body_bytes);
     let select_request_id = generate_id();
 
-    let resp = reqwest::Client::new()
+    let resp = crate::http_client::HTTP_CLIENT.clone()
         .post(format!("{}/select", base_url))
         .header("Content-Type", "application/json; charset=utf-8")
         .header("x-catskinc-protocol", "2")
@@ -696,7 +696,7 @@ pub async fn minecraft_get_profile(
             .ok_or_else(|| "API token not found.")?;
         let uuid_part = session.uuid.rsplit('-').next().unwrap_or("");
 
-        let profile_resp = reqwest::Client::new()
+        let profile_resp = crate::http_client::HTTP_CLIENT.clone()
             .get(format!("{}/profile/{}", API_URL, uuid_part))
             .header("Authorization", format!("Bearer {}", api_token))
             .send()
@@ -754,7 +754,7 @@ pub async fn minecraft_upload_skin(
         )];
         let body = build_multipart_body(&boundary, fields, files);
 
-        let upload_resp = reqwest::Client::new()
+        let upload_resp = crate::http_client::HTTP_CLIENT.clone()
             .post(format!("{}/profile/skin", API_URL))
             .header("Authorization", format!("Bearer {}", api_token))
             .header(
@@ -780,7 +780,7 @@ pub async fn minecraft_upload_skin(
         let cache_key = format!("catid-ms-{}", uuid_part);
         delete_cached_profile(&cache_key);
 
-        let profile_resp = reqwest::Client::new()
+        let profile_resp = crate::http_client::HTTP_CLIENT.clone()
             .get(format!("{}/profile/{}", API_URL, uuid_part))
             .header("Authorization", format!("Bearer {}", api_token))
             .send()
@@ -832,7 +832,7 @@ pub async fn minecraft_upload_skin(
         )];
         let body = build_multipart_body(&boundary, fields, files);
 
-        let upload_resp = reqwest::Client::new()
+        let upload_resp = crate::http_client::HTTP_CLIENT.clone()
             .post("https://api.minecraftservices.com/minecraft/profile/skins")
             .header("Authorization", format!("Bearer {}", access_token))
             .header(
@@ -877,7 +877,7 @@ pub async fn auth_update_avatar_source(
     }
     .ok_or_else(|| "CatID account connection required".to_string())?;
 
-    let resp = reqwest::Client::new()
+    let resp = crate::http_client::HTTP_CLIENT.clone()
         .put(format!("{}/auth/session/profile", API_URL))
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", api_token))

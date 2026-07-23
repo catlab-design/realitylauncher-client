@@ -119,7 +119,7 @@ pub async fn ensure_user_id_resolved() {
         }
     }
 
-    let resp = reqwest::Client::new()
+    let resp = crate::http_client::HTTP_CLIENT.clone()
         .get(format!("{API_URL}/auth/session/me"))
         .header("Authorization", format!("Bearer {token}"))
         .send()
@@ -164,7 +164,7 @@ async fn flush_telemetry_queue() {
     }
 
     let body = serde_json::json!({ "events": events_to_send });
-    let mut req = reqwest::Client::new()
+    let mut req = crate::http_client::HTTP_CLIENT.clone()
         .post(format!("{API_URL}/telemetry/batch"))
         .header("Content-Type", "application/json");
 

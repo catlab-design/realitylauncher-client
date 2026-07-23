@@ -214,7 +214,7 @@ pub fn discord_rpc_is_connected() -> bool {
 /// Minecraft server population).
 async fn fetch_instance_counts(cloud_id: &str) -> Option<(u32, u32)> {
     let token = crate::auth::get_session_inner()?.api_token?;
-    let resp = reqwest::Client::new()
+    let resp = crate::http_client::HTTP_CLIENT.clone()
         .get(format!("https://api.reality.catlabdesign.space/instances/{}", cloud_id))
         .header("Authorization", format!("Bearer {token}"))
         .send()

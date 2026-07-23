@@ -33,7 +33,7 @@ async fn send(req: reqwest::RequestBuilder) -> Result<Value, String> {
 }
 
 fn client() -> reqwest::Client {
-    reqwest::Client::new()
+    crate::http_client::HTTP_CLIENT.clone()
 }
 
 #[tauri::command]

@@ -223,7 +223,7 @@ pub async fn instance_install_content(
         content_type, project_id, instance_id
     );
 
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let url = format!("https://api.modrinth.com/v2/version/{}", version_id);
 
     let response = match client
@@ -823,7 +823,7 @@ pub async fn content_download_to_instance(
     content_source: Option<String>,
 ) -> DownloadResult {
     let source = content_source.as_deref().unwrap_or("modrinth");
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
 
     let (download_url, filename) = match source {
         "curseforge" => {

@@ -204,7 +204,7 @@ fn update_cache(key: &str, f: impl FnOnce(&mut ModMeta)) {
 }
 
 async fn run_lookups(jobs: &[LookupJob]) -> bool {
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let mut resolved: HashSet<String> = HashSet::new();
     eprintln!("[ModMeta] Starting lookup for {} jobs", jobs.len());
 

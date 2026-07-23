@@ -10,7 +10,7 @@ pub async fn curseforge_search(
     page_size: Option<i32>,
     index: Option<i32>,
 ) -> Result<serde_json::Value, String> {
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let mut params = Vec::new();
 
     if let Some(ref q) = query {
@@ -59,7 +59,7 @@ pub async fn curseforge_search(
 
 #[tauri::command]
 pub async fn curseforge_get_project(project_id: i32) -> Result<serde_json::Value, String> {
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let url = format!("{API_URL}/curseforge/project/{project_id}");
 
     let resp = client
@@ -83,7 +83,7 @@ pub async fn curseforge_get_files(
     project_id: i32,
     game_version: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let mut all_files: Vec<serde_json::Value> = Vec::new();
     let mut index = 0;
     let page_size = 50;
@@ -148,7 +148,7 @@ pub fn curseforge_clear_cache() -> Result<(), String> {
 
 #[tauri::command]
 pub async fn curseforge_get_description(project_id: i32) -> Result<serde_json::Value, String> {
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let url = format!("{API_URL}/curseforge/project/{project_id}/description");
     let resp = client
         .get(&url)

@@ -39,7 +39,7 @@ async fn ensure_client_id() -> Result<String, String> {
         }
     }
 
-    let resp = reqwest::get(format!("{API_URL}/oauth/config"))
+    let resp = crate::http_client::HTTP_CLIENT.get(format!("{API_URL}/oauth/config")).send()
         .await
         .map_err(|e| format!("Failed to fetch OAuth config: {e}"))?;
 
@@ -343,7 +343,7 @@ async fn xbl_auth(ms_access_token: &str) -> Result<(String, String), String> {
         "TokenType": "JWT",
     });
 
-    let resp = reqwest::Client::new()
+    let resp = crate::http_client::HTTP_CLIENT.clone()
         .post(XBL_AUTH_URL)
         .header("Content-Type", "application/json")
         .header("Accept", "application/json")
@@ -382,7 +382,7 @@ async fn xsts_auth(xbl_token: &str) -> Result<(String, String), String> {
         "TokenType": "JWT",
     });
 
-    let resp = reqwest::Client::new()
+    let resp = crate::http_client::HTTP_CLIENT.clone()
         .post(XSTS_AUTH_URL)
         .header("Content-Type", "application/json")
         .header("Accept", "application/json")
@@ -417,7 +417,7 @@ async fn mc_login(user_hash: &str, xsts_token: &str) -> Result<String, String> {
         "identityToken": identity_token,
     });
 
-    let resp = reqwest::Client::new()
+    let resp = crate::http_client::HTTP_CLIENT.clone()
         .post(MC_LOGIN_URL)
         .header("Content-Type", "application/json")
         .json(&body)
@@ -441,7 +441,7 @@ async fn mc_login(user_hash: &str, xsts_token: &str) -> Result<String, String> {
 }
 
 async fn check_entitlements(mc_token: &str) -> Result<(), String> {
-    let resp = reqwest::Client::new()
+    let resp = crate::http_client::HTTP_CLIENT.clone()
         .get(MC_ENTITLEMENTS_URL)
         .header("Authorization", format!("Bearer {mc_token}"))
         .send()
@@ -466,7 +466,7 @@ async fn check_entitlements(mc_token: &str) -> Result<(), String> {
 }
 
 async fn mc_profile(mc_token: &str) -> Result<(String, String), String> {
-    let resp = reqwest::Client::new()
+    let resp = crate::http_client::HTTP_CLIENT.clone()
         .get(MC_PROFILE_URL)
         .header("Authorization", format!("Bearer {mc_token}"))
         .send()
@@ -501,7 +501,7 @@ async fn exchange_with_ml_api(
         "username": username,
     });
 
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
 
     if is_linking {
         if let Some(token) = api_token_override {
@@ -604,7 +604,7 @@ pub async fn start_device_code_auth() -> DeviceCodeStartResult {
         ("scope", "XboxLive.signin offline_access"),
     ];
 
-    let resp = match reqwest::Client::new()
+    let resp = match crate::http_client::HTTP_CLIENT.clone()
         .post(MS_DEVICE_CODE_URL)
         .header("Content-Type", "application/x-www-form-urlencoded")
         .form(&body)
@@ -690,7 +690,7 @@ pub async fn poll_device_code_auth(device_code: String, is_linking: Option<bool>
         ("device_code", device_code.as_str()),
     ];
 
-    let resp = match reqwest::Client::new()
+    let resp = match crate::http_client::HTTP_CLIENT.clone()
         .post(MS_TOKEN_URL)
         .header("Content-Type", "application/x-www-form-urlencoded")
         .form(&body)
@@ -957,7 +957,7 @@ pub async fn auth_refresh() -> AuthCommandResult {
         ("scope", "XboxLive.signin offline_access"),
     ];
 
-    let token_resp = match reqwest::Client::new()
+    let token_resp = match crate::http_client::HTTP_CLIENT.clone()
         .post(MS_TOKEN_URL)
         .header("Content-Type", "application/x-www-form-urlencoded")
         .form(&body)
@@ -1059,7 +1059,7 @@ pub async fn auth_refresh() -> AuthCommandResult {
             "username": session.username,
         });
 
-        let client = reqwest::Client::new();
+        let client = crate::http_client::HTTP_CLIENT.clone();
         let api_resp = client
             .post(format!("{API_URL}/auth/microsoft/link"))
             .header("Content-Type", "application/json")
@@ -1089,7 +1089,7 @@ pub async fn auth_refresh() -> AuthCommandResult {
             "username": session.username,
         });
 
-        let client = reqwest::Client::new();
+        let client = crate::http_client::HTTP_CLIENT.clone();
         let mut api_resp = client
             .post(format!("{API_URL}/auth/microsoft/login"))
             .header("Content-Type", "application/json")
@@ -1169,7 +1169,7 @@ pub async fn login_catid(username: String, password: String) -> AuthCommandResul
         "password": password,
     });
 
-    let resp = match reqwest::Client::new()
+    let resp = match crate::http_client::HTTP_CLIENT.clone()
         .post(format!("{API_URL}/auth/catid/login"))
         .header("Content-Type", "application/json")
         .header("X-Client-App", "RealityLauncher")
@@ -1303,7 +1303,7 @@ pub async fn register_catid(
         "password": password,
         "confirmPassword": confirm_password,
     });
-    let req = reqwest::Client::new()
+    let req = crate::http_client::HTTP_CLIENT.clone()
         .post(format!("{API_URL}/auth/catid/register"))
         .header("Content-Type", "application/json")
         .header("X-Client-App", "RealityLauncher")
@@ -1313,7 +1313,7 @@ pub async fn register_catid(
 
 #[tauri::command]
 pub async fn check_registration_status(token: String) -> serde_json::Value {
-    match reqwest::Client::new()
+    match crate::http_client::HTTP_CLIENT.clone()
         .get(format!("{API_URL}/auth/catid/register/status/{token}"))
         .header("Content-Type", "application/json")
         .send()
@@ -1328,7 +1328,7 @@ pub async fn check_registration_status(token: String) -> serde_json::Value {
 
 #[tauri::command]
 pub async fn forgot_password(email: String) -> serde_json::Value {
-    let req = reqwest::Client::new()
+    let req = crate::http_client::HTTP_CLIENT.clone()
         .post(format!("{API_URL}/auth/catid/forgot-password"))
         .header("Content-Type", "application/json")
         .json(&serde_json::json!({ "email": email }));
@@ -1337,7 +1337,7 @@ pub async fn forgot_password(email: String) -> serde_json::Value {
 
 #[tauri::command]
 pub async fn reset_password(email: String, otp: String, new_password: String) -> serde_json::Value {
-    let req = reqwest::Client::new()
+    let req = crate::http_client::HTTP_CLIENT.clone()
         .post(format!("{API_URL}/auth/catid/reset-password"))
         .header("Content-Type", "application/json")
         .json(&serde_json::json!({ "email": email, "otp": otp, "newPassword": new_password }));
@@ -1346,7 +1346,7 @@ pub async fn reset_password(email: String, otp: String, new_password: String) ->
 
 #[tauri::command]
 pub async fn login_catid_token(token: String) -> serde_json::Value {
-    let resp = match reqwest::Client::new()
+    let resp = match crate::http_client::HTTP_CLIENT.clone()
         .get(format!("{API_URL}/auth/catid/me"))
         .header("Authorization", format!("Bearer {token}"))
         .header("Content-Type", "application/json")
@@ -1471,7 +1471,7 @@ pub async fn link_catid(
 
     
     let login_body = serde_json::json!({ "username": username, "password": password });
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let login_resp = match client
         .post(format!("{API_URL}/auth/catid/login"))
         .header("Content-Type", "application/json")

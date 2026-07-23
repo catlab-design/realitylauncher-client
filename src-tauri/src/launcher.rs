@@ -820,7 +820,7 @@ async fn install_fabric(
     let meta_url = format!(
         "https://meta.fabricmc.net/v2/versions/loader/{mc_version}/{loader_version}/profile/json"
     );
-    let resp = reqwest::get(&meta_url)
+    let resp = crate::http_client::HTTP_CLIENT.get(&meta_url).send()
         .await
         .map_err(|e| format!("Failed to fetch Fabric profile: {e}"))?;
     let profile: serde_json::Value = resp
@@ -905,7 +905,7 @@ async fn install_forge(
         "https://maven.minecraftforge.net/net/minecraftforge/forge/{full_version}/{installer_filename}"
     );
 
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let resp = client
         .get(&installer_url)
         .send()
@@ -989,7 +989,7 @@ async fn install_neoforge(
         "https://maven.neoforged.net/releases/net/neoforged/neoforge/{full_version}/{installer_filename}"
     );
 
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let resp = client
         .get(&installer_url)
         .send()
@@ -1049,7 +1049,7 @@ async fn install_quilt(
     let meta_url = format!(
         "https://meta.quiltmc.org/v3/versions/loader/{mc_version}/{loader_version}/profile/json"
     );
-    let resp = reqwest::get(&meta_url)
+    let resp = crate::http_client::HTTP_CLIENT.get(&meta_url).send()
         .await
         .map_err(|e| format!("Failed to fetch Quilt profile: {e}"))?;
     let profile: serde_json::Value = resp
@@ -1540,7 +1540,7 @@ fn offline_uuid(username: &str) -> String {
 }
 
 async fn fetch_version_manifest() -> Result<serde_json::Value, String> {
-    let resp = reqwest::get(VERSION_MANIFEST_URL)
+    let resp = crate::http_client::HTTP_CLIENT.get(VERSION_MANIFEST_URL).send()
         .await
         .map_err(|e| format!("Failed to fetch version manifest: {e}"))?;
     resp.json::<serde_json::Value>()
@@ -1578,7 +1578,7 @@ async fn get_version_json(
         .and_then(|u| u.as_str())
         .ok_or("Version missing URL")?;
 
-    let resp = reqwest::get(url)
+    let resp = crate::http_client::HTTP_CLIENT.get(url).send()
         .await
         .map_err(|e| format!("Failed to fetch version JSON: {e}"))?;
     let version_json: serde_json::Value = resp
@@ -1625,7 +1625,7 @@ async fn download_client_jar(
 
     fs::create_dir_all(versions_dir).map_err(|e| e.to_string())?;
 
-    let response = reqwest::get(url)
+    let response = crate::http_client::HTTP_CLIENT.get(url).send()
         .await
         .map_err(|e| format!("Failed to download client jar: {e}"))?;
     let bytes = response
@@ -1711,7 +1711,7 @@ async fn ensure_libraries(
         .and_then(|l| l.as_array())
         .ok_or("Version data missing libraries")?;
 
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let mut downloads = Vec::new();
 
     for lib in libs {
@@ -1810,7 +1810,7 @@ async fn check_and_download_assets(
         })
     {
         fs::create_dir_all(&indexes_dir).map_err(|e| e.to_string())?;
-        let resp = reqwest::get(index_url)
+        let resp = crate::http_client::HTTP_CLIENT.get(index_url).send()
             .await
             .map_err(|e| format!("Failed to download asset index: {e}"))?;
         let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
@@ -1841,7 +1841,7 @@ async fn check_and_download_assets(
         .ok_or("Asset index missing objects")?;
 
     let objects_dir = assets_dir.join("objects");
-    let client = reqwest::Client::new();
+    let client = crate::http_client::HTTP_CLIENT.clone();
     let mut downloads = Vec::new();
 
     for (_path_str, info) in objects {

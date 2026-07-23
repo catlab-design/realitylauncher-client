@@ -383,7 +383,7 @@ async fn download_with_progress(
     use futures_util::StreamExt;
     use std::io::Write;
 
-    let resp = reqwest::Client::new()
+    let resp = crate::http_client::HTTP_CLIENT.clone()
         .get(url)
         .send()
         .await

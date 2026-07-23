@@ -174,14 +174,7 @@ fn get_api_token() -> Result<String, String> {
 }
 
 fn client() -> reqwest::Client {
-    
-    
-    
-    reqwest::Client::builder()
-        .user_agent("RealityLauncher/2.0")
-        .redirect(reqwest::redirect::Policy::limited(10))
-        .build()
-        .unwrap_or_else(|_| reqwest::Client::new())
+    crate::http_client::HTTP_CLIENT.clone()
 }
 
 fn normalize_hash(hash_str: &str) -> Option<(String, String)> {
