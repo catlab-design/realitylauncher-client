@@ -393,3 +393,4 @@ After every fix or feature commit, update `docs/CHANGELOG.md` with:
 2. `bun test` — JS bridge tests pass
 3. `bun run check:bridge` — TypeScript typechecks
 4. Update `docs/CHANGELOG.md` with the change
+5. Keep `CLAUDE.md` in sync — update project structure, commands, conventions, and any other section that changed

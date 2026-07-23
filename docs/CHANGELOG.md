@@ -22,3 +22,10 @@
 
 ### Removed
 - Remove superseded dead methods from api.ts: authLogin, authLogout, authGetAccount, instancesGet, instanceGetMods, instanceGetResourcePacks, instanceGetShaders, instanceGetDatapacks, instanceInstallContent, openUrl
+
+### Added
+- 28 Rust unit tests across download.rs, config.rs, mod_meta.rs (HTTP classification, hash selection, clean_search_name, cache_key, link_for, builder methods)
+- `log` + `env_logger` crates for structured logging; initialized in main.rs with `warn`-by-default filter
+
+### Changed
+- Replace all 22 `eprintln!` calls with `log::{error, warn, info, debug}` throughout cloud.rs, download.rs, instances.rs, launcher.rs, mod_meta.rs, modpack.rs, telemetry.rs
