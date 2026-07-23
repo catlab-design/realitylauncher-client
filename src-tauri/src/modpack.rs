@@ -719,44 +719,106 @@ async fn install_cf_modpack(app: &tauri::AppHandle, file_path: &str) -> ModpackI
 
     let instance_dir = crate::instances::get_instance_dir(&instance.id);
 
-    let client = reqwest::Client::new();
     let mods_dir = instance_dir.join("mods");
     fs::create_dir_all(&mods_dir).ok();
     let total = manifest.files.len();
+
+    // Phase 1: resolve all CurseForge download URLs concurrently
+    emit_progress(app, "resolving", "Resolving download URLs...", 0);
+    let client = reqwest::Client::new();
+
+    let concurrency = std::sync::Arc::new(tokio::sync::Semaphore::new(8));
+    let resolve_handles: Vec<_> = manifest
+        .files
+        .iter()
+        .map(|file_entry| {
+            let client = client.clone();
+            let sem = concurrency.clone();
+            let proj = file_entry.project_id;
+            let fid = file_entry.file_id;
+            let dest = mods_dir.join(format!("{}_{}.jar", proj, fid));
+            let label = format!("{}_{}.jar", proj, fid);
+
+            tokio::spawn(async move {
+                let _permit = sem.acquire().await.unwrap();
+                let url = format!("{API_URL}/curseforge/download/{proj}/{fid}");
+                let resp = client
+                    .get(&url)
+                    .header("Accept", "application/json")
+                    .send()
+                    .await
+                    .map_err(|e| format!("Resolve {label}: {e}"))?;
+                if !resp.status().is_success() {
+                    return Err::<_, String>(format!("HTTP {}", resp.status()));
+                }
+                let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+                let download_url = data
+                    .get("data")
+                    .and_then(|d| d.as_str())
+                    .ok_or("No download URL")?
+                    .to_string();
+                Ok::<_, String>((
+                    label.clone(),
+                    crate::download::DownloadItem::new(download_url, dest).with_label(label),
+                ))
+            })
+        })
+        .collect();
+
+    let mut items: Vec<crate::download::DownloadItem> = Vec::new();
     let mut failed: Vec<String> = Vec::new();
-
-    for (i, file_entry) in manifest.files.iter().enumerate() {
-        if is_cancelled() {
-            break;
+    for handle in resolve_handles {
+        match handle.await {
+            Ok(Ok((_, item))) => items.push(item),
+            Ok(Err(e)) => {
+                eprintln!("[Modpack] CF resolve failed: {e}");
+                failed.push("resolve_error".into());
+            }
+            Err(e) => {
+                eprintln!("[Modpack] CF resolve task failed: {e}");
+                failed.push("resolve_task_error".into());
+            }
         }
-        let percent = if total > 0 {
-            ((i * 90) / total) as u32
-        } else {
-            0
-        };
-        emit_progress_counted(
-            app,
-            "downloading",
-            &format!("({}/{}) mods", i + 1, total),
-            percent,
-            Some((i + 1) as u32),
-            Some(total as u32),
-        );
+    }
 
-        let filename = format!("{}_{}.jar", file_entry.project_id, file_entry.file_id);
-        if let Err(e) = download_cf_file(
-            &client,
-            file_entry.project_id,
-            file_entry.file_id,
-            &mods_dir.join(&filename),
+    if is_cancelled() {
+        let _ = crate::instances::instances_delete(instance.id.clone()).await;
+        emit_progress(app, "cancelled", "ยกเลิกการติดตั้ง", 0);
+        return ModpackInstallResult::fail(CANCELLED_SENTINEL);
+    }
+
+    // Phase 2: download all files concurrently
+    if !items.is_empty() {
+        let config = crate::download::DownloadConfig {
+            concurrency: 6,
+            max_retries: 2,
+        };
+        let result = crate::download::download_batch(
+            items,
+            &config,
+            Some(&INSTALL_CANCELLED),
+            |current, total, _label| {
+                let percent = if total > 0 {
+                    ((current * 90) / total) as u32
+                } else {
+                    0
+                };
+                emit_progress_counted(
+                    app,
+                    "downloading",
+                    &format!("({current}/{total}) mods"),
+                    percent,
+                    Some(current),
+                    Some(total),
+                );
+            },
         )
-        .await
-        {
-            eprintln!(
-                "[Modpack] Skipping CF {}/{}: {e}",
-                file_entry.project_id, file_entry.file_id
-            );
-            failed.push(filename);
+        .await;
+        for (label, _) in result.failed {
+            failed.push(label);
+        }
+        for (label, _) in result.missing_on_server {
+            failed.push(label);
         }
     }
 
@@ -777,7 +839,6 @@ async fn install_cf_modpack(app: &tauri::AppHandle, file_path: &str) -> ModpackI
         };
     }
 
-    
     
     emit_progress(app, "extracting", "Applying overrides...", 95);
     if let Some(overrides) = &manifest.overrides {
@@ -800,6 +861,7 @@ async fn install_cf_modpack(app: &tauri::AppHandle, file_path: &str) -> ModpackI
         failed_files: failed,
     }
 }
+
 
 #[tauri::command]
 pub async fn modpack_install_from_modrinth(
@@ -958,40 +1020,6 @@ pub async fn modpack_install_from_curseforge(
     }
 
     result
-}
-
-async fn download_cf_file(
-    client: &reqwest::Client,
-    project_id: i32,
-    file_id: i32,
-    target: &std::path::Path,
-) -> Result<(), String> {
-    let url = format!("{API_URL}/curseforge/download/{project_id}/{file_id}");
-    let resp = client
-        .get(&url)
-        .header("Accept", "application/json")
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    if !resp.status().is_success() {
-        return Err(format!("HTTP {}", resp.status()));
-    }
-    let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    let download_url = data
-        .get("data")
-        .and_then(|d| d.as_str())
-        .ok_or("No download URL")?;
-
-    let file_resp = client
-        .get(download_url)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    if !file_resp.status().is_success() {
-        return Err(format!("HTTP {}", file_resp.status()));
-    }
-    let bytes = file_resp.bytes().await.map_err(|e| e.to_string())?;
-    fs::write(target, &bytes).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

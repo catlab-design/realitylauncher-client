@@ -8,6 +8,7 @@ pub mod config;
 pub mod content;
 pub mod curseforge;
 pub mod discord;
+pub mod download;
 pub mod fs_utils;
 pub mod instances;
 pub mod java;

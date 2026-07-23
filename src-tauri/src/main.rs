@@ -11,6 +11,7 @@ mod config;
 mod content;
 mod curseforge;
 mod discord;
+mod download;
 mod fs_utils;
 mod instances;
 mod java;

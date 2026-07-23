@@ -631,110 +631,7 @@ async fn fetch_instance_metadata(
 
 
 
-async fn download_single_file(
-    url: &str,
-    dest: &Path,
-    expected_hash: Option<&str>,
-) -> Result<(), String> {
-    let tmp_path = dest.with_extension("tmp");
 
-    if let Some(parent) = dest.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("Dir error: {}", e))?;
-    }
-
-    let response = client()
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| format!("HTTP_STATUS:0 Network error: {}", e))?;
-
-    let status = response.status();
-    if !status.is_success() {
-        let body = response.text().await.unwrap_or_default();
-        let snippet: String = body.chars().take(200).collect();
-        return Err(format!("HTTP_STATUS:{} {}", status.as_u16(), snippet));
-    }
-
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| format!("HTTP_STATUS:0 Read error: {}", e))?;
-
-    fs::write(&tmp_path, &bytes).map_err(|e| format!("Write error: {}", e))?;
-
-    if let Some(hash) = expected_hash {
-        match verify_file_hash(&tmp_path, hash) {
-            Ok(true) => {}
-            Ok(false) => {
-                eprintln!(
-                    "[Cloud Sync] Hash mismatch for {} - file may have been updated on server",
-                    dest.file_name().unwrap_or_default().to_string_lossy()
-                );
-            }
-            Err(e) => {
-                eprintln!(
-                    "[Cloud Sync] Hash verify error for {}: {e}",
-                    dest.file_name().unwrap_or_default().to_string_lossy()
-                );
-            }
-        }
-    }
-
-    if dest.to_string_lossy().ends_with(".jar") {
-        if zip::ZipArchive::new(std::io::Cursor::new(&bytes)).is_err() {
-            fs::remove_file(&tmp_path).ok();
-            return Err(format!(
-                "Corrupted download: {} is not a valid ZIP archive",
-                dest.file_name().unwrap_or_default().to_string_lossy()
-            ));
-        }
-    }
-
-    if dest.exists() {
-        fs::remove_file(dest).ok();
-    }
-    fs::rename(&tmp_path, dest).map_err(|e| format!("Rename error: {}", e))?;
-
-    Ok(())
-}
-
-fn is_permanent_http(err: &str) -> bool {
-    if let Some(s) = err.strip_prefix("HTTP_STATUS:") {
-        if let Ok(status) = s.split(' ').next().unwrap_or("").parse::<u16>() {
-            return matches!(status, 400 | 401 | 403 | 404 | 410);
-        }
-    }
-    false
-}
-
-
-
-
-fn is_missing_on_server(err: &str) -> bool {
-    if let Some(s) = err.strip_prefix("HTTP_STATUS:") {
-        if let Ok(status) = s.split(' ').next().unwrap_or("").parse::<u16>() {
-            return matches!(status, 404 | 410);
-        }
-    }
-    false
-}
-
-async fn download_with_retry(url: &str, dest: &Path, hash: Option<&str>) -> Result<(), String> {
-    let max_attempts = 3;
-    for attempt in 1..=max_attempts {
-        match download_single_file(url, dest, hash).await {
-            Ok(()) => return Ok(()),
-            Err(e) if !is_permanent_http(&e) && attempt < max_attempts => {
-                tokio::time::sleep(std::time::Duration::from_millis(
-                    attempt as u64 * 1000 + 500,
-                ))
-                .await;
-            }
-            Err(e) => return Err(e),
-        }
-    }
-    Err("Download failed after max retries".to_string())
-}
 
 
 
@@ -804,8 +701,6 @@ async fn sync_managed_mods(
     let mods_dir = dir.join("mods");
     fs::create_dir_all(&mods_dir).map_err(|e| format!("Dir error: {}", e))?;
 
-    let total = managed_mods.len() as u32;
-    let mut completed = 0u32;
     let mut failed: Vec<(String, String)> = Vec::new();
 
     
@@ -821,9 +716,9 @@ async fn sync_managed_mods(
         .map(|m| m.file_name.clone())
         .collect();
 
+    // Build download items for files that need updating
+    let mut items: Vec<crate::download::DownloadItem> = Vec::new();
     for m in &managed_mods {
-        
-        
         let file_path = match m.path.as_deref().filter(|p| !p.is_empty()) {
             Some(p) => {
                 let Some(joined) = safe_join(dir, p) else {
@@ -868,32 +763,52 @@ async fn sync_managed_mods(
         };
 
         if !needs_download {
-            completed += 1;
             continue;
         }
 
-        match download_with_retry(&m.download_url, &file_path, m.file_hash.as_deref()).await {
-            Ok(()) => completed += 1,
-            Err(e) => {
-                eprintln!("[Cloud Sync] Failed to download {}: {}", m.file_name, e);
-                failed.push((m.file_name.clone(), e));
-            }
-        }
-
-        let pct = if total > 0 {
-            (completed * 100) / total
-        } else {
-            100
-        };
-        emit_sync_progress(
-            app_handle,
-            "sync-download",
-            "",
-            Some(completed),
-            Some(total),
-            Some(pct),
-            Some(&m.file_name),
+        items.push(
+            crate::download::DownloadItem::new(m.download_url.clone(), file_path)
+                .with_label(m.file_name.clone()),
         );
+    }
+
+    // Download all needed files concurrently
+    if !items.is_empty() {
+        let config = crate::download::DownloadConfig {
+            concurrency: 8,
+            max_retries: 3,
+        };
+        let result = crate::download::download_batch(
+            items,
+            &config,
+            None,
+            |current, total, _label| {
+                let pct = if total > 0 {
+                    (current * 100) / total
+                } else {
+                    100
+                };
+                emit_sync_progress(
+                    app_handle,
+                    "sync-download",
+                    "",
+                    Some(current),
+                    Some(total),
+                    Some(pct),
+                    None,
+                );
+            },
+        )
+        .await;
+
+        for (label, err) in result.failed {
+            eprintln!("[Cloud Sync] Failed to download {}: {}", label, err);
+            failed.push((label, err));
+        }
+        for (label, err) in result.missing_on_server {
+            eprintln!("[Cloud Sync] Missing on server {}: {}", label, err);
+            failed.push((label, err));
+        }
     }
 
     emit_sync_progress(
@@ -1194,91 +1109,86 @@ async fn sync_server_mods(
 
     
 
-    let total = queue.len() as u32;
-    emit_sync_progress(
-        app_handle,
-        "sync-download",
-        "",
-        Some(0),
-        Some(total),
-        Some(0),
-        None,
-    );
-
-    
-    
-    
-    
+    // Build download items from the queue
+    let mut items: Vec<crate::download::DownloadItem> = Vec::new();
     let mut failed: Vec<(String, String)> = Vec::new();
-    let mut missing: Vec<String> = Vec::new();
-    let mut completed = 0u32;
+    let mut no_url_count = 0u32;
 
     for m in &queue {
-        // Honor Cancel in the per-file fallback too — otherwise cancelling a
-        // sync that missed the .mrpack fast path did nothing and ran to the end.
-        if crate::modpack::is_cancelled() {
-            return Err(crate::modpack::CANCELLED_SENTINEL.to_string());
-        }
         let url = match m.url.as_ref() {
             Some(u) => u.clone(),
             None => {
                 eprintln!("[Cloud Sync] No URL for {}", m.filename);
                 failed.push((m.filename.clone(), "No URL".into()));
+                no_url_count += 1;
                 continue;
             }
         };
 
         let Some(file_path) = safe_join(instance_path, &m.filename) else {
             failed.push((m.filename.clone(), "Path traversal blocked".into()));
+            no_url_count += 1;
             continue;
         };
-        match download_with_retry(&url, &file_path, m.hash.as_deref()).await {
-            Ok(()) => completed += 1,
-            Err(e) if is_missing_on_server(&e) => {
-                eprintln!(
-                    "[Cloud Sync] Skipping {} — not on server (server-side): {e}",
-                    m.filename
-                );
-                missing.push(m.filename.clone());
-            }
-            Err(e) => {
-                eprintln!(
-                    "[Cloud Sync] Download failed {}: {e} (url={url})",
-                    m.filename
-                );
-                failed.push((m.filename.clone(), e));
-            }
-        }
 
-        let pct = if total > 0 {
-            (completed * 100) / total
-        } else {
-            100
+        items.push(
+            crate::download::DownloadItem::new(url, file_path)
+                .with_label(m.filename.clone()),
+        );
+    }
+
+    let total_items = items.len() as u32;
+    if !items.is_empty() {
+        let config = crate::download::DownloadConfig {
+            concurrency: 8,
+            max_retries: 3,
         };
-        emit_sync_progress(
-            app_handle,
-            "sync-download",
-            "",
-            Some(completed),
-            Some(total),
-            Some(pct),
-            Some(&m.filename),
-        );
+        let result = crate::download::download_batch(
+            items,
+            &config,
+            None,
+            |current, total, _label| {
+                let pct = if total > 0 {
+                    (current * 100) / total
+                } else {
+                    100
+                };
+                emit_sync_progress(
+                    app_handle,
+                    "sync-download",
+                    "",
+                    Some(current),
+                    Some(total),
+                    Some(pct),
+                    None,
+                );
+            },
+        )
+        .await;
+
+        for (label, err) in result.failed {
+            eprintln!("[Cloud Sync] Download failed {}: {}", label, err);
+            failed.push((label, err));
+        }
+        for (label, err) in result.missing_on_server {
+            eprintln!(
+                "[Cloud Sync] Skipping {} — not on server (server-side): {}",
+                label, err
+            );
+            failed.push((label, err));
+        }
     }
 
-    if !missing.is_empty() {
+    let missing_count = failed.len() as u32 - no_url_count;
+    if missing_count > 0 {
         eprintln!(
-            "[Cloud Sync] {} file(s) missing on server, skipped: {}",
-            missing.len(),
-            missing.join(", ")
+            "[Cloud Sync] {} file(s) missing on server, skipped",
+            missing_count
         );
     }
 
-    
-    
-    
-    let real_attempts = queue.len() - missing.len();
-    if real_attempts > 0 && failed.len() == real_attempts {
+    let real_attempts = total_items;
+    if real_attempts > 0 && failed.len() as u32 == real_attempts {
         let reason = failed.first().map(|(_, r)| r.as_str()).unwrap_or("unknown");
         return Err(format!(
             "Sync failed: could not download any of {} file(s) ({})",
@@ -1317,9 +1227,6 @@ async fn sync_server_mods(
         Some(100),
         None,
     );
-    
-    
-    
     
     Ok(failed)
 }
