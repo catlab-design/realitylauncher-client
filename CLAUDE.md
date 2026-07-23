@@ -365,3 +365,31 @@ const KNOWN_UNPORTED = new Set(['fetchInstanceAgendas', 'fetchAllAgendas']);
 7. **No `public/` directory** — all assets are in `src/assets/` and imported directly
 8. **No CI/CD or Docker** — `.github/` is empty
 9. **`src-tauri/src/download.rs`** — shared concurrent download engine using `tokio::sync::Semaphore` (default 8 concurrency). Accepts a progress callback, supports retry with backoff, SHA1/SHA256/SHA512 hash verification, atomic writes (temp + rename), JAR/ZIP validation, and per-error `missing_on_server` vs `failed` classification. Replaces old sequential loops in CurseForge modpack install (`install_cf_modpack`) and cloud sync (`sync_managed_mods`, `sync_server_mods` queue).
+
+---
+
+## 10. Changelog
+
+After every fix or feature commit, update `docs/CHANGELOG.md` with:
+- **Added** — new features
+- **Changed** — behavior/API changes
+- **Fixed** — bug fixes (reference the bug #)
+- **Perf** — performance improvements
+- **Removed** — deprecated features
+
+### Format
+```markdown
+## [Unreleased] — YYYY-MM-DD
+
+### Fixed
+- Description of the fix (#N)
+
+### Perf
+- Description of the perf improvement
+```
+
+### Pre-commit checklist
+1. `cargo check --lib` — Rust compiles clean
+2. `bun test` — JS bridge tests pass
+3. `bun run check:bridge` — TypeScript typechecks
+4. Update `docs/CHANGELOG.md` with the change
