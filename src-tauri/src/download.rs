@@ -1,6 +1,6 @@
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use sha1::Digest as Sha1Digest;
@@ -92,23 +92,15 @@ pub async fn download_batch(
 
     let total = items.len() as u32;
     let client = crate::http_client::HTTP_CLIENT.clone();
-    let done = Arc::new(AtomicU32::new(0));
-    let bytes_dl = Arc::new(AtomicU64::new(0));
-    let missing_set: Arc<std::sync::Mutex<Vec<(String, String)>>> =
-        Arc::new(std::sync::Mutex::new(Vec::new()));
-    let failed_set: Arc<std::sync::Mutex<Vec<(String, String)>>> =
-        Arc::new(std::sync::Mutex::new(Vec::new()));
 
     let sem = Arc::new(tokio::sync::Semaphore::new(config.concurrency));
     let mut handles = Vec::with_capacity(items.len());
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
 
     for item in &items {
         let client = client.clone();
         let sem = sem.clone();
-        let done = done.clone();
-        let bytes_dl = bytes_dl.clone();
-        let missing_set = missing_set.clone();
-        let failed_set = failed_set.clone();
+        let tx = tx.clone();
         let item = item.clone();
         let max_retries = config.max_retries;
         let cancel = cancel_flag.map(|f| f.load(Ordering::SeqCst));
@@ -117,54 +109,55 @@ pub async fn download_batch(
             let _permit = sem.acquire().await.map_err(|_| "Semaphore closed".to_string())?;
 
             if cancel.is_some_and(|cancelled| cancelled) {
-                done.fetch_add(1, Ordering::Relaxed);
+                let _ = tx.send((item.label, Err("Cancelled".to_string())));
                 return Err("Cancelled".to_string());
             }
 
             match download_file_with_retry(&client, &item, max_retries, None).await {
                 Ok(size) => {
-                    done.fetch_add(1, Ordering::Relaxed);
-                    bytes_dl.fetch_add(size, Ordering::Relaxed);
+                    let _ = tx.send((item.label, Ok(size)));
                     Ok(size)
                 }
                 Err(e) => {
-                    done.fetch_add(1, Ordering::Relaxed);
-                    if is_missing_on_server(&e) {
-                        missing_set.lock().unwrap().push((item.label, e));
-                    } else {
-                        failed_set.lock().unwrap().push((item.label, e));
-                    }
+                    let _ = tx.send((item.label, Err(e.clone())));
                     Err("Failed".to_string())
                 }
             }
         }));
     }
 
-    // Poll for completion and report progress
-    let total_completed = Arc::new(AtomicU32::new(0));
-    loop {
-        let current = done.load(Ordering::Relaxed);
-        let prev = total_completed.swap(current, Ordering::Relaxed);
-        if current > prev {
-            on_file_done(current, total, "");
+    drop(tx);
+
+    let mut succeeded: u32 = 0;
+    let mut bytes_total: u64 = 0;
+    let mut missing: Vec<(String, String)> = Vec::new();
+    let mut failed: Vec<(String, String)> = Vec::new();
+    let mut completed: u32 = 0;
+
+    while let Some((_label, result)) = rx.recv().await {
+        completed += 1;
+        match result {
+            Ok(size) => {
+                succeeded += 1;
+                bytes_total += size;
+            }
+            Err(e) => {
+                if is_missing_on_server(&e) {
+                    missing.push((_label, e));
+                } else {
+                    failed.push((_label, e));
+                }
+            }
         }
-        if current >= total {
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        on_file_done(completed, total, "");
     }
 
-    // Collect all results
     for handle in handles {
         let _ = handle.await;
     }
 
-    let bytes_total = bytes_dl.load(Ordering::Relaxed);
-    let missing: Vec<(String, String)> = missing_set.lock().unwrap().drain(..).collect();
-    let failed: Vec<(String, String)> = failed_set.lock().unwrap().drain(..).collect();
-
     BatchResult {
-        succeeded: total - (missing.len() + failed.len()) as u32,
+        succeeded,
         failed,
         missing_on_server: missing,
         bytes_downloaded: bytes_total,
