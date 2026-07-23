@@ -1,4 +1,4 @@
-## [Unreleased] — 2026-07-23
+## [4.0.3] — 2026-07-23
 
 ### Fixed
 - Remove 30s total request timeout from HTTP_CLIENT which killed large modpack/JAR downloads exceeding 30 seconds (#1)
