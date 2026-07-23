@@ -153,7 +153,7 @@ pub async fn download_batch(
 
     for handle in handles {
         if let Err(e) = handle.await {
-            eprintln!("[download] task panicked: {e}");
+            log::error!("[download] task panicked: {e}");
         }
     }
 
@@ -366,6 +366,101 @@ fn is_missing_on_server(err: &str) -> bool {
         }
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_permanent_http_400_series() {
+        assert!(is_permanent_http("HTTP_STATUS:400 Bad Request"));
+        assert!(is_permanent_http("HTTP_STATUS:401 Unauthorized"));
+        assert!(is_permanent_http("HTTP_STATUS:403 Forbidden"));
+        assert!(is_permanent_http("HTTP_STATUS:404 Not Found"));
+        assert!(is_permanent_http("HTTP_STATUS:410 Gone"));
+    }
+
+    #[test]
+    fn test_is_permanent_http_retryable() {
+        assert!(!is_permanent_http("HTTP_STATUS:429 Too Many Requests"));
+        assert!(!is_permanent_http("HTTP_STATUS:500 Server Error"));
+        assert!(!is_permanent_http("HTTP_STATUS:502 Bad Gateway"));
+        assert!(!is_permanent_http("HTTP_STATUS:503 Service Unavailable"));
+    }
+
+    #[test]
+    fn test_is_permanent_http_no_prefix() {
+        assert!(!is_permanent_http("network error: connection reset"));
+        assert!(!is_permanent_http(""));
+    }
+
+    #[test]
+    fn test_is_missing_on_server() {
+        assert!(is_missing_on_server("HTTP_STATUS:404 Not Found"));
+        assert!(is_missing_on_server("HTTP_STATUS:410 Gone"));
+        assert!(!is_missing_on_server("HTTP_STATUS:400 Bad Request"));
+        assert!(!is_missing_on_server("HTTP_STATUS:403 Forbidden"));
+        assert!(!is_missing_on_server("network error"));
+    }
+
+    #[test]
+    fn test_select_hash_algo_priority() {
+        let mut hashes = std::collections::HashMap::new();
+        hashes.insert("sha1".into(), "abc".into());
+        hashes.insert("sha256".into(), "def".into());
+        hashes.insert("sha512".into(), "ghi".into());
+
+        let r = select_hash_algo(Some("xyz"), &hashes);
+        assert!(r.is_some());
+        assert_eq!(r.unwrap().1, "xyz");
+
+        let r = select_hash_algo(None, &hashes);
+        assert_eq!(r.unwrap().1, "abc");
+
+        let mut no_sha1 = std::collections::HashMap::new();
+        no_sha1.insert("sha256".into(), "def".into());
+        let r = select_hash_algo(None, &no_sha1);
+        assert_eq!(r.unwrap().1, "def");
+
+        let empty = std::collections::HashMap::new();
+        assert!(select_hash_algo(None, &empty).is_none());
+    }
+
+    #[test]
+    fn test_download_item_new() {
+        let item =
+            DownloadItem::new("https://example.com/file.jar".into(), PathBuf::from("/tmp/file.jar"));
+        assert_eq!(item.url, "https://example.com/file.jar");
+        assert_eq!(item.label, "file.jar");
+        assert!(item.expected_sha1.is_none());
+        assert!(item.hashes.is_empty());
+    }
+
+    #[test]
+    fn test_download_item_builders() {
+        let item = DownloadItem::new("https://example.com/f".into(), PathBuf::from("/tmp/f.jar"))
+            .with_sha1("abc123".into())
+            .with_label("my-label".into());
+        assert_eq!(item.expected_sha1.unwrap(), "abc123");
+        assert_eq!(item.label, "my-label");
+    }
+
+    #[test]
+    fn test_download_config_default() {
+        let cfg = DownloadConfig::default();
+        assert_eq!(cfg.concurrency, 8);
+        assert_eq!(cfg.max_retries, 3);
+    }
+
+    #[test]
+    fn test_batch_result_default() {
+        let r = BatchResult::default();
+        assert_eq!(r.succeeded, 0);
+        assert!(r.failed.is_empty());
+        assert!(r.missing_on_server.is_empty());
+        assert_eq!(r.bytes_downloaded, 0);
+    }
 }
 
 

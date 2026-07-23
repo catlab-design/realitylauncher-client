@@ -795,11 +795,11 @@ async fn sync_managed_mods(
         .await;
 
         for (label, err) in result.failed {
-            eprintln!("[Cloud Sync] Failed to download {}: {}", label, err);
+            log::error!("[Cloud Sync] Failed to download {}: {}", label, err);
             failed.push((label, err));
         }
         for (label, err) in result.missing_on_server {
-            eprintln!("[Cloud Sync] Missing on server {}: {}", label, err);
+            log::warn!("[Cloud Sync] Missing on server {}: {}", label, err);
             failed.push((label, err));
         }
     }
@@ -1001,7 +1001,7 @@ async fn sync_server_mods(
                 return Err(e);
             }
             Err(e) => {
-                eprintln!(
+                log::warn!(
                     "[Cloud Sync] .mrpack fast path failed ({e}) — falling back to per-file sync"
                 );
             }
@@ -1094,7 +1094,7 @@ async fn sync_server_mods(
 
     let still_missing = queue.iter().filter(|m| m.url.is_none()).count();
     if still_missing > 0 {
-        eprintln!(
+        log::warn!(
             "[Cloud Sync] {} file(s) still have no URL after full content fetch",
             still_missing
         );
@@ -1111,7 +1111,7 @@ async fn sync_server_mods(
         let url = match m.url.as_ref() {
             Some(u) => u.clone(),
             None => {
-                eprintln!("[Cloud Sync] No URL for {}", m.filename);
+                log::warn!("[Cloud Sync] No URL for {}", m.filename);
                 failed.push((m.filename.clone(), "No URL".into()));
                 no_url_count += 1;
                 continue;
@@ -1160,11 +1160,11 @@ async fn sync_server_mods(
         .await;
 
         for (label, err) in result.failed {
-            eprintln!("[Cloud Sync] Download failed {}: {}", label, err);
+            log::error!("[Cloud Sync] Download failed {}: {}", label, err);
             failed.push((label, err));
         }
         for (label, err) in result.missing_on_server {
-            eprintln!(
+            log::warn!(
                 "[Cloud Sync] Skipping {} — not on server (server-side): {}",
                 label, err
             );
@@ -1174,7 +1174,7 @@ async fn sync_server_mods(
 
     let missing_count = failed.len() as u32 - no_url_count;
     if missing_count > 0 {
-        eprintln!(
+        log::warn!(
             "[Cloud Sync] {} file(s) missing on server, skipped",
             missing_count
         );

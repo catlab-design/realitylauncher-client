@@ -19,3 +19,6 @@
 - Stream response bodies directly to disk (`resp.bytes_stream()`) with incremental hash verification — eliminates full in-memory buffering
 - Replace 100ms polling loop with `mpsc::unbounded_channel` for instant download progress updates
 - Clean up orphaned `.tmp` files per-download and via `cleanup_temp_files` command
+
+### Removed
+- Remove superseded dead methods from api.ts: authLogin, authLogout, authGetAccount, instancesGet, instanceGetMods, instanceGetResourcePacks, instanceGetShaders, instanceGetDatapacks, instanceInstallContent, openUrl

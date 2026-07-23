@@ -293,3 +293,27 @@ pub fn get_max_ram() -> u64 {
         4096
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_launcher_config_default() {
+        let cfg = LauncherConfig::default();
+        assert_eq!(cfg.ram_mb, 4096);
+        assert!(!cfg.close_launcher_on_game_start);
+        assert!(cfg.discord_rpc_enabled);
+        assert!(cfg.auto_update_enabled);
+        assert_eq!(cfg.theme, "dark");
+        assert_eq!(cfg.max_concurrent_downloads, 8);
+        assert!(cfg.java_path.is_none());
+        assert!(cfg.java_paths.is_none());
+        assert!(cfg.extra.is_empty());
+    }
+
+    #[test]
+    fn test_get_max_concurrent_downloads_default() {
+        assert_eq!(get_max_concurrent_downloads(), 8);
+    }
+}

@@ -214,7 +214,7 @@ pub async fn instances_launch(
             message: None,
         },
         Err(e) => {
-            eprintln!("[Launcher] Launch failed: {e}");
+            log::error!("[Launcher] Launch failed: {e}");
             *LAUNCHING.lock().unwrap() = false;
             *PLAYING_INSTANCE_ID.lock().unwrap() = None;
             let _ = app_handle.emit("launch-error", serde_json::json!({ "error": e.clone() }));

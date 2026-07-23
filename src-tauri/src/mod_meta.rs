@@ -178,14 +178,14 @@ pub fn schedule_lookups(app: tauri::AppHandle, instance_id: String, jobs: Vec<Lo
     if jobs.is_empty() {
         return;
     }
-    eprintln!(
+    log::info!(
         "[ModMeta] Scheduling {} lookup jobs for {}",
         jobs.len(),
         instance_id
     );
 
     tauri::async_runtime::spawn(async move {
-        let resolved_any = run_lookups(&jobs).await;
+        let _resolved_any = run_lookups(&jobs).await;
         {
             let mut pending = PENDING.lock().unwrap();
             for j in &jobs {
@@ -206,7 +206,7 @@ fn update_cache(key: &str, f: impl FnOnce(&mut ModMeta)) {
 async fn run_lookups(jobs: &[LookupJob]) -> bool {
     let client = crate::http_client::HTTP_CLIENT.clone();
     let mut resolved: HashSet<String> = HashSet::new();
-    eprintln!("[ModMeta] Starting lookup for {} jobs", jobs.len());
+    log::info!("[ModMeta] Starting lookup for {} jobs", jobs.len());
 
     let paths: Vec<(String, PathBuf)> = jobs
         .iter()
@@ -269,7 +269,7 @@ async fn run_lookups(jobs: &[LookupJob]) -> bool {
     let hash_to_project = resolve_hashes(&client, &hash_list).await;
     for (key, hash) in &hashes {
         if let Some((project_id, icon)) = hash_to_project.get(hash) {
-            eprintln!("[ModMeta] Hash resolved: {} -> {}", key, project_id);
+            log::debug!("[ModMeta] Hash resolved: {} -> {}", key, project_id);
             update_cache(key, |m| {
                 m.icon = icon.clone();
                 m.modrinth_icon = icon.clone();
@@ -298,7 +298,7 @@ async fn run_lookups(jobs: &[LookupJob]) -> bool {
         let by_slug = resolve_slugs(&client, &slugs).await;
         for (key, slug) in &slug_jobs {
             if let Some((project_id, icon)) = by_slug.get(slug) {
-                eprintln!("[ModMeta] Slug resolved: {} -> {}", key, project_id);
+                log::debug!("[ModMeta] Slug resolved: {} -> {}", key, project_id);
                 update_cache(key, |m| {
                     m.icon = icon.clone();
                     m.modrinth_icon = icon.clone();
@@ -327,7 +327,7 @@ async fn run_lookups(jobs: &[LookupJob]) -> bool {
         });
         let Some(name) = name else { continue };
         if let Some(hit) = search_by_name(&client, &name).await {
-            eprintln!(
+            log::debug!(
                 "[ModMeta] Fuzzy resolved: {} -> {:?}",
                 job.cache_key, hit.title
             );
@@ -351,7 +351,7 @@ async fn run_lookups(jobs: &[LookupJob]) -> bool {
     }
 
     for job in jobs.iter().filter(|j| !resolved.contains(&j.cache_key)) {
-        eprintln!(
+        log::debug!(
             "[ModMeta] Lookup missed (marked missing): {}",
             job.cache_key
         );
@@ -509,6 +509,114 @@ pub fn clean_search_name(name: &str) -> String {
     let name = CAMEL.replace_all(&name, "$1 $2");
     let name = name.replace(['-', '_'], " ");
     SPACES.replace_all(&name, " ").trim().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_clean_search_name_removes_brackets() {
+        let result = clean_search_name("My Mod [FORGE] {1.20} (fabric)");
+        assert_eq!(result, "My Mod");
+    }
+
+    #[test]
+    fn test_clean_search_name_removes_version() {
+        let result = clean_search_name("MyMod v1.20.1");
+        // "v1.20.1" stripped by version regex, camelCase "MyMod" → "My Mod"
+        assert!(!result.contains("1.20"));
+        assert!(!result.contains("v1"));
+        assert_eq!(result.trim(), "My Mod");
+    }
+
+    #[test]
+    fn test_clean_search_name_splits_camelcase() {
+        let result = clean_search_name("BetterFps");
+        assert_eq!(result, "Better Fps");
+    }
+
+    #[test]
+    fn test_clean_search_name_replaces_separators() {
+        let result = clean_search_name("my-cool_mod");
+        assert_eq!(result, "my cool mod");
+    }
+
+    #[test]
+    fn test_clean_search_name_strips_suffix() {
+        assert_eq!(clean_search_name("mod.jar"), "mod");
+        assert_eq!(clean_search_name("mod.zip"), "mod");
+        assert_eq!(clean_search_name("mod.disabled"), "mod");
+    }
+
+    #[test]
+    fn test_clean_search_name_handles_disabled_jar() {
+        let result = clean_search_name("MyMod-1.20.jar.disabled");
+        let clean = result;
+        // .disabled then .jar stripped first, then version removed, then camelcase split
+        assert!(!clean.contains(".jar"));
+        assert!(!clean.contains(".disabled"));
+        assert!(!clean.contains("1.20"));
+    }
+
+    #[test]
+    fn test_clean_search_name_empty_variants() {
+        assert_eq!(clean_search_name(""), "");
+        assert_eq!(clean_search_name("   "), "");
+    }
+
+    #[test]
+    fn test_clean_search_name_collapses_whitespace() {
+        let result = clean_search_name("a    b");
+        assert_eq!(result, "a b");
+    }
+
+    #[test]
+    fn test_clean_search_name_full_example() {
+        let result = clean_search_name("[Fabric] Sodium-0.6.0.jar.disabled");
+        let clean = result;
+        assert!(!clean.contains("Fabric"));
+        assert!(!clean.contains("0.6.0"));
+        assert!(!clean.contains(".jar"));
+        assert!(!clean.contains(".disabled"));
+        assert_eq!(clean, "Sodium");
+    }
+
+    #[test]
+    fn test_is_pending_absent() {
+        assert!(!is_pending("nonexistent-key"));
+    }
+
+    #[test]
+    fn test_link_for_nonexistent() {
+        let links: ContentLinks = std::collections::HashMap::new();
+        assert!(link_for(&links, "mods", "nonexistent.jar").is_none());
+    }
+
+    #[test]
+    fn test_link_for_found() {
+        let mut links: ContentLinks = std::collections::HashMap::new();
+        let mut type_map = std::collections::HashMap::new();
+        type_map.insert(
+            "test.jar".into(),
+            ContentLink {
+                source: "modrinth".into(),
+                project_id: "abc".into(),
+                version_id: Some("v1".into()),
+                icon_url: None,
+            },
+        );
+        links.insert("mods".into(), type_map);
+        let result = link_for(&links, "mods", "test.jar");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().source, "modrinth");
+    }
+
+    #[test]
+    fn test_cache_key_format() {
+        let key = cache_key(Path::new("/path/to/mod.jar"), 1234, "2026-07-23T12:00:00Z");
+        assert_eq!(key, "/path/to/mod.jar|1234|2026-07-23T12:00:00Z");
+    }
 }
 
 async fn search_by_name(client: &reqwest::Client, name: &str) -> Option<FuzzyHit> {

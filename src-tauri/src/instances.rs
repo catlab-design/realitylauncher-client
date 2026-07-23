@@ -100,7 +100,7 @@ fn load_instances_from_disk() -> Vec<GameInstance> {
 
     if !instances_dir.exists() {
         if let Err(e) = fs::create_dir_all(&instances_dir) {
-            eprintln!("[Instances] Failed to create instances dir: {}", e);
+            log::warn!("[Instances] Failed to create instances dir: {}", e);
         }
         return Vec::new();
     }

@@ -473,7 +473,7 @@ pub async fn instance_list_mods(app: tauri::AppHandle, instance_id: String) -> s
                 let mtime = crate::mod_meta::mtime_iso(&path);
                 
                 let cache_key = crate::mod_meta::cache_key(&path, size, &mtime);
-                let mut cached = crate::mod_meta::get_cached(&cache_key);
+                let cached = crate::mod_meta::get_cached(&cache_key);
                 let link = crate::mod_meta::link_for(&links_clone, "mod", &file_name).cloned();
 
                 let mut needs_local_meta = false;

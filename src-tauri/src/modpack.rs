@@ -506,7 +506,7 @@ async fn apply_mrpack_to_dir(
                 match result {
                     Ok(()) => None,
                     Err(e) => {
-                        eprintln!("[Modpack] Skipping {label}: {e}");
+                        log::warn!("[Modpack] Skipping {label}: {e}");
                         Some((label, e))
                     }
                 }
@@ -833,11 +833,11 @@ async fn install_cf_modpack(app: &tauri::AppHandle, file_path: &str) -> ModpackI
         match handle.await {
             Ok(Ok((_, item))) => items.push(item),
             Ok(Err(e)) => {
-                eprintln!("[Modpack] CF resolve failed: {e}");
+                log::warn!("[Modpack] CF resolve failed: {e}");
                 failed.push("resolve_error".into());
             }
             Err(e) => {
-                eprintln!("[Modpack] CF resolve task failed: {e}");
+                log::warn!("[Modpack] CF resolve task failed: {e}");
                 failed.push("resolve_task_error".into());
             }
         }

@@ -175,7 +175,7 @@ async fn flush_telemetry_queue() {
     match req.json(&body).send().await {
         Ok(resp) => {
             if !resp.status().is_success() {
-                eprintln!("[Telemetry] Batch send failed: {}", resp.status());
+                log::error!("[Telemetry] Batch send failed: {}", resp.status());
                 let mut queue = QUEUE.lock().unwrap();
                 for event in events_to_send {
                     if queue.events.len() < TELEMETRY_MAX_QUEUE_SIZE {
@@ -185,7 +185,7 @@ async fn flush_telemetry_queue() {
             }
         }
         Err(e) => {
-            eprintln!("[Telemetry] Flush error: {e}");
+            log::error!("[Telemetry] Flush error: {e}");
             let mut queue = QUEUE.lock().unwrap();
             for event in events_to_send {
                 if queue.events.len() < TELEMETRY_MAX_QUEUE_SIZE {
