@@ -27,5 +27,10 @@
 - 28 Rust unit tests across download.rs, config.rs, mod_meta.rs (HTTP classification, hash selection, clean_search_name, cache_key, link_for, builder methods)
 - `log` + `env_logger` crates for structured logging; initialized in main.rs with `warn`-by-default filter
 
+### Fixed
+- Add `-XstartOnFirstThread` for macOS M1 — LWJGL/GLFW was crashing on launch with `ExceptionInInitializerError`
+- Wire `instance.java_arguments` into `build_jvm_args` — custom JVM args set in the UI were being silently ignored
+- Fix mod list cache: replace `dir_mtime` comparison with `file_count` to avoid stale cache on macOS where directory mtime may not update when .jar files are added
+
 ### Changed
 - Replace all 22 `eprintln!` calls with `log::{error, warn, info, debug}` throughout cloud.rs, download.rs, instances.rs, launcher.rs, mod_meta.rs, modpack.rs, telemetry.rs
