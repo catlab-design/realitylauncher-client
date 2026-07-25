@@ -1279,6 +1279,10 @@ fn build_jvm_args(
         "-Dminecraft.eula.accept=true".to_string(),
     ];
 
+    // macOS requires -XstartOnFirstThread for LWJGL/GLFW
+    #[cfg(target_os = "macos")]
+    args.push("-XstartOnFirstThread".to_string());
+
     if let Some(jvm_arr) = version_json
         .get("arguments")
         .and_then(|a| a.get("jvm"))
@@ -1306,6 +1310,15 @@ fn build_jvm_args(
         ));
         args.push("-cp".to_string());
         args.push(classpath.to_string());
+    }
+
+    // Append user-configured JVM arguments from instance or config
+    if let Some(ref extra) = instance.java_arguments {
+        args.extend(extra.split_whitespace().map(String::from));
+    } else if let Some(ref extra) = config.extra.get("javaArguments") {
+        if let Some(s) = extra.as_str() {
+            args.extend(s.split_whitespace().map(String::from));
+        }
     }
 
     Ok(args)

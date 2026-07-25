@@ -370,7 +370,7 @@ pub struct DownloadResult {
 
 #[derive(Clone)]
 struct ModListCacheEntry {
-    mtime_ms: String,
+    file_count: usize,
     mods: Vec<serde_json::Value>,
     has_uncached: bool,
 }
@@ -408,11 +408,13 @@ pub async fn instance_list_mods(app: tauri::AppHandle, instance_id: String) -> s
     let instance_dir = crate::instances::get_instance_dir(&instance_id);
     let mods_dir = instance_dir.join("mods");
 
-    let dir_mtime = crate::mod_meta::mtime_iso(&mods_dir);
+    let entry_count = fs::read_dir(&mods_dir)
+        .map(|d| d.flatten().count())
+        .unwrap_or(0);
 
     if let Ok(cache_lock) = MOD_LIST_CACHE.lock() {
         if let Some(cached) = cache_lock.get(&instance_id) {
-            if cached.mtime_ms == dir_mtime {
+            if cached.file_count == entry_count {
                 let mut in_place_change = false;
                 for m in &cached.mods {
                     if let Some(filename) = m.get("filename").and_then(|f| f.as_str()) {
@@ -598,7 +600,7 @@ pub async fn instance_list_mods(app: tauri::AppHandle, instance_id: String) -> s
         cache_lock.insert(
             instance_id,
             ModListCacheEntry {
-                mtime_ms: dir_mtime,
+                file_count: entry_count,
                 mods: mods.clone(),
                 has_uncached,
             },
