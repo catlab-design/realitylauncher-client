@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use once_cell::sync::Lazy;
@@ -12,6 +13,8 @@ const API_URL: &str = "https://api.reality.catlabdesign.space";
 
 
 static DOWNLOADED_INSTALLER: Lazy<Mutex<Option<PathBuf>>> = Lazy::new(|| Mutex::new(None));
+static DOWNLOADED_VERSION: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
+static DOWNLOAD_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -195,18 +198,69 @@ async fn fetch_latest_release() -> Result<LatestReleasePayload, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Resets the in-flight flag when a `download_update` call returns, on every path.
+struct InFlightGuard;
+
+impl Drop for InFlightGuard {
+    fn drop(&mut self) {
+        DOWNLOAD_IN_PROGRESS.store(false, Ordering::SeqCst);
+    }
+}
+
 /// Download the OS-appropriate installer to a temp file, emitting
 /// `update-progress`. The path is stashed for `install_update`.
+///
+/// Writes to a `.tmp` sibling and only renames it onto the final path once the
+/// stream completes without error, so a dropped connection can't leave a
+/// truncated file mistaken for a successful download. A single in-flight
+/// download is enforced so overlapping calls (e.g. auto-update firing while
+/// the user also clicks "Download") can't write the same file concurrently.
 #[tauri::command]
 pub async fn download_update(app: tauri::AppHandle) -> serde_json::Value {
     use futures_util::StreamExt;
     use std::io::Write;
     use tauri::Emitter;
 
+    if DOWNLOAD_IN_PROGRESS
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return serde_json::json!({ "ok": true, "alreadyInProgress": true });
+    }
+    let _guard = InFlightGuard;
+
     let payload = match fetch_latest_release().await {
         Ok(p) => p,
         Err(e) => return serde_json::json!({ "ok": false, "error": e }),
     };
+
+    // A prior call already fetched this exact version and the file is still on
+    // disk (e.g. the user re-opened Settings > Update, re-triggering a check) —
+    // re-announce it instead of re-downloading the whole installer.
+    {
+        let already_downloaded = DOWNLOADED_VERSION.lock().unwrap().as_deref() == Some(payload.version.as_str());
+        let existing_path = DOWNLOADED_INSTALLER.lock().unwrap().clone();
+        if already_downloaded {
+            if let Some(path) = existing_path {
+                if path.exists() {
+                    #[derive(Serialize, Clone)]
+                    #[serde(rename_all = "camelCase")]
+                    struct UpdateDownloadedPayload {
+                        version: String,
+                        release_date: Option<String>,
+                    }
+                    let _ = app.emit(
+                        "update-downloaded",
+                        UpdateDownloadedPayload {
+                            version: payload.version.clone(),
+                            release_date: payload.release_date.clone(),
+                        },
+                    );
+                    return serde_json::json!({ "ok": true, "path": path.to_string_lossy(), "alreadyDownloaded": true });
+                }
+            }
+        }
+    }
 
     let url = match payload
         .downloads
@@ -225,6 +279,10 @@ pub async fn download_update(app: tauri::AppHandle) -> serde_json::Value {
         .filter(|s| !s.is_empty())
         .unwrap_or("reality-launcher-update");
     let dest = std::env::temp_dir().join(format!("reality-update-{filename}"));
+    let tmp_path = dest.with_extension("tmp");
+    if tmp_path.exists() {
+        let _ = std::fs::remove_file(&tmp_path);
+    }
 
     let resp = match crate::http_client::HTTP_CLIENT.clone().get(&url).send().await {
         Ok(r) => r,
@@ -235,7 +293,7 @@ pub async fn download_update(app: tauri::AppHandle) -> serde_json::Value {
     }
 
     let total = resp.content_length().unwrap_or(0);
-    let mut file = match std::fs::File::create(&dest) {
+    let mut file = match std::fs::File::create(&tmp_path) {
         Ok(f) => f,
         Err(e) => return serde_json::json!({ "ok": false, "error": e.to_string() }),
     };
@@ -245,9 +303,13 @@ pub async fn download_update(app: tauri::AppHandle) -> serde_json::Value {
     while let Some(chunk) = stream.next().await {
         let chunk = match chunk {
             Ok(c) => c,
-            Err(e) => return serde_json::json!({ "ok": false, "error": e.to_string() }),
+            Err(e) => {
+                let _ = std::fs::remove_file(&tmp_path);
+                return serde_json::json!({ "ok": false, "error": e.to_string() });
+            }
         };
         if let Err(e) = file.write_all(&chunk) {
+            let _ = std::fs::remove_file(&tmp_path);
             return serde_json::json!({ "ok": false, "error": e.to_string() });
         }
         downloaded += chunk.len() as u64;
@@ -266,8 +328,18 @@ pub async fn download_update(app: tauri::AppHandle) -> serde_json::Value {
             }
         }
     }
+    drop(file);
+
+    if dest.exists() {
+        let _ = std::fs::remove_file(&dest);
+    }
+    if let Err(e) = std::fs::rename(&tmp_path, &dest) {
+        let _ = std::fs::remove_file(&tmp_path);
+        return serde_json::json!({ "ok": false, "error": e.to_string() });
+    }
 
     *DOWNLOADED_INSTALLER.lock().unwrap() = Some(dest.clone());
+    *DOWNLOADED_VERSION.lock().unwrap() = Some(payload.version.clone());
 
     #[derive(Serialize, Clone)]
     #[serde(rename_all = "camelCase")]

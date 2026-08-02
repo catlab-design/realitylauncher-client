@@ -25,6 +25,7 @@ import {
 
 function LauncherAppContent() {
   const rootRef = useRef<HTMLDivElement>(null);
+  const autoUpdateVersionRef = useRef<string | null>(null);
 
   const config = useConfigStore();
   const {
@@ -230,7 +231,20 @@ function LauncherAppContent() {
 
     if (windowApi?.onUpdateAvailable) {
       cleanups.push(windowApi.onUpdateAvailable((data: { version: string }) => {
-        if (!config.autoUpdateEnabled) {
+        if (config.autoUpdateEnabled) {
+          // check_latest_version can be triggered repeatedly (app launch, opening
+          // Settings > Update, manual "check for updates") and re-emits this event
+          // each time an update is still pending \u2014 only kick off a download once
+          // per version so re-checks don't restart it.
+          if (autoUpdateVersionRef.current === data.version) return;
+          autoUpdateVersionRef.current = data.version;
+          toast(t('downloading_update'), {
+            icon: "\u2b07\ufe0f",
+            duration: 4000,
+            id: "global-update-downloading",
+          });
+          void windowApi?.downloadUpdate?.();
+        } else {
           toast(t('update_available_toast').replace('{version}', data.version), {
             icon: "\u2b06\ufe0f",
             duration: 8000,
@@ -668,38 +682,6 @@ function LauncherAppContent() {
     checkPostUpdate();
   }, []);
 
-  useEffect(() => {
-    if (!window.api) return;
-
-    const unsubscribeAvailable = window.api.onUpdateAvailable?.((data: { version: string }) => {
-      toast.success(
-        t('update_available_msg').replace('{version}', data.version),
-        { duration: 6000, id: "update-available" }
-      );
-    });
-
-    const unsubscribeDownloaded = window.api.onUpdateDownloaded?.((data: { version: string }) => {
-      toast.success(
-        t('update_downloaded_msg').replace('{version}', data.version),
-        { duration: 8000, id: "update-downloaded" }
-      );
-    });
-
-    const unsubscribeNotAvailable = window.api.onUpdateNotAvailable?.(() => {
-      toast.success(t('already_latest_version'), { id: "check-update" });
-    });
-
-    const unsubscribeError = window.api.onUpdateError?.((data: { message: string }) => {
-      toast.error(t('update_check_failed_msg').replace('{message}', data.message), { id: "check-update" });
-    });
-
-    return () => {
-      unsubscribeAvailable?.();
-      unsubscribeDownloaded?.();
-      unsubscribeNotAvailable?.();
-      unsubscribeError?.();
-    };
-  }, []);
 
   useEffect(() => {
     if (!deviceCodePolling || !deviceCodeData) return;
