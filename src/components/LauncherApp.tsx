@@ -135,6 +135,7 @@ function LauncherAppContent() {
     title: string;
     message: string;
     onConfirm: () => void;
+    onClose?: () => void;
     confirmText?: string;
     cancelText?: string;
     confirmColor?: string;
@@ -151,6 +152,7 @@ function LauncherAppContent() {
     title: string;
     message: string;
     onConfirm: () => void;
+    onClose?: () => void;
     confirmText?: string;
     cancelText?: string;
     confirmColor?: string;
@@ -1038,16 +1040,76 @@ function LauncherAppContent() {
     const path = await window.api?.browseDirectory(t('browse_minecraft_title'));
     if (!path) return;
 
-    const toastId = toast.loading(t('moving_launcher_folder'));
+    let targetPath = path;
     try {
-      await (window.api as any)?.configMigrateMinecraftDir?.(path);
-      updateConfig({ minecraftDir: path });
+      const isEmpty = await (window.api as any)?.checkDirEmpty?.(path);
+      if (isEmpty === false) {
+        const sep = path.endsWith('/') || path.endsWith('\\') ? '' : '/';
+        const subPath = `${path}${sep}RealityLauncher`;
+        const useSub = await new Promise<boolean>((resolve) => {
+          handleShowConfirm({
+            title: t('folder_not_empty_title'),
+            message: t('folder_not_empty_msg', { path: subPath }),
+            confirmText: t('folder_not_empty_confirm'),
+            confirmColor: "#3b82f6",
+            onConfirm: () => resolve(true),
+            onClose: () => resolve(false),
+          });
+        });
+        if (!useSub) return;
+        targetPath = subPath;
+      }
+    } catch {
+      // Directory check failed — fall through, the backend re-validates.
+    }
+
+    let lastPct = 0;
+    const renderToast = () => (
+      <div className="flex flex-col gap-2">
+        <span className="text-sm">
+          {t('moving_launcher_folder')}
+          {lastPct > 0 && ` (${lastPct}%)`}
+        </span>
+        <div className="h-1 w-full bg-white/10 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-blue-500 transition-all duration-300"
+            style={{ width: `${lastPct}%` }}
+          />
+        </div>
+        <button
+          onClick={() => {
+            (window.api as any)?.cancelMigrate?.();
+          }}
+          className="text-xs text-red-400 underline self-end"
+        >
+          {t('cancel')}
+        </button>
+      </div>
+    );
+
+    const toastId = toast.loading(renderToast());
+    const unsubProgress = (window.api as any)?.onMigrateProgress?.((data: any) => {
+      if (typeof data?.percent === 'number') {
+        lastPct = data.percent;
+        toast.loading(renderToast(), { id: toastId });
+      }
+    });
+    const unsubCancelled = (window.api as any)?.onMigrateCancelled?.(() => {
+      toast.error(t('migration_cancelled'), { id: toastId });
+    });
+
+    try {
+      await (window.api as any)?.configMigrateMinecraftDir?.(targetPath);
+      updateConfig({ minecraftDir: targetPath });
       toast.success(t('launcher_folder_moved'), { id: toastId });
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : String(error),
         { id: toastId },
       );
+    } finally {
+      unsubProgress?.();
+      unsubCancelled?.();
     }
   };
 

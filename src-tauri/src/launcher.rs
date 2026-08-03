@@ -122,6 +122,18 @@ pub async fn instances_launch(
     id: String,
     skip_server_mod_sync: Option<bool>,
 ) -> LaunchResult {
+    let _guard = match crate::op_guard::OperationGuard::try_shared() {
+        Some(g) => g,
+        None => {
+            return LaunchResult {
+                ok: false,
+                message: Some(
+                    "A folder migration is in progress. Try again when it finishes.".to_string(),
+                ),
+            }
+        }
+    };
+
     {
         let launching = LAUNCHING.lock().unwrap();
         if *launching {

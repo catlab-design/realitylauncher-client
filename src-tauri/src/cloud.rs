@@ -1588,6 +1588,18 @@ pub async fn instance_leave(instance_id: String) -> SimpleResult {
 
 #[tauri::command]
 pub async fn instances_cloud_install(app_handle: tauri::AppHandle, id: String) -> SimpleResult {
+    let _guard = match crate::op_guard::OperationGuard::try_shared() {
+        Some(g) => g,
+        None => {
+            return SimpleResult {
+                ok: false,
+                error: Some(
+                    "Another operation (install or folder migration) is in progress. Try again when it finishes.".to_string(),
+                ),
+                message: None,
+            }
+        }
+    };
     // Reset the cancel flag at the command entry — the earliest point, before
     // any progress event exposes the Cancel button — so a Cancel pressed during
     // this install is never wiped by a reset happening later in the flow.
@@ -1739,6 +1751,18 @@ pub async fn instances_cloud_install(app_handle: tauri::AppHandle, id: String) -
 
 #[tauri::command]
 pub async fn instances_cloud_sync(app_handle: tauri::AppHandle) -> SimpleResult {
+    let _guard = match crate::op_guard::OperationGuard::try_shared() {
+        Some(g) => g,
+        None => {
+            return SimpleResult {
+                ok: false,
+                error: Some(
+                    "Another operation (install or folder migration) is in progress. Try again when it finishes.".to_string(),
+                ),
+                message: None,
+            }
+        }
+    };
     let api_token = match get_api_token() {
         Ok(t) => t,
         Err(e) => {
@@ -1825,6 +1849,18 @@ pub async fn instances_cloud_sync(app_handle: tauri::AppHandle) -> SimpleResult 
 
 #[tauri::command]
 pub async fn cloud_instance_sync_managed(app_handle: tauri::AppHandle, id: String) -> SimpleResult {
+    let _guard = match crate::op_guard::OperationGuard::try_shared() {
+        Some(g) => g,
+        None => {
+            return SimpleResult {
+                ok: false,
+                error: Some(
+                    "Another operation (install or folder migration) is in progress. Try again when it finishes.".to_string(),
+                ),
+                message: None,
+            }
+        }
+    };
     let api_token = match get_api_token() {
         Ok(t) => t,
         Err(e) => {

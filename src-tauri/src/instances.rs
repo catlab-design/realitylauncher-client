@@ -6,7 +6,7 @@ use base64::Engine;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 
@@ -432,19 +432,82 @@ pub fn instances_set_icon(id: String, icon_data: String) -> crate::cloud::Simple
 
 /// Copy directory recursively
 pub(crate) fn copy_dir_recursive(src: &PathBuf, dst: &PathBuf) -> Result<(), std::io::Error> {
+    copy_dir_recursive_with_progress(src, dst, &[], None, &|| false, &mut |_| {})
+}
+
+/// Copy directory recursively with byte-count progress reporting.
+///
+/// `skip_root` names are excluded at the top level of `src` only (used to keep
+/// stale `config.json` copies out of a migrated game folder). `cancelled` is
+/// polled between files and aborts with `Interrupted` when it returns true.
+/// When `total` is `Some`, `progress` receives the cumulative bytes copied so
+/// far.
+pub(crate) fn copy_dir_recursive_with_progress(
+    src: &Path,
+    dst: &Path,
+    skip_root: &[&str],
+    total: Option<u64>,
+    cancelled: &dyn Fn() -> bool,
+    progress: &mut dyn FnMut(u64),
+) -> Result<(), std::io::Error> {
+    let root_skip: Vec<&std::ffi::OsStr> =
+        skip_root.iter().map(std::ffi::OsStr::new).collect();
+    let mut counter = 0u64;
+    copy_dir_recursive_inner(src, dst, &root_skip, &mut counter, cancelled, progress)?;
+    if let Some(t) = total {
+        progress(t);
+    }
+    Ok(())
+}
+
+fn copy_dir_recursive_inner(
+    src: &Path,
+    dst: &Path,
+    root_skip: &[&std::ffi::OsStr],
+    counter: &mut u64,
+    cancelled: &dyn Fn() -> bool,
+    progress: &mut dyn FnMut(u64),
+) -> Result<(), std::io::Error> {
     fs::create_dir_all(dst)?;
 
-    for entry in fs::read_dir(src)? {
+    let entries = fs::read_dir(src)?;
+    for entry in entries {
+        if cancelled() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Interrupted,
+                "copy cancelled",
+            ));
+        }
         let entry = entry?;
+        if root_skip.contains(&entry.file_name().as_os_str()) {
+            continue;
+        }
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
 
         if src_path.is_dir() {
-            copy_dir_recursive(&src_path, &dst_path)?;
+            copy_dir_recursive_inner(&src_path, &dst_path, &[], counter, cancelled, progress)?;
         } else {
             fs::copy(&src_path, &dst_path)?;
+            *counter += entry.metadata()?.len();
+            progress(*counter);
         }
     }
-
     Ok(())
+}
+
+/// Total size in bytes of every file under `path`.
+pub(crate) fn dir_size(path: &Path) -> Result<u64, std::io::Error> {
+    let mut total = 0u64;
+    let entries = fs::read_dir(path)?;
+    for entry in entries {
+        let entry = entry?;
+        let p = entry.path();
+        if p.is_dir() {
+            total += dir_size(&p)?;
+        } else {
+            total += entry.metadata()?.len();
+        }
+    }
+    Ok(total)
 }

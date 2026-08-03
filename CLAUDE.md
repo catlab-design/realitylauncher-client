@@ -140,8 +140,9 @@ src-tauri/
     ├── download.rs                   # (315 lines) Shared concurrent download engine
     ├── launcher.rs                   # (2127 lines) Game launch — largest module
     ├── auth.rs                       # Microsoft OAuth + CatID auth
-    ├── config.rs                     # (285 lines) Config + RAM detection
-    ├── instances.rs                  # Instance CRUD
+    ├── config.rs                     # (335 lines) Config + RAM detection + folder migration (cancel/progress/rollback)
+    ├── instances.rs                  # Instance CRUD + copy_dir_recursive_with_progress
+    ├── op_guard.rs                   # Exclusive/shared operation guard (migration vs install/sync/launch)
     ├── java.rs                       # Java detection/installation
     ├── modrinth.rs                   # Modrinth API
     ├── curseforge.rs                 # CurseForge API
@@ -250,7 +251,7 @@ ConfigStore migration (v0→v1): `closeOnLaunch` changed from `boolean` to `'kee
 | Module | Key Commands |
 |---|---|
 | **auth** | `login_microsoft`, `login_catid`, `start_device_code_auth`, `poll_device_code_auth`, `get_session`, `logout`, `auth_refresh`, `register_catid`, `check_registration_status`, `forgot_password`, `reset_password`, `login_catid_token`, `link_catid`, `set_active_session`, `auth_unlink` |
-| **config** | `config_get`, `config_set`, `config_get_minecraft_dir`, `config_migrate_minecraft_dir`, `reset_config`, `get_system_ram`, `get_max_ram` |
+| **config** | `config_get`, `config_set`, `config_get_minecraft_dir`, `config_migrate_minecraft_dir` (emits `migrate-progress`/`migrate-cancelled`/`instances-updated`), `cancel_migrate`, `reset_config` (preserves `minecraft_dir`), `get_system_ram`, `get_max_ram` |
 | **instances** | `instances_list`, `instances_get`, `instances_create`, `instances_update`, `instances_delete`, `instances_duplicate`, `instances_set_icon` |
 | **download** | `download_batch()`, `download_file()`, `DownloadItem`, `DownloadConfig`, `BatchResult` — shared concurrent engine used by modpack and cloud |
 | **launcher** | `is_game_running`, `kill_game`, `instances_launch`, `get_playing_instance_id`, `instance_read_latest_log`, `instance_tail_log`, `get_app_version`, `is_dev_mode`, `browse_java`, `instances_preinstall` |
@@ -261,7 +262,7 @@ ConfigStore migration (v0→v1): `closeOnLaunch` changed from `boolean` to `'kee
 | **curseforge** | `curseforge_search`, `get_project`, `get_files`, `get_description`, `clear_cache` |
 | **modpack** | `install`, `install_from_modrinth`, `install_from_curseforge`, `cancel_install`, `pre_install`, `list_files` |
 | **update** | `check_latest_version`, `download_update`, `install_update` |
-| **fs_utils** | `open_folder`, `open_url`, `browse_directory`, `browse_icon`, `browse_modpack`, `launcher_clear_cache` |
+| **fs_utils** | `open_folder`, `open_url`, `browse_directory`, `browse_icon`, `browse_modpack`, `launcher_clear_cache`, `check_dir_empty` |
 | **window** | `window_minimize`, `window_maximize`/`unmaximize`, `window_close`, `is_maximized`, `set_main_mode` |
 | **cloud** | joined servers, join/leave, cloud install/sync, invitations, notifications |
 | **discord** | `discord_rpc_set_enabled`, `discord_rpc_update`, `discord_rpc_is_connected` |

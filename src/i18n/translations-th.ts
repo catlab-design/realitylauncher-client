@@ -245,7 +245,11 @@ export const thTranslations = {
     unlink_success: "ยกเลิกการเชื่อมต่อสำเร็จ",
     unlink_failed: "ไม่สามารถยกเลิกการเชื่อมต่อได้",
     browse_java_title: "เลือก Java Path",
-    browse_minecraft_title: "เลือกโฟลเดอร์ .minecraft",
+    browse_minecraft_title: "เลือกโฟลเดอร์ข้อมูลเกม",
+    folder_not_empty_title: "โฟลเดอร์ไม่ว่าง",
+    folder_not_empty_msg: "โฟลเดอร์นี้มีไฟล์อยู่แล้ว ต้องการสร้างโฟลเดอร์ข้อมูลเกมใหม่ที่ {path} แทนไหม?",
+    folder_not_empty_confirm: "สร้างโฟลเดอร์",
+    migration_cancelled: "ยกเลิกการย้ายโฟลเดอร์แล้ว",
 
     
     verification_waiting: "รอยืนยันอีเมล",
@@ -339,7 +343,7 @@ export const thTranslations = {
     custom_memory_allocation: "กำหนดการใช้แรมเอง",
     memory_allocated: "หน่วยความจำ (RAM)",
     ram_description: "แรมที่จะใช้ตอนเปิดเกม (เครื่องมี {gb} GB)",
-    minecraft_folder: "โฟลเดอร์เกม (.minecraft)",
+    minecraft_folder: "โฟลเดอร์ข้อมูลเกม",
     use_default: "ใช้ค่าเริ่มต้น",
     select: "เลือก",
     java_args: "Java Arguments",

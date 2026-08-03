@@ -37,6 +37,7 @@ interface ConfirmDialogState {
   title: string;
   message: string;
   onConfirm: () => void;
+  onClose?: () => void;
   confirmText?: string;
   cancelText?: string;
   confirmColor?: string;
@@ -194,7 +195,10 @@ export function LauncherAppOverlays({
 
       <ConfirmDialog
         isOpen={confirmDialog.open}
-        onClose={() => setConfirmDialog((prev) => ({ ...prev, open: false }))}
+        onClose={() => {
+          setConfirmDialog((prev) => ({ ...prev, open: false }));
+          confirmDialog.onClose?.();
+        }}
         onConfirm={confirmDialog.onConfirm}
         title={confirmDialog.title}
         message={confirmDialog.message}

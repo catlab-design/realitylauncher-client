@@ -102,6 +102,12 @@ declare global {
       getConfig: () => Promise<LauncherConfig>;
       setConfig: (config: Partial<LauncherConfig>) => Promise<LauncherConfig>;
       resetConfig: () => Promise<LauncherConfig>;
+      configGetMinecraftDir: () => Promise<string>;
+      configMigrateMinecraftDir: (newDir: string) => Promise<void>;
+      cancelMigrate: () => Promise<boolean>;
+      checkDirEmpty: (path: string) => Promise<boolean>;
+      onMigrateProgress: (cb: (data: { phase: string; percent: number }) => void) => () => void;
+      onMigrateCancelled: (cb: () => void) => () => void;
       getColorThemes: () => Promise<Record<ColorTheme, ColorThemeInfo>>;
       
       logout: () => Promise<void>;

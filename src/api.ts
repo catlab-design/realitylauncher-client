@@ -158,6 +158,8 @@ export const api = {
     },
     configGetMinecraftDir: () => invoke<string>('config_get_minecraft_dir'),
     configMigrateMinecraftDir: (newDir: string) => invoke<void>('config_migrate_minecraft_dir', { newDir }),
+    cancelMigrate: () => invoke<boolean>('cancel_migrate'),
+    checkDirEmpty: (path: string) => invoke<boolean>('check_dir_empty', { path }),
     resetConfig: () => invoke<LauncherConfig>('reset_config'),
     getSystemRam: () => invoke<number>('get_system_ram'),
     getMaxRam: () => invoke<number>('get_max_ram'),

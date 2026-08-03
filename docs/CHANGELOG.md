@@ -1,3 +1,22 @@
+## [Unreleased] — 2026-08-03
+
+### Fixed
+- Launcher folder migration now emits `instances-updated` so the instance list refreshes after the move — previously it kept showing paths under the old folder until app restart
+- Make migration failure-safe: on any error mid-copy (or cancelled), the partially-created destination is deleted and the config is rolled back, so the migration can be retried instead of leaving a broken half-copied folder that blocks future attempts
+- Enforce atomicity when saving the migrated path: if the config write fails after the move, the folder is moved back to its original location
+- Block install/sync operations and game launch while a folder migration runs (and vice versa) with a shared exclusive operation guard, preventing two processes writing the same instance folders concurrently
+- Skip copying the stale `config.json` during migration — the launcher re-writes its own config on next start, so the migrated instance would otherwise inherit the old launcher's settings
+- `reset_config` no longer wipes the user's chosen `minecraft_dir`
+
+### Added
+- `cancel_migrate` command + `migrate-progress` / `migrate-cancelled` events — the Settings > Game Data Folder flow now shows live progress with a cancel button
+- `check_dir_empty` command — picking a non-empty folder prompts to create a `RealityLauncher` subfolder instead of silently failing
+- Free-space check before copy (destination must have room for the current folder size)
+- Rename fast-path: same-volume moves use `fs::rename` and finish instantly instead of copying
+
+### Changed
+- Settings labels corrected: "Select .minecraft folder" / "Game Folder (.minecraft)" → "Select launcher data folder" / "Game Data Folder" (layout is not vanilla-compatible)
+
 ## [4.1.1] — 2026-08-02
 
 ### Fixed

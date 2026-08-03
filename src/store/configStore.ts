@@ -43,18 +43,21 @@ export const useConfigStore = create<ConfigState>()(
                 const stored = localStorage.getItem('reality_config');
                 let preservedJavaPath: string | undefined;
                 let preservedJavaPaths: any | undefined;
+                let preservedMinecraftDir: string | undefined;
                 if (stored) {
                     try {
                         const parsed = JSON.parse(stored);
                         preservedJavaPath = parsed?.state?.javaPath;
                         preservedJavaPaths = parsed?.state?.javaPaths;
+                        preservedMinecraftDir = parsed?.state?.minecraftDir;
                     } catch {}
                 }
                 localStorage.removeItem('reality_config');
                 set({
                     ...defaultConfig,
                     javaPath: preservedJavaPath,
-                    javaPaths: preservedJavaPaths
+                    javaPaths: preservedJavaPaths,
+                    minecraftDir: preservedMinecraftDir
                 });
             },
             setTheme: (theme) => set({ theme }),

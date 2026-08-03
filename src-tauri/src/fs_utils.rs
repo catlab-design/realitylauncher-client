@@ -88,6 +88,20 @@ pub async fn browse_directory(title: Option<String>) -> Result<Option<String>, S
 }
 
 #[tauri::command]
+pub async fn check_dir_empty(path: String) -> Result<bool, String> {
+    tokio::task::spawn_blocking(move || {
+        let p = std::path::PathBuf::from(path);
+        match fs::read_dir(&p) {
+            Ok(mut entries) => Ok(entries.next().is_none()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(true),
+            Err(e) => Err(e.to_string()),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 pub async fn browse_icon() -> Result<Option<String>, String> {
     let result = tokio::task::spawn_blocking(move || {
         let file = rfd::FileDialog::new()

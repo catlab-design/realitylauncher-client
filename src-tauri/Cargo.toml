@@ -42,6 +42,7 @@ dunce = "1"
 regex = "1"
 log = "0.4"
 env_logger = "0.11"
+fs4 = "0.13"
 
 [features]
 default = ["custom-protocol"]

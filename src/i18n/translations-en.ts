@@ -179,7 +179,11 @@ export const enTranslations = {
     unlink_success: "Unlinked successfully",
     unlink_failed: "Could not unlink account",
     browse_java_title: "Select Java Path",
-    browse_minecraft_title: "Select .minecraft folder",
+    browse_minecraft_title: "Select launcher data folder",
+    folder_not_empty_title: "Folder is not empty",
+    folder_not_empty_msg: "This folder already contains files. Create a new launcher data folder at {path} instead?",
+    folder_not_empty_confirm: "Create folder",
+    migration_cancelled: "Folder migration cancelled",
 
     
     verification_waiting: "Waiting for Verification",
@@ -331,7 +335,7 @@ export const enTranslations = {
     custom_memory_allocation: "Custom memory allocation",
     memory_allocated: "Memory Allocated (RAM)",
     ram_description: "RAM to use when launching the game (System has {gb} GB)",
-    minecraft_folder: "Game Folder (.minecraft)",
+    minecraft_folder: "Game Data Folder",
     use_default: "Use Default",
     select: "Select",
     java_args: "Java Arguments",

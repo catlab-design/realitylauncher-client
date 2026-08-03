@@ -228,6 +228,10 @@ fn build_file_tree(
 
 #[tauri::command]
 pub async fn modpack_install(app: tauri::AppHandle, file_path: String) -> ModpackInstallResult {
+    let _guard = match crate::op_guard::OperationGuard::try_shared() {
+        Some(g) => g,
+        None => return ModpackInstallResult::fail("Another operation (install or folder migration) is in progress. Try again when it finishes.".to_string()),
+    };
     reset_cancel_flag();
     let path = std::path::Path::new(&file_path);
     if !path.exists() {
@@ -930,6 +934,10 @@ pub async fn modpack_install_from_modrinth(
     app: tauri::AppHandle,
     version_id: String,
 ) -> ModpackInstallResult {
+    let _guard = match crate::op_guard::OperationGuard::try_shared() {
+        Some(g) => g,
+        None => return ModpackInstallResult::fail("Another operation (install or folder migration) is in progress. Try again when it finishes.".to_string()),
+    };
     reset_cancel_flag();
     let client = crate::http_client::HTTP_CLIENT.clone();
     let url = format!("https://api.modrinth.com/v2/version/{version_id}");
@@ -1026,6 +1034,10 @@ pub async fn modpack_install_from_curseforge(
     project_id: i32,
     file_id: i32,
 ) -> ModpackInstallResult {
+    let _guard = match crate::op_guard::OperationGuard::try_shared() {
+        Some(g) => g,
+        None => return ModpackInstallResult::fail("Another operation (install or folder migration) is in progress. Try again when it finishes.".to_string()),
+    };
     reset_cancel_flag();
     let client = crate::http_client::HTTP_CLIENT.clone();
 

@@ -4,8 +4,10 @@
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use tauri::Emitter;
 
 
 
@@ -151,41 +153,163 @@ pub fn config_get_minecraft_dir() -> String {
     get_minecraft_dir().to_string_lossy().to_string()
 }
 
-/// Move the launcher's game-data folder (instances, libraries, assets, cache —
-/// everything `get_minecraft_dir()` resolves to) to `new_dir`, then repoint the
-/// config at it. Runs the actual file move off the async runtime since it can
-/// be several GB; `instances_list_sync()` is called afterward to reload the
-/// in-memory instance cache from the new location (game_directory is always
-/// recomputed from the current dir on load, so no stale paths remain).
-#[tauri::command]
-pub async fn config_migrate_minecraft_dir(new_dir: String) -> Result<(), String> {
-    let new_path = PathBuf::from(&new_dir);
-    let old_path = get_minecraft_dir();
+/// Set by `cancel_migrate()`; checked by the migration copy loop.
+static MIGRATION_CANCEL: AtomicBool = AtomicBool::new(false);
 
+/// Pure validation of a migration request. Returns `Ok(())` when the move
+/// should proceed (or is a no-op). Kept free of globals so it is unit-testable.
+pub fn validate_migration_target(
+    old_path: &Path,
+    new_path: &Path,
+    game_running: bool,
+) -> Result<(), String> {
     if new_path == old_path {
         return Ok(());
     }
-    if new_path.starts_with(&old_path) {
+    if new_path.starts_with(old_path) {
         return Err("Destination cannot be inside the current launcher folder".to_string());
     }
-    if crate::launcher::is_game_running(None) {
+    if game_running {
         return Err("Cannot move the launcher folder while a game is running".to_string());
     }
     if new_path.exists() {
-        let has_files = fs::read_dir(&new_path)
+        let has_files = fs::read_dir(new_path)
             .map(|mut it| it.next().is_some())
             .unwrap_or(false);
         if has_files {
             return Err("Destination folder is not empty".to_string());
         }
     }
+    Ok(())
+}
+
+fn nearest_existing_ancestor(path: &Path) -> PathBuf {
+    let mut current = path.to_path_buf();
+    loop {
+        if current.exists() {
+            return current;
+        }
+        match current.parent() {
+            Some(parent) if parent != current => current = parent.to_path_buf(),
+            _ => return current,
+        }
+    }
+}
+
+fn free_space_bytes(path: &Path) -> Result<u64, String> {
+    fs4::available_space(nearest_existing_ancestor(path)).map_err(|e| e.to_string())
+}
+
+fn human_mb(bytes: u64) -> u64 {
+    bytes / (1024 * 1024)
+}
+
+/// Abort an in-flight folder migration. The copy loop notices the flag at the
+/// next file and rolls back the partial destination.
+#[tauri::command]
+pub fn cancel_migrate() -> bool {
+    MIGRATION_CANCEL.store(true, Ordering::SeqCst);
+    true
+}
+
+/// Move the launcher's game-data folder (instances, libraries, assets, cache —
+/// everything `get_minecraft_dir()` resolves to) to `new_dir`, then repoint the
+/// config at it.
+///
+/// Ordering guarantees:
+/// - same-volume moves use an atomic `fs::rename` (instant, nothing to lose);
+/// - cross-device moves copy first and only repoint the config after the copy
+///   fully succeeded; a failed copy rolls back the partial destination so the
+///   operation is retryable;
+/// - deleting the old folder is best-effort after the config is repointed, so
+///   a locked file can never leave the launcher pointing at a half-deleted dir;
+/// - an exclusive operation guard blocks migration while installs/syncs are
+///   writing into the game folder.
+/// Emits `instances-updated` afterward so the frontend instance cache reloads.
+#[tauri::command]
+pub async fn config_migrate_minecraft_dir(
+    app: tauri::AppHandle,
+    new_dir: String,
+) -> Result<(), String> {
+    let new_path = PathBuf::from(&new_dir);
+    let old_path = get_minecraft_dir();
+
+    validate_migration_target(&old_path, &new_path, crate::launcher::is_game_running(None))?;
+    if new_path == old_path {
+        return Ok(());
+    }
+
+    let _guard = crate::op_guard::OperationGuard::try_exclusive().ok_or_else(|| {
+        "Another install or sync operation is in progress. Try again when it finishes.".to_string()
+    })?;
+
+    MIGRATION_CANCEL.store(false, Ordering::SeqCst);
+    let app_handle = app.clone();
+    let old_path_for_copy = old_path.clone();
+    let new_path_for_copy = new_path.clone();
 
     tokio::task::spawn_blocking(move || -> Result<(), String> {
-        if old_path.exists() {
-            crate::instances::copy_dir_recursive(&old_path, &new_path).map_err(|e| e.to_string())?;
-            fs::remove_dir_all(&old_path).map_err(|e| e.to_string())?;
-        } else {
-            fs::create_dir_all(&new_path).map_err(|e| e.to_string())?;
+        if !old_path_for_copy.exists() {
+            fs::create_dir_all(&new_path_for_copy).map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+
+        let _ = app_handle.emit(
+            "migrate-progress",
+            serde_json::json!({ "phase": "moving", "percent": 0 }),
+        );
+
+        if new_path_for_copy.exists() {
+            fs::remove_dir(&new_path_for_copy).map_err(|e| e.to_string())?;
+        }
+        if fs::rename(&old_path_for_copy, &new_path_for_copy).is_ok() {
+            let _ = app_handle.emit(
+                "migrate-progress",
+                serde_json::json!({ "phase": "moving", "percent": 100 }),
+            );
+            return Ok(());
+        }
+
+        let total = crate::instances::dir_size(&old_path_for_copy).map_err(|e| e.to_string())?;
+        let free = free_space_bytes(&new_path_for_copy)?;
+        if free < total {
+            return Err(format!(
+                "Not enough free space: need {} MB, available {} MB",
+                human_mb(total),
+                human_mb(free)
+            ));
+        }
+
+        let cancelled = || MIGRATION_CANCEL.load(Ordering::SeqCst);
+        let mut progress = |copied: u64| {
+            let pct = if total > 0 {
+                (copied as f64 * 100.0 / total as f64).min(99.0) as u32
+            } else {
+            99
+            };
+            let _ = app_handle.emit(
+                "migrate-progress",
+                serde_json::json!({ "phase": "copying", "percent": pct }),
+            );
+        };
+
+        let copy_result = crate::instances::copy_dir_recursive_with_progress(
+            &old_path_for_copy,
+            &new_path_for_copy,
+            &["config.json"],
+            Some(total),
+            &cancelled,
+            &mut progress,
+        );
+
+        if let Err(e) = copy_result {
+            if cancelled() {
+                let _ = fs::remove_dir_all(&new_path_for_copy);
+                let _ = app_handle.emit("migrate-cancelled", serde_json::json!({}));
+                return Err("Migration cancelled".to_string());
+            }
+            let _ = fs::remove_dir_all(&new_path_for_copy);
+            return Err(format!("Failed to copy game folder: {e}"));
         }
         Ok(())
     })
@@ -195,17 +319,34 @@ pub async fn config_migrate_minecraft_dir(new_dir: String) -> Result<(), String>
     {
         let mut config = CONFIG.lock().map_err(|e| e.to_string())?;
         config.minecraft_dir = Some(new_dir);
-        save_config_to_disk(&config)?;
+        if let Err(e) = save_config_to_disk(&config) {
+            let _ = fs::remove_dir_all(&new_path);
+            return Err(format!(
+                "Failed to save config after moving the folder (rolled back): {e}"
+            ));
+        }
+    }
+
+    if old_path.exists() {
+        if let Err(e) = fs::remove_dir_all(&old_path) {
+            log::warn!("[Config] Migration succeeded but old folder could not be removed: {e}");
+        }
     }
 
     crate::instances::instances_list_sync();
+    let _ = app.emit("instances-updated", serde_json::json!({}));
+    let _ = app.emit(
+        "migrate-progress",
+        serde_json::json!({ "phase": "done", "percent": 100 }),
+    );
     Ok(())
 }
 
 #[tauri::command]
 pub fn reset_config() -> Result<LauncherConfig, String> {
-    let default = LauncherConfig::default();
+    let mut default = LauncherConfig::default();
     let mut stored = CONFIG.lock().map_err(|e| e.to_string())?;
+    default.minecraft_dir = stored.minecraft_dir.clone();
     *stored = default.clone();
     save_config_to_disk(&default)?;
     Ok(default)
@@ -297,6 +438,65 @@ pub fn get_max_ram() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env::temp_dir;
+    use std::sync::Once;
+
+    static TMP_INIT: Once = Once::new();
+    fn tmp_base() -> PathBuf {
+        TMP_INIT.call_once(|| {
+            let _ = fs::create_dir_all(temp_dir().join("rl-config-tests"));
+        });
+        temp_dir().join("rl-config-tests")
+    }
+
+    #[test]
+    fn test_validate_migration_same_path_is_noop() {
+        let p = tmp_base().join("same");
+        assert!(validate_migration_target(&p, &p, false).is_ok());
+    }
+
+    #[test]
+    fn test_validate_migration_inside_current_rejected() {
+        let old = tmp_base().join("root");
+        let new = old.join("nested");
+        assert!(validate_migration_target(&old, &new, false).is_err());
+    }
+
+    #[test]
+    fn test_validate_migration_game_running_rejected() {
+        let old = tmp_base().join("a");
+        let new = tmp_base().join("b");
+        assert!(validate_migration_target(&old, &new, true).is_err());
+    }
+
+    #[test]
+    fn test_validate_migration_non_empty_dest_rejected() {
+        let old = tmp_base().join("a2");
+        let new = tmp_base().join("b2");
+        fs::create_dir_all(&new).unwrap();
+        fs::write(new.join("existing.txt"), "x").unwrap();
+        let err = validate_migration_target(&old, &new, false).unwrap_err();
+        assert!(err.contains("not empty"));
+        fs::remove_dir_all(&new).unwrap();
+    }
+
+    #[test]
+    fn test_validate_migration_empty_dest_ok() {
+        let old = tmp_base().join("a3");
+        let new = tmp_base().join("b3");
+        fs::create_dir_all(&new).unwrap();
+        assert!(validate_migration_target(&old, &new, false).is_ok());
+        fs::remove_dir_all(&new).unwrap();
+    }
+
+    #[test]
+    fn test_nearest_existing_ancestor() {
+        let root = tmp_base().join("ancestor-test");
+        fs::create_dir_all(&root).unwrap();
+        let deep = root.join("x").join("y").join("z");
+        assert_eq!(nearest_existing_ancestor(&deep), root);
+        fs::remove_dir_all(&root).unwrap();
+    }
 
     #[test]
     fn test_launcher_config_default() {

@@ -64,6 +64,7 @@ fn main() {
             config::config_set,
             config::config_get_minecraft_dir,
             config::config_migrate_minecraft_dir,
+            config::cancel_migrate,
             config::reset_config,
             config::get_system_ram,
             config::get_max_ram,
@@ -159,6 +160,7 @@ fn main() {
             fs_utils::browse_modpack,
             fs_utils::launcher_clear_cache,
             fs_utils::cleanup_temp_files,
+            fs_utils::check_dir_empty,
             
             window::window_minimize,
             window::window_maximize,
