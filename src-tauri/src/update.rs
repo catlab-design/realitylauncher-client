@@ -71,7 +71,7 @@ fn compare_versions(a: &str, b: &str) -> i32 {
 
 fn get_platform_key() -> &'static str {
     if cfg!(target_os = "macos") {
-        "macos"
+        "mac"
     } else if cfg!(target_os = "linux") {
         "linux"
     } else {
