@@ -1,4 +1,4 @@
-## [Unreleased] — 2026-08-03
+## [4.2.0] — 2026-08-19
 
 ### Fixed
 - Launcher folder migration now emits `instances-updated` so the instance list refreshes after the move — previously it kept showing paths under the old folder until app restart
