@@ -25,6 +25,10 @@ fn default_max_concurrent_downloads() -> u32 {
     8
 }
 
+fn default_ram_mb() -> u32 {
+    4096
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LauncherConfig {
@@ -32,11 +36,15 @@ pub struct LauncherConfig {
     pub java_path: Option<String>,
     #[serde(default)]
     pub java_paths: Option<JavaPaths>,
-    #[serde(rename = "ramMB")]
+    #[serde(rename = "ramMB", default = "default_ram_mb")]
     pub ram_mb: u32,
+    #[serde(default)]
     pub close_launcher_on_game_start: bool,
+    #[serde(default)]
     pub discord_rpc_enabled: bool,
+    #[serde(default)]
     pub auto_update_enabled: bool,
+    #[serde(default)]
     pub theme: String,
     #[serde(rename = "maxConcurrentDownloads", default = "default_max_concurrent_downloads")]
     pub max_concurrent_downloads: u32,
@@ -109,12 +117,45 @@ fn get_config_path() -> PathBuf {
 
 fn load_config_from_disk() -> Option<LauncherConfig> {
     let path = get_config_path();
-    if path.exists() {
-        let content = fs::read_to_string(&path).ok()?;
-        serde_json::from_str(&content).ok()
-    } else {
-        None
+    for attempt in 0..2 {
+        if !path.exists() {
+            crate::fs_utils::restore_pre_update_backup(&path);
+        }
+        if !path.exists() {
+            return None;
+        }
+        let content = match fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(e) => {
+                log::error!("[Config] Cannot read config.json: {e}");
+                return None;
+            }
+        };
+        if let Ok(config) = serde_json::from_str::<LauncherConfig>(&content) {
+            let _ = fs::remove_file(crate::fs_utils::pre_update_backup_path(&path));
+            return Some(config);
+        }
+        log::error!("[Config] Failed to parse config.json (attempt {})", attempt + 1);
+        crate::fs_utils::back_up_unreadable_file(&path);
+        if attempt == 0 && crate::fs_utils::restore_pre_update_backup(&path) {
+            continue;
+        }
+        return salvage_config(&content);
     }
+    None
+}
+
+fn salvage_config(content: &str) -> Option<LauncherConfig> {
+    let value: serde_json::Value = serde_json::from_str(content).ok()?;
+    let mut config = LauncherConfig::default();
+    config.minecraft_dir = value.get("minecraftDir").and_then(|v| v.as_str()).map(String::from);
+    config.java_path = value.get("javaPath").and_then(|v| v.as_str()).map(String::from);
+    log::warn!(
+        "[Config] Salvaged minecraft_dir={:?} java_path={:?} from unreadable config",
+        config.minecraft_dir,
+        config.java_path
+    );
+    Some(config)
 }
 
 
@@ -126,7 +167,12 @@ fn save_config_to_disk(config: &LauncherConfig) -> Result<(), String> {
     }
 
     let content = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
-    fs::write(&path, content).map_err(|e| e.to_string())?;
+    let tmp_path = path.with_extension("tmp");
+    fs::write(&tmp_path, content).map_err(|e| e.to_string())?;
+    if path.exists() {
+        fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    fs::rename(&tmp_path, &path).map_err(|e| e.to_string())?;
 
     Ok(())
 }

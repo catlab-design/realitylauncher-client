@@ -90,13 +90,32 @@ fn session_path() -> PathBuf {
 
 fn load_session_from_disk() -> Option<Session> {
     let path = session_path();
-    if path.exists() {
-        fs::read_to_string(&path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-    } else {
-        None
+    for attempt in 0..2 {
+        if !path.exists() {
+            crate::fs_utils::restore_pre_update_backup(&path);
+        }
+        if !path.exists() {
+            return None;
+        }
+        let content = match fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(e) => {
+                log::error!("[Auth] Cannot read session.json: {e}");
+                return None;
+            }
+        };
+        if let Ok(session) = serde_json::from_str::<Session>(&content) {
+            let _ = fs::remove_file(crate::fs_utils::pre_update_backup_path(&path));
+            return Some(session);
+        }
+        log::error!("[Auth] Failed to parse session.json (attempt {})", attempt + 1);
+        crate::fs_utils::back_up_unreadable_file(&path);
+        if attempt == 0 && crate::fs_utils::restore_pre_update_backup(&path) {
+            continue;
+        }
+        return None;
     }
+    None
 }
 
 fn save_session_to_disk(session: &Option<Session>) {
@@ -106,7 +125,13 @@ fn save_session_to_disk(session: &Option<Session>) {
     }
     if let Some(s) = session {
         if let Ok(json) = serde_json::to_string_pretty(s) {
-            let _ = fs::write(&path, json);
+            let tmp_path = path.with_extension("tmp");
+            if fs::write(&tmp_path, json).is_ok() {
+                if path.exists() {
+                    let _ = fs::remove_file(&path);
+                }
+                let _ = fs::rename(&tmp_path, &path);
+            }
         }
     } else if path.exists() {
         let _ = fs::remove_file(&path);

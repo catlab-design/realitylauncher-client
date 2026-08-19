@@ -1,5 +1,6 @@
 use base64::Engine;
 use std::fs;
+use std::path::{Path, PathBuf};
 use tauri::Manager;
 use tauri_plugin_shell::ShellExt;
 
@@ -238,4 +239,44 @@ pub async fn cleanup_temp_files() -> Result<u32, String> {
     }
 
     Ok(cleaned)
+}
+
+pub fn pre_update_backup_path(path: &Path) -> PathBuf {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(".pre-update");
+    path.with_file_name(name)
+}
+
+pub fn restore_pre_update_backup(path: &Path) -> bool {
+    let backup = pre_update_backup_path(path);
+    if !backup.exists() {
+        return false;
+    }
+    match fs::copy(&backup, path) {
+        Ok(_) => true,
+        Err(e) => {
+            log::error!("[fs] Failed to restore {:?} from pre-update backup: {e}", path);
+            false
+        }
+    }
+}
+
+pub fn back_up_unreadable_file(path: &Path) -> Option<PathBuf> {
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(format!(".bak-{ts}"));
+    let backup = path.with_file_name(name);
+    match fs::copy(path, &backup) {
+        Ok(_) => {
+            log::warn!("[fs] Unreadable file backed up to {:?}", backup.file_name().unwrap_or_default());
+            Some(backup)
+        }
+        Err(e) => {
+            log::error!("[fs] Failed to back up {:?}: {e}", path);
+            None
+        }
+    }
 }

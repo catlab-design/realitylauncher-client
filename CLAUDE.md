@@ -357,7 +357,8 @@ const KNOWN_UNPORTED = new Set(['fetchInstanceAgendas', 'fetchAllAgendas']);
 
 ## 9. Important Gotchas
 
-1. **`#![windows_subsystem = "windows"]`** — No console on Windows even in debug; stdout still works when launched via `tauri dev`
+9. **Config & session persistence is update/crash-resistant** — `config.json`/`session.json` are written atomically (temp + rename, like `download.rs`); unreadable files are kept as `*.bak-<ts>` before any overwrite; missing config keys deserialize to safe defaults (`ramMB` → 4096); `install_update` copies both files to `*.pre-update` and a missing/unreadable data file is auto-restored from it on next launch (survives destructive installers)
+10. **`#![windows_subsystem = "windows"]`** — No console on Windows even in debug; stdout still works when launched via `tauri dev`
 2. **Tailwind v4 has no config file** — configured entirely via `@tailwindcss/vite` plugin and `@import "tailwindcss"` in CSS; no `tailwind.config.*` or `postcss.config.*`
 3. **ConfigStore migration** — `closeOnLaunch` migrated from `boolean` to `'keep-open' | 'hide-reopen' | 'close'` (version 0→1); `javaPath` preserved on reset
 4. **The `api.ts` Proxy** auto-wires `on*` methods as `listen()` event targets — don't manually call `listen()` for `window.api.on*` events

@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
@@ -368,11 +369,25 @@ pub fn install_update(app: tauri::AppHandle) -> serde_json::Value {
     if !path.exists() {
         return serde_json::json!({ "ok": false, "error": "Downloaded installer missing" });
     }
+    backup_data_for_update();
     if let Err(e) = open_installer(&path) {
         return serde_json::json!({ "ok": false, "error": e });
     }
     app.exit(0);
     serde_json::json!({ "ok": true })
+}
+
+fn backup_data_for_update() {
+    let dir = crate::config::default_launcher_dir();
+    for name in ["config.json", "session.json"] {
+        let source = dir.join(name);
+        if source.exists() {
+            let dest = crate::fs_utils::pre_update_backup_path(&source);
+            if let Err(e) = fs::copy(&source, &dest) {
+                log::error!("[Update] Failed to back up {name} before update: {e}");
+            }
+        }
+    }
 }
 
 fn open_installer(path: &Path) -> Result<(), String> {

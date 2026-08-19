@@ -48,6 +48,11 @@
 
 ### Added
 - i18n keys `clearing_cache`, `clearing`, `select_all` (en + th) and `install_as_new_instance`, `loading_versions`, `downloads` (en)
+- `install_update` now copies `config.json`/`session.json` to `*.pre-update` before launching the installer; on next start, a missing or unreadable data file is automatically restored from that backup, so even a destructive installer (e.g. an NSIS package that installs or uninstalls into the data folder) can no longer wipe the user's game folder choice and account
+- Config and session persistence hardening: `config.json`/`session.json` writes are atomic (temp file + rename, same pattern as the download engine), unreadable files are kept as `*.bak-<timestamp>` before anything overwrites them, and `minecraft_dir`/`java_path` are salvaged even when the rest of the config file is unparseable
+
+### Fixed
+- A `config.json` missing one optional key (e.g. `ramMB`, `closeLauncherOnGameStart`, `discordRpcEnabled`, `autoUpdateEnabled`, `theme` — written by an older build or truncated by a crash) no longer makes the entire file unreadable and silently resets the launcher to defaults, which made the app "forget" the user's game folder after an update; missing keys now deserialize to safe defaults (`ramMB` → 4096) and `minecraft_dir` survives
 
 ## [4.1.1] — 2026-08-02
 
