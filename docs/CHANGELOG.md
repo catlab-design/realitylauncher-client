@@ -52,6 +52,7 @@
 - Config and session persistence hardening: `config.json`/`session.json` writes are atomic (temp file + rename, same pattern as the download engine), unreadable files are kept as `*.bak-<timestamp>` before anything overwrites them, and `minecraft_dir`/`java_path` are salvaged even when the rest of the config file is unparseable
 
 ### Fixed
+- Downloaded update installers are saved with the URL's percent-escaped filename literally (e.g. `reality-update-Reality%20Launcher_4.1.0_…`) — the name is now URL-decoded before writing to disk
 - macOS update check requested the server's `downloads.macos` key, but the server publishes `downloads.mac` — the in-app updater on macOS silently found no download; the platform key now matches (`mac`)
 - A `config.json` missing one optional key (e.g. `ramMB`, `closeLauncherOnGameStart`, `discordRpcEnabled`, `autoUpdateEnabled`, `theme` — written by an older build or truncated by a crash) no longer makes the entire file unreadable and silently resets the launcher to defaults, which made the app "forget" the user's game folder after an update; missing keys now deserialize to safe defaults (`ramMB` → 4096) and `minecraft_dir` survives
 

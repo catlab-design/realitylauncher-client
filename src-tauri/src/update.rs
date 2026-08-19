@@ -79,6 +79,26 @@ fn get_platform_key() -> &'static str {
     }
 }
 
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(hex) = std::str::from_utf8(&bytes[i + 1..i + 3]) {
+                if let Ok(byte) = u8::from_str_radix(hex, 16) {
+                    out.push(byte);
+                    i += 3;
+                    continue;
+                }
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 #[tauri::command]
 pub async fn check_latest_version(app: tauri::AppHandle) -> LatestVersionResult {
     let current = app.package_info().version.to_string();
@@ -274,11 +294,12 @@ pub async fn download_update(app: tauri::AppHandle) -> serde_json::Value {
         }
     };
 
-    let filename = url
+    let raw_filename = url
         .rsplit('/')
         .next()
         .filter(|s| !s.is_empty())
         .unwrap_or("reality-launcher-update");
+    let filename = percent_decode(raw_filename);
     let dest = std::env::temp_dir().join(format!("reality-update-{filename}"));
     let tmp_path = dest.with_extension("tmp");
     if tmp_path.exists() {
@@ -428,5 +449,15 @@ mod tests {
         assert_eq!(compare_versions("3.3.2-beta.1", "3.3.2"), 0);
         assert_eq!(compare_versions("v3.3.2", "3.3.2"), 0);
         assert_eq!(compare_versions("3.3", "3.3.1"), -1);
+    }
+
+    #[test]
+    fn test_percent_decode() {
+        assert_eq!(percent_decode("Reality%20Launcher_4.1.0_aarch64.dmg"), "Reality Launcher_4.1.0_aarch64.dmg");
+        assert_eq!(percent_decode("plain-name.exe"), "plain-name.exe");
+        assert_eq!(percent_decode("100%25ok"), "100%ok");
+        assert_eq!(percent_decode("bad%zz"), "bad%zz");
+        assert_eq!(percent_decode("trailing%"), "trailing%");
+        assert_eq!(percent_decode("%"), "%");
     }
 }
