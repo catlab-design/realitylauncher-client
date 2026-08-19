@@ -207,6 +207,7 @@ export function ServerMenu({
     }, [instances, resolveLocalId]);
 
     const launchCancelledRef = React.useRef(false);
+    const launchTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const handlePlayServer = async (e: React.MouseEvent, instance: any) => {
         e.stopPropagation();
@@ -214,6 +215,11 @@ export function ServerMenu({
         launchCancelledRef.current = false;
         const targetId = resolveLocalId(instance);
         setLaunchingId(targetId);
+        launchTimeoutRef.current = setTimeout(() => {
+            launchCancelledRef.current = true;
+            setLaunchingId(null);
+            toast.error(t('launch_timeout'));
+        }, 120000);
         try {
             if (session?.authType === "catid" && session.minecraftUuid) {
                 const linkedMsAccount = accounts.find(a => a.authType === "microsoft" && a.uuid === session.minecraftUuid);
@@ -221,13 +227,22 @@ export function ServerMenu({
                     const switchedSession = await window.api?.setActiveSession?.(linkedMsAccount);
                     if (switchedSession) { setAuthSession(switchedSession as AuthSession); updateAccount(switchedSession as AuthSession); }
                 } else {
-                    toast.error(t('session_expired_login_server')); return;
+                    toast.error(t('session_expired_login_server'));
+                    if (launchTimeoutRef.current) {
+                        clearTimeout(launchTimeoutRef.current);
+                        launchTimeoutRef.current = null;
+                    }
+                    return;
                 }
             }
             const refreshResult = await window.api?.authRefreshToken?.();
             if (refreshResult && refreshResult.ok === false) {
                 const refreshErr = typeof refreshResult.error === "string" ? refreshResult.error : "";
                 toast.error(refreshErr || t('session_expired_login_server'));
+                if (launchTimeoutRef.current) {
+                    clearTimeout(launchTimeoutRef.current);
+                    launchTimeoutRef.current = null;
+                }
                 return;
             }
             const res = await window.api?.instancesLaunch?.(targetId);
@@ -284,13 +299,23 @@ export function ServerMenu({
         } catch (err: any) {
             toast.error(err.message || t('error_occurred'));
             setPlayingInstances(prev => { const s = new Set(prev); s.delete(targetId); return s; });
-        } finally { setLaunchingId(null); }
+        } finally {
+            if (launchTimeoutRef.current) {
+                clearTimeout(launchTimeoutRef.current);
+                launchTimeoutRef.current = null;
+            }
+            setLaunchingId(null);
+        }
     };
 
     const handleStopServer = async (e: React.MouseEvent, instance: any) => {
         e.stopPropagation();
         const instanceId = resolveLocalId(instance);
         if (launchingId === instanceId) launchCancelledRef.current = true;
+        if (launchTimeoutRef.current) {
+            clearTimeout(launchTimeoutRef.current);
+            launchTimeoutRef.current = null;
+        }
         try {
             await (window.api as any)?.killGame?.(instanceId);
             setPlayingInstances(prev => { const s = new Set(prev); s.delete(instanceId); return s; });

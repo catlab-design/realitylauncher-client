@@ -17,7 +17,40 @@
 ### Changed
 - Settings labels corrected: "Select .minecraft folder" / "Game Folder (.minecraft)" → "Select launcher data folder" / "Game Data Folder" (layout is not vanilla-compatible)
 
+## [Unreleased] — 2026-08-19
+
+### Fixed
+- Migration save-failure no longer deletes the moved folder on the rename path (the new location was the only copy) — the move is kept and the user is told the config is stale; the copy path still rolls back safely (#1)
+- Instance ids like `..`, `.`, empty, or containing path separators can no longer escape the instances folder — unsafe ids are clamped to a `__invalid__…` sub-folder and unique-id generation sanitizes/falls back (#2)
+- Mod/resourcepack/datapack filenames are sanitized before toggle/delete so `../` or absolute paths can't target files outside the instance dir (#3)
+- Launch arguments printed to stdout no longer leak the Microsoft access token (`[REDACTED]`) (#4)
+- Killing a game bumps a launch generation counter; a stale launch whose sync phase outlived a kill/relaunch aborts instead of registering an orphaned, unstoppable process, and `kill_game` now emits `game-stopped` (#5, #16)
+- Installs/syncs/repairs now guard against overlapping with migrations and each other (`instance_check_integrity`, `instance_install_content`, `content_download_to_instance`, `instances_delete`, `instances_duplicate`); deleting a running instance is rejected (#6, #17)
+- Cancel is per-operation: a Cancel request marks only currently-registered operations, and starting a new install no longer wipes a cancel the user already pressed (#7)
+- All-failed modpack/cloud installs now emit a terminal error event and delete the broken instance instead of leaving the UI stuck at 99% (#8)
+- Removed the dead pre-install wiring (`instancesPreInstall` called the mrpack pre-parse command with an instance id) and the never-implemented instance export feature (stub in `api.ts`, export tab, progress toasts) (#9, #1)
+- `link_catid` timestamp was interpreted as seconds instead of milliseconds, producing a 1970-01-01 expiry sent to the server — now `from_timestamp_millis` (#10)
+- `login_catid` no longer panics on a response missing `token` (#11)
+- Asset-index verified markers are keyed by index id + sha1 of the index file, so a re-downloaded index invalidates the stale marker and assets are re-verified (#12)
+- `config_set` rejects a `minecraft_dir` that isn't an absolute existing path; `reset_config` now also preserves `java_path`/`java_paths` (#13, #14)
+- Concurrent `auth_refresh` calls coalesce behind a single-flight lock; a second caller re-checks expiry instead of double-refreshing (#15)
+- Global install-progress handler no longer hijacks the UI during a launch's server-mod sync (sync-* events are ignored unless an install/repair is actually in flight), and sync events no longer trigger a fake "complete" at 100% mid-operation (#2, #3)
+- Cancel handler resets install state even when the cancel command rejects (modal can no longer stick), and repair no longer shows a contradictory error toast after a user cancel (#4, #9)
+- ServerMenu launch now has the same 120s timeout as ModPack, so a stalled backend launch can't lock all play buttons forever (#5)
+- LiveLog pause no longer clears the log view or resets the tail offset — pause state is tracked via a ref so the poll loop keeps its position (#6)
+- JoinInstanceDialog success timeout no longer fires after the user closed the dialog (#11)
+- Fixed double-encoded Thai mojibake fallback strings in Explore/ModPack toasts
+
+### Changed
+- `modpack_cancel_install` now cancels all active per-operation tokens (`cancel_all_active`) instead of flipping a global flag
+- Removed `instances_pre_install` / `instancesExport` / `instancesExportCancel` / `instanceCancelAction` from the `api.ts` bridge and `env.d.ts` (dead UI)
+- `progressStore` no longer carries export state (`isExporting`, `exportProgress`, `exportingInstanceId`, …)
+
+### Added
+- i18n keys `clearing_cache`, `clearing`, `select_all` (en + th) and `install_as_new_instance`, `loading_versions`, `downloads` (en)
+
 ## [4.1.1] — 2026-08-02
+
 
 ### Fixed
 - Auto Update toggle now actually auto-downloads updates in the background when enabled, matching its stated description (install still requires the manual "Install & Restart" button)

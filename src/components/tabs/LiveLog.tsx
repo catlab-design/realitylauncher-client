@@ -23,6 +23,7 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
     const [filter, setFilter] = useState<"all" | "info" | "warn" | "error">("all");
     const [autoScroll, setAutoScroll] = useState(true);
     const [isPaused, setIsPaused] = useState(false);
+    const isPausedRef = useRef(false);
     const [isLoadingFile, setIsLoadingFile] = useState(false);
     const logContainerRef = useRef<HTMLDivElement>(null);
     const logIdRef = useRef(0);
@@ -78,7 +79,7 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
         const poll = async () => {
             if (cancelled) return;
             try {
-                if (!isPaused) {
+                if (!isPausedRef.current) {
                     const res = await (window.api as any)?.instanceTailLog?.(instanceId, offset);
                     if (!cancelled && res?.ok) {
                         if (typeof res.size === "number") offset = res.size;
@@ -113,7 +114,7 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
             cancelled = true;
             if (timer) clearTimeout(timer);
         };
-    }, [isOpen, instanceId, isPaused, parseLines]);
+    }, [isOpen, instanceId, parseLines]);
 
     const clearLogs = useCallback(() => {
         setLogs([]);
@@ -251,7 +252,7 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
                             </button>
 
                             <button
-                                onClick={() => setIsPaused(!isPaused)}
+                                onClick={() => { isPausedRef.current = !isPaused; setIsPaused(!isPaused); }}
                                 className="w-9 h-9 rounded-lg flex items-center justify-center transition-all shrink-0"
                                 style={{
                                     backgroundColor: isPaused ? "#f59e0b20" : colors.surfaceContainerHighest,

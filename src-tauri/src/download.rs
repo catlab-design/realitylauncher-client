@@ -83,7 +83,7 @@ pub struct BatchResult {
 pub async fn download_batch(
     items: Vec<DownloadItem>,
     config: &DownloadConfig,
-    cancel_flag: Option<&'static AtomicBool>,
+    cancel_flag: Option<Arc<AtomicBool>>,
     on_file_done: impl Fn(u32, u32, &str),
 ) -> BatchResult {
     if items.is_empty() {
@@ -103,16 +103,17 @@ pub async fn download_batch(
         let tx = tx.clone();
         let item = item.clone();
         let max_retries = config.max_retries;
+        let cancel_flag = cancel_flag.clone();
 
         handles.push(tokio::spawn(async move {
             let _permit = sem.acquire().await.map_err(|_| "Semaphore closed".to_string())?;
 
-            if cancel_flag.is_some_and(|f| f.load(Ordering::SeqCst)) {
+            if cancel_flag.as_ref().is_some_and(|f| f.load(Ordering::SeqCst)) {
                 let _ = tx.send((item.label, Err("Cancelled".to_string())));
                 return Err("Cancelled".to_string());
             }
 
-            match download_file_with_retry(&client, &item, max_retries, cancel_flag).await {
+            match download_file_with_retry(&client, &item, max_retries, cancel_flag.as_deref()).await {
                 Ok(size) => {
                     let _ = tx.send((item.label, Ok(size)));
                     Ok(size)

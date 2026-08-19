@@ -523,7 +523,7 @@ export function Explore({ colors, config }: ExploreProps) {
                     // Install succeeded but some mods are missing โ€” warn instead of
                     // claiming a clean install so the user can re-download.
                     toast(
-                        `${t('install_complete')} โ€” ${failed.length} ${t('files_failed_to_download') || 'เนเธเธฅเนเนเธซเธฅเธ”เนเธกเนเธชเธณเน€เธฃเนเธ'}`,
+                        `${t('install_complete')} โ€” ${failed.length} ${t('files_failed_to_download') || 'file(s) failed to download'}`,
                         { duration: 8000, icon: 'โ ๏ธ' },
                     );
                 } else {
@@ -541,7 +541,7 @@ export function Explore({ colors, config }: ExploreProps) {
                             }}
                             className="px-2.5 py-1 text-xs font-semibold rounded-md border border-neutral-300 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 transition-colors cursor-pointer"
                         >
-                            {t('copy') || 'เธเธฑเธ”เธฅเธญเธ'}
+                            {t('copy') || 'Copy'}
                         </button>
                     </div>
                 ), {

@@ -895,8 +895,15 @@ pub fn logout() -> Result<(), String> {
     Ok(())
 }
 
+static REFRESH_LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
+
+fn refresh_lock() -> &'static tokio::sync::Mutex<()> {
+    REFRESH_LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+}
+
 #[tauri::command]
 pub async fn auth_refresh() -> AuthCommandResult {
+    let _guard = refresh_lock().lock().await;
     let session = match get_session_inner() {
         Some(s) => s,
         None => {
@@ -1219,7 +1226,13 @@ pub async fn login_catid(username: String, password: String) -> AuthCommandResul
         }
     }
 
-    let token = data.token.unwrap();
+    let Some(token) = data.token else {
+        return AuthCommandResult {
+            ok: false,
+            account: None,
+            error: Some("CatID login missing token".to_string()),
+        };
+    };
 
     let user = data.user.unwrap_or(CatIDUserPayload {
         id: None,
@@ -1504,7 +1517,7 @@ pub async fn link_catid(
     };
 
     let ms_expires_at = session.expires_at.map(|ts| {
-        let dt = chrono::DateTime::from_timestamp(ts, 0).unwrap_or_default();
+        let dt = chrono::DateTime::from_timestamp_millis(ts).unwrap_or_default();
         dt.to_rfc3339()
     });
 

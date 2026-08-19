@@ -87,6 +87,9 @@ pub fn instance_toggle_mod(instance_id: String, filename: String) -> ToggleResul
 
 #[tauri::command]
 pub fn instance_delete_mod(instance_id: String, mod_file_name: String) -> Result<bool, String> {
+    if !safe_content_name(&mod_file_name) {
+        return Err("Invalid filename".to_string());
+    }
     let instance_dir = get_instance_dir(&instance_id);
     let mod_path = instance_dir.join("mods").join(&mod_file_name);
 
@@ -218,6 +221,18 @@ pub async fn instance_install_content(
     project_id: String,
     version_id: String,
 ) -> InstallContentResult {
+    let _guard = match crate::op_guard::OperationGuard::try_shared() {
+        Some(g) => g,
+        None => {
+            return InstallContentResult {
+                ok: false,
+                error: Some(
+                    "A folder migration or another operation is in progress. Try again when it finishes.".to_string(),
+                ),
+            }
+        }
+    };
+
     println!(
         "[Content] Installing {} {} to instance {}",
         content_type, project_id, instance_id
@@ -824,6 +839,20 @@ pub async fn content_download_to_instance(
     content_type: String,
     content_source: Option<String>,
 ) -> DownloadResult {
+    let _guard = match crate::op_guard::OperationGuard::try_shared() {
+        Some(g) => g,
+        None => {
+            return DownloadResult {
+                ok: false,
+                filepath: None,
+                filename: None,
+                error: Some(
+                    "A folder migration or another operation is in progress. Try again when it finishes.".to_string(),
+                ),
+            }
+        }
+    };
+
     let source = content_source.as_deref().unwrap_or("modrinth");
     let client = crate::http_client::HTTP_CLIENT.clone();
 
@@ -1055,7 +1084,19 @@ pub struct ToggleResult {
     pub error: Option<String>,
 }
 
+fn safe_content_name(name: &str) -> bool {
+    !name.is_empty()
+        && name != "."
+        && name != ".."
+        && !name.starts_with("..")
+        && !name.contains('/')
+        && !name.contains('\\')
+}
+
 fn toggle_in_dir(dir: &std::path::Path, filename: &str) -> Result<(String, bool), String> {
+    if !safe_content_name(filename) {
+        return Err("Invalid filename".to_string());
+    }
     let current = dir.join(filename);
     let (new_name, enabled) = if filename.ends_with(".disabled") {
         (filename.trim_end_matches(".disabled").to_string(), true)
@@ -1087,6 +1128,9 @@ fn toggle_result(dir: std::path::PathBuf, filename: String) -> ToggleResult {
 }
 
 fn delete_in_dir(dir: &std::path::Path, filename: &str) -> Result<bool, String> {
+    if !safe_content_name(filename) {
+        return Err("Invalid filename".to_string());
+    }
     let path = dir.join(filename);
     if path.exists() {
         fs::remove_file(&path).map_err(|e| e.to_string())?;
@@ -1114,6 +1158,14 @@ pub fn instance_toggle_datapack(
     world_name: String,
     filename: String,
 ) -> ToggleResult {
+    if !safe_content_name(&world_name) {
+        return ToggleResult {
+            ok: false,
+            new_filename: filename,
+            enabled: false,
+            error: Some("Invalid world name".to_string()),
+        };
+    }
     let dir = get_instance_dir(&instance_id)
         .join("saves")
         .join(&world_name)
@@ -1147,6 +1199,9 @@ pub fn instance_delete_datapack(
     world_name: String,
     filename: String,
 ) -> Result<bool, String> {
+    if !safe_content_name(&world_name) {
+        return Err("Invalid world name".to_string());
+    }
     let instance_dir = get_instance_dir(&instance_id);
     let dir = instance_dir
         .join("saves")

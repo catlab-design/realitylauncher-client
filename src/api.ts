@@ -124,11 +124,6 @@ export const api = {
         invoke<{ ok: boolean; message?: string }>('instances_launch', { id, skipServerModSync: options?.skipServerModSync }),
     instancesSetIcon: (id: string, iconData: string) =>
         invoke<{ ok: boolean; error: string | null }>('instances_set_icon', { id, iconData }),
-    instancesPreInstall: (id: string) =>
-        invoke<{ ok: boolean; name: string; version: string; loaders: string[]; filesCount: number; error?: string }>(
-            'instances_pre_install',
-            { filePath: id },
-        ),
     instancesListFiles: (instanceId: string, subPath?: string) =>
         invoke<{ ok: boolean; files?: any[]; error?: string }>('instances_list_files', { instanceId, subPath }),
     instancesOpenFolder: async (id: string) => {
@@ -136,10 +131,6 @@ export const api = {
         const instancePath = `${mcDir}/instances/${id}`;
         return invoke<void>('open_folder', { path: instancePath });
     },
-    instancesExport: (_id: string, _options: any) => Promise.resolve({ ok: false, error: 'Not implemented' }),
-    instancesExportCancel: (_id: string) => Promise.resolve({ ok: true }),
-    instanceCancelAction: (_id: string) =>
-        Promise.resolve({ ok: false, error: 'Cancellation not supported yet' }),
     modpackCancelInstall: () => invoke<{ ok: boolean; error: string | null }>('modpack_cancel_install'),
 
     isGameRunning: (instanceId?: string) => invoke<boolean>('is_game_running', { instanceId }),

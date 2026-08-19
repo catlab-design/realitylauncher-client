@@ -14,6 +14,11 @@ use crate::instances::{GameInstance, LoaderType};
 static GAME_PROCESS: Lazy<Mutex<Option<Child>>> = Lazy::new(|| Mutex::new(None));
 static LAUNCHING: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(false));
 static PLAYING_INSTANCE_ID: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
+/// Bumped by every kill_game and every successful launch claim. A launch
+/// captures its value at claim time and aborts at spawn time if it moved —
+/// this prevents a stale launch whose sync phase outlived a kill/relaunch
+/// from registering an orphaned, unstoppable game.
+static LAUNCH_GENERATION: Lazy<Mutex<u64>> = Lazy::new(|| Mutex::new(0));
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ProgressPayload {
@@ -40,6 +45,27 @@ fn classify_log_level(line: &str) -> &'static str {
     } else {
         "info"
     }
+}
+
+fn redact_args(args: &[String], token: &str) -> String {
+    let mut out = Vec::with_capacity(args.len());
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == "--accessToken" && i + 1 < args.len() {
+            out.push(args[i].clone());
+            out.push("[REDACTED]".to_string());
+            i += 2;
+            continue;
+        }
+        let arg = if !token.is_empty() && token != "0" {
+            args[i].replace(token, "[REDACTED]")
+        } else {
+            args[i].clone()
+        };
+        out.push(arg);
+        i += 1;
+    }
+    out.join(" ")
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -89,8 +115,10 @@ pub fn is_game_running(instance_id: Option<String>) -> bool {
 }
 
 #[tauri::command]
-pub fn kill_game() -> Result<(), String> {
+pub fn kill_game(app: tauri::AppHandle) -> Result<(), String> {
+    *LAUNCH_GENERATION.lock().unwrap() += 1;
     let mut process = GAME_PROCESS.lock().map_err(|e| e.to_string())?;
+    let killed_instance_id = PLAYING_INSTANCE_ID.lock().unwrap().clone();
     if let Some(ref mut child) = *process {
         println!("[Launcher] Killing game process");
         #[cfg(target_os = "windows")]
@@ -108,8 +136,18 @@ pub fn kill_game() -> Result<(), String> {
         #[cfg(not(target_os = "windows"))]
         {
             let _ = child.kill();
+            let _ = child.wait();
         }
         *process = None;
+        if let Some(id) = &killed_instance_id {
+            let _ = app.emit(
+                "game-stopped",
+                GameStoppedPayload {
+                    instance_id: id.clone(),
+                    exit_code: None,
+                },
+            );
+        }
     }
     *LAUNCHING.lock().unwrap() = false;
     *PLAYING_INSTANCE_ID.lock().unwrap() = None;
@@ -134,24 +172,38 @@ pub async fn instances_launch(
         }
     };
 
-    {
-        let launching = LAUNCHING.lock().unwrap();
+    let launch_gen = {
+        // Claim the launch: double-checked under the LAUNCHING lock so two
+        // racing invocations cannot both pass. Never hold LAUNCHING while
+        // taking GAME_PROCESS (kill_game takes them in the opposite order).
+        let first = {
+            let launching = LAUNCHING.lock().unwrap();
+            *launching
+        };
+        if first {
+            return LaunchResult {
+                ok: false,
+                message: Some("Already launching a game".to_string()),
+            };
+        }
+        if is_game_running(None) {
+            return LaunchResult {
+                ok: false,
+                message: Some("A game is already running".to_string()),
+            };
+        }
+        let mut launching = LAUNCHING.lock().unwrap();
         if *launching {
             return LaunchResult {
                 ok: false,
                 message: Some("Already launching a game".to_string()),
             };
         }
-    }
-
-    if is_game_running(None) {
-        return LaunchResult {
-            ok: false,
-            message: Some("A game is already running".to_string()),
-        };
-    }
-
-    *LAUNCHING.lock().unwrap() = true;
+        *launching = true;
+        let mut gen = LAUNCH_GENERATION.lock().unwrap();
+        *gen += 1;
+        *gen
+    };
     *PLAYING_INSTANCE_ID.lock().unwrap() = Some(id.clone());
 
     let instance = match crate::instances::instances_get(id.clone()) {
@@ -220,7 +272,7 @@ pub async fn instances_launch(
     
     
     
-    match launch_game(app_handle.clone(), instance).await {
+    match launch_game(app_handle.clone(), instance, launch_gen).await {
         Ok(()) => LaunchResult {
             ok: true,
             message: None,
@@ -404,7 +456,11 @@ pub async fn browse_java(path: String) -> BrowseJavaResult {
 
 
 
-async fn launch_game(app: tauri::AppHandle, instance: GameInstance) -> Result<(), String> {
+async fn launch_game(
+    app: tauri::AppHandle,
+    instance: GameInstance,
+    launch_gen: u64,
+) -> Result<(), String> {
     emit_progress(&app, "preparing", "Preparing to launch...", 0.0);
 
     let config_val = crate::config::config_get();
@@ -500,7 +556,8 @@ async fn launch_game(app: tauri::AppHandle, instance: GameInstance) -> Result<()
         .collect();
 
     println!("[Launcher] Java: {java_path}");
-    println!("[Launcher] Args: {}", all_args.join(" "));
+    let access_token = session.access_token.as_deref().unwrap_or("0");
+    println!("[Launcher] Args: {}", redact_args(&all_args, access_token));
 
 
     let mut cmd = Command::new(&java_path);
@@ -523,10 +580,14 @@ async fn launch_game(app: tauri::AppHandle, instance: GameInstance) -> Result<()
     // Atomically register the child under GAME_PROCESS lock.
     // kill_game() always locks GAME_PROCESS before clearing LAUNCHING,
     // so if LAUNCHING was set false while we were spawning we must
-    // abort — otherwise the child would be orphaned.
+    // abort — otherwise the child would be orphaned. The generation
+    // check additionally aborts a stale launch whose long sync phase
+    // was superseded by a kill + relaunch.
     {
         let mut game = GAME_PROCESS.lock().unwrap();
-        if !*LAUNCHING.lock().unwrap() {
+        let launching = *LAUNCHING.lock().unwrap();
+        let gen_current = *LAUNCH_GENERATION.lock().unwrap();
+        if !launching || gen_current != launch_gen {
             let _ = child.kill();
             return Err("Launch cancelled".to_string());
         }
@@ -1895,7 +1956,8 @@ async fn check_and_download_assets(
     
     
     
-    let verified_marker = indexes_dir.join(format!(".{index_id}.verified"));
+    let index_sha1 = sha1_file(&index_path).ok().unwrap_or_default();
+    let verified_marker = indexes_dir.join(format!(".{index_id}.{index_sha1}.verified"));
     if verified_marker.exists() && index_path.exists() {
         return Ok(());
     }

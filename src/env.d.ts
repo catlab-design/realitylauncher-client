@@ -545,14 +545,10 @@ declare global {
       ) => Promise<GameInstance>;
 
 
-      instancesPreInstall: (id: string) => Promise<{ ok: boolean; name: string; version: string; loaders: string[]; filesCount: number; error?: string }>;
       instancesUpdate: (
         id: string,
         updates: UpdateInstanceOptions,
       ) => Promise<GameInstance | null>;
-      instanceCancelAction: (
-        id: string,
-      ) => Promise<{ ok: boolean; error?: string }>;
       instancesDelete: (id: string) => Promise<boolean>;
       instancesSetIcon: (
         id: string,
@@ -564,19 +560,6 @@ declare global {
         id: string,
         options?: { skipServerModSync?: boolean },
       ) => Promise<LaunchResult>;
-      instancesExport: (
-        id: string,
-        options: any,
-      ) => Promise<{ ok: boolean; error?: string }>;
-      instancesExportCancel: (
-        id: string,
-      ) => Promise<{ ok: boolean; error?: string }>;
-      onExportProgress: (
-        callback: (
-          id: string,
-          progress: { transferred: number; total: number; percent: number },
-        ) => void,
-      ) => () => void;
       instanceJoin: (key: string) => Promise<{
         ok: boolean;
         message?: string;

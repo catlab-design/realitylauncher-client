@@ -129,7 +129,6 @@ export function ModPack({
         isInstallMinimized: _isInstallMinimized, setInstallMinimized,
         operationType, setOperationType,
         installingInstanceId, setInstallingInstanceId,
-        startExport, setExportProgress, resetExport,
     } = useProgressStore();
 
     const installLockState = { isInstalling, operationType, installingInstanceId };
@@ -140,39 +139,6 @@ export function ModPack({
             s.delete(id);
             return s;
         });
-    };
-
-    const handleExportInstance = async (instanceId: string, options: any) => {
-        startExport(instanceId, { stage: "extracting", message: t('preparing_export_dot'), percent: 0 });
-        const cleanup = (window as any).api?.onExportProgress?.((_id: any, progress: any) => {
-            setExportProgress({
-                stage: "copying",
-                message: t('exporting'),
-                percent: progress.percent,
-                current: progress.transferred,
-                total: progress.total,
-            });
-        });
-        try {
-            const result = await (window as any).api?.instancesExport?.(instanceId, options);
-            if (result?.ok) {
-                toast.success(t('export_success'));
-            } else {
-                const errMsg = typeof result?.error === 'string' ? result.error : '';
-                if (!isCancellationError(errMsg)) {
-                    toast.error(t('export_failed') + (errMsg || t('error_occurred')));
-                }
-            }
-        } catch (error: any) {
-            const catchMsg = typeof error?.message === 'string' ? error.message : '';
-            if (!isCancellationError(catchMsg)) {
-                console.error("Export failed:", error);
-                toast.error(t('export_failed') + (catchMsg || t('error_occurred')));
-            }
-        } finally {
-            cleanup?.();
-            resetExport();
-        }
     };
 
     const handleOpenInstanceDetail = (instance: any) => {
@@ -214,7 +180,7 @@ export function ModPack({
                 if (p?.type === "sync-complete") return;
                 setInstallProgress({
                     stage: p?.type || "sync",
-                    message: p?.task || t('syncing') || 'เธเธณเธฅเธฑเธเธเธดเธเธเน...',
+                    message: p?.task || t('syncing') || 'Syncing...',
                     percent: typeof p?.percent === "number" ? p.percent : 0,
                 });
             },
@@ -365,9 +331,6 @@ export function ModPack({
         }
 
         try {
-            if (wasLaunching) {
-                await (window.api as any)?.instanceCancelAction?.(id);
-            }
             await window.api?.killGame?.(id);
             removeFromPlaying(id);
             toast.success(t('stop_command_sent'));
@@ -857,7 +820,6 @@ export function ModPack({
                     }}
                     onDuplicate={handleDuplicate}
                     onUpdate={handleUpdate}
-                    onExport={handleExportInstance}
                     onViewLogs={(id) => setLogViewerInstanceId(id)}
                     onRepair={handleRepair}
                     launchingId={launchingId}
@@ -1016,32 +978,9 @@ export function ModPack({
                             colors={colors}
                             config={config}
                             onClose={() => setShowCreateModal(false)}
-                            onCreated={(instanceId?: string) => {
+                            onCreated={() => {
                                 setShowCreateModal(false);
                                 loadInstances();
-                                // Pre-install Minecraft core files in background
-                                // so user can press Play immediately without waiting
-                                if (instanceId) {
-                                    setOperationType("install");
-                                    setInstalling(true);
-                                    setInstallMinimized(false);
-                                    setInstallProgress({
-                                        stage: "extracting",
-                                        message: t('preparing_game_files'),
-                                    });
-                                    window.api?.instancesPreInstall?.(instanceId)
-                                        .then(() => {
-                                            loadInstances();
-                                        })
-                                        .catch((err: any) => {
-                                            console.warn("[ModPack] Pre-install failed:", err?.message);
-                                        })
-                                        .finally(() => {
-                                            setInstalling(false);
-                                            setInstallProgress(null);
-                                            setOperationType(null);
-                                        });
-                                }
                             }}
                             language={language}
                         />

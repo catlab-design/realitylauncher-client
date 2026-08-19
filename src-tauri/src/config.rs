@@ -143,6 +143,16 @@ pub fn config_get() -> LauncherConfig {
 #[tauri::command]
 pub fn config_set(config: LauncherConfig) -> Result<(), String> {
     let mut stored = CONFIG.lock().map_err(|e| e.to_string())?;
+    if let Some(dir) = &config.minecraft_dir {
+        if stored.minecraft_dir.as_ref() != Some(dir) {
+            let path = std::path::Path::new(dir);
+            if !path.is_absolute() || !path.exists() {
+                return Err(
+                    "minecraft_dir must be an absolute path that exists on disk".to_string(),
+                );
+            }
+        }
+    }
     *stored = config.clone();
     save_config_to_disk(&config)?;
     Ok(())
@@ -320,9 +330,21 @@ pub async fn config_migrate_minecraft_dir(
         let mut config = CONFIG.lock().map_err(|e| e.to_string())?;
         config.minecraft_dir = Some(new_dir);
         if let Err(e) = save_config_to_disk(&config) {
-            let _ = fs::remove_dir_all(&new_path);
+            // If the data was RENAMED (same volume), old_path is gone and
+            // new_path is the only copy — deleting it would destroy every
+            // instance. Keep the moved folder and tell the user config is
+            // stale instead. The copy path leaves old_path intact, so there
+            // we can safely roll back.
+            if old_path.exists() {
+                let _ = fs::remove_dir_all(&new_path);
+                return Err(format!(
+                    "Failed to save config after moving the folder (rolled back): {e}"
+                ));
+            }
             return Err(format!(
-                "Failed to save config after moving the folder (rolled back): {e}"
+                "Folder was moved, but the config could not be saved ({e}). \
+                 The launcher data now lives at the new location; on next \
+                 launch the config will be re-read from there."
             ));
         }
     }
@@ -347,6 +369,8 @@ pub fn reset_config() -> Result<LauncherConfig, String> {
     let mut default = LauncherConfig::default();
     let mut stored = CONFIG.lock().map_err(|e| e.to_string())?;
     default.minecraft_dir = stored.minecraft_dir.clone();
+    default.java_path = stored.java_path.clone();
+    default.java_paths = stored.java_paths.clone();
     *stored = default.clone();
     save_config_to_disk(&default)?;
     Ok(default)

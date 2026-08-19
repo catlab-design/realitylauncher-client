@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 
 const API_URL: &str = "https://api.reality.catlabdesign.space";
 
@@ -11,23 +11,11 @@ const API_URL: &str = "https://api.reality.catlabdesign.space";
 
 
 
-static INSTALL_CANCELLED: AtomicBool = AtomicBool::new(false);
-
-
-
 pub(crate) const CANCELLED_SENTINEL: &str = "Cancelled";
-
-pub(crate) fn reset_cancel_flag() {
-    INSTALL_CANCELLED.store(false, Ordering::SeqCst);
-}
-
-pub(crate) fn is_cancelled() -> bool {
-    INSTALL_CANCELLED.load(Ordering::SeqCst)
-}
 
 #[tauri::command]
 pub fn modpack_cancel_install() -> crate::cloud::SimpleResult {
-    INSTALL_CANCELLED.store(true, Ordering::SeqCst);
+    crate::op_guard::cancel_all_active();
     crate::cloud::SimpleResult {
         ok: true,
         error: None,
@@ -232,7 +220,6 @@ pub async fn modpack_install(app: tauri::AppHandle, file_path: String) -> Modpac
         Some(g) => g,
         None => return ModpackInstallResult::fail("Another operation (install or folder migration) is in progress. Try again when it finishes.".to_string()),
     };
-    reset_cancel_flag();
     let path = std::path::Path::new(&file_path);
     if !path.exists() {
         return ModpackInstallResult::fail("File not found".to_string());
@@ -463,6 +450,7 @@ async fn apply_mrpack_to_dir(
     archive: &mut zip::ZipArchive<fs::File>,
     index: &MrpackIndex,
     target_dir: &std::path::Path,
+    cancel: &std::sync::atomic::AtomicBool,
 ) -> Vec<(String, String)> {
     use futures_util::StreamExt;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -493,7 +481,7 @@ async fn apply_mrpack_to_dir(
                     .next()
                     .unwrap_or(&mod_file.path)
                     .to_string();
-                if is_cancelled() {
+                if cancel.load(Ordering::SeqCst) {
                     return None;
                 }
                 let result = download_mrpack_file(&client, &mod_file, &target_dir).await;
@@ -521,7 +509,7 @@ async fn apply_mrpack_to_dir(
         .collect()
         .await;
 
-    if is_cancelled() {
+    if cancel.load(Ordering::SeqCst) {
         emit_progress(app, "cancelled", "ยกเลิกการติดตั้ง", 0);
         return failed;
     }
@@ -551,10 +539,10 @@ pub async fn install_mrpack_url_into_dir(
     app: &tauri::AppHandle,
     url: &str,
     target_dir: &std::path::Path,
+    cancel: &std::sync::atomic::AtomicBool,
 ) -> Result<MrpackApplyReport, String> {
-    // Cancel flag is reset by the caller's entry command, not here — this runs
-    // deep in the sync flow, well after the UI exposed the Cancel button, so a
-    // reset here would clobber a Cancel the user already pressed.
+    // Cancellation is scoped to the caller's per-operation token — creating a
+    // fresh token here would make this deep sync immune to the UI Cancel.
     let client = crate::http_client::HTTP_CLIENT.clone();
     let resp = client
         .get(url)
@@ -573,7 +561,7 @@ pub async fn install_mrpack_url_into_dir(
         use futures_util::StreamExt;
         let mut stream = resp.bytes_stream();
         while let Some(chunk) = stream.next().await {
-            if is_cancelled() {
+            if cancel.load(Ordering::SeqCst) {
                 return Err(CANCELLED_SENTINEL.to_string());
             }
             let chunk = chunk.map_err(|e| e.to_string())?;
@@ -615,11 +603,11 @@ pub async fn install_mrpack_url_into_dir(
     }
 
     fs::create_dir_all(target_dir).ok();
-    let failed = apply_mrpack_to_dir(app, &mut archive, &index, target_dir).await;
+    let failed = apply_mrpack_to_dir(app, &mut archive, &index, target_dir, cancel).await;
 
     fs::remove_file(&temp_path).ok();
 
-    if is_cancelled() {
+    if cancel.load(Ordering::SeqCst) {
         return Err(CANCELLED_SENTINEL.to_string());
     }
 
@@ -637,6 +625,7 @@ fn now_ms() -> u128 {
 }
 
 async fn install_mrpack(app: &tauri::AppHandle, file_path: &str) -> ModpackInstallResult {
+    let cancel = crate::op_guard::CancelToken::new();
     let run = || -> Result<_, String> {
         let file = fs::File::open(file_path).map_err(|e| e.to_string())?;
         let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
@@ -685,23 +674,20 @@ async fn install_mrpack(app: &tauri::AppHandle, file_path: &str) -> ModpackInsta
 
     let instance_dir = crate::instances::get_instance_dir(&instance.id);
     let total = index.files.len();
-    let failed = apply_mrpack_to_dir(app, &mut archive, &index, &instance_dir).await;
+    let failed = apply_mrpack_to_dir(app, &mut archive, &index, &instance_dir, cancel.flag()).await;
 
-    if is_cancelled() {
-        
-        
-        
+    if cancel.is_cancelled() {
         let _ = crate::instances::instances_delete(instance.id.clone()).await;
         return ModpackInstallResult::fail(CANCELLED_SENTINEL);
     }
 
-    
-    
     if total > 0 && failed.len() == total {
+        let _ = crate::instances::instances_delete(instance.id.clone()).await;
+        emit_progress(app, "error", format!("All {total} mod downloads failed").as_str(), 0);
         return ModpackInstallResult {
             ok: false,
-            instance_id: Some(instance.id.clone()),
-            instance: Some(instance),
+            instance_id: None,
+            instance: None,
             name: Some(name),
             error: Some(format!("All {total} mod downloads failed")),
             failed_files: failed.into_iter().map(|(f, _)| f).collect(),
@@ -726,6 +712,7 @@ async fn install_mrpack(app: &tauri::AppHandle, file_path: &str) -> ModpackInsta
 }
 
 async fn install_cf_modpack(app: &tauri::AppHandle, file_path: &str) -> ModpackInstallResult {
+    let cancel = crate::op_guard::CancelToken::new();
     let run = || -> Result<_, String> {
         let file = fs::File::open(file_path).map_err(|e| e.to_string())?;
         let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
@@ -847,7 +834,7 @@ async fn install_cf_modpack(app: &tauri::AppHandle, file_path: &str) -> ModpackI
         }
     }
 
-    if is_cancelled() {
+    if cancel.is_cancelled() {
         let _ = crate::instances::instances_delete(instance.id.clone()).await;
         emit_progress(app, "cancelled", "ยกเลิกการติดตั้ง", 0);
         return ModpackInstallResult::fail(CANCELLED_SENTINEL);
@@ -862,7 +849,7 @@ async fn install_cf_modpack(app: &tauri::AppHandle, file_path: &str) -> ModpackI
         let result = crate::download::download_batch(
             items,
             &config,
-            Some(&INSTALL_CANCELLED),
+            Some(cancel.flag_arc()),
             |current, total, _label| {
                 let percent = if total > 0 {
                     ((current * 90) / total) as u32
@@ -888,17 +875,19 @@ async fn install_cf_modpack(app: &tauri::AppHandle, file_path: &str) -> ModpackI
         }
     }
 
-    if is_cancelled() {
+    if cancel.is_cancelled() {
         let _ = crate::instances::instances_delete(instance.id.clone()).await;
         emit_progress(app, "cancelled", "ยกเลิกการติดตั้ง", 0);
         return ModpackInstallResult::fail(CANCELLED_SENTINEL);
     }
 
     if total > 0 && failed.len() == total {
+        let _ = crate::instances::instances_delete(instance.id.clone()).await;
+        emit_progress(app, "error", format!("All {total} mod downloads failed").as_str(), 0);
         return ModpackInstallResult {
             ok: false,
-            instance_id: Some(instance.id.clone()),
-            instance: Some(instance),
+            instance_id: None,
+            instance: None,
             name: Some(name),
             error: Some(format!("All {total} mod downloads failed")),
             failed_files: failed,
@@ -938,7 +927,6 @@ pub async fn modpack_install_from_modrinth(
         Some(g) => g,
         None => return ModpackInstallResult::fail("Another operation (install or folder migration) is in progress. Try again when it finishes.".to_string()),
     };
-    reset_cancel_flag();
     let client = crate::http_client::HTTP_CLIENT.clone();
     let url = format!("https://api.modrinth.com/v2/version/{version_id}");
 
@@ -1038,7 +1026,6 @@ pub async fn modpack_install_from_curseforge(
         Some(g) => g,
         None => return ModpackInstallResult::fail("Another operation (install or folder migration) is in progress. Try again when it finishes.".to_string()),
     };
-    reset_cancel_flag();
     let client = crate::http_client::HTTP_CLIENT.clone();
 
     let download_url = format!("{API_URL}/curseforge/download/{project_id}/{file_id}");

@@ -203,10 +203,6 @@ interface LauncherAppShellProps {
   handleUnlink: (provider: "catid" | "microsoft") => void | Promise<void>;
   isAdmin: boolean;
   adminToken: string | null;
-  isExporting: boolean;
-  exportProgress: any;
-  handleCancelExport: (instanceId: string) => void | Promise<void>;
-  exportingInstanceId: string | null;
   isInstalling: boolean;
   installProgress: any;
   operationType: string | null;
@@ -215,7 +211,7 @@ interface LauncherAppShellProps {
 }
 
 export function LauncherAppShell({
-  colors, titleBarColors, config, session, accounts, selectedInstance, inboxOpen, setInboxOpen, announcements, userNotifications, unreadCount, setInvitations, setServerRefreshTrigger, setNotificationRefreshTrigger, accountDropdownOpen, setAccountDropdownOpen, t, selectAccount, removeAccountFromList, setLoginDialogOpen, setLinkCatIDOpen, handleLinkMicrosoft, handleLogout, updateConfig, contentTab, settingsDialogOpen, onCloseSettingsDialog, news, servers, selectedServer, setSelectedServer, setSelectedInstance, setActiveTab, serverRefreshTrigger, settingsTab, setSettingsTab, setImportModpackOpen, handleShowConfirm, handleBrowseJava, handleBrowseMinecraftDir, handleUnlink, isAdmin, adminToken, isExporting, exportProgress, handleCancelExport, exportingInstanceId, isInstalling, installProgress, operationType, handleCancelInstall, handleRepair,
+  colors, titleBarColors, config, session, accounts, selectedInstance, inboxOpen, setInboxOpen, announcements, userNotifications, unreadCount, setInvitations, setServerRefreshTrigger, setNotificationRefreshTrigger, accountDropdownOpen, setAccountDropdownOpen, t, selectAccount, removeAccountFromList, setLoginDialogOpen, setLinkCatIDOpen, handleLinkMicrosoft, handleLogout, updateConfig, contentTab, settingsDialogOpen, onCloseSettingsDialog, news, servers, selectedServer, setSelectedServer, setSelectedInstance, setActiveTab, serverRefreshTrigger, settingsTab, setSettingsTab, setImportModpackOpen, handleShowConfirm, handleBrowseJava, handleBrowseMinecraftDir, handleUnlink, isAdmin, adminToken, isInstalling, installProgress, operationType, handleCancelInstall, handleRepair,
 }: LauncherAppShellProps) {
   const [shouldRenderSettingsDialog, setShouldRenderSettingsDialog] = React.useState(false);
   const [hoveredToastId, setHoveredToastId] = React.useState<string | null>(null);
@@ -275,23 +271,6 @@ export function LauncherAppShell({
     );
   };
 
-  progressRenderRef.current.export = (visible: boolean) => {
-    if (!(isExporting && exportProgress)) return null;
-    return (
-      <ProgressToastCard
-        colors={colors}
-        visible={visible}
-        percent={exportProgress.percent}
-        current={exportProgress.current}
-        total={exportProgress.total}
-        title={t("exporting" as any)}
-        message={exportProgress.message}
-        onCancel={() => handleCancelExport(exportingInstanceId || "")}
-        cancelLabel={t("cancel")}
-      />
-    );
-  };
-
   const installToastActive = isInstalling && !!installProgress;
   React.useEffect(() => {
     const id = "install-progress-toast";
@@ -304,19 +283,6 @@ export function LauncherAppShell({
       toast.dismiss(id);
     }
   }, [installToastActive]);
-
-  const exportToastActive = isExporting && !!exportProgress;
-  React.useEffect(() => {
-    const id = "export-progress-toast";
-    if (exportToastActive) {
-      toast.custom((tItem) => progressRenderRef.current.export(tItem.visible), {
-        id,
-        duration: Infinity,
-      });
-    } else {
-      toast.dismiss(id);
-    }
-  }, [exportToastActive]);
 
   return (
     <>

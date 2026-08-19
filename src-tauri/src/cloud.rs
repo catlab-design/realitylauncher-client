@@ -653,6 +653,11 @@ async fn fetch_managed_mods(cloud_id: &str, auth_token: &str) -> Result<Vec<Mana
 
 
 fn cleanup_unmanaged_mods(instance_dir: &str, keep: &std::collections::HashSet<String>) {
+    // Deletes files from the instance dir — never run while a migration or
+    // other exclusive op is in flight.
+    let Some(_guard) = crate::op_guard::OperationGuard::try_shared() else {
+        return;
+    };
     let mods_dir = Path::new(instance_dir).join("mods");
     if !mods_dir.exists() {
         return;
@@ -687,6 +692,7 @@ async fn sync_managed_mods(
     app_handle: &tauri::AppHandle,
     instance_dir: &str,
     managed_mods: Vec<ManagedMod>,
+    cancel: &crate::op_guard::CancelToken,
 ) -> Result<Vec<(String, String)>, String> {
     emit_sync_progress(app_handle, "sync-start", "", None, None, None, None);
 
@@ -774,7 +780,7 @@ async fn sync_managed_mods(
         let result = crate::download::download_batch(
             items,
             &config,
-            None,
+            Some(cancel.flag_arc()),
             |current, total, _label| {
                 let pct = if total > 0 {
                     (current * 100) / total
@@ -867,12 +873,20 @@ pub async fn sync_instance_for_launch(
     let Some(cloud_id) = instance.cloud_id.as_deref() else {
         return Ok(Vec::new());
     };
-    // Reset cancel here (play/repair entry) so a fresh sync starts uncancelled
-    // and any Cancel arriving during it sticks — reset must not live deeper in
-    // the flow where the UI could have already sent a Cancel.
-    crate::modpack::reset_cancel_flag();
+    // Per-operation cancel token: a Cancel pressed during this sync aborts it
+    // (and any other op running at that moment), but starting a new op never
+    // wipes an in-flight cancel, and this fresh token is immune to cancels
+    // issued before it was created.
+    let cancel = crate::op_guard::CancelToken::new();
     let api_token = get_api_token()?;
-    sync_server_mods(app_handle, &instance.game_directory, cloud_id, &api_token).await
+    sync_server_mods(
+        app_handle,
+        &instance.game_directory,
+        cloud_id,
+        &api_token,
+        &cancel,
+    )
+    .await
 }
 
 
@@ -880,6 +894,19 @@ pub async fn sync_instance_for_launch(
 
 #[tauri::command]
 pub async fn instance_check_integrity(app_handle: tauri::AppHandle, id: String) -> SimpleResult {
+    let _guard = match crate::op_guard::OperationGuard::try_shared() {
+        Some(g) => g,
+        None => {
+            return SimpleResult {
+                ok: false,
+                error: Some(
+                    "A folder migration or another operation is in progress. Try again when it finishes.".to_string(),
+                ),
+                message: None,
+            }
+        }
+    };
+
     let instance = match crate::instances::instances_get(id) {
         Some(i) => i,
         None => {
@@ -939,8 +966,10 @@ async fn sync_server_mods(
     instance_dir: &str,
     cloud_id: &str,
     auth_token: &str,
+    cancel: &crate::op_guard::CancelToken,
 ) -> Result<Vec<(String, String)>, String> {
-    // NOTE: the cancel flag is reset by the entry commands (instances_cloud_install
+    // NOTE: cancellation is scoped to the entry command's per-operation token
+    // (instances_cloud_install / sync_instance_for_launch)
     // / sync_instance_for_launch), NOT here — the UI shows Cancel optimistically
     // the instant the user clicks, so resetting this deep in the flow would wipe
     // a Cancel that already arrived (pressing Cancel immediately did nothing).
@@ -967,8 +996,13 @@ async fn sync_server_mods(
     
     if let Some(url) = manifest_data.modpack_url.as_deref() {
         emit_sync_progress(app_handle, "sync-download", "", None, None, None, None);
-        match crate::modpack::install_mrpack_url_into_dir(app_handle, url, Path::new(instance_dir))
-            .await
+        match crate::modpack::install_mrpack_url_into_dir(
+            app_handle,
+            url,
+            Path::new(instance_dir),
+            cancel.flag(),
+        )
+        .await
         {
             Ok(report) => {
                 emit_sync_progress(
@@ -1011,7 +1045,7 @@ async fn sync_server_mods(
     
     match fetch_managed_mods(cloud_id, auth_token).await {
         Ok(managed_mods) if !managed_mods.is_empty() => {
-            return sync_managed_mods(app_handle, instance_dir, managed_mods).await;
+            return sync_managed_mods(app_handle, instance_dir, managed_mods, cancel).await;
         }
         _ => {}
     }
@@ -1139,7 +1173,7 @@ async fn sync_server_mods(
         let result = crate::download::download_batch(
             items,
             &config,
-            None,
+            Some(cancel.flag_arc()),
             |current, total, _label| {
                 let pct = if total > 0 {
                     (current * 100) / total
@@ -1600,10 +1634,7 @@ pub async fn instances_cloud_install(app_handle: tauri::AppHandle, id: String) -
             }
         }
     };
-    // Reset the cancel flag at the command entry — the earliest point, before
-    // any progress event exposes the Cancel button — so a Cancel pressed during
-    // this install is never wiped by a reset happening later in the flow.
-    crate::modpack::reset_cancel_flag();
+    let cancel = crate::op_guard::CancelToken::new();
 
     let api_token = match get_api_token() {
         Ok(t) => t,
@@ -1701,7 +1732,15 @@ pub async fn instances_cloud_install(app_handle: tauri::AppHandle, id: String) -
 
     emit_instances_updated(&app_handle);
 
-    match sync_server_mods(&app_handle, &instance.game_directory, &cloud_id, &api_token).await {
+    match sync_server_mods(
+        &app_handle,
+        &instance.game_directory,
+        &cloud_id,
+        &api_token,
+        &cancel,
+    )
+    .await
+    {
         Ok(failed) if failed.is_empty() => {
             emit_instances_updated(&app_handle);
             SimpleResult {
@@ -1913,7 +1952,8 @@ pub async fn cloud_instance_sync_managed(app_handle: tauri::AppHandle, id: Strin
         };
     }
 
-    match sync_managed_mods(&app_handle, &instance.game_directory, managed_mods).await {
+    let cancel = crate::op_guard::CancelToken::new();
+    match sync_managed_mods(&app_handle, &instance.game_directory, managed_mods, &cancel).await {
         Ok(failed) if failed.is_empty() => {
             emit_instances_updated(&app_handle);
             SimpleResult {

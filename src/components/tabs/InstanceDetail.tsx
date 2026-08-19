@@ -44,7 +44,6 @@ interface InstanceDetailProps {
     onDelete: (id: string) => void;
     onDuplicate: (id: string) => void;
     onUpdate: (id: string, updates: Partial<GameInstance>) => void;
-    onExport: (id: string, options: any) => Promise<void>;
     onViewLogs: (id: string) => void;
     onRepair?: (id: string) => void;
     launchingId: string | null;
@@ -64,7 +63,6 @@ export function InstanceDetail({
     onDelete,
     onDuplicate,
     onUpdate,
-    onExport,
     onViewLogs,
     launchingId,
     isGameRunning,
@@ -1435,7 +1433,6 @@ export function InstanceDetail({
                         onUpdate={onUpdate}
                         onDelete={onDelete}
                         onDuplicate={onDuplicate}
-                        onExport={onExport}
                         language={config.language}
                         config={config}
                         onRepair={onRepair}

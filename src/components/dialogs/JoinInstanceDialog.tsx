@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { Icons } from '../ui/Icons';
 import { useTranslation } from '../../hooks/useTranslation';
 import './JoinInstanceDialog.css';
@@ -17,6 +17,13 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState(false);
+    const closedRef = useRef(false);
+
+    useEffect(() => {
+        if (!isOpen) {
+            closedRef.current = false;
+        }
+    }, [isOpen]);
 
     const bg = colors?.surface || '#1e1e2e';
     const text = colors?.onSurface || '#ffffff';
@@ -52,6 +59,7 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
                 setSuccess(true);
                 setError('');
                 setTimeout(() => {
+                    if (closedRef.current) return;
                     onSuccess();
                     onClose();
                     setKey('');
@@ -73,6 +81,7 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
 
     const handleClose = () => {
         if (!loading) {
+            closedRef.current = true;
             setKey('');
             setError('');
             setSuccess(false);

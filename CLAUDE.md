@@ -112,7 +112,7 @@ src/
 │   ├── authStore.ts                  # Auth state (persisted)
 │   ├── configStore.ts                # Config state (persisted, v1, migrated)
 │   ├── launchStore.ts                # Launching state
-│   ├── progressStore.ts              # Install/export progress
+│   ├── progressStore.ts              # Install progress
 │   └── uiStore.ts                    # UI state (activeTab, modals, etc.)
 ├── styles/
 │   └── global.css                    # Tailwind import + custom CSS + animations (587 lines)
@@ -212,7 +212,7 @@ LauncherApp
 | `configStore` | `store/configStore.ts` | Yes (`reality_config`, v1) | All `LauncherConfig` fields, setConfig, resetConfig, setTheme, setLanguage |
 | `uiStore` | `store/uiStore.ts` | No | `activeTab`, `lastContentTab`, `wardrobeMode`, `settingsTab`, 9 modal booleans |
 | `launchStore` | `store/launchStore.ts` | No | `launchingId` |
-| `progressStore` | `store/progressStore.ts` | No | `isExporting`, `exportProgress`, `isInstalling`, `installProgress`, `operationType` |
+| `progressStore` | `store/progressStore.ts` | No | `isInstalling`, `installProgress`, `operationType`, `installingInstanceId` |
 
 ConfigStore migration (v0→v1): `closeOnLaunch` changed from `boolean` to `'keep-open' | 'hide-reopen' | 'close'`.
 
@@ -254,7 +254,7 @@ ConfigStore migration (v0→v1): `closeOnLaunch` changed from `boolean` to `'kee
 | **config** | `config_get`, `config_set`, `config_get_minecraft_dir`, `config_migrate_minecraft_dir` (emits `migrate-progress`/`migrate-cancelled`/`instances-updated`), `cancel_migrate`, `reset_config` (preserves `minecraft_dir`), `get_system_ram`, `get_max_ram` |
 | **instances** | `instances_list`, `instances_get`, `instances_create`, `instances_update`, `instances_delete`, `instances_duplicate`, `instances_set_icon` |
 | **download** | `download_batch()`, `download_file()`, `DownloadItem`, `DownloadConfig`, `BatchResult` — shared concurrent engine used by modpack and cloud |
-| **launcher** | `is_game_running`, `kill_game`, `instances_launch`, `get_playing_instance_id`, `instance_read_latest_log`, `instance_tail_log`, `get_app_version`, `is_dev_mode`, `browse_java`, `instances_preinstall` |
+| **launcher** | `is_game_running`, `kill_game` (emits `game-stopped`), `instances_launch`, `get_playing_instance_id`, `instance_read_latest_log`, `instance_tail_log`, `get_app_version`, `is_dev_mode`, `browse_java`, `instances_preinstall` |
 | **java** | `install_java`, `detect_java_installations`, `delete_java`, `test_java_execution`, `auto_detect_java` |
 | **admin** | `check_status`, `get_settings`, `save_setting`, `get_users`, `ban_user`, `unban_user`, `toggle_user_admin`, `create_user`, `get_user_details`, `get_system_info` |
 | **content** | mod/resourcepack CRUD + toggle + delete + install + lock |

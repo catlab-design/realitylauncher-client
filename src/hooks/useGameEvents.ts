@@ -92,6 +92,17 @@ export function useGameEvents({
         const removeListener = (window.api as any)?.onInstallProgress?.((data: any) => {
             if (isCancellingRef.current) return;
 
+            const isSyncEvent =
+                data.type === "sync-start" ||
+                data.type === "sync-download" ||
+                data.type === "sync-clean" ||
+                data.type === "sync-complete" ||
+                data.type === "sync-error";
+
+            if (isSyncEvent && !isInstallingRef.current && operationTypeRef.current !== "repair") {
+                return;
+            }
+
             setInstallProgressThrottled({
                 type: data.type,
                 task: data.task,
@@ -101,7 +112,7 @@ export function useGameEvents({
                 percent: data.percent
             });
 
-            if (data.type === "complete" || data.percent === 100) {
+            if (data.type === "complete" || (data.percent === 100 && !isSyncEvent)) {
                 setTimeout(() => {
                     if (!isCancellingRef.current) {
                         setInstallingSafe(false);
@@ -174,9 +185,6 @@ export function useGameEvents({
         if (isCancellingRef.current) return;
         isCancellingRef.current = true;
         try {
-            if (installingInstanceId) {
-                await (window.api as any)?.instanceCancelAction?.(installingInstanceId);
-            }
             await (window.api as any)?.modpackCancelInstall?.();
 
             toast(t('cancel_install_success'));
@@ -186,6 +194,10 @@ export function useGameEvents({
             setOperationType(null);
         } catch (e) {
             console.error("Failed to cancel install", e);
+            setInstalling(false);
+            setInstallProgress(null);
+            setInstallingInstanceId(null);
+            setOperationType(null);
         } finally {
             setTimeout(() => {
                 isCancellingRef.current = false;
@@ -198,6 +210,9 @@ export function useGameEvents({
         setInstalling(true);
         setInstallMinimized(false);
         setInstallProgress({ type: "sync-start", task: t('sync-start' as any) });
+
+        const isCancellationError = (msg: unknown): boolean =>
+            typeof msg === "string" && /cancel|cancelled/i.test(msg);
 
         try {
             const result = await (window.api as any)?.instanceCheckIntegrity?.(id);
@@ -213,13 +228,17 @@ export function useGameEvents({
                 setInstalling(false);
                 setInstallProgress(null);
                 setOperationType(null);
-                toast.error(result?.error || t('repair_failed'));
+                if (!isCancellationError(result?.error)) {
+                    toast.error(result?.error || t('repair_failed'));
+                }
             }
         } catch (error: any) {
             setInstalling(false);
             setInstallProgress(null);
             setOperationType(null);
-            toast.error(error?.message || t('error_occurred'));
+            if (!isCancellationError(error?.message)) {
+                toast.error(error?.message || t('error_occurred'));
+            }
         }
     };
 

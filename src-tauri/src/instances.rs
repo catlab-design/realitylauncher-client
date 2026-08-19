@@ -78,7 +78,18 @@ pub fn get_instances_dir() -> PathBuf {
 
 
 pub fn get_instance_dir(id: &str) -> PathBuf {
-    get_instances_dir().join(id)
+    if is_safe_instance_id(id) {
+        get_instances_dir().join(id)
+    } else {
+        // Never let an IPC-provided id escape the instances root (empty ids,
+        // ".", "..", or ids containing path separators would otherwise
+        // resolve to the instances dir itself or the minecraft dir).
+        get_instances_dir().join(format!("__invalid__{}", sanitize_name(id)))
+    }
+}
+
+fn is_safe_instance_id(id: &str) -> bool {
+    !id.is_empty() && id != "." && id != ".." && !id.contains('/') && !id.contains('\\')
 }
 
 
@@ -175,7 +186,10 @@ fn sanitize_name(name: &str) -> String {
 
 
 fn generate_unique_id(name: &str, existing: &[GameInstance]) -> String {
-    let base = sanitize_name(name);
+    let mut base = sanitize_name(name);
+    if base.is_empty() || base == "." || base == ".." {
+        base = "instance".to_string();
+    }
 
     if !existing.iter().any(|i| i.id == base) {
         return base;
@@ -333,6 +347,19 @@ pub fn instances_update(
 
 #[tauri::command]
 pub async fn instances_delete(id: String) -> Result<bool, String> {
+    let _guard = match crate::op_guard::OperationGuard::try_shared() {
+        Some(g) => g,
+        None => {
+            return Err(
+                "A folder migration or another operation is in progress. Try again when it finishes.".to_string(),
+            )
+        }
+    };
+
+    if crate::launcher::is_game_running(Some(id.clone())) {
+        return Err("Cannot delete an instance while a game is running from it".to_string());
+    }
+
     let existed = {
         let mut instances = INSTANCES.lock().map_err(|e| e.to_string())?;
         match instances.iter().position(|i| i.id == id) {
@@ -362,6 +389,15 @@ pub async fn instances_delete(id: String) -> Result<bool, String> {
 
 #[tauri::command]
 pub fn instances_duplicate(id: String) -> Result<Option<GameInstance>, String> {
+    let _guard = match crate::op_guard::OperationGuard::try_shared() {
+        Some(g) => g,
+        None => {
+            return Err(
+                "A folder migration or another operation is in progress. Try again when it finishes.".to_string(),
+            )
+        }
+    };
+
     let instances = INSTANCES.lock().map_err(|e| e.to_string())?;
 
     let source = instances.iter().find(|i| i.id == id).cloned();

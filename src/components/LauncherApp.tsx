@@ -29,24 +29,12 @@ function LauncherAppContent() {
 
   const config = useConfigStore();
   const {
-    isExporting,
-    exportProgress,
-    exportingInstanceId,
     isInstalling, setInstalling,
     installProgress, setInstallProgress,
     setInstallMinimized,
     operationType, setOperationType,
     installingInstanceId, setInstallingInstanceId
   } = useProgressStore();
-
-  const handleCancelExport = async (instanceId: string) => {
-    playClick();
-    try {
-      await window.api?.instancesExportCancel?.(instanceId);
-    } catch (error) {
-      console.error("Failed to cancel export:", error);
-    }
-  };
 
   const { session, accounts, setSession, addAccount, updateAccount, removeAccount: removeAccountAction } = useAuthStore();
   const { activeTab, setActiveTab, settingsTab, setSettingsTab, modals, openModal, closeModal, lastContentTab, setLastContentTab } = useUiStore();
@@ -1320,10 +1308,6 @@ function LauncherAppContent() {
         handleUnlink={handleUnlink}
         isAdmin={isAdmin}
         adminToken={adminToken}
-        isExporting={isExporting}
-        exportProgress={exportProgress}
-        handleCancelExport={handleCancelExport}
-        exportingInstanceId={exportingInstanceId}
         isInstalling={isInstalling}
         installProgress={installProgress}
         operationType={operationType}
