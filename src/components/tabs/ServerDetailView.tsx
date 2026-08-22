@@ -20,6 +20,20 @@ function getSafeExternalUrl(rawUrl?: string | null): string | null {
     }
 }
 
+function getHostname(rawUrl?: string | null): string | null {
+    if (typeof rawUrl !== "string") return null;
+    try {
+        return new URL(rawUrl).hostname.toLowerCase();
+    } catch {
+        return null;
+    }
+}
+
+function isXDotComUrl(rawUrl: string): boolean {
+    const host = getHostname(rawUrl);
+    return !!host && (host === "x.com" || host.endsWith(".x.com"));
+}
+
 function parseSocialLinks(rawSocials: unknown): SocialLink[] {
     if (typeof rawSocials !== "string" || rawSocials.trim().length === 0) return [];
     try {
@@ -98,7 +112,7 @@ export function ServerDetailView({
         if (lt === "discord" || l.includes("discord")) return Icons.Discord;
         if (lt === "youtube" || l.includes("youtu")) return Icons.YouTube;
         if (lt === "facebook" || l.includes("facebook")) return Icons.Facebook;
-        if (lt === "twitter" || lt === "x" || l.includes("twitter") || l.includes("x.com")) return Icons.TwitterX;
+        if (lt === "twitter" || lt === "x" || l.includes("twitter") || isXDotComUrl(url)) return Icons.TwitterX;
         if (lt === "instagram" || l.includes("instagram")) return Icons.Instagram;
         return Icons.Globe;
     };
@@ -108,7 +122,7 @@ export function ServerDetailView({
         if (lt === "discord" || l.includes("discord")) return "#5865F2";
         if (lt === "youtube" || l.includes("youtu")) return "#DC2626";
         if (lt === "facebook" || l.includes("facebook")) return "#2563EB";
-        if (lt === "twitter" || lt === "x" || l.includes("twitter") || l.includes("x.com")) return "#111827";
+        if (lt === "twitter" || lt === "x" || l.includes("twitter") || isXDotComUrl(url)) return "#111827";
         if (lt === "instagram" || l.includes("instagram"))
             return "linear-gradient(45deg,#f09433 0%,#e6683c 28%,#dc2743 55%,#bc1888 100%)";
         return "#2b2d31";
