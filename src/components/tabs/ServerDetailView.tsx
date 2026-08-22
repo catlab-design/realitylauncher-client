@@ -20,6 +20,15 @@ function getSafeExternalUrl(rawUrl?: string | null): string | null {
     }
 }
 
+function getHostname(rawUrl?: string | null): string {
+    if (typeof rawUrl !== "string") return "";
+    try {
+        return new URL(rawUrl).hostname.toLowerCase();
+    } catch {
+        return "";
+    }
+}
+
 function parseSocialLinks(rawSocials: unknown): SocialLink[] {
     if (typeof rawSocials !== "string" || rawSocials.trim().length === 0) return [];
     try {
@@ -95,21 +104,27 @@ export function ServerDetailView({
 
     const getSocialIcon = (url: string, type?: string) => {
         const l = url.toLowerCase(), lt = type?.toLowerCase() || "";
-        if (lt === "discord" || l.includes("discord")) return Icons.Discord;
-        if (lt === "youtube" || l.includes("youtu")) return Icons.YouTube;
-        if (lt === "facebook" || l.includes("facebook")) return Icons.Facebook;
-        if (lt === "twitter" || lt === "x" || l.includes("twitter") || l.includes("x.com")) return Icons.TwitterX;
-        if (lt === "instagram" || l.includes("instagram")) return Icons.Instagram;
+        const host = getHostname(url);
+        const isXHost = host === "x.com" || host.endsWith(".x.com");
+        const isTwitterHost = host === "twitter.com" || host.endsWith(".twitter.com");
+        if (lt === "discord" || host === "discord.com" || host.endsWith(".discord.com") || l.includes("discord.gg")) return Icons.Discord;
+        if (lt === "youtube" || host === "youtube.com" || host.endsWith(".youtube.com") || host === "youtu.be") return Icons.YouTube;
+        if (lt === "facebook" || host === "facebook.com" || host.endsWith(".facebook.com")) return Icons.Facebook;
+        if (lt === "twitter" || lt === "x" || isTwitterHost || isXHost) return Icons.TwitterX;
+        if (lt === "instagram" || host === "instagram.com" || host.endsWith(".instagram.com")) return Icons.Instagram;
         return Icons.Globe;
     };
 
     const getSocialColor = (url: string, type?: string) => {
         const l = url.toLowerCase(), lt = type?.toLowerCase() || "";
-        if (lt === "discord" || l.includes("discord")) return "#5865F2";
-        if (lt === "youtube" || l.includes("youtu")) return "#DC2626";
-        if (lt === "facebook" || l.includes("facebook")) return "#2563EB";
-        if (lt === "twitter" || lt === "x" || l.includes("twitter") || l.includes("x.com")) return "#111827";
-        if (lt === "instagram" || l.includes("instagram"))
+        const host = getHostname(url);
+        const isXHost = host === "x.com" || host.endsWith(".x.com");
+        const isTwitterHost = host === "twitter.com" || host.endsWith(".twitter.com");
+        if (lt === "discord" || host === "discord.com" || host.endsWith(".discord.com") || l.includes("discord.gg")) return "#5865F2";
+        if (lt === "youtube" || host === "youtube.com" || host.endsWith(".youtube.com") || host === "youtu.be") return "#DC2626";
+        if (lt === "facebook" || host === "facebook.com" || host.endsWith(".facebook.com")) return "#2563EB";
+        if (lt === "twitter" || lt === "x" || isTwitterHost || isXHost) return "#111827";
+        if (lt === "instagram" || host === "instagram.com" || host.endsWith(".instagram.com"))
             return "linear-gradient(45deg,#f09433 0%,#e6683c 28%,#dc2743 55%,#bc1888 100%)";
         return "#2b2d31";
     };
