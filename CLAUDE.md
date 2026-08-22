@@ -8,7 +8,7 @@
 | **Version** | 4.0.2 |
 | **License** | GPL-3.0-only |
 | **Description** | ML-Launcher POC with Tauri + Rust — Minecraft launcher |
-| **Copyright** | 2026 Q Team \| Studio <studiotne1@gmail.com> |
+| **Copyright** | 2026 SpaceLogic Studio <hi@catlabdesign.space> |
 | **Stack** | **Frontend**: React 19 + TypeScript + Vite 5 &nbsp;·&nbsp; **Backend**: Rust + Tauri v2 &nbsp;·&nbsp; **State**: Zustand 5 &nbsp;·&nbsp; **Styling**: Tailwind CSS v4 &nbsp;·&nbsp; **Animations**: Framer Motion 12 + GSAP &nbsp;·&nbsp; **Package Mgr**: Bun |
 | **Origin** | Electron-to-Tauri migration (see `docs/plans/`) |
 

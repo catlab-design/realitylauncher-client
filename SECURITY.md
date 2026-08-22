@@ -9,7 +9,7 @@ Only the latest `main` branch and current release line are supported for securit
 Please do not open public issues for security vulnerabilities.
 
 Report privately by email:
-- `studiotne1@gmail.com`
+- `hi@catlabdesign.space`
 
 Include:
 - Affected version/commit

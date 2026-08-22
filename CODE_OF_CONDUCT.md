@@ -28,7 +28,7 @@ This Code of Conduct applies within project spaces and in public spaces when an 
 ## Enforcement
 
 Report unacceptable behavior to:
-- `studiotne1@gmail.com`
+- `hi@catlabdesign.space`
 
 All reports will be reviewed and investigated promptly and fairly.
 
