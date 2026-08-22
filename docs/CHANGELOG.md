@@ -18,6 +18,7 @@
 - Dead pre-install wiring and the never-implemented instance export feature: `instancesPreInstall` / `instancesExport` / `instancesExportCancel` / `instanceCancelAction` removed from the `api.ts` bridge and `env.d.ts`, the export tab and its progress toasts deleted, and `progressStore` no longer carries export state (#9, #1)
 
 ### Fixed
+- Full builds (`tauri build` / CI) failed with 22 `cannot find op_guard in the crate root` errors — the module was declared in `lib.rs` but missing from `main.rs`'s module list
 - macOS update check requested the server's `downloads.macos` key, but the server publishes `downloads.mac` — the in-app updater on macOS silently found no download; the platform key now matches (`mac`)
 - Downloaded update installers were saved with the URL's percent-escaped filename literally (e.g. `reality-update-Reality%20Launcher_4.1.0_…`) — the name is now URL-decoded before writing to disk
 - A `config.json` missing one optional key (e.g. `ramMB`, `closeLauncherOnGameStart`, `discordRpcEnabled`, `autoUpdateEnabled`, `theme` — written by an older build or truncated by a crash) no longer makes the entire file unreadable and silently resets the launcher to defaults, which made the app "forget" the user's game folder after an update; missing keys now deserialize to safe defaults (`ramMB` → 4096) and `minecraft_dir` survives

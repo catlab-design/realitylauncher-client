@@ -20,6 +20,7 @@ mod launcher;
 mod mod_meta;
 mod modpack;
 mod modrinth;
+mod op_guard;
 mod social;
 mod telemetry;
 mod update;
