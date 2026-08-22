@@ -365,7 +365,7 @@ const KNOWN_UNPORTED = new Set(['fetchInstanceAgendas', 'fetchAllAgendas']);
 5. **Some UI code still uses `window.api.X()`** from the Electron era — these are validated by the bridge parity test
 6. **Fonts are self-hosted** via `@fontsource` — works offline, no Google Fonts dependency
 7. **No `public/` directory** — all assets are in `src/assets/` and imported directly
-8. **No CI/CD or Docker** — `.github/` is empty
+8. **No Docker** — CI lives in `.github/workflows/` (`build.yml` tag/manual-triggered build + R2/GitHub Release, `ci.yml`)
 9. **`src-tauri/src/download.rs`** — shared concurrent download engine using `tokio::sync::Semaphore` (default 8 concurrency). Accepts a progress callback, supports retry with backoff, SHA1/SHA256/SHA512 hash verification, atomic writes (temp + rename), JAR/ZIP validation, and per-error `missing_on_server` vs `failed` classification. Replaces old sequential loops in CurseForge modpack install (`install_cf_modpack`) and cloud sync (`sync_managed_mods`, `sync_server_mods` queue).
 
 ---

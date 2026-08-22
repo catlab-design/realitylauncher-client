@@ -63,6 +63,21 @@ Grab the latest installer from [**Releases**](https://github.com/catlab-design/r
 
 > ℹ️ Releases are published manually — check the releases page to make sure you're on the newest build.
 
+> ⚠️ **macOS users:** builds are currently unsigned, so Gatekeeper may show
+> *"App is damaged"* or *"can't verify the developer"* on first launch
+> (Intel & Apple Silicon). One-time fix:
+>
+> 1. Open **Terminal**
+> 2. Paste (adjust the path if you didn't install to `/Applications`):
+>    ```bash
+>    sudo xattr -cr "/Applications/Reality Launcher.app"
+>    ```
+> 3. Enter your login password when prompted
+> 4. Launch normally
+>
+> No-Terminal alternative: right-click the app → **Open**, or
+> System Settings → Privacy & Security → **Open Anyway**.
+
 ### From Source
 
 **Prerequisites**

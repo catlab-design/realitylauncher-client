@@ -47,6 +47,7 @@
 - `progressStore` no longer carries export state (`isExporting`, `exportProgress`, `exportingInstanceId`, …)
 
 ### Added
+- macOS Gatekeeper troubleshooting docs: README install note + release-notes boilerplate for unsigned builds (#1)
 - i18n keys `clearing_cache`, `clearing`, `select_all` (en + th) and `install_as_new_instance`, `loading_versions`, `downloads` (en)
 - `install_update` now copies `config.json`/`session.json` to `*.pre-update` before launching the installer; on next start, a missing or unreadable data file is automatically restored from that backup, so even a destructive installer (e.g. an NSIS package that installs or uninstalls into the data folder) can no longer wipe the user's game folder choice and account
 - Config and session persistence hardening: `config.json`/`session.json` writes are atomic (temp file + rename, same pattern as the download engine), unreadable files are kept as `*.bak-<timestamp>` before anything overwrites them, and `minecraft_dir`/`java_path` are salvaged even when the rest of the config file is unparseable

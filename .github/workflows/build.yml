@@ -426,6 +426,13 @@ jobs:
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: Reality Launcher v${{ steps.version.outputs.version }}
+          # generate_release_notes appends the auto-generated notes below this body
+          body: |
+            > ⚠️ **macOS:** builds are currently unsigned — if macOS says the app is damaged or from an unidentified developer, run once:
+            > ```bash
+            > sudo xattr -cr "/Applications/Reality Launcher.app"
+            > ```
+            > (or right-click the app → Open). See the README for details.
           draft: false
           prerelease: false
           generate_release_notes: true
