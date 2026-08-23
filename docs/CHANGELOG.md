@@ -2,7 +2,7 @@
 
 ### Security
 - Replaced the native OpenSSL TLS backend with rustls (`reqwest` `default-features = false` + `rustls-tls`), removing the `openssl` crate from the dependency tree entirely — clears all eight tracked rust-openssl advisories (heap buffer overflows, out-of-bounds reads/writes, undefined behavior)
-- Bumped Vite to 5.4.21, patching the Windows `server.fs.deny` bypass, the optimized-deps path traversal, and the launch-editor NTLMv2 hash disclosure (dev-dependency only)
+- Upgraded Vite 5 → 6.4.3, clearing every tracked Vite advisory: the Windows `server.fs.deny` bypass, the optimized-deps path traversal, the launch-editor NTLMv2 hash disclosure (dev-only), and the `.map` handling path traversal
 - Updated transitive Rust dependencies across the board (`cargo update`: bytes, time, rand, serde_with, rustls-webpki, and others) to pick up patched releases
 - Replaced URL substring matching (`url.includes("discord.gg")`) in ServerDetailView social-link handling with parsed-hostname checks — closes both CodeQL `incomplete-url-substring-sanitization` alerts
 
