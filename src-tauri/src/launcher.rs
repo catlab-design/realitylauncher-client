@@ -949,6 +949,33 @@ fn ensure_launcher_profiles(minecraft_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
+async fn verify_installer_jar(bytes: &[u8], url: &str) -> Result<(), String> {
+    if bytes.len() < 2 || bytes[0] != b'P' || bytes[1] != b'K' {
+        return Err("Downloaded loader installer is not a valid JAR archive".to_string());
+    }
+    match crate::http_client::HTTP_CLIENT
+        .get(format!("{url}.sha1"))
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => {
+            let text = resp.text().await.map_err(|e| e.to_string())?;
+            let expected = text.trim().split_whitespace().next().unwrap_or("");
+            let actual = sha1_bytes(bytes);
+            if !expected.is_empty() && actual != expected {
+                return Err(format!(
+                    "Loader installer checksum mismatch: expected {expected}, got {actual}"
+                ));
+            }
+        }
+        Ok(resp) => {
+            log::warn!("[Launcher] Installer checksum unavailable (HTTP {})", resp.status())
+        }
+        Err(e) => log::warn!("[Launcher] Could not fetch installer checksum: {e}"),
+    }
+    Ok(())
+}
+
 async fn install_forge(
     mc_version: &str,
     forge_version: &str,
@@ -981,7 +1008,10 @@ async fn install_forge(
 
     if version_json_path.exists() && patched_client_jar.exists() {
         let content = fs::read_to_string(&version_json_path).map_err(|e| e.to_string())?;
-        return serde_json::from_str(&content).map_err(|e| e.to_string());
+        let version_data: serde_json::Value =
+            serde_json::from_str(&content).map_err(|e| e.to_string())?;
+        ensure_libraries(&version_data, libraries_dir).await?;
+        return Ok(version_data);
     }
 
     let installer_filename = format!("forge-{full_version}-installer.jar");
@@ -995,7 +1025,14 @@ async fn install_forge(
         .send()
         .await
         .map_err(|e| format!("Failed to download Forge installer: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Forge installer download failed: HTTP {} ({installer_url})",
+            resp.status()
+        ));
+    }
     let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    verify_installer_jar(&bytes, &installer_url).await?;
 
     let installer_dir = minecraft_dir.join("installers");
     fs::create_dir_all(&installer_dir).map_err(|e| e.to_string())?;
@@ -1038,7 +1075,12 @@ async fn install_forge(
     }
 
     let content = fs::read_to_string(&version_json_path).map_err(|e| e.to_string())?;
-    serde_json::from_str(&content).map_err(|e| e.to_string())
+    let version_data: serde_json::Value =
+        serde_json::from_str(&content).map_err(|e| e.to_string())?;
+    ensure_libraries(&version_data, libraries_dir)
+        .await
+        .map_err(|e| format!("Forge installed but downloading its libraries failed: {e}"))?;
+    Ok(version_data)
 }
 
 
@@ -1065,7 +1107,10 @@ async fn install_neoforge(
 
     if version_json_path.exists() && patched_client_jar.exists() {
         let content = fs::read_to_string(&version_json_path).map_err(|e| e.to_string())?;
-        return serde_json::from_str(&content).map_err(|e| e.to_string());
+        let version_data: serde_json::Value =
+            serde_json::from_str(&content).map_err(|e| e.to_string())?;
+        ensure_libraries(&version_data, libraries_dir).await?;
+        return Ok(version_data);
     }
 
     let installer_filename = format!("neoforge-{full_version}-installer.jar");
@@ -1079,7 +1124,14 @@ async fn install_neoforge(
         .send()
         .await
         .map_err(|e| format!("Failed to download NeoForge installer: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "NeoForge installer download failed: HTTP {} ({installer_url})",
+            resp.status()
+        ));
+    }
     let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    verify_installer_jar(&bytes, &installer_url).await?;
 
     let installer_dir = minecraft_dir.join("installers");
     fs::create_dir_all(&installer_dir).map_err(|e| e.to_string())?;
@@ -1122,7 +1174,12 @@ async fn install_neoforge(
     }
 
     let content = fs::read_to_string(&version_json_path).map_err(|e| e.to_string())?;
-    serde_json::from_str(&content).map_err(|e| e.to_string())
+    let version_data: serde_json::Value =
+        serde_json::from_str(&content).map_err(|e| e.to_string())?;
+    ensure_libraries(&version_data, libraries_dir)
+        .await
+        .map_err(|e| format!("NeoForge installed but downloading its libraries failed: {e}"))?;
+    Ok(version_data)
 }
 
 async fn install_quilt(
