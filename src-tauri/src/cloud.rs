@@ -177,6 +177,27 @@ fn client() -> reqwest::Client {
     crate::http_client::HTTP_CLIENT.clone()
 }
 
+/// Send an authenticated cloud-API request. On a 401 the session's API token
+/// is force-refreshed once (Microsoft chain re-mints it via the backend) and
+/// the request is rebuilt and retried with the fresh token — a 401 is always
+/// pre-execution on the server, so the retry can never duplicate work.
+async fn send_authed(
+    build: impl Fn(&str) -> reqwest::RequestBuilder,
+) -> Result<reqwest::Response, String> {
+    let resp = build(&get_api_token()?)
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {e}"))?;
+    if resp.status() != reqwest::StatusCode::UNAUTHORIZED {
+        return Ok(resp);
+    }
+    let refreshed = crate::auth::refresh_api_token().await?;
+    build(&refreshed)
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {e}"))
+}
+
 fn normalize_hash(hash_str: &str) -> Option<(String, String)> {
     let mut value = hash_str.trim().to_string();
     if value.is_empty() {
@@ -452,18 +473,32 @@ async fn fetch_server_content(
         format!("{}/instances/{}/content", API_URL, cloud_id)
     };
 
-    let mut req = client()
-        .get(&endpoint)
-        .header("Authorization", format!("Bearer {}", auth_token));
+    let mut effective_token = auth_token.to_string();
 
-    if let Some(ref rev) = cached_revision {
-        req = req.header("If-None-Match", format!("\"{}\"", rev));
-    }
+    let mut build_req = |token: &str| {
+        let mut req = client()
+            .get(&endpoint)
+            .header("Authorization", format!("Bearer {}", token));
+        if let Some(ref rev) = cached_revision {
+            req = req.header("If-None-Match", format!("\"{}\"", rev));
+        }
+        req
+    };
 
-    let resp = req
+    let mut resp = build_req(&effective_token)
         .send()
         .await
         .map_err(|e| format!("Network error: {}", e))?;
+
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        if let Ok(fresh) = crate::auth::refresh_api_token().await {
+            effective_token = fresh;
+            resp = build_req(&effective_token)
+                .send()
+                .await
+                .map_err(|e| format!("Network error: {}", e))?;
+        }
+    }
 
     if resp.status() == 304 {
         let cache = MANIFEST_CACHE.lock().unwrap();
@@ -493,9 +528,7 @@ async fn fetch_server_content(
     
     
     if resp.status() == 304 {
-        let req = client()
-            .get(&endpoint)
-            .header("Authorization", format!("Bearer {}", auth_token));
+        let req = build_req(&effective_token);
         let fresh_resp = req
             .send()
             .await
@@ -575,18 +608,29 @@ async fn fetch_instance_metadata(
             .map(|e| e.etag.clone())
     };
 
-    let mut req = client()
-        .get(format!("{}/instances/{}", API_URL, cloud_id))
-        .header("Authorization", format!("Bearer {}", auth_token));
+    let build_req = |token: &str| {
+        let mut req = client()
+            .get(format!("{}/instances/{}", API_URL, cloud_id))
+            .header("Authorization", format!("Bearer {}", token));
+        if let Some(ref etag) = cached_etag {
+            req = req.header("If-None-Match", etag.clone());
+        }
+        req
+    };
 
-    if let Some(ref etag) = cached_etag {
-        req = req.header("If-None-Match", etag.clone());
-    }
-
-    let resp = req
+    let mut resp = build_req(auth_token)
         .send()
         .await
         .map_err(|e| format!("Network error: {}", e))?;
+
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        if let Ok(fresh) = crate::auth::refresh_api_token().await {
+            resp = build_req(&fresh)
+                .send()
+                .await
+                .map_err(|e| format!("Network error: {}", e))?;
+        }
+    }
 
     if resp.status() == 304 {
         return Ok((serde_json::Value::Null, None));
@@ -630,12 +674,23 @@ async fn fetch_instance_metadata(
 
 async fn fetch_managed_mods(cloud_id: &str, auth_token: &str) -> Result<Vec<ManagedMod>, String> {
     let url = format!("{}/instances/{}/modpack/mods", API_URL, cloud_id);
-    let resp = client()
+    let mut resp = client()
         .get(&url)
         .header("Authorization", format!("Bearer {}", auth_token))
         .send()
         .await
         .map_err(|e| format!("Network error: {}", e))?;
+
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        if let Ok(fresh) = crate::auth::refresh_api_token().await {
+            resp = client()
+                .get(&url)
+                .header("Authorization", format!("Bearer {}", fresh))
+                .send()
+                .await
+                .map_err(|e| format!("Network error: {}", e))?;
+        }
+    }
 
     if !resp.status().is_success() {
         return Err(format!("HTTP {}", resp.status()));
@@ -1361,22 +1416,12 @@ async fn import_cloud_instance(
 
 #[tauri::command]
 pub async fn instances_get_joined_servers(_app_handle: tauri::AppHandle) -> JoinedServersResult {
-    let api_token = match get_api_token() {
-        Ok(t) => t,
-        Err(e) => {
-            return JoinedServersResult {
-                ok: false,
-                data: None,
-                error: Some(e),
-            }
-        }
-    };
-
-    let resp = match client()
-        .get(format!("{}/instances", API_URL))
-        .header("Authorization", format!("Bearer {}", api_token))
-        .send()
-        .await
+    let resp = match send_authed(|token| {
+        client()
+            .get(format!("{}/instances", API_URL))
+            .header("Authorization", format!("Bearer {token}"))
+    })
+    .await
     {
         Ok(r) => r,
         Err(e) => {
@@ -1435,27 +1480,17 @@ pub async fn instances_get_joined_servers(_app_handle: tauri::AppHandle) -> Join
 
 #[tauri::command]
 pub async fn instance_join(app_handle: tauri::AppHandle, key: String) -> SimpleResult {
-    let api_token = match get_api_token() {
-        Ok(t) => t,
-        Err(e) => {
-            return SimpleResult {
-                ok: false,
-                error: Some(e),
-                message: None,
-            }
-        }
-    };
-
     let formatted_key = key.trim().to_uppercase();
     let body = serde_json::json!({ "key": formatted_key });
 
-    let resp = match client()
-        .post(format!("{}/instances/join", API_URL))
-        .header("Authorization", format!("Bearer {}", api_token))
-        .header("Content-Type", "application/json")
-        .json(&body)
-        .send()
-        .await
+    let resp = match send_authed(|token| {
+        client()
+            .post(format!("{}/instances/join", API_URL))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Content-Type", "application/json")
+            .json(&body)
+    })
+    .await
     {
         Ok(r) => r,
         Err(e) => {
@@ -1514,23 +1549,13 @@ pub async fn instance_join(app_handle: tauri::AppHandle, key: String) -> SimpleR
 
 #[tauri::command]
 pub async fn instance_join_public(instance_id: String) -> SimpleResult {
-    let api_token = match get_api_token() {
-        Ok(t) => t,
-        Err(e) => {
-            return SimpleResult {
-                ok: false,
-                error: Some(e),
-                message: None,
-            }
-        }
-    };
-
-    let resp = match client()
-        .post(format!("{}/instances/{}/join", API_URL, instance_id))
-        .header("Authorization", format!("Bearer {}", api_token))
-        .header("Content-Type", "application/json")
-        .send()
-        .await
+    let resp = match send_authed(|token| {
+        client()
+            .post(format!("{}/instances/{}/join", API_URL, instance_id))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Content-Type", "application/json")
+    })
+    .await
     {
         Ok(r) => r,
         Err(e) => {
@@ -1570,23 +1595,13 @@ pub async fn instance_join_public(instance_id: String) -> SimpleResult {
 
 #[tauri::command]
 pub async fn instance_leave(instance_id: String) -> SimpleResult {
-    let api_token = match get_api_token() {
-        Ok(t) => t,
-        Err(e) => {
-            return SimpleResult {
-                ok: false,
-                error: Some(e),
-                message: None,
-            }
-        }
-    };
-
-    let resp = match client()
-        .post(format!("{}/instances/{}/leave", API_URL, instance_id))
-        .header("Authorization", format!("Bearer {}", api_token))
-        .header("Content-Type", "application/json")
-        .send()
-        .await
+    let resp = match send_authed(|token| {
+        client()
+            .post(format!("{}/instances/{}/leave", API_URL, instance_id))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Content-Type", "application/json")
+    })
+    .await
     {
         Ok(r) => r,
         Err(e) => {
@@ -1634,7 +1649,6 @@ pub async fn instances_cloud_install(app_handle: tauri::AppHandle, id: String) -
             }
         }
     };
-    let cancel = crate::op_guard::CancelToken::new();
 
     let api_token = match get_api_token() {
         Ok(t) => t,
@@ -1646,12 +1660,14 @@ pub async fn instances_cloud_install(app_handle: tauri::AppHandle, id: String) -
             }
         }
     };
+    let cancel = crate::op_guard::CancelToken::new();
 
-    let resp = match client()
-        .get(format!("{}/instances", API_URL))
-        .header("Authorization", format!("Bearer {}", api_token))
-        .send()
-        .await
+    let resp = match send_authed(|token| {
+        client()
+            .get(format!("{}/instances", API_URL))
+            .header("Authorization", format!("Bearer {token}"))
+    })
+    .await
     {
         Ok(r) => r,
         Err(e) => {
@@ -1802,22 +1818,12 @@ pub async fn instances_cloud_sync(app_handle: tauri::AppHandle) -> SimpleResult 
             }
         }
     };
-    let api_token = match get_api_token() {
-        Ok(t) => t,
-        Err(e) => {
-            return SimpleResult {
-                ok: false,
-                error: Some(e),
-                message: None,
-            }
-        }
-    };
-
-    let resp = match client()
-        .get(format!("{}/instances", API_URL))
-        .header("Authorization", format!("Bearer {}", api_token))
-        .send()
-        .await
+    let resp = match send_authed(|token| {
+        client()
+            .get(format!("{}/instances", API_URL))
+            .header("Authorization", format!("Bearer {token}"))
+    })
+    .await
     {
         Ok(r) => r,
         Err(e) => {
@@ -1993,15 +1999,14 @@ pub async fn cloud_instance_sync_managed(app_handle: tauri::AppHandle, id: Strin
 
 #[tauri::command]
 pub async fn invitations_fetch() -> Result<Vec<Invitation>, String> {
-    let api_token = get_api_token()?;
-
-    let resp = client()
-        .get(format!("{}/invitations", API_URL))
-        .header("Authorization", format!("Bearer {}", api_token))
-        .header("Content-Type", "application/json")
-        .send()
-        .await
-        .map_err(|e| format!("Network error: {}", e))?;
+    let resp = send_authed(|token| {
+        client()
+            .get(format!("{}/invitations", API_URL))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Content-Type", "application/json")
+    })
+    .await
+    .map_err(|e| format!("Network error: {}", e))?;
 
     if !resp.status().is_success() {
         return Ok(vec![]);
@@ -2017,30 +2022,28 @@ pub async fn invitations_fetch() -> Result<Vec<Invitation>, String> {
 
 #[tauri::command]
 pub async fn invitations_accept(invitation_id: String) -> Result<bool, String> {
-    let api_token = get_api_token()?;
-
-    let resp = client()
-        .put(format!("{}/invitations/{}/accept", API_URL, invitation_id))
-        .header("Authorization", format!("Bearer {}", api_token))
-        .header("Content-Type", "application/json")
-        .send()
-        .await
-        .map_err(|e| format!("Network error: {}", e))?;
+    let resp = send_authed(|token| {
+        client()
+            .put(format!("{}/invitations/{}/accept", API_URL, invitation_id))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Content-Type", "application/json")
+    })
+    .await
+    .map_err(|e| format!("Network error: {}", e))?;
 
     Ok(resp.status().is_success())
 }
 
 #[tauri::command]
 pub async fn invitations_reject(invitation_id: String) -> Result<bool, String> {
-    let api_token = get_api_token()?;
-
-    let resp = client()
-        .put(format!("{}/invitations/{}/reject", API_URL, invitation_id))
-        .header("Authorization", format!("Bearer {}", api_token))
-        .header("Content-Type", "application/json")
-        .send()
-        .await
-        .map_err(|e| format!("Network error: {}", e))?;
+    let resp = send_authed(|token| {
+        client()
+            .put(format!("{}/invitations/{}/reject", API_URL, invitation_id))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Content-Type", "application/json")
+    })
+    .await
+    .map_err(|e| format!("Network error: {}", e))?;
 
     Ok(resp.status().is_success())
 }
@@ -2069,18 +2072,18 @@ pub async fn notifications_fetch_announcements() -> Result<Vec<serde_json::Value
 
 #[tauri::command]
 pub async fn notifications_fetch_user() -> Result<Vec<serde_json::Value>, String> {
-    let api_token = match get_api_token() {
-        Ok(t) => t,
-        Err(_) => return Ok(vec![]),
-    };
+    if get_api_token().is_err() {
+        return Ok(vec![]);
+    }
 
-    let resp = client()
-        .get(format!("{}/announcements/notifications", API_URL))
-        .header("Content-Type", "application/json")
-        .header("Authorization", format!("Bearer {}", api_token))
-        .send()
-        .await
-        .map_err(|e| format!("Network error: {}", e))?;
+    let resp = send_authed(|token| {
+        client()
+            .get(format!("{}/announcements/notifications", API_URL))
+            .header("Content-Type", "application/json")
+            .header("Authorization", format!("Bearer {token}"))
+    })
+    .await
+    .map_err(|e| format!("Network error: {}", e))?;
 
     if !resp.status().is_success() {
         return Ok(vec![]);
@@ -2095,22 +2098,20 @@ pub async fn notifications_fetch_user() -> Result<Vec<serde_json::Value>, String
 
 #[tauri::command]
 pub async fn notifications_sync() -> Result<NotificationSyncResult, String> {
-    let api_token = match get_api_token() {
-        Ok(t) => t,
-        Err(_) => {
-            return Ok(NotificationSyncResult {
-                notifications: vec![],
-                invitations: vec![],
-            })
-        }
-    };
+    if get_api_token().is_err() {
+        return Ok(NotificationSyncResult {
+            notifications: vec![],
+            invitations: vec![],
+        });
+    }
 
-    let resp = match client()
-        .get(format!("{}/announcements/sync?limit=50", API_URL))
-        .header("Content-Type", "application/json")
-        .header("Authorization", format!("Bearer {}", api_token))
-        .send()
-        .await
+    let resp = match send_authed(|token| {
+        client()
+            .get(format!("{}/announcements/notifications", API_URL))
+            .header("Content-Type", "application/json")
+            .header("Authorization", format!("Bearer {token}"))
+    })
+    .await
     {
         Ok(r) => r,
         Err(_) => {
@@ -2189,36 +2190,34 @@ pub async fn notifications_sync() -> Result<NotificationSyncResult, String> {
 
 #[tauri::command]
 pub async fn notifications_mark_read(notification_id: String) -> Result<bool, String> {
-    let api_token = get_api_token()?;
-
-    let resp = client()
-        .put(format!(
-            "{}/announcements/notifications/{}/read",
-            API_URL, notification_id
-        ))
-        .header("Content-Type", "application/json")
-        .header("Authorization", format!("Bearer {}", api_token))
-        .send()
-        .await
-        .map_err(|e| format!("Network error: {}", e))?;
+    let resp = send_authed(|token| {
+        client()
+            .put(format!(
+                "{}/announcements/notifications/{}/read",
+                API_URL, notification_id
+            ))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Content-Type", "application/json")
+    })
+    .await
+    .map_err(|e| format!("Network error: {}", e))?;
 
     Ok(resp.status().is_success())
 }
 
 #[tauri::command]
 pub async fn notifications_delete(notification_id: String) -> Result<bool, String> {
-    let api_token = get_api_token()?;
-
-    let resp = client()
-        .delete(format!(
-            "{}/announcements/notifications/{}",
-            API_URL, notification_id
-        ))
-        .header("Content-Type", "application/json")
-        .header("Authorization", format!("Bearer {}", api_token))
-        .send()
-        .await
-        .map_err(|e| format!("Network error: {}", e))?;
+    let resp = send_authed(|token| {
+        client()
+            .delete(format!(
+                "{}/announcements/notifications/{}",
+                API_URL, notification_id
+            ))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Content-Type", "application/json")
+    })
+    .await
+    .map_err(|e| format!("Network error: {}", e))?;
 
     Ok(resp.status().is_success())
 }

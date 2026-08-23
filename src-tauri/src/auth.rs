@@ -926,8 +926,7 @@ fn refresh_lock() -> &'static tokio::sync::Mutex<()> {
     REFRESH_LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
 }
 
-#[tauri::command]
-pub async fn auth_refresh() -> AuthCommandResult {
+async fn auth_refresh_core(force: bool) -> AuthCommandResult {
     let _guard = refresh_lock().lock().await;
     let session = match get_session_inner() {
         Some(s) => s,
@@ -952,7 +951,7 @@ pub async fn auth_refresh() -> AuthCommandResult {
         chrono::Utc::now().timestamp_millis() > exp - 300_000
     });
 
-    if !is_expired {
+    if !force && !is_expired {
         return AuthCommandResult {
             ok: true,
             account: get_session_inner(),
@@ -1161,6 +1160,31 @@ pub async fn auth_refresh() -> AuthCommandResult {
         account: get_session_inner(),
         error: None,
     }
+}
+
+#[tauri::command]
+pub async fn auth_refresh() -> AuthCommandResult {
+    auth_refresh_core(false).await
+}
+
+/// Best-effort token refresh for internal callers (cloud 401 retry path).
+/// Forces the Microsoft refresh chain even when the MC token is not yet near
+/// expiry, so a rejected/rotated API token gets re-minted via
+/// `/auth/microsoft/link`. Never fails for CatID sessions — they fall back to
+/// the stored token so the caller's single retry still happens.
+pub(crate) async fn refresh_api_token() -> Result<String, String> {
+    let Some(session) = get_session_inner() else {
+        return Err("Not logged in".to_string());
+    };
+    if session.auth_type == "microsoft" {
+        let result = auth_refresh_core(true).await;
+        if let Some(err) = result.error {
+            log::warn!("[Auth] Background token refresh failed: {err}");
+        }
+    }
+    get_session_inner()
+        .and_then(|s| s.api_token)
+        .ok_or_else(|| "No API token available".to_string())
 }
 
 #[tauri::command]
