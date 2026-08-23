@@ -1,5 +1,11 @@
 ## [4.2.1] — 2026-08-23
 
+### Security
+- Replaced the native OpenSSL TLS backend with rustls (`reqwest` `default-features = false` + `rustls-tls`), removing the `openssl` crate from the dependency tree entirely — clears all eight tracked rust-openssl advisories (heap buffer overflows, out-of-bounds reads/writes, undefined behavior)
+- Bumped Vite to 5.4.21, patching the Windows `server.fs.deny` bypass, the optimized-deps path traversal, and the launch-editor NTLMv2 hash disclosure (dev-dependency only)
+- Updated transitive Rust dependencies across the board (`cargo update`: bytes, time, rand, serde_with, rustls-webpki, and others) to pick up patched releases
+- Replaced URL substring matching (`url.includes("discord.gg")`) in ServerDetailView social-link handling with parsed-hostname checks — closes both CodeQL `incomplete-url-substring-sanitization` alerts
+
 ### Fixed
 - CurseForge/Modrinth modpacks using NeoForge were installed as Vanilla — the CurseForge manifest loader detection only knew "forge"/"fabric" and the mrpack dependency check had no "neoforge" case; both now detect NeoForge (and CurseForge Quilt) and extract the loader version correctly (`neoforge-21.1.77` → `21.1.77`, legacy `neoforge-1.20.1-47.1.104` → `1.20.1-47.1.104`)
 - NeoForge instances launched against the vanilla client jar: the patched-client-jar lookup used the bare loader version while the Maven layout uses `{mc}-{loader}` (e.g. `1.21.1-21.1.77`), so the NeoForge client jar was never found on the classpath; install-time verification, classpath building, and native fingerprinting now all use the same resolved version, and legacy MC-prefixed version strings no longer get the MC version duplicated

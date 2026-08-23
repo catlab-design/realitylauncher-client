@@ -103,11 +103,12 @@ export function ServerDetailView({
     };
 
     const getSocialIcon = (url: string, type?: string) => {
-        const l = url.toLowerCase(), lt = type?.toLowerCase() || "";
+        const lt = type?.toLowerCase() || "";
         const host = getHostname(url);
         const isXHost = host === "x.com" || host.endsWith(".x.com");
         const isTwitterHost = host === "twitter.com" || host.endsWith(".twitter.com");
-        if (lt === "discord" || host === "discord.com" || host.endsWith(".discord.com") || l.includes("discord.gg")) return Icons.Discord;
+        const isDiscordHost = host === "discord.com" || host === "discord.gg" || host.endsWith(".discord.com") || host.endsWith(".discord.gg");
+        if (lt === "discord" || isDiscordHost) return Icons.Discord;
         if (lt === "youtube" || host === "youtube.com" || host.endsWith(".youtube.com") || host === "youtu.be") return Icons.YouTube;
         if (lt === "facebook" || host === "facebook.com" || host.endsWith(".facebook.com")) return Icons.Facebook;
         if (lt === "twitter" || lt === "x" || isTwitterHost || isXHost) return Icons.TwitterX;
@@ -116,11 +117,12 @@ export function ServerDetailView({
     };
 
     const getSocialColor = (url: string, type?: string) => {
-        const l = url.toLowerCase(), lt = type?.toLowerCase() || "";
+        const lt = type?.toLowerCase() || "";
         const host = getHostname(url);
         const isXHost = host === "x.com" || host.endsWith(".x.com");
         const isTwitterHost = host === "twitter.com" || host.endsWith(".twitter.com");
-        if (lt === "discord" || host === "discord.com" || host.endsWith(".discord.com") || l.includes("discord.gg")) return "#5865F2";
+        const isDiscordHost = host === "discord.com" || host === "discord.gg" || host.endsWith(".discord.com") || host.endsWith(".discord.gg");
+        if (lt === "discord" || isDiscordHost) return "#5865F2";
         if (lt === "youtube" || host === "youtube.com" || host.endsWith(".youtube.com") || host === "youtu.be") return "#DC2626";
         if (lt === "facebook" || host === "facebook.com" || host.endsWith(".facebook.com")) return "#2563EB";
         if (lt === "twitter" || lt === "x" || isTwitterHost || isXHost) return "#111827";
