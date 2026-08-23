@@ -647,6 +647,8 @@ async fn install_mrpack(app: &tauri::AppHandle, file_path: &str) -> ModpackInsta
         crate::instances::LoaderType::Fabric
     } else if index.dependencies.contains_key("quilt-loader") {
         crate::instances::LoaderType::Quilt
+    } else if index.dependencies.contains_key("neoforge") {
+        crate::instances::LoaderType::Neoforge
     } else if index.dependencies.contains_key("forge") {
         crate::instances::LoaderType::Forge
     } else {
@@ -655,6 +657,7 @@ async fn install_mrpack(app: &tauri::AppHandle, file_path: &str) -> ModpackInsta
     let loader_version = match loader {
         crate::instances::LoaderType::Fabric => index.dependencies.get("fabric-loader").cloned(),
         crate::instances::LoaderType::Quilt => index.dependencies.get("quilt-loader").cloned(),
+        crate::instances::LoaderType::Neoforge => index.dependencies.get("neoforge").cloned(),
         crate::instances::LoaderType::Forge => index.dependencies.get("forge").cloned(),
         _ => None,
     };
@@ -741,10 +744,14 @@ async fn install_cf_modpack(app: &tauri::AppHandle, file_path: &str) -> ModpackI
         .as_ref()
         .and_then(|loaders| {
             loaders.first().map(|l| {
-                if l.id.starts_with("forge") {
+                if l.id.starts_with("neoforge") {
+                    crate::instances::LoaderType::Neoforge
+                } else if l.id.starts_with("forge") {
                     crate::instances::LoaderType::Forge
                 } else if l.id.starts_with("fabric") {
                     crate::instances::LoaderType::Fabric
+                } else if l.id.starts_with("quilt") {
+                    crate::instances::LoaderType::Quilt
                 } else {
                     crate::instances::LoaderType::Vanilla
                 }
@@ -752,9 +759,15 @@ async fn install_cf_modpack(app: &tauri::AppHandle, file_path: &str) -> ModpackI
         })
         .unwrap_or(crate::instances::LoaderType::Vanilla);
     let loader_version = manifest.minecraft.mod_loaders.as_ref().and_then(|loaders| {
-        loaders
-            .first()
-            .and_then(|l| l.id.split('-').nth(1).map(|s| s.to_string()))
+        loaders.first().and_then(|l| {
+            l.id.strip_prefix("neoforge-")
+                .or_else(|| l.id.strip_prefix("forge-"))
+                .or_else(|| l.id.strip_prefix("fabric-loader-"))
+                .or_else(|| l.id.strip_prefix("fabric-"))
+                .or_else(|| l.id.strip_prefix("quilt-loader-"))
+                .or_else(|| l.id.strip_prefix("quilt-"))
+                .map(|s| s.to_string())
+        })
     });
     let name = manifest.name.clone();
 

@@ -1094,7 +1094,11 @@ async fn install_neoforge(
     libraries_dir: &Path,
     java_path: &str,
 ) -> Result<serde_json::Value, String> {
-    let full_version = format!("{mc_version}-{neoforge_version}");
+    let full_version = if neoforge_version.starts_with(&format!("{mc_version}-")) {
+        neoforge_version.to_string()
+    } else {
+        format!("{mc_version}-{neoforge_version}")
+    };
     let version_id = format!("neoforge-{neoforge_version}");
     let version_json_path = minecraft_dir
         .join("versions")
@@ -1102,8 +1106,8 @@ async fn install_neoforge(
         .join(format!("{version_id}.json"));
     let patched_client_jar = libraries_dir
         .join("net/neoforged/neoforge")
-        .join(neoforge_version)
-        .join(format!("neoforge-{neoforge_version}-client.jar"));
+        .join(&full_version)
+        .join(format!("neoforge-{full_version}-client.jar"));
 
     if version_json_path.exists() && patched_client_jar.exists() {
         let content = fs::read_to_string(&version_json_path).map_err(|e| e.to_string())?;
@@ -1266,10 +1270,15 @@ fn build_classpath(
                 .join(format!("forge-{full_version}-client.jar"))
         }),
         LoaderType::Neoforge => instance.loader_version.as_deref().map(|v| {
+            let full_version = if v.starts_with(mc_version.as_str()) {
+                v.to_string()
+            } else {
+                format!("{mc_version}-{v}")
+            };
             libraries_dir
                 .join("net/neoforged/neoforge")
-                .join(v)
-                .join(format!("neoforge-{v}-client.jar"))
+                .join(&full_version)
+                .join(format!("neoforge-{full_version}-client.jar"))
         }),
         _ => None,
     };

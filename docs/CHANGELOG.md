@@ -1,3 +1,10 @@
+## [4.2.1] — 2026-08-23
+
+### Fixed
+- CurseForge/Modrinth modpacks using NeoForge were installed as Vanilla — the CurseForge manifest loader detection only knew "forge"/"fabric" and the mrpack dependency check had no "neoforge" case; both now detect NeoForge (and CurseForge Quilt) and extract the loader version correctly (`neoforge-21.1.77` → `21.1.77`, legacy `neoforge-1.20.1-47.1.104` → `1.20.1-47.1.104`)
+- NeoForge instances launched against the vanilla client jar: the patched-client-jar lookup used the bare loader version while the Maven layout uses `{mc}-{loader}` (e.g. `1.21.1-21.1.77`), so the NeoForge client jar was never found on the classpath; install-time verification, classpath building, and native fingerprinting now all use the same resolved version, and legacy MC-prefixed version strings no longer get the MC version duplicated
+- Forge/NeoForge installs could leave missing loader libraries and cryptic launch failures: the installer download had no HTTP-status or integrity check (a Maven error page could be saved as the installer JAR), and the library list produced by the installed loader was never ensured by the launcher — installers are now verified (HTTP status, JAR signature, published Maven SHA-1) and the loader's libraries are downloaded through the retrying download engine after install, including on later launches so partial installs self-repair
+
 ## [4.2.0] — 2026-08-19
 
 ### Added
@@ -18,7 +25,6 @@
 - Dead pre-install wiring and the never-implemented instance export feature: `instancesPreInstall` / `instancesExport` / `instancesExportCancel` / `instanceCancelAction` removed from the `api.ts` bridge and `env.d.ts`, the export tab and its progress toasts deleted, and `progressStore` no longer carries export state (#9, #1)
 
 ### Fixed
-- Forge/NeoForge installs could leave missing loader libraries and cryptic launch failures: the installer download had no HTTP-status or integrity check (a Maven error page could be saved as the installer JAR), and the library list produced by the installed loader was never ensured by the launcher — installers are now verified (HTTP status, JAR signature, published Maven SHA-1) and the loader's libraries are downloaded through the retrying download engine after install, including on later launches so partial installs self-repair
 - Full builds (`tauri build` / CI) failed with 22 `cannot find op_guard in the crate root` errors — the module was declared in `lib.rs` but missing from `main.rs`'s module list
 - macOS update check requested the server's `downloads.macos` key, but the server publishes `downloads.mac` — the in-app updater on macOS silently found no download; the platform key now matches (`mac`)
 - Downloaded update installers were saved with the URL's percent-escaped filename literally (e.g. `reality-update-Reality%20Launcher_4.1.0_…`) — the name is now URL-decoded before writing to disk
