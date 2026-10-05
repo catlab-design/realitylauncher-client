@@ -9,6 +9,7 @@ mod auth;
 mod cloud;
 mod config;
 mod content;
+mod pack_v2;
 mod curseforge;
 mod discord;
 mod download;

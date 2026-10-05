@@ -5,6 +5,7 @@ pub mod auth;
 pub mod cloud;
 pub mod config;
 pub mod content;
+pub mod pack_v2;
 pub mod curseforge;
 pub mod discord;
 pub mod download;

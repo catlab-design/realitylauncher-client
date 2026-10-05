@@ -246,14 +246,14 @@ fn normalize_hash(hash_str: &str) -> Option<(String, String)> {
     None
 }
 
-fn compute_sha1(path: &Path) -> Result<String, String> {
+pub(crate) fn compute_sha1(path: &Path) -> Result<String, String> {
     let data = fs::read(path).map_err(|e| format!("Read error: {}", e))?;
     let mut hasher = Sha1::new();
     hasher.update(&data);
     Ok(hex::encode(hasher.finalize()))
 }
 
-fn compute_sha256(path: &Path) -> Result<String, String> {
+pub(crate) fn compute_sha256(path: &Path) -> Result<String, String> {
     let data = fs::read(path).map_err(|e| format!("Read error: {}", e))?;
     let mut hasher = Sha256::new();
     hasher.update(&data);
@@ -287,7 +287,7 @@ fn verify_file_hash(path: &Path, expected_hash: &str) -> Result<bool, String> {
 
 
 
-fn safe_join(base: &Path, rel: &str) -> Option<std::path::PathBuf> {
+pub(crate) fn safe_join(base: &Path, rel: &str) -> Option<std::path::PathBuf> {
     use std::path::Component;
     let normalized = rel.replace('\\', "/");
     let mut out = base.to_path_buf();
@@ -707,7 +707,7 @@ async fn fetch_managed_mods(cloud_id: &str, auth_token: &str) -> Result<Vec<Mana
 
 
 
-fn cleanup_unmanaged_mods(instance_dir: &str, keep: &std::collections::HashSet<String>) {
+pub(crate) fn cleanup_unmanaged_mods(instance_dir: &str, keep: &std::collections::HashSet<String>) {
     // Deletes files from the instance dir — never run while a migration or
     // other exclusive op is in flight.
     let Some(_guard) = crate::op_guard::OperationGuard::try_shared() else {
@@ -891,7 +891,7 @@ async fn sync_managed_mods(
 
 
 
-fn emit_sync_progress(
+pub(crate) fn emit_sync_progress(
     app_handle: &tauri::AppHandle,
     type_: &str,
     task: &str,
@@ -1049,6 +1049,14 @@ async fn sync_server_mods(
     
     
     
+    // Pack v2 (manifest + layers) first; instances without one fall through.
+    match crate::pack_v2::sync(app_handle, Path::new(instance_dir), cloud_id, cancel).await {
+        Ok(crate::pack_v2::Outcome::Synced(failed)) => return Ok(failed),
+        Ok(crate::pack_v2::Outcome::NotV2) => {}
+        Err(e) if e == crate::modpack::CANCELLED_SENTINEL => return Err(e),
+        Err(e) => log::warn!("[Cloud Sync] pack v2 sync failed ({e}) — falling back to .mrpack"),
+    }
+
     if let Some(url) = manifest_data.modpack_url.as_deref() {
         emit_sync_progress(app_handle, "sync-download", "", None, None, None, None);
         match crate::modpack::install_mrpack_url_into_dir(
