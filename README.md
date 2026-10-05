@@ -240,7 +240,7 @@ Distributed under the [GPL-3.0-only](./LICENSE) license.
 
 ```
 Reality Launcher
-Copyright (C) 2026 SpaceLogic Studio <hi@catlabdesign.space>
+Copyright (C) 2026 CatLab Design <hi@catlabdesign.space>
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -266,6 +266,6 @@ the Free Software Foundation, either version 3 of the License, or
 
 <div align="center">
 
-**Made with be by [CatLab Design](mailto:hi@catlabdesign.space)**
+**Made with ❤️ by [CatLab Design](mailto:hi@catlabdesign.space)**
 
 </div>
