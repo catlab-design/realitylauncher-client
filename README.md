@@ -266,6 +266,6 @@ the Free Software Foundation, either version 3 of the License, or
 
 <div align="center">
 
-**Made with ❤️ by [SpaceLogic Studio](mailto:hi@catlabdesign.space)**
+**Made with be by [CatLab Design](mailto:hi@catlabdesign.space)**
 
 </div>
