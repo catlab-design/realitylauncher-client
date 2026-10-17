@@ -6,7 +6,7 @@ import { useAuthStore } from "../../store/authStore";
 import { useUiStore } from "../../store/uiStore";
 import { Icons } from "../ui/Icons";
 import { MCHead } from "../ui/MCHead";
-import { SkinPreview3D } from "./wardrobe/SkinPreview3D";
+import { SkinPreview3D, SKIN_ANIMATIONS, type SkinAnimationType } from "./wardrobe/SkinPreview3D";
 import type { GameInstance } from "../../types/launcher";
 
 interface WardrobeProps {
@@ -38,6 +38,26 @@ type MinecraftProfile = {
 
 const WARDROBE_PROFILE_CACHE_TTL_MS = 60 * 1000;
 const WARDROBE_PREVIEW_CACHE_KEY = "reality:wardrobe-preview:v1";
+const SKIN_FILE_MAX_BYTES = 2 * 1024 * 1024;
+const CATSKINC_FILE_MAX_BYTES = 256 * 1024 * 1024;
+const CATSKINC_MAX_SKIN_SIZE = 8192;
+
+function isValidCatskincSkinSize(width: number, height: number): boolean {
+    return width === height && width >= 64 && width <= CATSKINC_MAX_SKIN_SIZE && (width & (width - 1)) === 0;
+}
+
+function isValidCatskincOverlaySize(width: number, height: number): boolean {
+    return width >= 8 && height >= 8 && width <= CATSKINC_MAX_SKIN_SIZE && height <= CATSKINC_MAX_SKIN_SIZE;
+}
+
+function loadImageSize(src: string): Promise<{ width: number; height: number } | null> {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+        img.onerror = () => resolve(null);
+        img.src = src;
+    });
+}
 
 let cachedWardrobeProfile:
     | {
@@ -171,7 +191,7 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
     const [showClearModal, setShowClearModal] = useState(false);
     const [isClearingAssets, setIsClearingAssets] = useState(false);
     const [isPreviewSkinLoading, setIsPreviewSkinLoading] = useState(true);
-    const [animationType, setAnimationType] = useState<"idle" | "walk" | "run" | "fly">("idle");
+    const [animationType, setAnimationType] = useState<SkinAnimationType>("idle");
 
     const [isMouthOpen, setIsMouthOpen] = useState(false);
     const [testMicActive, setTestMicActive] = useState(false);
@@ -211,7 +231,7 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
 
     const handleSaveIp = useCallback(async () => {
         if (!window.api?.catskincSaveConfig) return;
-        const targetIp = serverIpInput.trim() || "storage-api.catskin.space";
+        const targetIp = serverIpInput.trim() || "storage-skin.catlabdesign.space";
         try {
             const res = await window.api.catskincSaveConfig({
                 ip: targetIp,
@@ -243,7 +263,7 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
         if (window.api?.catskincGetConfig) {
             window.api.catskincGetConfig(selectedInstance?.gameDirectory).then(cfg => {
                 setCatskincConfig(cfg);
-                setServerIpInput(cfg?.ip || "storage-api.catskin.space");
+                setServerIpInput(cfg?.ip || "storage-skin.catlabdesign.space");
             });
         }
     }, [selectedInstance?.gameDirectory]);
@@ -348,9 +368,9 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
 
     const previewBackground = useMemo(
         () => ({
-            card: colors.surfaceContainerHighest,
+            card: colors.surfaceContainer,
             canvas: "transparent",
-            gradient: `radial-gradient(ellipse at 50% 35%, ${colors.outline}33, transparent 72%), linear-gradient(180deg, ${colors.surfaceContainer} 0%, ${colors.surfaceContainerHighest} 100%)`,
+            gradient: `radial-gradient(ellipse at 50% 45%, ${colors.outline}26, transparent 68%)`,
             overlay: `${colors.surface}cc`,
             badgeBackground: `${colors.surface}cc`,
             badgeText: colors.onSurfaceVariant,
@@ -439,7 +459,11 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
         event.target.value = "";
         if (!file) return;
         if (file.type && file.type !== "image/png") { toast.error(t("wardrobe_only_png")); return; }
-        if (file.size > 1024 * 1024 * 2) { toast.error(t("wardrobe_file_too_large")); return; }
+        const isCatskinc = mode === "catskinc";
+        if (file.size > (isCatskinc ? CATSKINC_FILE_MAX_BYTES : SKIN_FILE_MAX_BYTES)) {
+            toast.error(t(isCatskinc ? "wardrobe_catskinc_file_too_large" : "wardrobe_file_too_large"));
+            return;
+        }
         const reader = new FileReader();
         reader.onload = () => {
             const result = String(reader.result || "");
@@ -449,8 +473,8 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
             img.onload = () => {
                 const w = img.width;
                 const h = img.height;
-                if (!(w >= 64 && (w === h || w === 2 * h))) {
-                    toast.error(t("wardrobe_invalid_dimensions"));
+                if (isCatskinc ? !isValidCatskincSkinSize(w, h) : !(w >= 64 && (w === h || w === 2 * h))) {
+                    toast.error(t(isCatskinc ? "wardrobe_catskinc_invalid_dimensions" : "wardrobe_invalid_dimensions"));
                     return;
                 }
                 setSelectedSkinDataUrl(result);
@@ -462,37 +486,39 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
         };
         reader.onerror = () => toast.error(t("wardrobe_file_read_failed"));
         reader.readAsDataURL(file);
-    }, [t]);
+    }, [t, mode]);
 
     const onSelectMouthFile = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         event.target.value = "";
         if (!file) return;
         if (file.type && file.type !== "image/png") { toast.error(t("wardrobe_only_png")); return; }
-        if (file.size > 1024 * 1024 * 2) { toast.error(t("wardrobe_file_too_large")); return; }
+        if (file.size > CATSKINC_FILE_MAX_BYTES) { toast.error(t("wardrobe_catskinc_file_too_large")); return; }
         const reader = new FileReader();
-        reader.onload = () => {
+        reader.onload = async () => {
             const result = String(reader.result || "");
             if (!result.startsWith("data:image/png;base64,")) { toast.error(t("wardrobe_only_png")); return; }
 
-            const img = new Image();
-            img.onload = () => {
-                const w = img.width;
-                const h = img.height;
-                if (!(w >= 64 && (w === h || w === 2 * h))) {
-                    toast.error(t("wardrobe_invalid_dimensions"));
+            const mouthSize = await loadImageSize(result);
+            if (!mouthSize) { toast.error(t("wardrobe_file_read_failed")); return; }
+            if (!isValidCatskincOverlaySize(mouthSize.width, mouthSize.height)) {
+                toast.error(t("wardrobe_catskinc_invalid_mouth_dimensions"));
+                return;
+            }
+            if (selectedSkinDataUrl) {
+                const skinSize = await loadImageSize(selectedSkinDataUrl);
+                if (skinSize && (skinSize.width !== mouthSize.width || skinSize.height !== mouthSize.height)) {
+                    toast.error(t("wardrobe_catskinc_mouth_size_mismatch"));
                     return;
                 }
-                setMouthOpenDataUrl(result);
-                setMouthOpenFileName(file.name);
-                toast.success("Mouth overlay loaded");
-            };
-            img.onerror = () => toast.error(t("wardrobe_file_read_failed"));
-            img.src = result;
+            }
+            setMouthOpenDataUrl(result);
+            setMouthOpenFileName(file.name);
+            toast.success("Mouth overlay loaded");
         };
         reader.onerror = () => toast.error(t("wardrobe_file_read_failed"));
         reader.readAsDataURL(file);
-    }, [t]);
+    }, [t, selectedSkinDataUrl]);
 
     const toggleMicTest = useCallback(() => {
         if (testMicActive) {
@@ -607,6 +633,22 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
                     toast.error(t("wardrobe_select_skin_first"));
                     setIsApplying(false);
                     return;
+                }
+                const skinSize = await loadImageSize(payload.dataUrl);
+                if (!skinSize || !isValidCatskincSkinSize(skinSize.width, skinSize.height)) {
+                    toast.error(t("wardrobe_catskinc_invalid_dimensions"));
+                    return;
+                }
+                if (payload.mouthOpenDataUrl) {
+                    const mouthSize = await loadImageSize(payload.mouthOpenDataUrl);
+                    if (!mouthSize || !isValidCatskincOverlaySize(mouthSize.width, mouthSize.height)) {
+                        toast.error(t("wardrobe_catskinc_invalid_mouth_dimensions"));
+                        return;
+                    }
+                    if (mouthSize.width !== skinSize.width || mouthSize.height !== skinSize.height) {
+                        toast.error(t("wardrobe_catskinc_mouth_size_mismatch"));
+                        return;
+                    }
                 }
                 const result = await window.api.catskincUploadSkin(payload);
                 if (!result?.ok) {
@@ -778,26 +820,26 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
 
         return (
             <div className="h-full flex items-center justify-center p-6">
-                <div className="flex flex-col items-center text-center p-6 rounded-2xl border max-w-sm space-y-4"
-                    style={{ backgroundColor: colors.surfaceContainer, borderColor: `${colors.outline}33` }}>
+                <div className="flex flex-col items-center text-center p-8 rounded-2xl max-w-sm space-y-5"
+                    style={{ backgroundColor: colors.surfaceContainer }}>
                     <Icons.Microsoft className="w-12 h-12" style={{ color: "#00A4EF" }} />
                     <div>
-                        <p className="font-bold text-sm" style={{ color: colors.onSurface }}>{guardTitle}</p>
-                        <p className="text-xs opacity-60 mt-1.5" style={{ color: colors.onSurfaceVariant }}>{guardDesc}</p>
+                        <p className="font-bold text-lg" style={{ color: colors.onSurface }}>{guardTitle}</p>
+                        <p className="text-sm mt-1.5" style={{ color: colors.onSurfaceVariant }}>{guardDesc}</p>
                     </div>
                     {isCatID ? (
                         <button
                             onClick={() => onLinkMicrosoft?.()}
-                            className="w-full py-2 px-4 rounded-xl text-xs font-semibold transition-all duration-200 shadow-sm hover:opacity-90 active:scale-[0.98]"
-                            style={{ backgroundColor: colors.primary, color: colors.onPrimary }}
+                            className="w-full h-12 px-4 rounded-xl text-sm font-bold transition hover:brightness-105 active:scale-[0.98]"
+                            style={{ backgroundColor: colors.secondary, color: "#111" }}
                         >
                             {t("link_microsoft") || "Link Microsoft"}
                         </button>
                     ) : (
                         <button
                             onClick={() => setLoginDialogOpen?.(true)}
-                            className="w-full py-2 px-4 rounded-xl text-xs font-semibold transition-all duration-200 shadow-sm hover:opacity-90 active:scale-[0.98]"
-                            style={{ backgroundColor: colors.primary, color: colors.onPrimary }}
+                            className="w-full h-12 px-4 rounded-xl text-sm font-bold transition hover:brightness-105 active:scale-[0.98]"
+                            style={{ backgroundColor: colors.secondary, color: "#111" }}
                         >
                             {t("login_with_microsoft") || "Login with Microsoft"}
                         </button>
@@ -807,259 +849,226 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
         );
     }
 
+    const segmentButtonStyle = (active: boolean): React.CSSProperties => ({
+        backgroundColor: active ? colors.secondary : "transparent",
+        color: active ? "#111" : colors.onSurfaceVariant,
+    });
+
     return (
-        <div className="h-full flex flex-col overflow-hidden animate-fade-in">
-            <div className="flex flex-col pb-6 w-full max-w-screen-2xl mx-auto gap-4 lg:gap-6 px-4 lg:px-8 pt-3">
-
-                <div
-                    className="flex items-center justify-between gap-3 animate-fade-in"
-                    style={{ animationDelay: "20ms", opacity: 0 }}
-                >
-                    <div>
-                        <h2 className="text-3xl font-bold tracking-tight" style={{ color: colors.onSurface }}>
-                            {t("wardrobe")}
-                        </h2>
-                        <p className="text-sm opacity-50" style={{ color: colors.onSurfaceVariant }}>
-                            {t("wardrobe_desc")}
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-4">
-                        <div className="flex p-0.5 rounded-xl border text-xs font-semibold"
-                            style={{ backgroundColor: colors.surfaceContainer, borderColor: `${colors.outline}22` }}>
-                            <button
-                                onClick={() => setMode("microsoft")}
-                                className={`px-3 py-1.5 rounded-lg transition-all ${
-                                    mode === "microsoft"
-                                        ? "shadow-sm"
-                                        : "hover:bg-white/5"
-                                }`}
-                                style={{
-                                    backgroundColor: mode === "microsoft" ? colors.surface : "transparent",
-                                    color: mode === "microsoft" ? colors.onSurface : colors.onSurfaceVariant,
-                                }}
-                            >
-                                {t("wardrobe_mode_microsoft")}
-                            </button>
-                            <button
-                                onClick={() => {
-                                    if (!canManageProfile) {
-                                        toast.error("Microsoft account is required to authenticate with CatSkinC.");
-                                        return;
-                                    }
-                                    setMode("catskinc");
-                                }}
-                                className={`px-3 py-1.5 rounded-lg transition-all ${
-                                    mode === "catskinc"
-                                        ? "shadow-sm"
-                                        : "hover:bg-white/5"
-                                }`}
-                                style={{
-                                    backgroundColor: mode === "catskinc" ? colors.surface : "transparent",
-                                    color: mode === "catskinc" ? colors.onSurface : colors.onSurfaceVariant,
-                                }}
-                            >
-                                {t("wardrobe_mode_catskinc")}
-                            </button>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                            <button
-                                onClick={() => syncProfile({ force: true })}
-                                disabled={isLoadingProfile}
-                                aria-label={t("wardrobe_refresh_profile")}
-                                className="p-2 rounded-xl hover:bg-white/5 transition-all disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-                                style={{ color: colors.onSurfaceVariant }}
-                            >
-                                <Icons.Refresh className={`w-5 h-5 ${isLoadingProfile ? "animate-spin" : ""}`} />
-                            </button>
-                            <div className="flex items-center gap-2.5 px-4 py-2 rounded-xl text-sm font-bold border"
-                                style={{ 
-                                    backgroundColor: colors.surface, 
-                                    color: colors.onSurface,
-                                    borderColor: `${colors.outline}22` 
-                                }}>
-                                <Icons.Microsoft className="w-5 h-5" style={{ color: "#00A4EF" }} />
-                                {profile?.name || session?.username || "-"}
-                            </div>
-                        </div>
-                    </div>
+        <div className="h-full min-h-[560px] flex flex-col gap-5 animate-fade-in">
+            <div className="flex flex-wrap items-center justify-between gap-4 shrink-0">
+                <div className="min-w-0">
+                    <h2 className="font-display text-2xl" style={{ color: colors.onSurface }}>
+                        {t("wardrobe")}
+                    </h2>
+                    <p className="text-[15px] mt-1" style={{ color: colors.onSurfaceVariant }}>
+                        {t("wardrobe_desc")}
+                    </p>
                 </div>
-
-                <div
-                    className="w-full h-[520px] xl:h-[560px] rounded-3xl border animate-fade-in shadow-2xl flex flex-row gap-4 xl:gap-6 p-4 xl:p-5"
-                    style={{
-                        backgroundColor: colors.surfaceContainer,
-                        borderColor: `${colors.outline}33`,
-                        animationDelay: "80ms",
-                        opacity: 0,
-                    }}
-                >
+                <div className="flex items-center gap-3">
                     <div
-                        className="flex-1 h-full rounded-2xl overflow-hidden relative"
-                        style={{
-                            backgroundColor: previewBackground.card,
-                            backgroundImage: previewBackground.gradient,
-                        }}>
-                        <SkinPreview3D
-                            skinUrl={previewSkin}
-                            variant={variant}
-                            backgroundColor={previewBackground.canvas}
-                            animationType={animationType}
-                            onResetRotation={(fn) => (resetRotationRef.current = fn)}
-                            onSkinLoadStateChange={setIsPreviewSkinLoading}
-                        />
-
-                        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 w-64 h-16 pointer-events-none select-none flex items-center justify-center" style={{ perspective: "1000px" }}>
-                            <div className="absolute w-36 h-36 border rounded-full" style={{ borderColor: `${colors.outline}1a`, transform: "rotateX(75deg)" }} />
-                            <div className="absolute w-24 h-24 border rounded-full" style={{ borderColor: `${colors.outline}0d`, transform: "rotateX(75deg)" }} />
-                        </div>
-
-                        {(isLoadingProfile || isPreviewSkinLoading || !profileFetched || isLoadingCatskincSkin) && (
-                            <div
-                                className="absolute inset-0 animate-skeleton-wave flex items-center justify-center"
-                                style={{ backgroundColor: previewBackground.overlay }}
-                            >
-                                <div
-                                    className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2"
-                                    style={{ backgroundColor: previewBackground.badgeBackground, color: previewBackground.badgeText }}
-                                >
-                                    <Icons.Spinner className="w-3 h-3 animate-spin" />
-                                    {t("loading")}
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="absolute top-3.5 left-3.5 text-sm font-medium tracking-wider uppercase select-none opacity-80"
-                            style={{ color: colors.onSurface }}>
-                            {t("wardrobe_preview_3d")}
-                        </div>
-
-                        <div className="absolute top-2.5 right-2.5 flex items-center gap-1 p-1 rounded-full backdrop-blur-md bg-black/40 border border-white/10">
-                            {(["idle", "walk", "run", "fly"] as const).map((type) => (
-                                <button
-                                    key={type}
-                                    onClick={() => setAnimationType(type)}
-                                    className="px-3 py-1 rounded-full text-[10px] font-semibold tracking-wider uppercase transition-all focus-visible:outline focus-visible:outline-2"
-                                    style={{
-                                        background: animationType === type ? `linear-gradient(90deg, ${colors.primary}, ${colors.primary})` : undefined,
-                                        color: animationType === type ? colors.onPrimary : "rgba(255, 255, 255, 0.6)",
-                                        transform: animationType === type ? "scale(1.05)" : undefined,
-                                    }}
-                                >
-                                    {type === "idle" ? "Idle" : type === "walk" ? "Walk" : type === "run" ? "Run" : "Fly"}
-                                </button>
-                            ))}
-                        </div>
-
-                        <div className="absolute bottom-3.5 left-1/2 -translate-x-1/2 text-sm font-medium tracking-wide select-none opacity-80"
-                            style={{ color: colors.onSurface }}>
-                            {t("wardrobe_drag_rotate")}
-                        </div>
-
-                        {mode === "catskinc" && finalMouthOpenUrl && (
-                            <button
-                                onClick={toggleMicTest}
-                                aria-label={testMicActive ? "Stop microphone test" : "Test mouth overlay via microphone"}
-                                title={testMicActive ? "Stop microphone test" : "Test mouth overlay via microphone"}
-                                className="absolute bottom-2.5 left-2.5 p-2.5 rounded-xl hover:scale-105 active:scale-95 transition-all bg-black/40 border focus-visible:outline focus-visible:outline-2"
-                                style={{
-                                    borderColor: testMicActive ? colors.primary : "rgba(255, 255, 255, 0.05)",
-                                    color: testMicActive ? colors.primary : "rgba(255, 255, 255, 0.8)",
-                                }}
-                            >
-                                <Icons.Mic className={`w-5 h-5 ${testMicActive ? "animate-pulse" : ""}`} />
-                            </button>
-                        )}
-
+                        className="flex items-center gap-1 p-1 rounded-xl"
+                        style={{ backgroundColor: colors.surfaceContainerHighest }}
+                    >
                         <button
-                            onClick={() => resetRotationRef.current?.()}
-                            aria-label={t("wardrobe_reset_rotation")}
-                            title={t("wardrobe_reset_rotation")}
-                            className="absolute bottom-2.5 right-2.5 p-2.5 rounded-xl hover:scale-105 active:scale-95 transition-all bg-black/40 border border-white/5 text-white/80 hover:text-white focus-visible:outline focus-visible:outline-2"
+                            onClick={() => setMode("microsoft")}
+                            className="h-8 px-4 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
+                            style={{
+                                backgroundColor: mode === "microsoft" ? colors.surface : "transparent",
+                                color: mode === "microsoft" ? colors.onSurface : colors.onSurfaceVariant,
+                            }}
                         >
-                            <Icons.Refresh className="w-5 h-5" />
+                            {t("wardrobe_mode_microsoft")}
+                        </button>
+                        <button
+                            onClick={() => {
+                                if (!canManageProfile) {
+                                    toast.error("Microsoft account is required to authenticate with CatSkinC.");
+                                    return;
+                                }
+                                setMode("catskinc");
+                            }}
+                            className="h-8 px-4 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
+                            style={{
+                                backgroundColor: mode === "catskinc" ? colors.surface : "transparent",
+                                color: mode === "catskinc" ? colors.onSurface : colors.onSurfaceVariant,
+                            }}
+                        >
+                            {t("wardrobe_mode_catskinc")}
                         </button>
                     </div>
 
-                    <div className="w-[1px] self-stretch hidden md:block" style={{ backgroundColor: `${colors.outline}22` }} />
+                    <button
+                        onClick={() => syncProfile({ force: true })}
+                        disabled={isLoadingProfile}
+                        aria-label={t("wardrobe_refresh_profile")}
+                        title={t("wardrobe_refresh_profile")}
+                        className="w-10 h-10 shrink-0 rounded-xl flex items-center justify-center transition hover:brightness-110 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2"
+                        style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}
+                    >
+                        <Icons.Refresh className={`w-5 h-5 ${isLoadingProfile ? "animate-spin" : ""}`} />
+                    </button>
 
-                    <div className="w-[300px] xl:w-[340px] shrink-0 flex flex-col gap-3 xl:gap-4 justify-between">
+                    <div
+                        className="h-10 flex items-center gap-2 px-3.5 rounded-xl text-sm font-semibold max-w-[220px]"
+                        style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                    >
+                        <Icons.Microsoft className="w-4 h-4 shrink-0" style={{ color: "#00A4EF" }} />
+                        <span className="truncate">{profile?.name || session?.username || "-"}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex-1 min-h-0 flex gap-5">
+                <div
+                    className="relative flex-1 min-w-0 rounded-2xl overflow-hidden"
+                    style={{
+                        backgroundColor: previewBackground.card,
+                        backgroundImage: previewBackground.gradient,
+                    }}
+                >
+                    <SkinPreview3D
+                        skinUrl={previewSkin}
+                        variant={variant}
+                        backgroundColor={previewBackground.canvas}
+                        animationType={animationType}
+                        onResetRotation={(fn) => (resetRotationRef.current = fn)}
+                        onSkinLoadStateChange={setIsPreviewSkinLoading}
+                    />
+
+                    <div
+                        className="absolute left-1/2 -translate-x-1/2 w-64 h-16 pointer-events-none select-none flex items-center justify-center"
+                        style={{ bottom: "calc(14% - 2rem)", perspective: "1000px" }}
+                    >
+                        <div className="absolute w-40 h-40 border rounded-full" style={{ borderColor: `${colors.outline}1a`, transform: "rotateX(75deg)" }} />
+                        <div className="absolute w-28 h-28 border rounded-full" style={{ borderColor: `${colors.outline}0d`, transform: "rotateX(75deg)" }} />
+                    </div>
+
+                    {(isLoadingProfile || isPreviewSkinLoading || !profileFetched || isLoadingCatskincSkin) && (
+                        <div
+                            className="absolute inset-0 animate-skeleton-wave flex items-center justify-center"
+                            style={{ backgroundColor: previewBackground.overlay }}
+                        >
+                            <div
+                                className="h-9 px-4 rounded-full text-sm font-semibold flex items-center gap-2"
+                                style={{ backgroundColor: previewBackground.badgeBackground, color: previewBackground.badgeText }}
+                            >
+                                <Icons.Spinner className="w-4 h-4 animate-spin" />
+                                {t("loading")}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="absolute top-4 left-5 select-none pointer-events-none">
+                        <p className="text-sm font-semibold" style={{ color: colors.onSurface }}>
+                            {t("wardrobe_preview_3d")}
+                        </p>
+                        <p className="text-[13px] mt-0.5" style={{ color: colors.onSurfaceVariant }}>
+                            {t("wardrobe_drag_rotate")}
+                        </p>
+                    </div>
+
+                    <button
+                        onClick={() => resetRotationRef.current?.()}
+                        aria-label={t("wardrobe_reset_rotation")}
+                        title={t("wardrobe_reset_rotation")}
+                        className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-md transition hover:brightness-110 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2"
+                        style={{ backgroundColor: previewBackground.buttonBackground, color: previewBackground.buttonText }}
+                    >
+                        <Icons.Refresh className="w-5 h-5" />
+                    </button>
+
+                    {mode === "catskinc" && finalMouthOpenUrl && (
+                        <button
+                            onClick={toggleMicTest}
+                            aria-label={testMicActive ? "Stop microphone test" : "Test mouth overlay via microphone"}
+                            title={testMicActive ? "Stop microphone test" : "Test mouth overlay via microphone"}
+                            className="absolute bottom-4 left-4 w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-md transition hover:brightness-110 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2"
+                            style={{
+                                backgroundColor: testMicActive ? colors.secondary : previewBackground.buttonBackground,
+                                color: testMicActive ? "#111" : previewBackground.buttonText,
+                            }}
+                        >
+                            <Icons.Mic className={`w-5 h-5 ${testMicActive ? "animate-pulse" : ""}`} />
+                        </button>
+                    )}
+
+                    <div
+                        className="absolute bottom-4 left-1/2 -translate-x-1/2 w-max max-w-[calc(100%-2rem)] flex flex-wrap items-center justify-center gap-1 p-1 rounded-3xl backdrop-blur-md"
+                        style={{ backgroundColor: previewBackground.hintBackground }}
+                    >
+                        {SKIN_ANIMATIONS.map(({ id, label }) => (
+                            <button
+                                key={id}
+                                onClick={() => setAnimationType(id)}
+                                className="h-9 px-3.5 rounded-full text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
+                                style={segmentButtonStyle(animationType === id)}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="w-[380px] shrink-0 min-h-0 flex flex-col">
+                    <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-6 pr-1">
                         <div className="flex items-center gap-4">
-                            <div className="w-14 h-14 rounded-full overflow-hidden border relative flex items-center justify-center shrink-0"
-                                style={{ backgroundColor: colors.surfaceContainerHighest, borderColor: `${colors.outline}33` }}>
+                            <div
+                                className="w-14 h-14 rounded-xl overflow-hidden flex items-center justify-center shrink-0"
+                                style={{ backgroundColor: colors.surfaceContainerHighest }}
+                            >
                                 <MCHead
                                     username={session.username}
                                     size={56}
-                                    className="w-full h-full rounded-full"
+                                    className="w-full h-full rounded-xl"
                                 />
                             </div>
                             <div className="min-w-0">
-                                <p className="text-[10px] font-bold tracking-wider uppercase opacity-50" style={{ color: colors.onSurfaceVariant }}>
-                                    Active Profile
-                                </p>
-                                <h3 className="text-lg font-bold truncate leading-tight mt-0.5" style={{ color: colors.onSurface }}>
+                                <h3 className="text-lg font-bold truncate leading-tight" style={{ color: colors.onSurface }}>
                                     {profile?.name || session?.username || "-"}
                                 </h3>
-                                {mode !== "catskinc" && (
-                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-semibold uppercase mt-2 tracking-wider"
-                                        style={{ 
-                                            backgroundColor: isMicrosoftSession ? "#00A4EF15" : `${colors.primary}15`, 
-                                            color: isMicrosoftSession ? "#00A4EF" : colors.primary,
-                                            border: `1px solid ${isMicrosoftSession ? "#00A4EF30" : `${colors.primary}30`}`
-                                        }}
-                                    >
-                                        <Icons.Microsoft className="w-2.5 h-2.5" style={{ color: isMicrosoftSession ? "#00A4EF" : colors.primary }} />
-                                        {isMicrosoftSession ? "Microsoft Account" : "Linked CatID"}
-                                    </span>
-                                )}
+                                <p className="flex items-center gap-1.5 text-sm mt-1" style={{ color: colors.onSurfaceVariant }}>
+                                    {mode !== "catskinc" ? (
+                                        <>
+                                            <Icons.Microsoft className="w-3.5 h-3.5 shrink-0" style={{ color: isMicrosoftSession ? "#00A4EF" : colors.primary }} />
+                                            <span className="truncate">{isMicrosoftSession ? "Microsoft Account" : "Linked CatID"}</span>
+                                        </>
+                                    ) : (
+                                        <span className="truncate">{t("wardrobe_mode_catskinc")}</span>
+                                    )}
+                                </p>
                             </div>
                         </div>
 
-                        <div className="h-[1px] w-full" style={{ backgroundColor: `${colors.outline}22` }} />
-
                         <div>
-                            <div className="text-xs font-semibold uppercase tracking-wider opacity-50 mb-2" style={{ color: colors.onSurfaceVariant }}>
+                            <p className="text-sm font-semibold mb-2.5" style={{ color: colors.onSurface }}>
                                 {t("wardrobe_variant")}
-                            </div>
-                            <div className="grid grid-cols-2 gap-2 p-1 rounded-2xl border"
-                                style={{ backgroundColor: colors.surfaceContainerHighest, borderColor: `${colors.outline}22` }}>
+                            </p>
+                            <div
+                                className="grid grid-cols-2 gap-1 p-1 rounded-xl"
+                                style={{ backgroundColor: colors.surfaceContainer }}
+                            >
                                 <button
                                     onClick={() => setVariant("classic")}
-                                    className={`py-2 rounded-xl text-sm font-semibold transition-all focus-visible:outline focus-visible:outline-2 border ${
-                                        variant === "classic"
-                                            ? "shadow-sm border-transparent"
-                                            : "hover:bg-white/5 border-transparent"
-                                    }`}
-                                    style={{
-                                        backgroundColor: variant === "classic" ? colors.surface : undefined,
-                                        color: variant === "classic" ? colors.onSurface : colors.onSurfaceVariant,
-                                    }}
+                                    className="h-11 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
+                                    style={segmentButtonStyle(variant === "classic")}
                                 >
                                     Classic
                                 </button>
                                 <button
                                     onClick={() => setVariant("slim")}
-                                    className={`py-2 rounded-xl text-sm font-semibold transition-all focus-visible:outline focus-visible:outline-2 border ${
-                                        variant === "slim"
-                                            ? "shadow-sm border-transparent"
-                                            : "hover:bg-white/5 border-transparent"
-                                    }`}
-                                    style={{
-                                        backgroundColor: variant === "slim" ? colors.surface : undefined,
-                                        color: variant === "slim" ? colors.onSurface : colors.onSurfaceVariant,
-                                    }}
+                                    className="h-11 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
+                                    style={segmentButtonStyle(variant === "slim")}
                                 >
                                     Slim
                                 </button>
                             </div>
                         </div>
 
-                        <div className="h-[1px] w-full" style={{ backgroundColor: `${colors.outline}22` }} />
-
-                        <div className="flex flex-col">
-                            <div className="text-xs font-semibold uppercase tracking-wider opacity-50 mb-2" style={{ color: colors.onSurfaceVariant }}>
+                        <div>
+                            <p className="text-sm font-semibold mb-2.5" style={{ color: colors.onSurface }}>
                                 {t("wardrobe_skin_control")}
-                            </div>
+                            </p>
 
                             <input
                                 ref={fileInputRef}
@@ -1071,43 +1080,25 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
 
                             <button
                                 onClick={() => fileInputRef.current?.click()}
-                                className={`w-full ${mode === "catskinc" ? "py-3" : "py-4"} rounded-2xl border-2 border-dashed transition-all hover:opacity-90 hover:scale-[1.01] active:scale-95 flex items-center justify-center relative overflow-hidden group cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2`}
-                                style={{
-                                    borderColor: selectedFileName ? `${colors.primary}80` : `${colors.outline}33`,
-                                    backgroundColor: selectedFileName ? `${colors.primary}08` : 'transparent',
-                                }}
+                                className="w-full flex items-center gap-4 p-4 rounded-xl text-left transition hover:brightness-110 active:scale-[0.99] cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2"
+                                style={{ backgroundColor: colors.surfaceContainer }}
                             >
-                                <div className={`flex flex-col items-center gap-1.5 ${mode === "catskinc" ? "p-1.5" : "p-2"}`}>
-                                    {selectedFileName ? (
-                                        <>
-                                            {mode !== "catskinc" && (
-                                                <div className="w-10 h-10 rounded-full flex items-center justify-center mb-1" style={{ backgroundColor: `${colors.primary}15` }}>
-                                                    <Icons.Check className="w-5 h-5" style={{ color: `${colors.primary}cc` }} />
-                                                </div>
-                                            )}
-                                            <span className="text-sm font-semibold truncate max-w-[220px]" style={{ color: colors.onSurface }}>
-                                                {selectedFileName}
-                                            </span>
-                                            <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded" style={{ backgroundColor: `${colors.primary}15`, color: `${colors.primary}cc` }}>
-                                                Ready to apply
-                                            </span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            {mode !== "catskinc" && (
-                                                <div className="w-10 h-10 rounded-full flex items-center justify-center mb-1 group-hover:scale-110 transition-transform duration-300"
-                                                    style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                                                    <Icons.Upload className="w-5 h-5 opacity-40 group-hover:opacity-80 transition-opacity" style={{ color: colors.onSurface }} />
-                                                </div>
-                                            )}
-                                            <span className="text-sm font-semibold" style={{ color: colors.onSurface }}>
-                                                {t("wardrobe_choose_skin")}
-                                            </span>
-                                            <span className="text-[10px] opacity-35 font-semibold" style={{ color: colors.onSurfaceVariant }}>
-                                                PNG (Aspect Ratio 1:1 or 2:1)
-                                            </span>
-                                        </>
-                                    )}
+                                <div
+                                    className="w-11 h-11 rounded-lg flex items-center justify-center shrink-0"
+                                    style={{
+                                        backgroundColor: selectedFileName ? colors.secondary : colors.surfaceContainerHighest,
+                                        color: selectedFileName ? "#111" : colors.onSurfaceVariant,
+                                    }}
+                                >
+                                    {selectedFileName ? <Icons.Check className="w-5 h-5" /> : <Icons.Upload className="w-5 h-5" />}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-[15px] font-semibold truncate" style={{ color: colors.onSurface }}>
+                                        {selectedFileName || t("wardrobe_choose_skin")}
+                                    </p>
+                                    <p className="text-[13px] mt-0.5 truncate" style={{ color: colors.onSurfaceVariant }}>
+                                        {selectedFileName ? "Ready to apply" : mode === "catskinc" ? "PNG (Square, 64-8192 px)" : "PNG (Aspect Ratio 1:1 or 2:1)"}
+                                    </p>
                                 </div>
                             </button>
 
@@ -1118,139 +1109,118 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
                                 onChange={onSelectMouthFile}
                                 className="hidden"
                             />
+                        </div>
 
-                            {mode === "catskinc" && (
-                                <div className="mt-3 flex flex-col">
-                                    <div className="text-xs font-semibold uppercase tracking-wider opacity-50 mb-2" style={{ color: colors.onSurfaceVariant }}>
-                                        {t("wardrobe_catskinc_mouth_open")}
-                                    </div>
-                                    <button
-                                        onClick={() => mouthFileInputRef.current?.click()}
-                                        className="w-full py-3 rounded-2xl border-2 border-dashed transition-all hover:opacity-90 hover:scale-[1.01] active:scale-95 flex items-center justify-center relative overflow-hidden group cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                        {mode === "catskinc" && (
+                            <div>
+                                <p className="text-sm font-semibold mb-2.5" style={{ color: colors.onSurface }}>
+                                    {t("wardrobe_catskinc_mouth_open")}
+                                </p>
+                                <button
+                                    onClick={() => mouthFileInputRef.current?.click()}
+                                    className="w-full flex items-center gap-4 p-4 rounded-xl text-left transition hover:brightness-110 active:scale-[0.99] cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2"
+                                    style={{ backgroundColor: colors.surfaceContainer }}
+                                >
+                                    <div
+                                        className="w-11 h-11 rounded-lg flex items-center justify-center shrink-0"
                                         style={{
-                                            borderColor: mouthOpenFileName ? `${colors.primary}80` : `${colors.outline}33`,
-                                            backgroundColor: mouthOpenFileName ? `${colors.primary}08` : 'transparent',
+                                            backgroundColor: mouthOpenFileName ? colors.secondary : colors.surfaceContainerHighest,
+                                            color: mouthOpenFileName ? "#111" : colors.onSurfaceVariant,
                                         }}
                                     >
-                                        <div className="flex flex-col items-center gap-1.5 p-1.5">
-                                            {mouthOpenFileName ? (
-                                                <>
-                                                    <span className="text-sm font-semibold truncate max-w-[220px]" style={{ color: colors.onSurface }}>
-                                                        {mouthOpenFileName}
-                                                    </span>
-                                                    <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded" style={{ backgroundColor: `${colors.primary}15`, color: `${colors.primary}cc` }}>
-                                                        Overlay loaded
-                                                    </span>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <span className="text-sm font-semibold" style={{ color: colors.onSurface }}>
-                                                        {t("wardrobe_catskinc_choose_mouth")}
-                                                    </span>
-                                                    <span className="text-[10px] opacity-35 font-semibold" style={{ color: colors.onSurfaceVariant }}>
-                                                        PNG (Aspect Ratio 1:1 or 2:1)
-                                                    </span>
-                                                </>
-                                            )}
-                                        </div>
-                                    </button>
-                                    
-                                </div>
-                            )}
+                                        {mouthOpenFileName ? <Icons.Check className="w-5 h-5" /> : <Icons.Upload className="w-5 h-5" />}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-[15px] font-semibold truncate" style={{ color: colors.onSurface }}>
+                                            {mouthOpenFileName || t("wardrobe_catskinc_choose_mouth")}
+                                        </p>
+                                        <p className="text-[13px] mt-0.5 truncate" style={{ color: colors.onSurfaceVariant }}>
+                                            {mouthOpenFileName ? "Overlay loaded" : "PNG (same size as skin)"}
+                                        </p>
+                                    </div>
+                                </button>
+                            </div>
+                        )}
 
-                            {profileError && (
-                                <div className="text-xs font-semibold p-3 rounded-xl mt-3 border border-red-500/20 bg-red-500/10 text-red-500">
-                                    {profileError}
-                                </div>
-                            )}
+                        {profileError && (
+                            <div className="text-sm font-medium px-4 py-3 rounded-xl bg-red-500/10 text-red-500">
+                                {profileError}
+                            </div>
+                        )}
+                    </div>
 
-                        </div>
-
-                        <div className="h-[1px] w-full" style={{ backgroundColor: `${colors.outline}22` }} />
-
-                        <div className="grid grid-cols-2 gap-3 w-full">
-                            <button
-                                onClick={handleClearClick}
-                                disabled={isClearDisabled}
-                                className="w-full py-3.5 rounded-2xl text-xs font-semibold uppercase tracking-wider border transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/5 active:scale-95 flex items-center justify-center text-center"
-                                style={{
-                                    backgroundColor: 'transparent',
-                                    borderColor: `${colors.outline}33`,
-                                    color: colors.onSurface,
-                                }}
-                            >
-                                {hasPreviewCache 
-                                    ? (config.language === "th" ? "ล้างรีวิวตัวอย่าง" : "Clear Preview") 
+                    <div className="shrink-0 grid grid-cols-2 gap-3 pt-4">
+                        <button
+                            onClick={handleClearClick}
+                            disabled={isClearDisabled}
+                            className="h-12 px-3 rounded-xl text-sm font-semibold transition hover:brightness-110 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 flex items-center justify-center text-center focus-visible:outline-2 focus-visible:outline-offset-2"
+                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                        >
+                            <span className="truncate">
+                                {hasPreviewCache
+                                    ? (config.language === "th" ? "ล้างรีวิวตัวอย่าง" : "Clear Preview")
                                     : (config.language === "th" ? "ล้างสกิน" : "Clear")}
-                            </button>
+                            </span>
+                        </button>
 
-                            <button
-                                onClick={onApplySkin}
-                                disabled={isApplying || !selectedSkinDataUrl}
-                                className="w-full py-3.5 rounded-2xl font-bold text-xs uppercase tracking-wider transition-all disabled:opacity-45 disabled:cursor-not-allowed hover:scale-[1.01] active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 text-center"
-                                style={{
-                                    backgroundColor: selectedSkinDataUrl ? colors.primary : colors.surfaceContainerHighest,
-                                    color: selectedSkinDataUrl ? colors.onPrimary : colors.onSurfaceVariant,
-                                    border: selectedSkinDataUrl ? "1px solid rgba(255, 255, 255, 0.1)" : `1px solid ${colors.outline}22`,
-                                }}
-                            >
-                                {isApplying && <Icons.Spinner className="w-3.5 h-3.5 animate-spin" style={{ color: colors.onPrimary }} />}
-                                <span className="truncate">
-                                    {isApplying ? t("wardrobe_applying") : t("wardrobe_apply_skin")}
-                                </span>
-                            </button>
-                        </div>
+                        <button
+                            onClick={onApplySkin}
+                            disabled={isApplying || !selectedSkinDataUrl}
+                            className="h-12 px-3 rounded-xl text-sm font-bold transition hover:brightness-105 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 flex items-center justify-center gap-2 text-center cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2"
+                            style={{ backgroundColor: colors.secondary, color: "#111" }}
+                        >
+                            {isApplying && <Icons.Spinner className="w-4 h-4 animate-spin" />}
+                            <span className="truncate">
+                                {isApplying ? t("wardrobe_applying") : t("wardrobe_apply_skin")}
+                            </span>
+                        </button>
                     </div>
                 </div>
             </div>
-            
+
             {showClearModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
-                    <div className="w-[360px] p-6 rounded-2xl border space-y-4 shadow-2xl" style={{ backgroundColor: colors.surfaceContainer, borderColor: `${colors.outline}33` }}>
+                    <div className="w-[380px] p-6 rounded-2xl space-y-5 shadow-2xl" style={{ backgroundColor: colors.surfaceContainer }}>
                         <div className="text-center">
                             <h3 className="text-lg font-bold" style={{ color: colors.onSurface }}>
                                 {config.language === "th" ? "ล้างข้อมูล CatSkin" : "Clear CatSkin Assets"}
                             </h3>
-                            <p className="text-xs opacity-60 mt-1" style={{ color: colors.onSurfaceVariant }}>
-                                {config.language === "th" 
-                                    ? "กรุณาเลือกประเภทข้อมูลที่คุณต้องการลบออกจากระบบ CatSkin" 
+                            <p className="text-sm mt-1.5" style={{ color: colors.onSurfaceVariant }}>
+                                {config.language === "th"
+                                    ? "กรุณาเลือกประเภทข้อมูลที่คุณต้องการลบออกจากระบบ CatSkin"
                                     : "Please select the type of data you wish to delete from the CatSkin server."}
                             </p>
                         </div>
-                        <div className="flex flex-col gap-2 pt-2">
+                        <div className="flex flex-col gap-2">
                             <button
                                 disabled={isClearingAssets}
                                 onClick={() => handleClearConfirm("skin")}
-                                className="w-full py-2.5 rounded-xl text-xs font-semibold uppercase tracking-wider transition-all hover:bg-red-500/15 active:scale-[0.98] border border-red-500/30 text-red-500 flex items-center justify-center gap-1.5"
+                                className="w-full h-11 rounded-xl text-sm font-semibold transition hover:bg-red-500/20 active:scale-[0.98] disabled:opacity-50 bg-red-500/10 text-red-500 flex items-center justify-center gap-2"
                             >
-                                {isClearingAssets && <Icons.Spinner className="w-3.5 h-3.5 animate-spin" />}
+                                {isClearingAssets && <Icons.Spinner className="w-4 h-4 animate-spin" />}
                                 {config.language === "th" ? "ล้างสกิน (Clear Skin)" : "Clear Skin"}
                             </button>
                             <button
                                 disabled={isClearingAssets}
                                 onClick={() => handleClearConfirm("mouth")}
-                                className="w-full py-2.5 rounded-xl text-xs font-semibold uppercase tracking-wider transition-all hover:bg-orange-500/15 active:scale-[0.98] border border-orange-500/30 text-orange-500 flex items-center justify-center gap-1.5"
+                                className="w-full h-11 rounded-xl text-sm font-semibold transition hover:bg-orange-500/20 active:scale-[0.98] disabled:opacity-50 bg-orange-500/10 text-orange-500 flex items-center justify-center gap-2"
                             >
-                                {isClearingAssets && <Icons.Spinner className="w-3.5 h-3.5 animate-spin" />}
+                                {isClearingAssets && <Icons.Spinner className="w-4 h-4 animate-spin" />}
                                 {config.language === "th" ? "ล้างเลเยอร์เปิดปาก (Clear Mouth)" : "Clear Mouth"}
                             </button>
                             <button
                                 disabled={isClearingAssets}
                                 onClick={() => handleClearConfirm("all")}
-                                className="w-full py-2.5 rounded-xl text-xs font-semibold uppercase tracking-wider transition-all hover:bg-red-500/25 active:scale-[0.98] border border-red-500/50 bg-red-500/10 text-red-500 flex items-center justify-center gap-1.5"
+                                className="w-full h-11 rounded-xl text-sm font-semibold transition hover:brightness-110 active:scale-[0.98] disabled:opacity-50 bg-red-500 text-white flex items-center justify-center gap-2"
                             >
-                                {isClearingAssets && <Icons.Spinner className="w-3.5 h-3.5 animate-spin" />}
+                                {isClearingAssets && <Icons.Spinner className="w-4 h-4 animate-spin" />}
                                 {config.language === "th" ? "ล้างทั้งหมด (Clear All)" : "Clear All"}
                             </button>
-                            <div className="h-[1px] w-full my-1" style={{ backgroundColor: `${colors.outline}22` }} />
                             <button
                                 disabled={isClearingAssets}
                                 onClick={() => setShowClearModal(false)}
-                                className="w-full py-2.5 rounded-xl text-xs font-semibold uppercase tracking-wider border transition-all hover:bg-white/5 active:scale-[0.98]"
-                                style={{
-                                    borderColor: `${colors.outline}33`,
-                                    color: colors.onSurface,
-                                }}
+                                className="w-full h-11 mt-2 rounded-xl text-sm font-semibold transition hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
+                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                             >
                                 {t("cancel")}
                             </button>

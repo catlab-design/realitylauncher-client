@@ -12,27 +12,92 @@ interface ProjectCardProps {
     onClick: () => void;
     isInstalling?: boolean;
     installProgress?: InstallProgress | null;
+    /** "grid" = card (default), "list" = compact row. */
+    layout?: "grid" | "list";
 }
 
-export function ProjectCard({ colors, project, isActive, onClick, isInstalling, installProgress }: ProjectCardProps) {
+export function ProjectCard({ colors, project, isActive, onClick, isInstalling, installProgress, layout = "grid" }: ProjectCardProps) {
     const [isHovered, setIsHovered] = useState(false);
     const { t } = useTranslation();
 
-    
+
+    // Accent used by the grid card's hover glow.
     const accentColor = project.color
         ? `#${project.color.toString(16).padStart(6, '0')}`
         : colors.secondary;
+
+    if (layout === "list") {
+        return (
+            <button
+                onClick={() => { playClick(); onClick(); }}
+                onMouseEnter={() => setIsHovered(true)}
+                onMouseLeave={() => setIsHovered(false)}
+                className="relative w-full text-left rounded-xl overflow-hidden transition-colors"
+                style={{
+                    backgroundColor: isActive ? colors.surfaceContainerHighest : isHovered ? colors.surfaceContainer : "transparent",
+                }}
+            >
+                {isInstalling && (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center gap-3 bg-black/45 backdrop-blur-[2px]">
+                        <i className="fa-solid fa-spinner fa-spin text-lg" style={{ color: colors.secondary }}></i>
+                        <span className="text-sm font-semibold text-white">{installProgress?.message || "Installing..."}</span>
+                        {installProgress?.percent !== undefined && (
+                            <div className="w-28 h-1.5 rounded-full overflow-hidden bg-white/20">
+                                <div className="h-full transition-all duration-300" style={{ width: `${installProgress.percent}%`, backgroundColor: colors.secondary }} />
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                <div className="flex items-center gap-4 px-3 py-3 min-h-20">
+                    <div className="w-14 h-14 rounded-xl shrink-0 overflow-hidden" style={{ backgroundColor: colors.surfaceContainerHighest }}>
+                        {project.icon_url ? (
+                            <img src={project.icon_url} alt={project.title} className="w-full h-full object-cover" />
+                        ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                                <Icons.Box className="w-7 h-7" style={{ color: colors.onSurfaceVariant }} />
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline gap-2 min-w-0">
+                            <h3 className="text-base font-bold truncate" style={{ color: colors.onSurface }}>{project.title}</h3>
+                            <span className="text-sm truncate shrink-0 max-w-[40%]" style={{ color: colors.onSurfaceVariant }}>
+                                {t('by')} <span className="font-semibold" style={{ color: colors.onSurface }}>{project.author}</span>
+                            </span>
+                        </div>
+                        <p className="text-sm mt-1 line-clamp-1" style={{ color: colors.onSurfaceVariant }}>{project.description}</p>
+                    </div>
+
+                    <div className="hidden md:flex items-center gap-2 shrink-0">
+                        {project.categories && project.categories.length > 0 && (
+                            <span className="h-7 px-2.5 inline-flex items-center rounded-lg text-xs font-medium capitalize truncate max-w-32"
+                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}>
+                                {project.categories[0]}
+                            </span>
+                        )}
+                        <span className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded-lg text-xs font-semibold tabular-nums"
+                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}>
+                            <i className="fa-solid fa-download text-[11px]" style={{ color: colors.onSurfaceVariant }}></i>
+                            {formatNumber(project.downloads)}
+                        </span>
+                    </div>
+                </div>
+            </button>
+        );
+    }
 
     return (
         <button
             onClick={() => { playClick(); onClick(); }}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
-            className="group relative w-full text-left rounded-xl overflow-hidden transition-all duration-300"
+            className="group relative w-full text-left rounded-2xl overflow-hidden transition-all duration-200"
             style={{
-                                backgroundColor: isActive ? `${colors.primary}15` : `${colors.surfaceContainer}60`,
-                border: `1px solid ${isActive ? colors.primary : colors.outline + "20"}`,
-                transform: isHovered ? "translateY(-2px)" : "none",
+                backgroundColor: isActive ? colors.surfaceContainerHighest : colors.surfaceContainer,
+                boxShadow: isActive ? `inset 0 0 0 2px ${colors.secondary}` : "none",
+                transform: isHovered && !isActive ? "translateY(-2px)" : "none",
                 willChange: "transform",
             }}
         >
@@ -48,7 +113,7 @@ export function ProjectCard({ colors, project, isActive, onClick, isInstalling, 
                     <div className="flex flex-col items-center gap-2 p-3 rounded-lg"
                          style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}30` }}>
                         <i className="fa-solid fa-spinner fa-spin text-lg" style={{ color: colors.secondary }}></i>
-                        <span className="text-xs font-medium" style={{ color: colors.onSurface }}>
+                        <span className="text-sm font-medium" style={{ color: colors.onSurface }}>
                             {installProgress?.message || "Installing..."}
                         </span>
                         {installProgress?.percent !== undefined && (
@@ -68,49 +133,45 @@ export function ProjectCard({ colors, project, isActive, onClick, isInstalling, 
 
             <div className="p-4 flex items-start gap-4 relative z-10">
                 <div
-                    className="w-12 h-12 rounded-xl bg-cover bg-center shrink-0 overflow-hidden"
-                    style={{
-                        backgroundImage: project.icon_url ? `url('${project.icon_url}')` : undefined,
-                        backgroundColor: colors.surfaceContainerHighest,
-                        border: `1px solid ${colors.outline}10`
-                    }}
+                    className="w-16 h-16 rounded-xl shrink-0 overflow-hidden"
+                    style={{ backgroundColor: colors.surfaceContainerHighest }}
                 >
                     {project.icon_url ? (
                         <img src={project.icon_url} alt={project.title} className="w-full h-full object-cover" />
                     ) : (
                         <div className="w-full h-full flex items-center justify-center">
-                            <Icons.Box className="w-5 h-5" style={{ color: colors.onSurfaceVariant }} />
+                            <Icons.Box className="w-7 h-7" style={{ color: colors.onSurfaceVariant }} />
                         </div>
                     )}
                 </div>
 
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-0.5">
-                        <h3 className="text-[15px] font-semibold truncate pr-2 transition-colors"
-                            style={{ color: isActive ? colors.primary : colors.onSurface }}>
+                        <h3 className="text-base font-bold truncate pr-2"
+                            style={{ color: colors.onSurface }}>
                             {project.title}
                         </h3>
                     </div>
 
-                    <p className="text-xs truncate mb-2" style={{ color: colors.onSurfaceVariant }}>
-                        {t('by')} <span style={{ color: colors.onSurface }}>{project.author}</span>
+                    <p className="text-[13px] truncate mb-1.5" style={{ color: colors.onSurfaceVariant }}>
+                        {t('by')} <span className="font-semibold" style={{ color: colors.onSurface }}>{project.author}</span>
                     </p>
 
-                    <p className="text-xs line-clamp-2 leading-5 h-[40px] mb-3 opacity-80"
+                    <p className="text-[13px] line-clamp-2 leading-5 h-10 mb-3"
                         style={{ color: colors.onSurfaceVariant }}>
                         {project.description}
                     </p>
 
                     <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium"
-                            style={{ backgroundColor: `${colors.secondary}15`, color: colors.onSurface }}>
-                            <i className="fa-solid fa-download text-[10px]" style={{ color: colors.secondary }}></i>
+                        <span className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-semibold"
+                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}>
+                            <i className="fa-solid fa-download text-[11px]" style={{ color: colors.onSurfaceVariant }}></i>
                             {formatNumber(project.downloads)}
                         </span>
 
                         {project.categories && project.categories.length > 0 && (
-                            <span className="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-medium truncate max-w-[96px]"
-                                style={{ backgroundColor: `${colors.surfaceContainerHighest}80`, color: colors.onSurfaceVariant }}>
+                            <span className="inline-flex items-center h-7 px-2.5 rounded-lg text-xs font-medium truncate max-w-32 capitalize"
+                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}>
                                 {project.categories[0]}
                             </span>
                         )}

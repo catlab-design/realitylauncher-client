@@ -9,8 +9,60 @@ interface SkinPreview3DProps {
     height?: string | number;
     onResetRotation?: (resetFn: () => void) => void;
     onSkinLoadStateChange?: (loading: boolean) => void;
-    animationType?: "idle" | "walk" | "run" | "fly";
+    animationType?: SkinAnimationType;
 }
+
+export type SkinAnimationType =
+    | "idle" | "walk" | "run" | "fly" | "swim" | "crouch"
+    | "wave" | "punch" | "sit" | "dance" | "cheer";
+
+export const SKIN_ANIMATIONS: { id: SkinAnimationType; label: string }[] = [
+    { id: "idle", label: "Idle" },
+    { id: "walk", label: "Walk" },
+    { id: "run", label: "Run" },
+    { id: "fly", label: "Fly" },
+    { id: "swim", label: "Swim" },
+    { id: "crouch", label: "Crouch" },
+    { id: "wave", label: "Wave" },
+    { id: "punch", label: "Punch" },
+    { id: "sit", label: "Sit" },
+    { id: "dance", label: "Dance" },
+    { id: "cheer", label: "Cheer" },
+];
+
+// Custom poses built on FunctionAnimation; `t` is elapsed time scaled by the animation speed.
+// Arms rotate outward with +z on the left and -z on the right; legs swing forward with -x.
+const customAnimations: Partial<Record<SkinAnimationType, (player: any, t: number) => void>> = {
+    sit: (player, t) => {
+        const { skin } = player;
+        player.position.y = -6;
+        skin.leftLeg.rotation.set(-1.45, -0.15, 0);
+        skin.rightLeg.rotation.set(-1.45, 0.15, 0);
+        skin.leftArm.rotation.set(-0.55, 0, 0.05);
+        skin.rightArm.rotation.set(-0.55, 0, -0.05);
+        skin.head.rotation.y = Math.sin(t * 0.6) * 0.35;
+        skin.head.rotation.x = Math.sin(t * 1.2) * 0.04;
+    },
+    dance: (player, t) => {
+        const { skin } = player;
+        const beat = t * 7;
+        player.position.y = Math.abs(Math.sin(beat)) * 1.5;
+        skin.body.rotation.z = Math.sin(beat) * 0.12;
+        skin.head.rotation.z = Math.sin(beat) * 0.2;
+        skin.leftArm.rotation.z = 1.9 + Math.sin(beat) * 0.6;
+        skin.rightArm.rotation.z = -1.9 + Math.sin(beat) * 0.6;
+        skin.leftLeg.rotation.x = Math.max(0, Math.sin(beat)) * -0.5;
+        skin.rightLeg.rotation.x = Math.max(0, -Math.sin(beat)) * -0.5;
+    },
+    cheer: (player, t) => {
+        const { skin } = player;
+        const beat = t * 8;
+        player.position.y = Math.abs(Math.sin(beat / 2)) * 2.5;
+        skin.leftArm.rotation.z = 2.7 + Math.sin(beat) * 0.25;
+        skin.rightArm.rotation.z = -2.7 - Math.sin(beat) * 0.25;
+        skin.head.rotation.x = -0.25;
+    },
+};
 
 const FALLBACK_ROTATION = 0;
 
@@ -166,12 +218,23 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
             viewer.animation = null;
 
             let animInstance: any = null;
-            if (animationType === "walk") {
+            const custom = customAnimations[animationType];
+            if (custom) {
+                animInstance = new modules.FunctionAnimation((player: any, progress: number) => custom(player, progress));
+            } else if (animationType === "walk") {
                 animInstance = new modules.WalkingAnimation();
             } else if (animationType === "run") {
                 animInstance = new modules.RunningAnimation();
             } else if (animationType === "fly") {
                 animInstance = new modules.FlyingAnimation();
+            } else if (animationType === "swim") {
+                animInstance = new modules.SwimAnimation();
+            } else if (animationType === "crouch") {
+                animInstance = new modules.CrouchAnimation();
+            } else if (animationType === "wave") {
+                animInstance = new modules.WaveAnimation("right");
+            } else if (animationType === "punch") {
+                animInstance = new modules.HitAnimation();
             } else {
                 animInstance = new modules.IdleAnimation();
             }

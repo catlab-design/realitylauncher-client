@@ -11,6 +11,7 @@ import { ImagePreviewModal } from "./ImagePreviewModal";
 import { Icons } from "../../ui/Icons";
 import { playClick } from "../../../lib/sounds";
 import { normalizeModrinthVersion, normalizeCurseforgeVersion } from "./normalizers";
+import { useUiStore } from "../../../store/uiStore";
 import bannerImage from "../../../assets/banner.png";
 import fabricIcon from "../../../assets/fabric.svg";
 import forgeIcon from "../../../assets/forge.svg";
@@ -102,6 +103,13 @@ export function ProjectDetailPage({
 }: ProjectDetailPageProps) {
     const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState<DetailTab>("description");
+
+    // Full-bleed page: the hero runs up under the see-through title bar.
+    const setFullBleed = useUiStore((state) => state.setFullBleed);
+    useEffect(() => {
+        setFullBleed(true);
+        return () => setFullBleed(false);
+    }, [setFullBleed]);
     const [versions, setVersions] = useState<ProjectVersion[]>([]);
     const [versionsLoading, setVersionsLoading] = useState(false);
     const [versionsPage, setVersionsPage] = useState(1);
@@ -315,8 +323,8 @@ export function ProjectDetailPage({
                 />
             )}
 
-            <div className="space-y-0">
-                <div className="relative h-52 w-full rounded-t-2xl overflow-hidden bg-cover bg-center"
+            <div className="space-y-0 -mx-6 -mt-3">
+                <div className="relative h-80 w-full overflow-hidden bg-cover bg-center"
                     style={{
                         backgroundImage: `url(${heroImage})`,
                         backgroundColor: colors.surfaceContainerHighest,
@@ -325,7 +333,7 @@ export function ProjectDetailPage({
 
                     <button
                         onClick={() => { playClick(); onBack(); }}
-                        className="absolute top-4 left-4 z-20 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold backdrop-blur-md transition-all hover:scale-105 active:scale-95 group"
+                        className="absolute top-14 left-6 z-20 flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold backdrop-blur-md transition-all hover:scale-105 active:scale-95 group"
                         style={{
                             backgroundColor: 'rgba(0,0,0,0.6)',
                             color: '#fff',
@@ -349,15 +357,26 @@ export function ProjectDetailPage({
                         </div>
 
                         <div className="flex-1 min-w-0">
-                            <h1 className="text-3xl font-bold text-white mb-1.5 truncate">
+                            <h1 className="font-display text-3xl text-white mb-1.5 truncate">
                                 {currentProject.title}
                             </h1>
                             <div className="flex items-center gap-4 text-sm text-white/80 flex-wrap font-medium">
                                 <span className="flex items-center gap-2">
-                                    <img 
-                                        src={contentSource === "modrinth" ? (modrinthIcon as any).src : (curseforgeIcon as any).src} 
-                                        className="w-4 h-4 object-contain" 
-                                        alt={contentSource} 
+                                    {/* Source logo (monochrome SVG) painted in its brand colour. */}
+                                    <span
+                                        aria-hidden="true"
+                                        className="w-4 h-4 shrink-0"
+                                        style={(() => {
+                                            const src = contentSource === "modrinth" ? modrinthIcon : curseforgeIcon;
+                                            const mask = `url("${src}")`;
+                                            return {
+                                                backgroundColor: contentSource === "modrinth" ? "#1bd96a" : "#f16436",
+                                                maskImage: mask, WebkitMaskImage: mask,
+                                                maskSize: "contain", WebkitMaskSize: "contain",
+                                                maskRepeat: "no-repeat", WebkitMaskRepeat: "no-repeat",
+                                                maskPosition: "center", WebkitMaskPosition: "center",
+                                            };
+                                        })()}
                                     />
                                     {t('by')} <span className="font-bold text-white">{currentProject.author}</span>
                                 </span>
@@ -402,38 +421,41 @@ export function ProjectDetailPage({
                 </div>
 
                 {currentProject.categories && currentProject.categories.length > 0 && (
-                    <div className="px-7 py-3.5 flex items-center gap-2.5 flex-wrap rounded-b-none"
-                        style={{ backgroundColor: colors.surfaceContainer, borderBottom: `1px solid ${colors.outline}15` }}>
+                    <div className="px-6 pt-4 pb-1 flex items-center gap-2 flex-wrap"
+                        style={{ backgroundColor: colors.surfaceContainer }}>
                         {currentProject.categories.map((cat) => (
                             <span key={cat}
-                                className="px-3 py-1.5 rounded-lg text-[11px] uppercase font-black tracking-widest"
-                                style={{ backgroundColor: `${accentColor}20`, color: colors.onSurface, border: `1px solid ${accentColor}25` }}>
+                                className="h-8 px-3 inline-flex items-center rounded-lg text-[13px] font-semibold capitalize"
+                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}>
                                 {cat}
                             </span>
                         ))}
                     </div>
                 )}
 
-                <div className="flex items-center gap-1 px-6 py-2"
-                    style={{ backgroundColor: colors.surfaceContainer, borderBottom: `1px solid ${colors.outline}15` }}>
-                    {tabs.map((tab) => (
-                        <button
-                            key={tab.id}
-                            onClick={() => { playClick(); setActiveTab(tab.id); }}
-                            className="px-4 py-2.5 rounded-xl text-sm font-medium transition-all flex items-center gap-2 relative"
-                            style={{
-                                color: activeTab === tab.id ? '#000' : colors.onSurfaceVariant,
-                                backgroundColor: activeTab === tab.id ? accentColor : 'transparent',
-                            }}
-                        >
-                            <i className={`${tab.icon} text-xs`} />
-                            {tab.label}
-                        </button>
-                    ))}
+                <div className="px-6 py-3"
+                    style={{ backgroundColor: colors.surfaceContainer, borderBottom: `1px solid ${colors.outlineVariant}` }}>
+                    <div className="inline-flex items-center gap-1 p-1 rounded-xl"
+                        style={{ backgroundColor: colors.surfaceContainerHighest }}>
+                        {tabs.map((tab) => (
+                            <button
+                                key={tab.id}
+                                onClick={() => { playClick(); setActiveTab(tab.id); }}
+                                className="h-9 px-4 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 relative"
+                                style={{
+                                    color: activeTab === tab.id ? '#111' : colors.onSurfaceVariant,
+                                    backgroundColor: activeTab === tab.id ? colors.secondary : 'transparent',
+                                }}
+                            >
+                                <i className={`${tab.icon} text-sm`} />
+                                {tab.label}
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-0 overflow-hidden rounded-b-2xl">
-                    <div className="lg:col-span-9 p-7" style={{ backgroundColor: `${colors.surface}` }}>
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-0 overflow-hidden">
+                    <div className="lg:col-span-9 p-7 min-w-0 overflow-hidden" style={{ backgroundColor: `${colors.surface}` }}>
                         {activeTab === "description" && (
                             <div className="animate-fade-in">
                                 {bodyLoading ? (
@@ -448,7 +470,7 @@ export function ProjectDetailPage({
                                     </div>
                                 ) : bodyHtml ? (
                                     <div
-                                        className="prose prose-invert prose-base max-w-4xl mx-auto markdown-body"
+                                        className="max-w-4xl mx-auto markdown-body text-[15px] leading-relaxed"
                                         style={{ color: colors.onSurface }}
                                     >
                                         <style dangerouslySetInnerHTML={{ __html: `
@@ -479,23 +501,23 @@ export function ProjectDetailPage({
                                             components={{
                                                 h1: ({ node, ...props }: any) => {
                                                     const align = node?.properties?.align || props.align;
-                                                    return <h1 className={`text-3xl font-bold mb-6 mt-10 first:mt-0 ${align === 'center' ? 'w-full block text-center!' : ''}`} style={{ color: colors.onSurface, textAlign: align || 'inherit' }} {...props} />;
+                                                    return <h1 className={`text-2xl font-bold mb-4 mt-10 first:mt-0 leading-snug ${align === 'center' ? 'w-full block text-center!' : ''}`} style={{ color: colors.onSurface, textAlign: align || 'inherit' }} {...props} />;
                                                 },
                                                 h2: ({ node, ...props }: any) => {
                                                     const align = node?.properties?.align || props.align;
-                                                    return <h2 className={`text-2xl font-bold mb-4 mt-8 ${align === 'center' ? 'w-full block text-center!' : ''}`} style={{ color: colors.onSurface, textAlign: align || 'inherit' }} {...props} />;
+                                                    return <h2 className={`text-xl font-bold mb-3 mt-8 first:mt-0 leading-snug ${align === 'center' ? 'w-full block text-center!' : ''}`} style={{ color: colors.onSurface, textAlign: align || 'inherit' }} {...props} />;
                                                 },
                                                 h3: ({ node, ...props }: any) => {
                                                     const align = node?.properties?.align || props.align;
-                                                    return <h3 className={`text-xl font-semibold mb-3 mt-6 ${align === 'center' ? 'w-full block text-center!' : ''}`} style={{ color: colors.onSurface, textAlign: align || 'inherit' }} {...props} />;
+                                                    return <h3 className={`text-lg font-bold mb-2 mt-6 first:mt-0 leading-snug ${align === 'center' ? 'w-full block text-center!' : ''}`} style={{ color: colors.onSurface, textAlign: align || 'inherit' }} {...props} />;
                                                 },
                                                 p: ({ node, ...props }: any) => {
                                                     const align = node?.properties?.align || props.align;
-                                                    return <p className={`mb-4 leading-relaxed text-base ${align === 'center' ? 'w-full block text-center!' : ''}`} style={{ color: `${colors.onSurface}cc`, textAlign: align || 'inherit' }} {...props} />;
+                                                    return <p className={`mb-4 leading-relaxed text-[15px] ${align === 'center' ? 'w-full block text-center!' : ''}`} style={{ color: colors.onSurface, textAlign: align || 'inherit' }} {...props} />;
                                                 },
                                                 a: ({ node, href, children, ...props }: any) => (
                                                     <a 
-                                                        className="underline decoration-2 underline-offset-4 hover:text-white transition-colors" 
+                                                        className="font-medium underline decoration-2 underline-offset-4 transition-opacity hover:opacity-80"
                                                         href={href || "#"} 
                                                         onClick={(e) => {
                                                             e.preventDefault();
@@ -503,25 +525,25 @@ export function ProjectDetailPage({
                                                                 (window as any).api?.openExternal?.(href);
                                                             }
                                                         }}
-                                                        style={{ color: colors.secondary, cursor: 'pointer' }} 
+                                                        style={{ color: colors.onSurface, textDecorationColor: colors.secondary, cursor: 'pointer' }}
                                                         {...props}
                                                     >
                                                         {children}
                                                     </a>
                                                 ),
-                                                ul: ({ node, ...props }: any) => <ul className="list-disc pl-5 mb-4 space-y-2" style={{ color: `${colors.onSurface}cc` }} {...props} />,
-                                                ol: ({ node, ...props }: any) => <ol className="list-decimal pl-5 mb-4 space-y-2" style={{ color: `${colors.onSurface}cc` }} {...props} />,
-                                                li: ({ node, ...props }: any) => <li className="text-base leading-relaxed" style={{ color: `${colors.onSurface}cc` }} {...props} />,
+                                                ul: ({ node, ...props }: any) => <ul className="list-disc pl-6 mb-4 space-y-1.5" style={{ color: colors.onSurface }} {...props} />,
+                                                ol: ({ node, ...props }: any) => <ol className="list-decimal pl-6 mb-4 space-y-1.5" style={{ color: colors.onSurface }} {...props} />,
+                                                li: ({ node, ...props }: any) => <li className="text-[15px] leading-relaxed" style={{ color: colors.onSurface }} {...props} />,
                                                 img: ({ node, ...props }: any) => (
                                                     <img
-                                                        className="max-w-full rounded-lg border border-white/5"
+                                                        className="max-w-full rounded-lg"
                                                         alt={props.alt || ''}
                                                         loading="lazy"
                                                         {...props}
                                                     />
                                                 ),
                                                 blockquote: ({ node, ...props }: any) => (
-                                                    <blockquote className="border-l-4 pl-6 py-2 my-6 text-base italic rounded-r-md" style={{ backgroundColor: `${colors.surfaceContainerHighest}30`, borderColor: accentColor, color: `${colors.onSurface}99` }} {...props} />
+                                                    <blockquote className="border-l-4 pl-5 pr-4 py-3 my-6 text-[15px] rounded-r-lg" style={{ backgroundColor: colors.surfaceContainerHighest, borderColor: colors.secondary, color: colors.onSurfaceVariant }} {...props} />
                                                 ),
                                                 div: ({ node, ...props }: any) => {
                                                     const align = node?.properties?.align || props.align;
@@ -531,40 +553,43 @@ export function ProjectDetailPage({
                                                 center: ({ node, ...props }: any) => <div className="w-full block text-center!" style={{ textAlign: 'center', width: '100%', display: 'block' }} {...props} />,
                                                 iframe: ({ node, width, height, ...props }: any) => (
                                                     <iframe 
-                                                        className="w-full rounded-xl border border-white/10 my-6" 
+                                                        className="w-full rounded-xl my-6"
                                                         style={{ aspectRatio: '16/9', height: 'auto' }}
                                                         {...props} 
                                                     />
                                                 ),
                                                 code: ({ node, inline, className, children, ...props }: any) => (
                                                     <code
-                                                        className={`${inline !== false && !className ? 'px-2 py-0.5 rounded-md' : 'block p-4 rounded-2xl overflow-x-auto my-6'} text-sm font-mono`}
+                                                        className={`${inline !== false && !className ? 'px-1.5 py-0.5 rounded-md' : 'block p-4 rounded-xl my-6 whitespace-pre-wrap break-words'} text-[13px] font-mono`}
                                                         style={{
-                                                            backgroundColor: `${colors.surfaceContainerHighest}`,
-                                                            color: '#34d399',
+                                                            backgroundColor: colors.surfaceContainerHighest,
+                                                            color: colors.onSurface,
                                                         }}
                                                         {...props}
                                                     >
                                                         {children}
                                                     </code>
                                                 ),
-                                                hr: ({ node, ...props }: any) => <hr className="my-10 border-white/5" {...props} />,
-                                                strong: ({ node, ...props }: any) => <strong className="font-bold text-white" {...props} />,
+                                                pre: ({ node, ...props }: any) => (
+                                                    <pre className="my-6 max-w-full whitespace-pre-wrap break-words text-[13px] leading-relaxed" style={{ color: colors.onSurface }} {...props} />
+                                                ),
+                                                hr: ({ node, ...props }: any) => <hr className="my-8 border-0 h-px" style={{ backgroundColor: colors.outlineVariant }} {...props} />,
+                                                strong: ({ node, ...props }: any) => <strong className="font-bold" style={{ color: colors.onSurface }} {...props} />,
                                                 table: ({ node, ...props }: any) => (
-                                                    <div className="overflow-x-auto my-6 rounded-xl border border-white/10">
+                                                    <div className="overflow-x-auto my-6 rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
                                                         <table className="w-full text-sm border-collapse" style={{ color: colors.onSurface }} {...props} />
                                                     </div>
                                                 ),
-                                                th: ({ node, ...props }: any) => <th className="px-4 py-3 text-left text-xs font-bold border-b" style={{ backgroundColor: `${colors.surfaceContainerHighest}40`, borderColor: `${colors.outline}30`, color: colors.onSurface }} {...props} />,
-                                                td: ({ node, ...props }: any) => <td className="px-4 py-3 text-xs border-b" style={{ borderColor: `${colors.outline}15`, color: `${colors.onSurface}cc` }} {...props} />,
+                                                th: ({ node, ...props }: any) => <th className="px-4 py-3 text-left text-[13px] font-semibold border-b" style={{ backgroundColor: colors.surfaceContainerHighest, borderColor: colors.outlineVariant, color: colors.onSurface }} {...props} />,
+                                                td: ({ node, ...props }: any) => <td className="px-4 py-3 text-sm border-b" style={{ borderColor: colors.outlineVariant, color: colors.onSurface }} {...props} />,
                                             }}
                                         >
-                                            {bodyHtml}
+                                            {/^\s*</.test(bodyHtml) ? bodyHtml.replace(/^[ \t]+/gm, "") : bodyHtml}
                                         </ReactMarkdown>
                                     </div>
                                 ) : (
                                     <div className="py-8">
-                                        <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: colors.onSurface }}>
+                                        <p className="max-w-4xl mx-auto text-[15px] leading-relaxed whitespace-pre-line" style={{ color: colors.onSurface }}>
                                             {project.description}
                                         </p>
                                     </div>
@@ -575,13 +600,12 @@ export function ProjectDetailPage({
                         {activeTab === "versions" && (
                             <div className="animate-fade-in space-y-4">
                                 <div className="flex items-center gap-3 flex-wrap">
-                                    <div className="flex items-center gap-2 px-3 py-2 rounded-xl flex-1 min-w-[200px] transition-all focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-offset-black"
-                                        style={{ 
-                                            backgroundColor: colors.surfaceContainerHighest, 
-                                            border: `1px solid ${colors.outline}20`,
-                                            '--tw-ring-color': `${accentColor}40` 
+                                    <div className="flex items-center gap-2.5 h-10 px-3.5 rounded-xl flex-1 min-w-50 transition-all focus-within:ring-2"
+                                        style={{
+                                            backgroundColor: colors.surfaceContainerHighest,
+                                            '--tw-ring-color': `${accentColor}60`
                                         } as any}>
-                                        <i className="fa-solid fa-search text-xs" style={{ color: accentColor }} />
+                                        <i className="fa-solid fa-search text-sm" style={{ color: colors.onSurfaceVariant }} />
                                         <input
                                             type="text"
                                             placeholder={t('search_versions' as any) || "Filter versions..."}
@@ -598,10 +622,10 @@ export function ProjectDetailPage({
                                             <button
                                                 key={ch}
                                                 onClick={() => { playClick(); setChannelFilter(ch); setVersionsPage(1); }}
-                                                className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all capitalize"
+                                                className="h-8 px-3 rounded-lg text-[13px] font-semibold transition-all capitalize"
                                                 style={{
                                                     backgroundColor: channelFilter === ch ? accentColor : 'transparent',
-                                                    color: channelFilter === ch ? "#000" : colors.onSurfaceVariant,
+                                                    color: channelFilter === ch ? "#111" : colors.onSurfaceVariant,
                                                 }}
                                             >
                                                 {ch === "all" ? (t('all' as any) || "All") : ch}
@@ -616,22 +640,22 @@ export function ProjectDetailPage({
                                                 onClick={() => { playClick(); setVersionsPage(p => Math.max(1, p - 1)); }}
                                                 disabled={versionsPage === 1}
                                                 aria-label="Previous page"
-                                                className="w-8 h-8 rounded-lg flex items-center justify-center disabled:opacity-30 transition-colors hover:bg-white/5"
+                                                className="w-8 h-8 rounded-lg flex items-center justify-center disabled:opacity-30 transition-opacity hover:opacity-70"
                                                 style={{ color: versionControlColor }}
                                             >
-                                                <i className="fa-solid fa-chevron-left text-[10px]" />
+                                                <i className="fa-solid fa-chevron-left text-xs" />
                                             </button>
-                                            <span className="text-[11px] px-2 font-bold tabular-nums" style={{ color: versionControlColor }}>
+                                            <span className="text-sm px-2 font-semibold tabular-nums" style={{ color: versionControlColor }}>
                                                 {versionsPage} / {totalVersionPages}
                                             </span>
                                             <button
                                                 onClick={() => { playClick(); setVersionsPage(p => Math.min(totalVersionPages, p + 1)); }}
                                                 disabled={versionsPage >= totalVersionPages}
                                                 aria-label="Next page"
-                                                className="w-8 h-8 rounded-lg flex items-center justify-center disabled:opacity-30 transition-colors hover:bg-white/5"
+                                                className="w-8 h-8 rounded-lg flex items-center justify-center disabled:opacity-30 transition-opacity hover:opacity-70"
                                                 style={{ color: versionControlColor }}
                                             >
-                                                <i className="fa-solid fa-chevron-right text-[10px]" />
+                                                <i className="fa-solid fa-chevron-right text-xs" />
                                             </button>
                                         </div>
                                     )}
@@ -652,9 +676,9 @@ export function ProjectDetailPage({
                                         </p>
                                     </div>
                                 ) : (
-                                    <div className="rounded-xl overflow-hidden border" style={{ borderColor: `${colors.outline}15` }}>
-                                        <div className="grid grid-cols-12 gap-2 px-4 py-3 text-[11px] font-bold uppercase tracking-wider"
-                                            style={{ backgroundColor: colors.surfaceContainer, color: colors.onSurfaceVariant }}>
+                                    <div className="rounded-xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
+                                        <div className="grid grid-cols-12 gap-2 px-4 py-3 text-[13px] font-semibold"
+                                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}>
                                             <div className="col-span-4">{t('name' as any) || "Name"}</div>
                                             <div className="col-span-2">{t('game_version' as any) || "Game version"}</div>
                                             <div className="col-span-2">{t('platforms' as any) || "Platforms"}</div>
@@ -665,10 +689,10 @@ export function ProjectDetailPage({
 
                                         {paginatedVersions.map((v, i) => (
                                             <div key={v.id}
-                                                className="grid grid-cols-12 gap-2 items-center px-4 py-3.5 transition-colors hover:bg-white/3 group"
+                                                className="grid grid-cols-12 gap-2 items-center px-4 py-3 transition-colors group"
                                                 style={{
-                                                    borderTop: i > 0 ? `1px solid ${colors.outline}10` : 'none',
-                                                    backgroundColor: i % 2 === 0 ? 'transparent' : `${colors.surfaceContainer}30`,
+                                                    borderTop: i > 0 ? `1px solid ${colors.outlineVariant}` : 'none',
+                                                    backgroundColor: 'transparent',
                                                 }}>
                                                 <div className="col-span-4 flex items-center gap-3 min-w-0">
                                                     <div className={`w-2 h-2 rounded-full shrink-0 ${v.version_type === 'release' ? 'bg-emerald-400' : v.version_type === 'beta' ? 'bg-amber-400' : 'bg-red-400'}`} />
@@ -677,14 +701,14 @@ export function ProjectDetailPage({
                                                             {v.version_number}
                                                         </p>
                                                         {v.name !== v.version_number && (
-                                                            <p className="text-[11px] truncate opacity-60" style={{ color: colors.onSurfaceVariant }}>
+                                                            <p className="text-xs truncate" style={{ color: colors.onSurfaceVariant }}>
                                                                 {v.name}
                                                             </p>
                                                         )}
                                                     </div>
                                                 </div>
 
-                                                <div className="col-span-2 text-xs" style={{ color: colors.onSurfaceVariant }}>
+                                                <div className="col-span-2 text-sm" style={{ color: colors.onSurfaceVariant }}>
                                                     <span className="truncate block">{v.game_versions.slice(0, 3).join(", ")}{v.game_versions.length > 3 ? "..." : ""}</span>
                                                 </div>
 
@@ -701,12 +725,12 @@ export function ProjectDetailPage({
                                                         else if (loaderId.includes('datapack')) { icon = datapackIcon; }
                                                         
                                                         return (
-                                                            <span key={l} className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5"
-                                                                style={{ backgroundColor: `${color}15`, color: color, border: `1px solid ${color}20` }}>
+                                                            <span key={l} className="h-6 px-2 rounded-md text-xs font-semibold capitalize flex items-center gap-1.5"
+                                                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}>
                                                                 {icon ? (
-                                                                    <img src={(icon as any).src || icon} className="w-2.5 h-2.5 object-contain" alt={l} />
+                                                                    <img src={(icon as any).src || icon} className="w-3.5 h-3.5 object-contain" alt={l} />
                                                                 ) : (
-                                                                    <i className="fa-solid fa-box text-[9px]" />
+                                                                    <i className="fa-solid fa-box text-xs" style={{ color }} />
                                                                 )}
                                                                 {l}
                                                             </span>
@@ -714,19 +738,19 @@ export function ProjectDetailPage({
                                                     })}
                                                 </div>
 
-                                                <div className="col-span-2 text-xs" style={{ color: colors.onSurfaceVariant }}>
+                                                <div className="col-span-2 text-sm" style={{ color: colors.onSurfaceVariant }}>
                                                     {formatRelativeTime(v.date_published)}
                                                 </div>
 
-                                                <div className="col-span-1 text-right text-xs" style={{ color: colors.onSurfaceVariant }}>
+                                                <div className="col-span-1 text-right text-sm tabular-nums" style={{ color: colors.onSurfaceVariant }}>
                                                     {formatNumber(v.downloads)}
                                                 </div>
 
                                                 <div className="col-span-1 flex justify-end gap-1">
                                                     <button
                                                         onClick={() => { playClick(); onInstallVersion(project, v.id); }}
-                                                        className="w-8 h-8 rounded-lg flex items-center justify-center transition-all opacity-60 hover:opacity-100 group-hover:opacity-80 active:scale-90"
-                                                        style={{ backgroundColor: `${accentColor}20`, color: versionControlColor }}
+                                                        className="w-9 h-9 rounded-lg flex items-center justify-center transition-all hover:brightness-95 active:scale-90"
+                                                        style={{ backgroundColor: colors.surfaceContainerHighest, color: versionControlColor }}
                                                         title={t('install' as any) || "Install"}
                                                     >
                                                         <i className="fa-solid fa-download text-xs" />
@@ -746,8 +770,8 @@ export function ProjectDetailPage({
                                         const url = getImageUrl(img);
                                         return (
                                             <div key={idx}
-                                                className="relative aspect-video rounded-xl overflow-hidden border cursor-pointer group"
-                                                style={{ borderColor: `${colors.outline}15` }}
+                                                className="relative aspect-video rounded-xl overflow-hidden cursor-pointer group"
+                                                style={{ backgroundColor: colors.surfaceContainerHighest }}
                                                 onClick={() => setSelectedImageIndex(idx)}
                                             >
                                                 <img src={url || ""} alt="" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
@@ -767,30 +791,29 @@ export function ProjectDetailPage({
                         )}
                     </div>
 
-                    <div className="lg:col-span-3 p-7 space-y-8 border-l flex flex-col"
-                        style={{ backgroundColor: colors.surfaceContainer, borderColor: `${colors.outline}15` }}>
+                    <div className="lg:col-span-3 p-6 space-y-7 flex flex-col"
+                        style={{ backgroundColor: colors.surfaceContainer }}>
 
                         <div>
-                            <h4 className="text-sm font-black uppercase tracking-[0.25em] mb-6 flex items-center gap-3" style={{ color: colors.onSurface }}>
-                                <span className="w-1 h-4 rounded-full" style={{ backgroundColor: accentColor }} />
+                            <h4 className="text-base font-bold mb-4" style={{ color: colors.onSurface }}>
                                 {t('compatibility' as any) || "Compatibility"}
                             </h4>
 
-                            <div className="space-y-6">
+                            <div className="space-y-5">
                                 {currentProject.game_versions && currentProject.game_versions.length > 0 && (
                                     <div>
-                                        <p className="text-xs font-bold opacity-60 mb-3 uppercase tracking-[0.05em]" style={{ color: colors.onSurfaceVariant }}>
+                                        <p className="text-[13px] font-semibold mb-2" style={{ color: colors.onSurfaceVariant }}>
                                             Minecraft: Java Edition
                                         </p>
-                                        <div className="flex flex-wrap gap-2">
+                                        <div className="flex flex-wrap gap-1.5">
                                             {currentProject.game_versions.slice().reverse().slice(0, 15).map((v) => (
-                                                <span key={v} className="px-3 py-1.5 rounded-xl text-xs font-bold transition-all hover:bg-white/10 hover:scale-105 cursor-default border"
-                                                    style={{ backgroundColor: `${accentColor}10`, color: colors.onSurface, borderColor: `${accentColor}25` }}>
+                                                <span key={v} className="h-8 px-3 inline-flex items-center rounded-lg text-[13px] font-semibold cursor-default"
+                                                    style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}>
                                                     {v}
                                                 </span>
                                             ))}
                                             {currentProject.game_versions.length > 15 && (
-                                                <span className="px-3 py-1.5 rounded-xl text-xs font-bold opacity-50"
+                                                <span className="h-8 px-2 inline-flex items-center text-[13px] font-semibold"
                                                     style={{ color: colors.onSurfaceVariant }}>
                                                     +{currentProject.game_versions.length - 15}
                                                 </span>
@@ -801,10 +824,10 @@ export function ProjectDetailPage({
 
                                 {currentProject.loaders && currentProject.loaders.length > 0 && (
                                     <div>
-                                        <p className="text-xs font-bold opacity-60 mb-3 uppercase tracking-[0.05em]" style={{ color: colors.onSurfaceVariant }}>
+                                        <p className="text-[13px] font-semibold mb-2" style={{ color: colors.onSurfaceVariant }}>
                                             {t('platforms' as any) || "Platforms"}
                                         </p>
-                                        <div className="flex flex-wrap gap-2">
+                                        <div className="flex flex-wrap gap-1.5">
                                             {currentProject.loaders.map((l) => {
                                                 const loaderId = l.toLowerCase();
                                                 let icon = null;
@@ -817,12 +840,12 @@ export function ProjectDetailPage({
                                                 else if (loaderId.includes('datapack')) { icon = datapackIcon; }
                                                 
                                                 return (
-                                                    <span key={l} className="px-4 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all hover:brightness-110 shadow-black/10"
-                                                        style={{ backgroundColor: `${color}15`, color: colors.onSurface, border: `1px solid ${color}30` }}>
+                                                    <span key={l} className="h-8 px-3 rounded-lg text-[13px] font-semibold capitalize flex items-center gap-2"
+                                                        style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}>
                                                         {icon ? (
-                                                            <img src={(icon as any).src || icon} className="w-3.5 h-3.5 object-contain" alt={l} />
+                                                            <img src={(icon as any).src || icon} className="w-4 h-4 object-contain" alt={l} />
                                                         ) : (
-                                                            <i className="fa-solid fa-box text-[10px]" style={{ color }} />
+                                                            <i className="fa-solid fa-box text-xs" style={{ color }} />
                                                         )}
                                                         {l}
                                                     </span>
@@ -834,21 +857,21 @@ export function ProjectDetailPage({
 
                                 {(currentProject.client_side || currentProject.server_side) && (
                                     <div>
-                                        <p className="text-xs font-bold opacity-60 mb-3 uppercase tracking-[0.05em]" style={{ color: colors.onSurfaceVariant }}>
+                                        <p className="text-[13px] font-semibold mb-2" style={{ color: colors.onSurfaceVariant }}>
                                             {t('supported_environments' as any) || "Environments"}
                                         </p>
-                                        <div className="flex flex-wrap gap-2.5">
+                                        <div className="flex flex-wrap gap-1.5">
                                             {currentProject.client_side && (
-                                                <span className="px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-2.5 border"
-                                                    style={{ backgroundColor: `${colors.surfaceContainerHighest}`, color: colors.onSurface, borderColor: `${colors.outline}20` }}>
-                                                    <i className="fa-solid fa-desktop text-xs" />
+                                                <span className="h-8 px-3 rounded-lg text-[13px] font-semibold flex items-center gap-2"
+                                                    style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}>
+                                                    <i className="fa-solid fa-desktop text-xs" style={{ color: colors.onSurfaceVariant }} />
                                                     {currentProject.client_side === "required" ? "Client-side" : currentProject.client_side === "optional" ? "Client (optional)" : currentProject.client_side}
                                                 </span>
                                             )}
                                             {currentProject.server_side && (
-                                                <span className="px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-2.5 border"
-                                                    style={{ backgroundColor: `${colors.surfaceContainerHighest}`, color: colors.onSurface, borderColor: `${colors.outline}20` }}>
-                                                    <i className="fa-solid fa-server text-xs" />
+                                                <span className="h-8 px-3 rounded-lg text-[13px] font-semibold flex items-center gap-2"
+                                                    style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}>
+                                                    <i className="fa-solid fa-server text-xs" style={{ color: colors.onSurfaceVariant }} />
                                                     {currentProject.server_side === "required" ? "Server-side" : currentProject.server_side === "optional" ? "Server (optional)" : currentProject.server_side}
                                                 </span>
                                             )}
@@ -860,57 +883,52 @@ export function ProjectDetailPage({
 
                         {(currentProject.source_url || currentProject.wiki_url || currentProject.discord_url || currentProject.issues_url) && (
                             <div>
-                                <h4 className="text-sm font-black uppercase tracking-[0.25em] mb-6 flex items-center gap-3" style={{ color: colors.onSurface }}>
-                                    <span className="w-1 h-4 rounded-full" style={{ backgroundColor: accentColor }} />
+                                <h4 className="text-base font-bold mb-3" style={{ color: colors.onSurface }}>
                                     {t('links' as any) || "Links"}
                                 </h4>
-                                <div className="space-y-3">
+                                <div className="space-y-0.5">
                                     {currentProject.issues_url && (
                                         <a href={currentProject.issues_url} target="_blank" rel="noopener noreferrer"
-                                            className="flex items-center gap-4 text-sm font-bold hover:translate-x-1.5 transition-all group"
+                                            className="flex items-center gap-3 h-10 px-3 -mx-3 rounded-lg text-sm font-medium transition-colors group hover:bg-black/5"
                                             style={{ color: colors.onSurface }}>
-                                            <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border transition-all group-hover:scale-110" 
-                                                style={{ backgroundColor: `#f43f5e15`, borderColor: `#f43f5e25` }}>
+                                            <div className="w-5 flex items-center justify-center shrink-0">
                                                 <i className="fa-solid fa-bug text-sm" style={{ color: '#f43f5e' }} />
                                             </div>
-                                            <span className="flex-1 truncate opacity-70 group-hover:opacity-100">Report issues</span>
-                                            <i className="fa-solid fa-arrow-up-right-from-square text-[10px] opacity-0 group-hover:opacity-40" />
+                                            <span className="flex-1 truncate">Report issues</span>
+                                            <i className="fa-solid fa-arrow-up-right-from-square text-xs opacity-40 group-hover:opacity-80" style={{ color: colors.onSurfaceVariant }} />
                                         </a>
                                     )}
                                     {currentProject.source_url && (
                                         <a href={currentProject.source_url} target="_blank" rel="noopener noreferrer"
-                                            className="flex items-center gap-4 text-sm font-bold hover:translate-x-1.5 transition-all group"
+                                            className="flex items-center gap-3 h-10 px-3 -mx-3 rounded-lg text-sm font-medium transition-colors group hover:bg-black/5"
                                             style={{ color: colors.onSurface }}>
-                                            <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border transition-all group-hover:scale-110" 
-                                                style={{ backgroundColor: `#6366f115`, borderColor: `#6366f125` }}>
+                                            <div className="w-5 flex items-center justify-center shrink-0">
                                                 <i className="fa-solid fa-code text-sm" style={{ color: '#6366f1' }} />
                                             </div>
-                                            <span className="flex-1 truncate opacity-70 group-hover:opacity-100">View source</span>
-                                            <i className="fa-solid fa-arrow-up-right-from-square text-[10px] opacity-0 group-hover:opacity-40" />
+                                            <span className="flex-1 truncate">View source</span>
+                                            <i className="fa-solid fa-arrow-up-right-from-square text-xs opacity-40 group-hover:opacity-80" style={{ color: colors.onSurfaceVariant }} />
                                         </a>
                                     )}
                                     {currentProject.wiki_url && (
                                         <a href={currentProject.wiki_url} target="_blank" rel="noopener noreferrer"
-                                            className="flex items-center gap-4 text-sm font-bold hover:translate-x-1.5 transition-all group"
+                                            className="flex items-center gap-3 h-10 px-3 -mx-3 rounded-lg text-sm font-medium transition-colors group hover:bg-black/5"
                                             style={{ color: colors.onSurface }}>
-                                            <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border transition-all group-hover:scale-110" 
-                                                style={{ backgroundColor: `#f59e0b15`, borderColor: `#f59e0b25` }}>
+                                            <div className="w-5 flex items-center justify-center shrink-0">
                                                 <i className="fa-solid fa-book text-sm" style={{ color: '#f59e0b' }} />
                                             </div>
-                                            <span className="flex-1 truncate opacity-70 group-hover:opacity-100">Visit wiki</span>
-                                            <i className="fa-solid fa-arrow-up-right-from-square text-[10px] opacity-0 group-hover:opacity-40" />
+                                            <span className="flex-1 truncate">Visit wiki</span>
+                                            <i className="fa-solid fa-arrow-up-right-from-square text-xs opacity-40 group-hover:opacity-80" style={{ color: colors.onSurfaceVariant }} />
                                         </a>
                                     )}
                                     {currentProject.discord_url && (
                                         <a href={currentProject.discord_url} target="_blank" rel="noopener noreferrer"
-                                            className="flex items-center gap-4 text-sm font-bold hover:translate-x-1.5 transition-all group"
+                                            className="flex items-center gap-3 h-10 px-3 -mx-3 rounded-lg text-sm font-medium transition-colors group hover:bg-black/5"
                                             style={{ color: colors.onSurface }}>
-                                            <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 border transition-all group-hover:scale-110" 
-                                                style={{ backgroundColor: `#5865f215`, borderColor: `#5865f225` }}>
+                                            <div className="w-5 flex items-center justify-center shrink-0">
                                                 <i className="fa-brands fa-discord text-sm" style={{ color: '#5865f2' }} />
                                             </div>
-                                            <span className="flex-1 truncate opacity-70 group-hover:opacity-100">Join Discord</span>
-                                            <i className="fa-solid fa-arrow-up-right-from-square text-[10px] opacity-0 group-hover:opacity-40" />
+                                            <span className="flex-1 truncate">Join Discord</span>
+                                            <i className="fa-solid fa-arrow-up-right-from-square text-xs opacity-40 group-hover:opacity-80" style={{ color: colors.onSurfaceVariant }} />
                                         </a>
                                     )}
                                 </div>
@@ -919,68 +937,82 @@ export function ProjectDetailPage({
 
                         {((currentProject.team_members && currentProject.team_members.length > 0) || currentProject.author) && (
                             <div>
-                                <h4 className="text-sm font-black uppercase tracking-[0.25em] mb-6 flex items-center gap-3" style={{ color: colors.onSurface }}>
-                                    <span className="w-1 h-4 rounded-full" style={{ backgroundColor: accentColor }} />
+                                <h4 className="text-base font-bold mb-3" style={{ color: colors.onSurface }}>
                                     {t('creators' as any) || "Creators"}
                                 </h4>
-                                <div className="space-y-4">
+                                <div className="space-y-3">
                                     {(currentProject.team_members && currentProject.team_members.length > 0 ? currentProject.team_members : [{ user: { username: currentProject.author }, role: "Author" }]).map((member, idx) => (
-                                        <div key={idx} className="flex items-center gap-4 group">
-                                            <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 border-2 border-transparent group-hover:border-white/20 transition-all"
+                                        <button
+                                            key={idx}
+                                            type="button"
+                                            onClick={() => {
+                                                playClick();
+                                                const name = encodeURIComponent(member.user.username);
+                                                // Creator's public profile on the source site.
+                                                const url = contentSource === "modrinth"
+                                                    ? `https://modrinth.com/user/${name}`
+                                                    : `https://www.curseforge.com/members/${name}`;
+                                                (window as any).api?.openExternal?.(url);
+                                            }}
+                                            title={member.user.username}
+                                            className="group w-full flex items-center gap-3 p-1.5 -mx-1.5 rounded-xl text-left transition-colors hover:bg-black/5"
+                                        >
+                                            <div className="w-10 h-10 rounded-full overflow-hidden shrink-0"
                                                 style={{ backgroundColor: colors.surfaceContainerHighest }}>
                                                 {member.user.avatar_url ? (
                                                     <img src={member.user.avatar_url} alt="" className="w-full h-full object-cover" />
                                                 ) : (
                                                     <div className="w-full h-full flex items-center justify-center">
-                                                        <i className="fa-solid fa-user text-lg opacity-40" style={{ color: colors.onSurfaceVariant }} />
+                                                        <i className="fa-solid fa-user text-base" style={{ color: colors.onSurfaceVariant }} />
                                                     </div>
                                                 )}
                                             </div>
-                                            <div className="min-w-0">
-                                                <p className="text-sm font-black truncate group-hover:text-white transition-colors tracking-wide" style={{ color: colors.onSurface }}>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-sm font-semibold truncate group-hover:underline" style={{ color: colors.onSurface }}>
                                                     {member.user.username}
                                                 </p>
-                                                <p className="text-xs font-bold capitalize opacity-40 tracking-widest" style={{ color: colors.onSurfaceVariant }}>
+                                                <p className="text-[13px] capitalize truncate" style={{ color: colors.onSurfaceVariant }}>
                                                     {member.role}
                                                 </p>
                                             </div>
-                                        </div>
+                                            <i className="fa-solid fa-arrow-up-right-from-square text-xs opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: colors.onSurfaceVariant }} />
+                                        </button>
                                     ))}
                                 </div>
                             </div>
                         )}
 
-                        <div className="pt-8 border-t space-y-4" style={{ borderColor: `${accentColor}15` }}>
-                            <div className="flex items-center justify-between">
-                                <span className="text-[10px] font-black opacity-50 uppercase tracking-[0.25em]" style={{ color: colors.onSurface }}>ID</span>
-                                <span className="text-sm font-mono font-bold opacity-70" style={{ color: colors.onSurface }}>{currentProject.project_id}</span>
+                        <div className="pt-6 border-t space-y-3" style={{ borderColor: colors.outlineVariant }}>
+                            <div className="flex items-center justify-between gap-3">
+                                <span className="text-[13px] font-semibold" style={{ color: colors.onSurfaceVariant }}>ID</span>
+                                <span className="text-[13px] font-mono truncate" style={{ color: colors.onSurface }}>{currentProject.project_id}</span>
                             </div>
                             {currentProject.license && (
-                                <div className="flex items-center justify-between">
-                                    <span className="text-[10px] font-black opacity-50 uppercase tracking-[0.25em]" style={{ color: colors.onSurface }}>
+                                <div className="flex items-center justify-between gap-3">
+                                    <span className="text-[13px] font-semibold" style={{ color: colors.onSurfaceVariant }}>
                                         {t('license' as any) || "License"}
                                     </span>
-                                    <span className="text-sm font-black" style={{ color: colors.onSurface }}>
+                                    <span className="text-[13px] font-medium" style={{ color: colors.onSurface }}>
                                         {currentProject.license.name || currentProject.license.id}
                                     </span>
                                 </div>
                             )}
                             {currentProject.date_created && (
-                                <div className="flex items-center justify-between">
-                                    <span className="text-[10px] font-black opacity-50 uppercase tracking-[0.25em]" style={{ color: colors.onSurface }}>
+                                <div className="flex items-center justify-between gap-3">
+                                    <span className="text-[13px] font-semibold" style={{ color: colors.onSurfaceVariant }}>
                                         {t('created' as any) || "Created"}
                                     </span>
-                                    <span className="text-sm font-bold opacity-70" style={{ color: colors.onSurface }}>
+                                    <span className="text-[13px] font-medium" style={{ color: colors.onSurface }}>
                                         {formatDate(currentProject.date_created)}
                                     </span>
                                 </div>
                             )}
                             {currentProject.date_modified && (
-                                <div className="flex items-center justify-between">
-                                    <span className="text-[10px] font-black opacity-50 uppercase tracking-[0.25em]" style={{ color: colors.onSurface }}>
+                                <div className="flex items-center justify-between gap-3">
+                                    <span className="text-[13px] font-semibold" style={{ color: colors.onSurfaceVariant }}>
                                         {t('updated' as any) || "Updated"}
                                     </span>
-                                    <span className="text-sm font-bold opacity-70" style={{ color: colors.onSurface }}>
+                                    <span className="text-[13px] font-medium" style={{ color: colors.onSurface }}>
                                         {formatDate(currentProject.date_modified)}
                                     </span>
                                 </div>

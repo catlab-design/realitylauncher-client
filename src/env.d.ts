@@ -289,16 +289,19 @@ declare global {
         password: string,
       ) => Promise<{
         ok: boolean;
-        session?: {
+        // Mirrors Rust `Session` (auth.rs, camelCase); expiresAt is epoch ms.
+        account?: {
           username: string;
           uuid: string;
-          token: string;
-          minecraftUuid?: string;
-          expiresAt?: string;
+          accessToken?: string | null;
+          refreshToken?: string | null;
+          apiToken?: string | null;
+          expiresAt?: number | null;
           avatarUrl?: string;
           avatarSource?: string;
-        };
-        error?: string;
+          authType: string;
+        } | null;
+        error?: string | null;
       }>;
       linkCatID: (
         username: string,
@@ -438,7 +441,7 @@ declare global {
       catskincClearAssets: (payload: {
         mode: "all" | "skin" | "mouth";
         gameDirectory?: string;
-      }) => Promise<{ ok: boolean; error?: string }>;
+      }) => Promise<{ ok: boolean; error?: string; message?: string }>;
       
       windowMinimize: () => Promise<void>;
       windowMaximize: () => Promise<void>;

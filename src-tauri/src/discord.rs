@@ -27,7 +27,7 @@ static STATE: Lazy<Mutex<DiscordState>> = Lazy::new(|| {
         client: None,
         is_ready: false,
         is_initializing: false,
-        start_timestamp: chrono::Utc::now().timestamp_millis(),
+        start_timestamp: chrono::Utc::now().timestamp(),
         enabled: true,
         last_game_status: None,
         last_game_server_name: None,
@@ -193,7 +193,7 @@ pub async fn discord_rpc_set_enabled(enabled: bool) -> Result<(), String> {
             disconnect();
             return Ok(());
         }
-        state.start_timestamp = chrono::Utc::now().timestamp_millis();
+        state.start_timestamp = chrono::Utc::now().timestamp();
     }
 
     if enabled {
@@ -368,9 +368,17 @@ async fn discord_rpc_update_raw(
         "https://reality.catlabdesign.space",
     )]);
 
-    let mut state = STATE.lock().map_err(|e| e.to_string())?;
-    let client = state.client.as_mut().ok_or_else(|| "Client not connected".to_string())?;
-    client.set_activity(activity).map_err(|e| e.to_string())?;
+    let send_result = {
+        let mut state = STATE.lock().map_err(|e| e.to_string())?;
+        let client = state.client.as_mut().ok_or_else(|| "Client not connected".to_string())?;
+        client.set_activity(activity).map_err(|e| e.to_string())
+    };
+
+    if let Err(e) = send_result {
+        println!("[Discord RPC] set_activity failed ({e}); dropping connection so the next update reconnects");
+        disconnect();
+        return Err(e);
+    }
 
     Ok(())
 }

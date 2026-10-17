@@ -59,6 +59,8 @@ interface LauncherAppTitleBarProps {
   handleLinkMicrosoft: () => void | Promise<void>;
   handleLogout: () => void | Promise<void>;
   updateConfig: (newConfig: Partial<LauncherConfig>) => void | Promise<void>;
+  /** Page navigation shown after the app name. */
+  nav?: React.ReactNode;
 }
 
 export function LauncherAppTitleBar({
@@ -86,30 +88,31 @@ export function LauncherAppTitleBar({
   handleLinkMicrosoft,
   handleLogout,
   updateConfig,
+  nav,
 }: LauncherAppTitleBarProps) {
   return (
     <header
       data-tauri-drag-region
-      className="h-10 flex items-center justify-between pr-0 drag-region transition-[background] duration-300"
+      className="h-10 flex items-center justify-between pr-0 drag-region transition-[background] duration-300 backdrop-blur-xl"
       style={{
         background: config.backgroundImage ? "transparent" : titleBarColors.background,
       }}
     >
       <div className="flex items-center h-full">
         <div
-          className="w-20 h-full flex items-center justify-center no-drag"
-          style={{ backgroundColor: colors.secondary }}
+          className="pl-4 pr-1 h-full flex items-center justify-center no-drag"
         >
           <img
             src={rIcon}
             alt="Logo"
-            className="w-13 h-13 object-contain select-none transform translate-y-2"
+            className="w-8 h-8 object-contain select-none"
             draggable={false}
             style={{ WebkitUserDrag: "none" } as CSSProperties}
           />
         </div>
 
-        <div className="flex items-center gap-2 pl-4">
+        {/* App name hides on narrower windows so the page tabs never run into the account controls. */}
+        <div className={`items-center gap-2 pl-4 ${nav ? "hidden xl:flex" : "flex"}`}>
           <h1
             className="text-[18px] leading-none font-bold"
             style={{
@@ -121,11 +124,12 @@ export function LauncherAppTitleBar({
           </h1>
           <AppVersionBadge
             colors={colors}
-            className="border border-white/10 font-semibold tracking-tight"
-            bgColor={titleBarColors.versionBg}
-            textColor={titleBarColors.versionText}
+            className="px-0! py-0! text-[13px] font-medium tabular-nums self-end mb-px"
+            bgColor="transparent"
+            textColor={titleBarColors.muted}
           />
         </div>
+        {nav && <div className="ml-3 xl:ml-6">{nav}</div>}
       </div>
 
       <div

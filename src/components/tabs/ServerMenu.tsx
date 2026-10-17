@@ -1,10 +1,20 @@
 import React, { useState, useEffect } from "react";
+import { useReducedMotion } from "framer-motion";
 import { useTranslation } from "../../hooks/useTranslation";
 import { playClick, toastSuccess, toastError } from "../../lib/sounds";
-import { cn } from "../../lib/utils";
 import type { Server, LauncherConfig } from "../../types/launcher";
 import { LiveLog } from "./LiveLog";
-import ServerItem, { type Instance } from "./ServerItem";
+import {
+    ServerHero,
+    ServerHeroSkeleton,
+    ServerCardRows,
+    ServerCardRowSkeleton,
+    ServerStatusStrip,
+    getServerAddress,
+    type Instance,
+    type ServerFlags,
+    type ServerPing,
+} from "./ServerItem";
 import { ServerDetailView } from "./ServerDetailView";
 import { Icons } from "../ui/Icons";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
@@ -12,6 +22,7 @@ import toast from "react-hot-toast";
 import { useAuthStore } from "../../store/authStore";
 import { useProgressStore } from "../../store/progressStore";
 import { useLaunchStore } from "../../store/launchStore";
+import { useUiStore } from "../../store/uiStore";
 import { type AuthSession } from "../../types/launcher";
 
 interface ServerMenuProps {
@@ -45,7 +56,7 @@ export function ServerMenu({
     setSettingsTab,
 }: ServerMenuProps) {
     const { t } = useTranslation(language);
-    const { accounts, setSession: setAuthSession, updateAccount, removeAccount } = useAuthStore();
+    const { accounts, setSession: setAuthSession, updateAccount } = useAuthStore();
     const {
         setInstalling,
         setInstallProgress,
@@ -64,17 +75,25 @@ export function ServerMenu({
     const launchingId = useLaunchStore((s) => s.launchingId);
     const setLaunchingId = useLaunchStore((s) => s.setLaunchingId);
     const [viewingInstance, setViewingInstance] = useState<Instance | null>(null);
+
+    // Home cards ask for a server's detail page: open it once the list has loaded.
+    const pendingServerDetailId = useUiStore((state) => state.pendingServerDetailId);
+    const setPendingServerDetailId = useUiStore((state) => state.setPendingServerDetailId);
+    useEffect(() => {
+        if (!pendingServerDetailId || loading || !instances) return;
+        const found = [...instances.owned, ...instances.member].find((inst: any) => inst.id === pendingServerDetailId);
+        setPendingServerDetailId(null);
+        if (found) {
+            handleInstanceClick(found);
+            setViewingInstance(found);
+        }
+    }, [pendingServerDetailId, loading, instances]);
     const [timestamp, setTimestamp] = useState(Date.now());
     const [localInstancesByCloudId, setLocalInstancesByCloudId] = useState<Map<string, any>>(new Map());
 
     const [activeTab, setActiveTabState] = useState<ActiveTab>("my");
-    const [viewMode, setViewMode] = useState<"tiles" | "table" | "list">(() => {
-        if (typeof window !== "undefined") {
-            return (localStorage.getItem("serverViewMode") as any) || "list";
-        }
-        return "list";
-    });
-    const [viewMenuOpen, setViewMenuOpen] = useState(false);
+    // Card picked in the rail or a row; the hero shows it (falls back to the selected or first server).
+    const [heroId, setHeroId] = useState<string | null>(null);
 
     const showPublic = activeTab === "explore";
     const isJoinMode = activeTab === "join";
@@ -88,6 +107,17 @@ export function ServerMenu({
     const [isExploreJoinedExpanded, setIsExploreJoinedExpanded] = useState(false);
 
     const [joinedServers, setJoinedServers] = useState<any[]>([]);
+
+    // Live player counts from the launcher's Minecraft status ping, keyed by instance id.
+    const [pingById, setPingById] = useState<Record<string, ServerPing>>({});
+
+    const reduceMotion = !!useReducedMotion();
+    const setImmersive = useUiStore((state) => state.setImmersive);
+    const setFullBleed = useUiStore((state) => state.setFullBleed);
+    const listRootRef = React.useRef<HTMLDivElement>(null);
+    const heroWrapRef = React.useRef<HTMLDivElement>(null);
+    const headerRef = React.useRef<HTMLDivElement>(null);
+    const searchInputRef = React.useRef<HTMLInputElement>(null);
 
     const [confirmDialog, setConfirmDialog] = useState<{
         isOpen: boolean;
@@ -115,17 +145,6 @@ export function ServerMenu({
         message.includes("API token") ||
         message.includes("Not logged in")
     );
-
-    const handleInvalidSession = async () => {
-        if (session) {
-            removeAccount(session.uuid, session.authType);
-        }
-        setAuthSession(null);
-        try {
-            await window.api?.logout?.();
-        } catch {
-        }
-    };
 
     const handleJoinSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -362,11 +381,11 @@ export function ServerMenu({
                     try {
                         const result = await (window.api as any)?.instancesGetJoinedServers?.();
                         if (result?.ok && result.data) return result.data;
+                        // Auth errors only show the "login again" state below; never delete the
+                        // saved account or log out here (a missing/rejected cloud token is often
+                        // transient, e.g. right after switching accounts).
                         if (result && !result.ok) {
                             cloudError = result.error || "API error";
-                            if (cloudError && isAuthErrorMessage(cloudError)) {
-                                await handleInvalidSession();
-                            }
                         }
                     } catch (err: any) { cloudError = err.message || "Network error"; }
                     return { owned: [], member: [] };
@@ -422,9 +441,44 @@ export function ServerMenu({
     };
 
     useEffect(() => {
-        setViewMenuOpen(false);
         if (activeTab === "explore") fetchPublicInstances(searchQuery);
     }, [activeTab]);
+
+    // Ping each listed server's first address for its live status (players online / max).
+    useEffect(() => {
+        const ping = (window.api as any)?.serverPing;
+        if (!ping) return;
+        const listed = [...(instances?.owned || []), ...(instances?.member || []), ...publicInstances.slice(0, 20)];
+        const targets = listed
+            .map((inst) => ({ id: inst.id, address: getServerAddress(inst) }))
+            .filter((x, i, a): x is { id: string; address: string } => !!x.address && a.findIndex((y) => y.id === x.id) === i);
+        if (targets.length === 0) return;
+        let cancelled = false;
+        Promise.all(targets.map(async ({ id, address }) => {
+            // "host:port" (IPv6 literals without brackets are pinged as-is on the default port).
+            const parts = address.split(":");
+            const port = parts.length === 2 ? parseInt(parts[1], 10) : NaN;
+            const host = parts.length === 2 ? parts[0] : address;
+            try {
+                const res = await ping(host, Number.isFinite(port) ? port : undefined);
+                if (!res) return null;
+                const players = res.players && typeof res.players.online === "number" && typeof res.players.max === "number"
+                    ? { online: res.players.online, max: res.players.max }
+                    : null;
+                return [id, { online: !!res.online, players }] as const;
+            } catch {
+                return null;
+            }
+        })).then((entries) => {
+            if (cancelled) return;
+            setPingById((prev) => {
+                const next = { ...prev };
+                for (const entry of entries) if (entry) next[entry[0]] = entry[1];
+                return next;
+            });
+        });
+        return () => { cancelled = true; };
+    }, [instances, publicInstances]);
 
     const handleSearchSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -515,6 +569,226 @@ export function ServerMenu({
     const myServerCount = (instances?.owned?.length ?? 0) + (instances?.member?.length ?? 0);
     const isSessionError = !!apiError && isAuthErrorMessage(apiError);
 
+    const joinedPublicServers = joinedServers.filter((inst: any) => !!inst.isPublic);
+
+    // Hero: the poster the user picked, else the selected server if it is listed, else the first listed one.
+    const heroCandidates = showPublic && isExploreJoinedExpanded
+        ? [...displayedInstances, ...joinedPublicServers]
+        : displayedInstances;
+    const heroInstance: any = heroCandidates.find((inst: any) => inst.id === heroId)
+        ?? heroCandidates.find((inst: any) => inst.id === selectedServer?.id)
+        ?? displayedInstances[0]
+        ?? null;
+
+    const selectHero = (inst: Instance) => { setHeroId(inst.id); handleInstanceClick(inst); };
+    const openDetail = (inst: Instance) => { handleInstanceClick(inst); setViewingInstance(inst); };
+
+    const getFlags = (inst: Instance): ServerFlags => {
+        const targetId = resolveLocalId(inst);
+        return {
+            isMember: joinedServers.some((s: any) => s.id === inst.id),
+            isInstalled: isServerInstalled(inst),
+            isPlaying: playingInstances.has(targetId),
+            isLaunching: launchingId === targetId,
+        };
+    };
+    const getPing = (inst: Instance): ServerPing | undefined => pingById[inst.id];
+
+    const showHero = !!session && !loading && !isSearching && !!heroInstance;
+    // Loading draws a hero placeholder too; the controls sit on top of either, so nothing jumps when data lands.
+    const heroArea = showHero || (!!session && (loading || isSearching));
+
+    // Page draws under the title bar; bar text turns white while the hero art is under it.
+    // The detail view sets its own flags, so step aside while it is open.
+    useEffect(() => {
+        if (viewingInstance) return;
+        setFullBleed(true);
+        return () => setFullBleed(false);
+    }, [viewingInstance, setFullBleed]);
+    useEffect(() => {
+        if (viewingInstance) return;
+        const scroller = listRootRef.current?.closest("main") ?? null;
+        const update = () => {
+            const hero = heroWrapRef.current;
+            setImmersive(!!hero && !!scroller && scroller.scrollTop < hero.offsetHeight - 48);
+        };
+        update();
+        scroller?.addEventListener("scroll", update, { passive: true });
+        return () => {
+            scroller?.removeEventListener("scroll", update);
+            setImmersive(false);
+        };
+    }, [viewingInstance, showHero, setImmersive]);
+
+    const scrollBehavior: ScrollBehavior = reduceMotion ? "auto" : "smooth";
+    const selectFromCard = (inst: Instance) => {
+        selectHero(inst);
+        listRootRef.current?.closest("main")?.scrollTo({ top: 0, behavior: scrollBehavior });
+    };
+    const focusSearch = () => {
+        if (activeTab === "join") setActiveTabState("my");
+        headerRef.current?.scrollIntoView({ behavior: scrollBehavior, block: "center" });
+        requestAnimationFrame(() => searchInputRef.current?.focus({ preventScroll: true }));
+    };
+
+    const cardHandlers = {
+        getFlags,
+        getPing,
+        colors,
+        getWithTimestamp,
+        t,
+        onSelect: selectFromCard,
+        onViewDetail: openDetail,
+        onPlay: handlePlayServer,
+        onStop: handleStopServer,
+        onJoin: handleJoinServer,
+        onInstall: handleInstall,
+    };
+
+    // Tabs, search, refresh and key entry. Above the hero when it shows (so the hero's text can never run into
+    // them), otherwise in the section header.
+    const headerControls = (
+        <div className={`${heroArea ? "w-full" : "min-w-0 flex-1"} flex flex-wrap items-center justify-end gap-2 *:pointer-events-auto`}>
+            <div role="tablist" className="flex shrink-0 items-center gap-1 rounded-xl p-1" style={{ backgroundColor: colors.surfaceContainerHigh }}>
+                {([
+                    { id: "my" as const, label: t('server_list') || "My Servers", count: !loading && myServerCount > 0 ? myServerCount : null },
+                    { id: "explore" as const, label: t('explore') || "Explore", count: null },
+                ]).map((tab) => {
+                    const active = activeTab === tab.id;
+                    return (
+                        <button
+                            key={tab.id}
+                            type="button"
+                            role="tab"
+                            aria-selected={active}
+                            onClick={() => { playClick(); setActiveTabState(tab.id); }}
+                            className="flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-sm font-semibold whitespace-nowrap transition-colors"
+                            style={active
+                                ? { backgroundColor: colors.onSurface, color: colors.surface }
+                                : { color: colors.onSurfaceVariant }}
+                        >
+                            <span>{tab.label}</span>
+                            {tab.count !== null && (
+                                <span
+                                    className="min-w-5 h-5 px-1.5 rounded-full flex items-center justify-center text-[11px] font-bold tabular-nums"
+                                    style={active
+                                        ? { backgroundColor: colors.secondary, color: "#111" }
+                                        : { backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}
+                                >
+                                    {tab.count}
+                                </span>
+                            )}
+                        </button>
+                    );
+                })}
+            </div>
+
+            {activeTab === "my" && (
+                <div className="relative min-w-0 w-full max-w-64">
+                    <Icons.Search
+                        className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 opacity-40 pointer-events-none"
+                        style={{ color: colors.onSurface }}
+                    />
+                    <input
+                        ref={searchInputRef}
+                        type="text"
+                        placeholder={t('search') ? `${t('search')}…` : "ค้นหาเซิร์ฟเวอร์…"}
+                        value={mySearchQuery}
+                        onChange={(e) => setMySearchQuery(e.target.value)}
+                        className="w-full h-10 pl-10 pr-10 rounded-full outline-none font-semibold text-sm"
+                        style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                    />
+                    {mySearchQuery && (
+                        <button
+                            type="button"
+                            onClick={() => setMySearchQuery("")}
+                            title="Clear search"
+                            aria-label="Clear search"
+                            className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center opacity-50 hover:opacity-100 transition-opacity"
+                            style={{ backgroundColor: colors.onSurfaceVariant + "30", color: colors.onSurface }}
+                        >
+                            <Icons.Close className="w-3 h-3" />
+                        </button>
+                    )}
+                </div>
+            )}
+
+            {activeTab === "explore" && (
+                <>
+                    <form onSubmit={handleSearchSubmit} className="relative min-w-0 w-full max-w-64 group">
+                        <Icons.Search
+                            className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 opacity-40 pointer-events-none"
+                            style={{ color: colors.onSurface }}
+                        />
+                        <input
+                            ref={searchInputRef}
+                            type="text"
+                            placeholder={t('search_public_servers') || "Search servers…"}
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full h-10 pl-10 pr-14 rounded-full outline-none text-sm"
+                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                        />
+                        {searchQuery && (
+                            <button
+                                type="submit"
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold px-2 py-1 rounded-full opacity-60 hover:opacity-100 transition-opacity"
+                                style={{ color: colors.primary }}
+                            >
+                                {t('search') || "Go"}
+                            </button>
+                        )}
+                    </form>
+
+                    <button
+                        type="button"
+                        onClick={() => { playClick(); setIsExploreJoinedExpanded(!isExploreJoinedExpanded); }}
+                        className="h-10 pl-3.5 pr-2 rounded-full flex items-center gap-2 text-sm font-semibold select-none shrink-0 transition hover:brightness-105"
+                        style={isExploreJoinedExpanded
+                            ? { backgroundColor: colors.secondary, color: "#111" }
+                            : { backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                        aria-pressed={isExploreJoinedExpanded}
+                    >
+                        {isExploreJoinedExpanded ? <Icons.Check className="w-4 h-4" /> : <Icons.Users className="w-4 h-4" />}
+                        <span>{t('joined_servers')}</span>
+                        <span
+                            className="min-w-6 h-6 px-1.5 rounded-full flex items-center justify-center text-xs font-bold tabular-nums"
+                            style={isExploreJoinedExpanded ? { backgroundColor: "rgba(0,0,0,0.12)" } : { backgroundColor: colors.surface, color: colors.onSurfaceVariant }}
+                        >
+                            {joinedPublicServers.length}
+                        </span>
+                    </button>
+                </>
+            )}
+
+            <button
+                type="button"
+                onClick={() => { playClick(); fetchInstances(); }}
+                className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center transition hover:brightness-95 active:scale-95"
+                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                title={t('retry') || "Refresh"}
+                aria-label={t('retry') || "Refresh"}
+            >
+                <Icons.Refresh className="w-4.5 h-4.5" />
+            </button>
+            <button
+                type="button"
+                onClick={() => {
+                    playClick();
+                    setActiveTabState(activeTab === "join" ? "my" : "join");
+                    setJoinKey("");
+                }}
+                className="h-10 px-4 shrink-0 rounded-full flex items-center gap-2 text-sm font-bold transition hover:brightness-105 active:scale-95"
+                style={activeTab === "join"
+                    ? { backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }
+                    : { backgroundColor: colors.secondary, color: "#111" }}
+            >
+                {activeTab === "join" ? <Icons.Close className="w-4 h-4" /> : <Icons.Key className="w-4 h-4" />}
+                <span className="hidden sm:inline">{activeTab === "join" ? t('cancel') : t('enter_key')}</span>
+            </button>
+        </div>
+    );
+
     return (
         <div className="h-full flex flex-col">
             <LiveLog
@@ -542,618 +816,189 @@ export function ServerMenu({
                     getWithTimestamp={getWithTimestamp}
                 />
             ) : (
-                <div className="h-full flex flex-col animate-fade-in">
+                <div
+                    ref={listRootRef}
+                    className="-mx-6 -mt-3 -mb-6 relative flex min-h-[calc(100%+2.25rem)] flex-col pb-16 animate-fade-in"
+                    style={{ backgroundColor: colors.surface }}
+                >
+                    {/* Hero: the selected server's art runs under the title bar, with the controls floating on it. */}
+                    {showHero && heroInstance ? (
+                        <div ref={heroWrapRef} className="relative shrink-0">
+                            <div className="pointer-events-none absolute inset-x-0 top-0 z-30 px-8 pt-14">{headerControls}</div>
+                            <ServerHero
+                                instance={heroInstance}
+                                railItems={heroCandidates}
+                                flags={getFlags(heroInstance)}
+                                ping={getPing(heroInstance)}
+                                colors={colors}
+                                getWithTimestamp={getWithTimestamp}
+                                t={t}
+                                onSelect={selectHero}
+                                onViewDetail={openDetail}
+                                onLeave={handleLeaveServer}
+                                onSearch={focusSearch}
+                                onViewLogs={handleViewLogs}
+                                onPlay={handlePlayServer}
+                                onStop={handleStopServer}
+                                onJoin={handleJoinServer}
+                                onInstall={handleInstall}
+                            />
+                        </div>
+                    ) : session && (loading || isSearching) ? (
+                        <div className="relative shrink-0">
+                            <div className="pointer-events-none absolute inset-x-0 top-0 z-30 px-8 pt-14">{headerControls}</div>
+                            <ServerHeroSkeleton colors={colors} />
+                        </div>
+                    ) : (
+                        // Nothing to draw under the title bar: keep the content clear of it.
+                        <div className="h-16 shrink-0" />
+                    )}
 
-                    <div className="shrink-0 mb-5 animate-fade-in relative z-20">
-                        <div className="flex items-center justify-between gap-3 mb-4">
-                            <div>
-                                <h2 className="text-2xl font-black tracking-tight" style={{ color: colors.onSurface }}>
-                                    {activeTab === "join"
-                                        ? t('enter_key')
-                                        : activeTab === "explore"
-                                            ? t('explore_servers')
-                                            : t('server_list')}
+                    <div className={`relative z-10 flex flex-1 flex-col px-8 ${heroArea ? "pt-6" : ""}`}>
+                        {/* Section header: title left; controls right unless they sit above the hero. */}
+                        <div ref={headerRef} className="relative z-20 shrink-0">
+                            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+                                <h2 className="text-lg font-bold" style={{ color: colors.onSurface }}>
+                                    {activeTab === "explore" ? (t('explore') || "Explore") : (t('my_servers') || "My Servers")}
                                 </h2>
-                                <p className="text-sm mt-0.5" style={{ color: colors.onSurfaceVariant, opacity: 0.65 }}>
-                                    {activeTab === "join"
-                                        ? t('enter_invite_key_desc')
-                                        : activeTab === "explore"
-                                            ? t('explore_community_desc')
-                                            : t('select_server_desc')}
-                                </p>
+
+                                {!heroArea && headerControls}
                             </div>
 
-                            <div className="flex items-center gap-2 shrink-0">
-                                <button
-                                    type="button"
-                                    onClick={() => { playClick(); fetchInstances(); }}
-                                    className="w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:brightness-110 active:scale-95"
-                                    style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}
-                                    title={t('retry') || "Refresh"}
-                                >
-                                    <Icons.Refresh className="w-4 h-4" />
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        playClick();
-                                        setActiveTabState(activeTab === "join" ? "my" : "join");
-                                        setJoinKey("");
-                                    }}
-                                    className="h-9 px-4 rounded-xl flex items-center gap-2 transition-all hover:brightness-110 active:scale-95 font-bold text-sm"
-                                    style={activeTab === "join"
-                                        ? { backgroundColor: colors.error || "#ef4444", color: "#fff" }
-                                        : { backgroundColor: colors.secondary, color: "#1a1a1a" }
-                                    }
-                                >
-                                    {activeTab === "join" ? (
-                                        <>
-                                            <Icons.Close className="w-4 h-4" />
-                                            <span className="hidden sm:inline">{t('cancel')}</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Icons.Key className="w-4 h-4" />
-                                            <span className="hidden sm:inline">{t('enter_key')}</span>
-                                        </>
-                                    )}
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-1 p-1 rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
-                            <button
-                                type="button"
-                                onClick={() => { playClick(); setActiveTabState("my"); }}
-                                className={cn(
-                                    "flex-1 flex items-center justify-center gap-2 h-9 rounded-lg text-sm font-semibold transition-all",
-                                    activeTab === "my" ? "" : "hover:bg-white/5"
-                                )}
-                                style={activeTab === "my"
-                                    ? { backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }
-                                    : { color: colors.onSurfaceVariant }
-                                }
-                            >
-                                <Icons.Dns className="w-4 h-4" />
-                                <span>{t('server_list') || "My Servers"}</span>
-                                {!loading && myServerCount > 0 && (
-                                    <span
-                                        className="px-1.5 py-0.5 rounded-full text-[10px] font-bold min-w-4.5 text-center"
-                                        style={{
-                                            backgroundColor: activeTab === "my" ? colors.primary + "25" : colors.surfaceContainerHighest,
-                                            color: activeTab === "my" ? colors.primary : colors.onSurfaceVariant
-                                        }}
-                                    >
-                                        {myServerCount}
-                                    </span>
-                                )}
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => { playClick(); setActiveTabState("explore"); }}
-                                className={cn(
-                                    "flex-1 flex items-center justify-center gap-2 h-9 rounded-lg text-sm font-semibold transition-all",
-                                    activeTab === "explore" ? "" : "hover:bg-white/5"
-                                )}
-                                style={activeTab === "explore"
-                                    ? { backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }
-                                    : { color: colors.onSurfaceVariant }
-                                }
-                            >
-                                <Icons.Compass className="w-4 h-4" />
-                                <span>{t('explore') || "Explore"}</span>
-                            </button>
-                        </div>
-
-                        {activeTab === "my" && (
-                            <div className="flex items-center gap-2 mt-3 animate-fade-in">
-                                <div className="relative flex-1">
-                                    <Icons.Search
-                                        className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 opacity-40 pointer-events-none"
-                                        style={{ color: colors.onSurface }}
-                                    />
-                                    <input
-                                        type="text"
-                                        placeholder={t('search') ? `${t('search')}…` : "ค้นหาเซิร์ฟเวอร์…"}
-                                        value={mySearchQuery}
-                                        onChange={(e) => setMySearchQuery(e.target.value)}
-                                        className="w-full h-10 pl-10 pr-10 rounded-xl outline-none transition-all border font-semibold text-sm"
-                                        style={{
-                                            backgroundColor: colors.surfaceContainerHighest,
-                                            color: colors.onSurface,
-                                            borderColor: "transparent",
-                                        }}
-                                        onFocus={(e) => { e.currentTarget.style.borderColor = colors.primary + "60"; }}
-                                        onBlur={(e) => { e.currentTarget.style.borderColor = "transparent"; }}
-                                    />
-                                    {mySearchQuery && (
-                                        <button
-                                            type="button"
-                                            onClick={() => setMySearchQuery("")}
-                                            title="Clear search"
-                                            aria-label="Clear search"
-                                            className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center opacity-50 hover:opacity-100 transition-opacity"
-                                            style={{ backgroundColor: colors.onSurfaceVariant + "30", color: colors.onSurface }}
-                                        >
-                                            <Icons.Close className="w-3 h-3" />
-                                        </button>
-                                    )}
-                                </div>
-
-                                <div className="relative shrink-0">
-                                    <button
-                                        type="button"
-                                        onClick={() => { playClick(); setViewMenuOpen(!viewMenuOpen); }}
-                                        className="h-10 px-4 rounded-xl flex items-center gap-2 transition-all hover:brightness-110 active:scale-95 font-bold text-sm select-none border border-transparent outline-none focus:outline-none focus:ring-0"
-                                        style={{
-                                            backgroundColor: colors.surfaceContainerHighest,
-                                            color: colors.onSurface,
-                                        }}
-                                    >
-                                        {viewMode === "tiles" ? (
-                                            <Icons.Grid className="w-4 h-4" />
-                                        ) : viewMode === "table" ? (
-                                            <Icons.Table className="w-4 h-4" />
-                                        ) : (
-                                            <Icons.List className="w-4 h-4" />
-                                        )}
-                                        <span>{t('view_mode') || "View"}</span>
-                                        <Icons.ArrowDown className="w-3.5 h-3.5 opacity-60" />
-                                    </button>
-
-                                    {viewMenuOpen && (
-                                        <>
-                                            <div 
-                                                className="fixed inset-0 z-40" 
-                                                onClick={() => setViewMenuOpen(false)}
-                                            />
-                                            <div 
-                                                className="absolute right-0 mt-1.5 z-50 min-w-[140px] rounded-xl shadow-xl border p-1 flex flex-col gap-0.5 animate-fade-in"
-                                                style={{ 
-                                                    backgroundColor: colors.surfaceContainer,
-                                                    borderColor: colors.outline + "15",
-                                                    color: colors.onSurface
-                                                }}
-                                            >
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        playClick();
-                                                        setViewMode("tiles");
-                                                        localStorage.setItem("serverViewMode", "tiles");
-                                                        setViewMenuOpen(false);
-                                                    }}
-                                                    className="flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold hover:bg-white/5 transition-all w-full text-left"
-                                                >
-                                                    <div className="flex items-center gap-2">
-                                                        <Icons.Grid className="w-3.5 h-3.5 opacity-70" />
-                                                        <span>{t('view_tiles') || "Tiles"}</span>
-                                                    </div>
-                                                    {viewMode === "tiles" && <Icons.Check className="w-3.5 h-3.5 text-emerald-500" />}
-                                                </button>
-
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        playClick();
-                                                        setViewMode("table");
-                                                        localStorage.setItem("serverViewMode", "table");
-                                                        setViewMenuOpen(false);
-                                                    }}
-                                                    className="flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold hover:bg-white/5 transition-all w-full text-left"
-                                                >
-                                                    <div className="flex items-center gap-2">
-                                                        <Icons.Table className="w-3.5 h-3.5 opacity-70" />
-                                                        <span>{t('view_table') || "Table"}</span>
-                                                    </div>
-                                                    {viewMode === "table" && <Icons.Check className="w-3.5 h-3.5 text-emerald-500" />}
-                                                </button>
-
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        playClick();
-                                                        setViewMode("list");
-                                                        localStorage.setItem("serverViewMode", "list");
-                                                        setViewMenuOpen(false);
-                                                    }}
-                                                    className="flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold hover:bg-white/5 transition-all w-full text-left"
-                                                >
-                                                    <div className="flex items-center gap-2">
-                                                        <Icons.List className="w-3.5 h-3.5 opacity-70" />
-                                                        <span>{t('view_list') || "List"}</span>
-                                                    </div>
-                                                    {viewMode === "list" && <Icons.Check className="w-3.5 h-3.5 text-emerald-500" />}
-                                                </button>
-                                            </div>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
-                        {activeTab === "explore" && (
-                            <div className="flex flex-col gap-3 mt-3 animate-fade-in">
-                                <div className="flex items-center gap-2">
-                                    <form onSubmit={handleSearchSubmit} className="relative flex-1 group">
-                                        <Icons.Search
+                            {activeTab === "join" && (
+                                <form onSubmit={handleJoinSubmit} className="relative mt-3 animate-fade-in flex gap-2">
+                                    <div className="relative flex-1">
+                                        <Icons.Key
                                             className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 opacity-40 pointer-events-none"
                                             style={{ color: colors.onSurface }}
                                         />
                                         <input
                                             type="text"
-                                            placeholder={t('search_public_servers') || "Search servers…"}
-                                            value={searchQuery}
-                                            onChange={(e) => setSearchQuery(e.target.value)}
-                                            className="w-full h-10 pl-10 pr-4 rounded-xl outline-none transition-all border"
+                                            placeholder={t('enter_invite_key_placeholder') || "INVITE-KEY"}
+                                            value={joinKey}
+                                            onChange={(e) => setJoinKey(e.target.value.replace(/[^A-Z0-9-]/gi, '').toUpperCase())}
+                                            className="w-full h-10 pl-10 pr-4 rounded-full outline-none transition-all border font-mono tracking-widest uppercase text-sm"
                                             style={{
                                                 backgroundColor: colors.surfaceContainerHighest,
                                                 color: colors.onSurface,
                                                 borderColor: "transparent",
+                                                letterSpacing: "0.15em"
                                             }}
                                             onFocus={(e) => e.currentTarget.style.borderColor = colors.primary + "60"}
                                             onBlur={(e) => e.currentTarget.style.borderColor = "transparent"}
+                                            autoFocus
+                                            maxLength={32}
                                         />
-                                        {searchQuery && (
-                                            <button
-                                                type="submit"
-                                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold px-2 py-1 rounded-lg opacity-60 hover:opacity-100 transition-opacity"
-                                                style={{ color: colors.primary }}
-                                            >
-                                                {t('search') || "Go"}
-                                            </button>
-                                        )}
-                                    </form>
-
+                                    </div>
                                     <button
-                                        type="button"
-                                        onClick={() => { playClick(); setIsExploreJoinedExpanded(!isExploreJoinedExpanded); }}
-                                        className="h-10 px-4 rounded-xl flex items-center gap-2 transition-all hover:brightness-110 active:scale-95 font-bold text-sm select-none shrink-0"
-                                        style={{
-                                            backgroundColor: isExploreJoinedExpanded ? colors.primary : colors.surfaceContainer,
-                                            color: isExploreJoinedExpanded ? colors.onPrimary : colors.onSurface,
-                                            border: `1.5px solid ${colors.outline}12`,
-                                        }}
-                                    >
-                                        <i className="fa-solid fa-circle-check text-base" />
-                                        <span>{t('joined_servers')}</span>
-                                        <span 
-                                            className="px-1.5 py-0.5 rounded-md text-[10px] font-black"
-                                            style={{
-                                                backgroundColor: isExploreJoinedExpanded ? "rgba(0,0,0,0.15)" : colors.surfaceContainerHighest,
-                                                color: isExploreJoinedExpanded ? "#fff" : colors.onSurfaceVariant
-                                            }}
-                                        >
-                                            {joinedServers.filter((inst: any) => !!inst.isPublic).length}
-                                        </span>
-                                    </button>
-
-                                    <div className="relative shrink-0">
-                                        <button
-                                            type="button"
-                                            onClick={() => { playClick(); setViewMenuOpen(!viewMenuOpen); }}
-                                            className="h-10 px-4 rounded-xl flex items-center gap-2 transition-all hover:brightness-110 active:scale-95 font-bold text-sm select-none border border-transparent outline-none focus:outline-none focus:ring-0"
-                                            style={{
-                                                backgroundColor: colors.surfaceContainerHighest,
-                                                color: colors.onSurface,
-                                            }}
-                                        >
-                                            {viewMode === "tiles" ? (
-                                                <Icons.Grid className="w-4 h-4" />
-                                            ) : viewMode === "table" ? (
-                                                <Icons.Table className="w-4 h-4" />
-                                            ) : (
-                                                <Icons.List className="w-4 h-4" />
-                                            )}
-                                            <span>{t('view_mode') || "View"}</span>
-                                            <Icons.ArrowDown className="w-3.5 h-3.5 opacity-60" />
-                                        </button>
-
-                                        {viewMenuOpen && (
-                                            <>
-                                                <div 
-                                                    className="fixed inset-0 z-40" 
-                                                    onClick={() => setViewMenuOpen(false)}
-                                                />
-                                                <div 
-                                                    className="absolute right-0 mt-1.5 z-50 min-w-[140px] rounded-xl shadow-xl border p-1 flex flex-col gap-0.5 animate-fade-in"
-                                                    style={{ 
-                                                        backgroundColor: colors.surfaceContainer,
-                                                        borderColor: colors.outline + "15",
-                                                        color: colors.onSurface
-                                                    }}
-                                                >
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            playClick();
-                                                            setViewMode("tiles");
-                                                            localStorage.setItem("serverViewMode", "tiles");
-                                                            setViewMenuOpen(false);
-                                                        }}
-                                                        className="flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold hover:bg-white/5 transition-all w-full text-left"
-                                                    >
-                                                        <div className="flex items-center gap-2">
-                                                            <Icons.Grid className="w-3.5 h-3.5 opacity-70" />
-                                                            <span>{t('view_tiles') || "Tiles"}</span>
-                                                        </div>
-                                                        {viewMode === "tiles" && <Icons.Check className="w-3.5 h-3.5 text-emerald-500" />}
-                                                    </button>
-
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            playClick();
-                                                            setViewMode("table");
-                                                            localStorage.setItem("serverViewMode", "table");
-                                                            setViewMenuOpen(false);
-                                                        }}
-                                                        className="flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold hover:bg-white/5 transition-all w-full text-left"
-                                                    >
-                                                        <div className="flex items-center gap-2">
-                                                            <Icons.Table className="w-3.5 h-3.5 opacity-70" />
-                                                            <span>{t('view_table') || "Table"}</span>
-                                                        </div>
-                                                        {viewMode === "table" && <Icons.Check className="w-3.5 h-3.5 text-emerald-500" />}
-                                                    </button>
-
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            playClick();
-                                                            setViewMode("list");
-                                                            localStorage.setItem("serverViewMode", "list");
-                                                            setViewMenuOpen(false);
-                                                        }}
-                                                        className="flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold hover:bg-white/5 transition-all w-full text-left"
-                                                    >
-                                                        <div className="flex items-center gap-2">
-                                                            <Icons.List className="w-3.5 h-3.5 opacity-70" />
-                                                            <span>{t('view_list') || "List"}</span>
-                                                        </div>
-                                                        {viewMode === "list" && <Icons.Check className="w-3.5 h-3.5 text-emerald-500" />}
-                                                    </button>
-                                                </div>
-                                            </>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {isExploreJoinedExpanded && (
-                                    <div 
-                                        className={cn(
-                                            "mt-1 pl-2 border-l-2 animate-fade-in",
-                                            viewMode === "tiles" 
-                                                ? "grid grid-cols-1 md:grid-cols-2 gap-4 content-start" 
-                                                : "flex flex-col gap-2"
-                                        )} 
-                                        style={{ borderColor: colors.outline + "15" }}
-                                    >
-                                        {viewMode === "table" && joinedServers.filter((inst: any) => !!inst.isPublic).length > 0 && (
-                                            <div 
-                                                className="flex items-center px-6 py-2 text-xs font-black uppercase tracking-wider opacity-50 shrink-0 select-none border-b mb-2" 
-                                                style={{ color: colors.onSurface, borderColor: colors.outline + "15" }}
-                                            >
-                                                <div className="w-2/5">{t('server') || "Server"}</div>
-                                                <div className="w-1/5">{t('minecraft_version_label') || "Version"}</div>
-                                                <div className="w-1/5">{t('status') || "Status / IP"}</div>
-                                                <div className="w-1/5 text-right">{t('account_management') || "Actions"}</div>
-                                            </div>
-                                        )}
-                                        {joinedServers.filter((inst: any) => !!inst.isPublic).length > 0 ? (
-                                            joinedServers.filter((inst: any) => !!inst.isPublic).map((instance: any, index: number) => {
-                                                const targetId = resolveLocalId(instance);
-                                                const isInstalled = isServerInstalled(instance);
-                                                return (
-                                                    <ServerItem
-                                                        key={`joined-${instance.id}`}
-                                                        index={index}
-                                                        instance={instance}
-                                                        colors={colors}
-                                                        isSelected={selectedServer?.id === instance.id}
-                                                        isInstalled={isInstalled}
-                                                        isMember={true}
-                                                        showPublic={false}
-                                                        isPlaying={playingInstances.has(targetId)}
-                                                        isLaunching={launchingId === targetId}
-                                                        getWithTimestamp={getWithTimestamp}
-                                                        viewMode={viewMode}
-                                                        onSelect={(inst) => {
-                                                            handleInstanceClick(inst);
-                                                        }}
-                                                        onViewDetail={(inst) => {
-                                                            handleInstanceClick(inst);
-                                                            setViewingInstance(inst);
-                                                        }}
-                                                        onPlay={handlePlayServer}
-                                                        onStop={handleStopServer}
-                                                        onJoin={handleJoinServer}
-                                                        onInstall={handleInstall}
-                                                        onLeave={handleLeaveServer}
-                                                        t={t}
-                                                    />
-                                                );
-                                            })
-                                        ) : (
-                                            <div className="py-3 text-center text-xs font-semibold" style={{ color: colors.onSurfaceVariant, opacity: 0.6 }}>
-                                                {t('no_joined_public_servers')}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {activeTab === "join" && (
-                            <form onSubmit={handleJoinSubmit} className="relative mt-3 animate-fade-in flex gap-2">
-                                <div className="relative flex-1">
-                                    <Icons.Key
-                                        className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 opacity-40 pointer-events-none"
-                                        style={{ color: colors.onSurface }}
-                                    />
-                                    <input
-                                        type="text"
-                                        placeholder={t('enter_invite_key_placeholder') || "INVITE-KEY"}
-                                        value={joinKey}
-                                        onChange={(e) => setJoinKey(e.target.value.replace(/[^A-Z0-9-]/gi, '').toUpperCase())}
-                                        className="w-full h-10 pl-10 pr-4 rounded-xl outline-none transition-all border font-mono tracking-widest uppercase text-sm"
-                                        style={{
-                                            backgroundColor: colors.surfaceContainerHighest,
-                                            color: colors.onSurface,
-                                            borderColor: "transparent",
-                                            letterSpacing: "0.15em"
-                                        }}
-                                        onFocus={(e) => e.currentTarget.style.borderColor = colors.primary + "60"}
-                                        onBlur={(e) => e.currentTarget.style.borderColor = "transparent"}
-                                        autoFocus
-                                        maxLength={32}
-                                    />
-                                </div>
-                                <button
-                                    type="submit"
-                                    disabled={!joinKey.trim()}
-                                    className="h-10 px-5 rounded-xl font-bold text-sm transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110"
-                                    style={{ backgroundColor: colors.primary, color: colors.onPrimary }}
-                                >
-                                    {t('join') || "Join"}
-                                </button>
-                            </form>
-                        )}
-                    </div>
-
-                    {!session ? (
-                        <div className="flex-1 flex flex-col items-center justify-center gap-5 animate-fade-in">
-                            <div className="w-20 h-20 rounded-3xl flex items-center justify-center" style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                                <Icons.Person className="w-10 h-10" style={{ color: colors.primary }} />
-                            </div>
-                            <div className="text-center">
-                                <h3 className="text-lg font-bold mb-1.5" style={{ color: colors.onSurface }}>{t('please_login_session')}</h3>
-                                <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>{t('connect_microsoft_desc')}</p>
-                            </div>
-                        </div>
-                    ) : (loading || isSearching) ? (
-                        <div className="flex flex-col gap-2 pb-4">
-                            {Array.from({ length: 4 }).map((_, i) => (
-                                <div
-                                    key={i}
-                                    className="flex items-center gap-4 px-5 py-4 rounded-2xl animate-skeleton-wave"
-                                    style={{
-                                        backgroundColor: colors.surfaceContainer,
-                                        border: `1.5px solid ${colors.outline}12`,
-                                        animationDelay: `${Math.min(i * 40, 150)}ms`
-                                    }}
-                                >
-                                    <div className="w-16 h-16 rounded-xl shrink-0" style={{ backgroundColor: colors.surfaceContainerHighest }} />
-                                    <div className="flex-1 space-y-2">
-                                        <div className="h-4 rounded-lg" style={{ width: `${40 + (i % 3) * 12}%`, backgroundColor: colors.surfaceContainerHighest }} />
-                                        <div className="h-3 rounded-md" style={{ width: `${55 + (i % 2) * 15}%`, backgroundColor: colors.surfaceContainerHighest }} />
-                                    </div>
-                                    <div className="flex items-center gap-2 shrink-0">
-                                        <div className="w-20 h-10 rounded-xl" style={{ backgroundColor: colors.surfaceContainerHighest }} />
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : displayedInstances.length === 0 ? (
-                        <div className="flex-1 flex flex-col items-center justify-center gap-5 animate-fade-in">
-                            <div className="w-20 h-20 rounded-3xl flex items-center justify-center" style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                                {apiError ? (
-                                    <svg className="w-10 h-10" style={{ color: colors.error || "#ef4444" }} viewBox="0 0 24 24" fill="currentColor">
-                                        <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
-                                    </svg>
-                                ) : showPublic ? (
-                                    <Icons.Search className="w-10 h-10" style={{ color: colors.onSurfaceVariant }} />
-                                ) : (
-                                    <Icons.Dns className="w-10 h-10" style={{ color: colors.onSurfaceVariant }} />
-                                )}
-                            </div>
-                            <div className="text-center">
-                                <h3 className="text-lg font-bold mb-1.5" style={{ color: colors.onSurface }}>
-                                    {apiError
-                                        ? isSessionError
-                                            ? (t('session_expired_login_server') || "Session expired, please login again")
-                                            : (t('api_connection_error') || "ไม่สามารถเชื่อมต่อได้")
-                                        : showPublic ? t('no_public_servers')
-                                            : t('no_servers_found_in_list')}
-                                </h3>
-                                <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>
-                                    {apiError
-                                        ? isSessionError
-                                            ? (t('session_expired') || "Session expired - Please login again")
-                                            : (t('api_connection_error_desc') || "API อาจล่มหรือเครือข่ายขัดข้อง")
-                                        : showPublic ? t('no_search_results')
-                                            : t('no_server_invite_desc')}
-                                </p>
-                                {apiError && (
-                                    <button
-                                        type="button"
-                                        onClick={() => { setLoading(true); fetchInstances(); }}
-                                        className="mt-4 px-6 py-2.5 rounded-xl font-bold text-sm transition-all hover:brightness-110 active:scale-95"
+                                        type="submit"
+                                        disabled={!joinKey.trim()}
+                                        className="h-10 px-5 rounded-full font-bold text-sm transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110"
                                         style={{ backgroundColor: colors.primary, color: colors.onPrimary }}
                                     >
-                                        {t('retry') || "ลองใหม่"}
+                                        {t('join') || "Join"}
                                     </button>
-                                )}
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="flex-1 flex flex-col min-h-0">
-                            {viewMode === "table" && (
-                                <div 
-                                    className="flex items-center px-6 py-2 text-xs font-black uppercase tracking-wider opacity-50 shrink-0 select-none border-b mb-2" 
-                                    style={{ color: colors.onSurface, borderColor: colors.outline + "15" }}
-                                >
-                                    <div className="w-2/5">{t('server') || "Server"}</div>
-                                    <div className="w-1/5">{t('minecraft_version_label') || "Version"}</div>
-                                    <div className="w-1/5">{t('status') || "Status / IP"}</div>
-                                    <div className="w-1/5 text-right">{t('account_management') || "Actions"}</div>
-                                </div>
+                                </form>
                             )}
-                            <div className={cn(
-                                "pb-24 overflow-y-auto flex-1 min-h-0",
-                                viewMode === "tiles" 
-                                    ? "grid grid-cols-1 md:grid-cols-2 gap-4 content-start" 
-                                    : "flex flex-col gap-2"
-                            )}>
-                                {displayedInstances.map((instance: any, index: number) => {
-                                    const targetId = resolveLocalId(instance);
-                                    const isInstalled = isServerInstalled(instance);
-                                    const isMember = joinedServers.some(s => s.id === instance.id);
-                                    return (
-                                        <ServerItem
-                                            key={instance.id}
-                                            index={index}
-                                            instance={instance}
+                        </div>
+
+                        {!session ? (
+                            <div className="flex-1 flex flex-col items-center justify-center gap-5 py-16 animate-fade-in">
+                                <div className="w-20 h-20 rounded-3xl flex items-center justify-center" style={{ backgroundColor: colors.surfaceContainerHighest }}>
+                                    <Icons.Person className="w-10 h-10" style={{ color: colors.primary }} />
+                                </div>
+                                <div className="text-center">
+                                    <h3 className="text-lg font-bold mb-1.5" style={{ color: colors.onSurface }}>{t('please_login_session')}</h3>
+                                    <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>{t('connect_microsoft_desc')}</p>
+                                </div>
+                            </div>
+                        ) : (loading || isSearching) ? (
+                            // Loading: skeleton hero above and a skeleton card row here.
+                            <div className="mt-5">
+                                <ServerCardRowSkeleton colors={colors} />
+                            </div>
+                        ) : (
+                            <div className="mt-5 flex flex-1 flex-col gap-10">
+                                {showPublic && isExploreJoinedExpanded && (
+                                    <section className="animate-fade-in">
+                                        <div className="mb-3 flex items-baseline gap-2.5">
+                                            <h3 className="text-base font-bold" style={{ color: colors.onSurface }}>{t('joined_servers')}</h3>
+                                            <span className="text-sm font-semibold tabular-nums" style={{ color: colors.onSurfaceVariant }}>{joinedPublicServers.length}</span>
+                                        </div>
+                                        {joinedPublicServers.length > 0 ? (
+                                            <ServerCardRows instances={joinedPublicServers} selectedId={heroInstance?.id ?? null} {...cardHandlers} />
+                                        ) : (
+                                            <p className="py-3 text-sm font-semibold" style={{ color: colors.onSurfaceVariant, opacity: 0.6 }}>{t('no_joined_public_servers')}</p>
+                                        )}
+                                    </section>
+                                )}
+
+                                {displayedInstances.length === 0 ? (
+                                    <div className="flex-1 flex flex-col items-center justify-center gap-5 py-16 animate-fade-in">
+                                        <div className="w-20 h-20 rounded-3xl flex items-center justify-center" style={{ backgroundColor: colors.surfaceContainerHighest }}>
+                                            {apiError ? (
+                                                <svg className="w-10 h-10" style={{ color: colors.error || "#ef4444" }} viewBox="0 0 24 24" fill="currentColor">
+                                                    <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
+                                                </svg>
+                                            ) : showPublic ? (
+                                                <Icons.Search className="w-10 h-10" style={{ color: colors.onSurfaceVariant }} />
+                                            ) : (
+                                                <Icons.Dns className="w-10 h-10" style={{ color: colors.onSurfaceVariant }} />
+                                            )}
+                                        </div>
+                                        <div className="text-center">
+                                            <h3 className="text-lg font-bold mb-1.5" style={{ color: colors.onSurface }}>
+                                                {apiError
+                                                    ? isSessionError
+                                                        ? (t('session_expired_login_server') || "Session expired, please login again")
+                                                        : (t('api_connection_error') || "ไม่สามารถเชื่อมต่อได้")
+                                                    : showPublic ? t('no_public_servers')
+                                                        : t('no_servers_found_in_list')}
+                                            </h3>
+                                            <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>
+                                                {apiError
+                                                    ? isSessionError
+                                                        ? (t('session_expired') || "Session expired - Please login again")
+                                                        : (t('api_connection_error_desc') || "API อาจล่มหรือเครือข่ายขัดข้อง")
+                                                    : showPublic ? t('no_search_results')
+                                                        : t('no_server_invite_desc')}
+                                            </p>
+                                            {apiError && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => { setLoading(true); fetchInstances(); }}
+                                                    className="mt-4 px-6 py-2.5 rounded-xl font-bold text-sm transition-all hover:brightness-110 active:scale-95"
+                                                    style={{ backgroundColor: colors.primary, color: colors.onPrimary }}
+                                                >
+                                                    {t('retry') || "ลองใหม่"}
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <ServerCardRows instances={displayedInstances} selectedId={heroInstance?.id ?? null} {...cardHandlers} />
+                                )}
+
+                                {/* Live status of the listed servers (only those that answered a ping). */}
+                                {!showPublic && displayedInstances.some((inst: any) => !!pingById[inst.id]) && (
+                                    <section className="animate-fade-in">
+                                        <h3 className="mb-3 text-base font-bold" style={{ color: colors.onSurface }}>{t('online_players')}</h3>
+                                        <ServerStatusStrip
+                                            instances={displayedInstances}
+                                            getFlags={getFlags}
+                                            getPing={getPing}
                                             colors={colors}
-                                            isSelected={selectedServer?.id === instance.id}
-                                            isInstalled={isInstalled}
-                                            isMember={isMember}
-                                            showPublic={showPublic}
-                                            isPlaying={playingInstances.has(targetId)}
-                                            isLaunching={launchingId === targetId}
-                                            getWithTimestamp={getWithTimestamp}
-                                            viewMode={viewMode}
-                                            onSelect={(inst) => {
-                                                handleInstanceClick(inst);
-                                            }}
-                                            onViewDetail={(inst) => {
-                                                handleInstanceClick(inst);
-                                                setViewingInstance(inst);
-                                            }}
+                                            t={t}
                                             onPlay={handlePlayServer}
                                             onStop={handleStopServer}
                                             onJoin={handleJoinServer}
                                             onInstall={handleInstall}
-                                            onLeave={handleLeaveServer}
-                                            t={t}
                                         />
-                                    );
-                                })}
+                                    </section>
+                                )}
                             </div>
-                        </div>
-                    )}
+                        )}
+                    </div>
 
                     <ConfirmDialog
                         isOpen={confirmDialog.isOpen}

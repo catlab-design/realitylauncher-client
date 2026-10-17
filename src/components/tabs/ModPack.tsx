@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef, type Dispatch, type SetStateAction } from "react";
+import appBanner from "../../assets/banner.png";
 import toast from "react-hot-toast";
 import { playClick, toastSuccess, toastError } from "../../lib/sounds";
 import { Icons } from "../ui/Icons";
@@ -17,6 +18,7 @@ import {
 import { useProgressStore } from "../../store/progressStore";
 import { useLaunchStore } from "../../store/launchStore";
 import { useInstances } from "../../hooks/useInstances";
+import { useUiStore } from "../../store/uiStore";
 import { useAuthStore } from "../../store/authStore";
 import { Portal } from "../ui/Portal";
 import {
@@ -30,7 +32,8 @@ import {
 } from "../../lib/installLock";
 import { type AuthSession, type Server, type GameInstance, type LauncherConfig } from "../../types/launcher";
 
-const DEFAULT_MODPACK_BANNER = "./banner.png";
+// App banner (src/assets) is the fallback for any card without its own art.
+const DEFAULT_MODPACK_BANNER = appBanner;
 
 interface ModPackProps {
     colors: any;
@@ -319,6 +322,26 @@ export function ModPack({
         }
     };
 
+    // Play pressed on Home: run the normal launch flow (account switch, Java
+    // checks, progress) once this tab has the instance list.
+    const pendingLaunchId = useUiStore((state) => state.pendingLaunchId);
+    const setPendingLaunchId = useUiStore((state) => state.setPendingLaunchId);
+    useEffect(() => {
+        if (!pendingLaunchId || isLoading) return;
+        if (!instances.some((item) => item.id === pendingLaunchId)) return;
+        setPendingLaunchId(null);
+        void handlePlay(pendingLaunchId);
+    }, [pendingLaunchId, isLoading, instances]);
+
+    // Same hand-off for "Install" on a server modpack card on Home.
+    const pendingInstallServerId = useUiStore((state) => state.pendingInstallServerId);
+    const setPendingInstallServerId = useUiStore((state) => state.setPendingInstallServerId);
+    useEffect(() => {
+        if (!pendingInstallServerId) return;
+        setPendingInstallServerId(null);
+        void handleInstallServerInstance(pendingInstallServerId);
+    }, [pendingInstallServerId]);
+
     const handleStop = async (id: string) => {
         const wasLaunching = launchingId === id;
         if (wasLaunching) {
@@ -462,21 +485,12 @@ export function ModPack({
         opacity: 0,
     });
 
-    const getModPackCardFrameStyle = (borderColor?: string): React.CSSProperties => ({
-        backgroundColor: colors.surfaceContainer,
-        backgroundClip: "padding-box",
-        backgroundOrigin: "padding-box",
-        border: borderColor ? `2px solid ${borderColor}` : "none",
-        boxShadow: borderColor ? undefined : "inset 0 0 0 1px rgba(0,0,0,0.45)",
-    });
-
     const renderModPackSkeleton = (i: number) => (
         <div
             key={i}
-            className="rounded-xl overflow-hidden p-4 animate-skeleton-wave"
+            className="rounded-2xl overflow-hidden p-4 animate-skeleton-wave"
             style={{
-                backgroundColor: `${colors.surfaceContainer}60`,
-                border: `1px solid ${colors.outline}15`,
+                backgroundColor: colors.surfaceContainer,
                 animationDelay: `${Math.min(i * 30, 150)}ms`,
             }}
         >
@@ -503,104 +517,117 @@ export function ModPack({
         }
     };
 
+    // Shared card, same look as the Servers list tiles: full-bleed art, logo top-left,
+    // name bottom-left, actions docked in the bottom-right corner.
+    const renderCardShell = ({ key, banner, onOpen, icon, name, meta, badge, actions, dimArt }: {
+        key: string;
+        banner: string;
+        onOpen?: () => void;
+        icon?: string;
+        name: string;
+        meta: React.ReactNode;
+        badge?: React.ReactNode;
+        actions: React.ReactNode;
+        dimArt?: boolean;
+    }) => (
+        <SmartBackground
+            key={key}
+            trigger={refreshTrigger}
+            src={banner}
+            onClick={onOpen}
+            className={`group relative overflow-hidden rounded-2xl h-48 transition-all duration-300 hover:shadow-lg ${onOpen ? "cursor-pointer" : ""}`}
+            style={{ backgroundColor: colors.surfaceContainer }}
+        >
+            <div
+                className={`absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105 ${dimArt ? "grayscale opacity-50" : ""}`}
+                style={{ backgroundImage: "inherit" }}
+            />
+            <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/30 to-transparent" />
+
+            <div className="absolute top-4 left-4 z-10 w-16 h-16 rounded-2xl overflow-hidden shadow-lg">
+                {icon ? (
+                    <SmartImage trigger={refreshTrigger} src={icon} alt={name} className={`w-full h-full object-cover ${dimArt ? "grayscale opacity-60" : ""}`} />
+                ) : (
+                    <div className="w-full h-full rounded-xl flex items-center justify-center bg-white/15 text-white">
+                        <Icons.Box className="w-6 h-6" />
+                    </div>
+                )}
+            </div>
+            {badge && <div className="absolute top-4 right-4 z-10">{badge}</div>}
+
+            <div className="absolute bottom-4 left-5 z-10 max-w-[55%] min-w-0">
+                <h3 className="font-black text-lg md:text-xl text-white truncate leading-tight drop-shadow-md">{name}</h3>
+                <p className="text-white/70 text-sm truncate mt-1 font-semibold drop-shadow-sm">{meta}</p>
+            </div>
+
+            <div className="absolute bottom-0 right-0 z-10 flex items-stretch" onClick={(e) => e.stopPropagation()}>
+                {actions}
+            </div>
+        </SmartBackground>
+    );
+
+    // Corner segments: dark glass icons after the primary action.
+    const iconButton = "h-12 w-12 flex items-center justify-center shrink-0 bg-black/55 text-white backdrop-blur-md border-l border-white/10 transition hover:bg-black/75 active:scale-95";
+    const iconButtonStyle = undefined;
+
+    const renderPlayButton = (id: string, showStop: boolean, showSpinner: boolean, locked: boolean) => (
+        <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); playClick(); showStop ? handleStop(id) : handlePlay(id); }}
+            disabled={locked}
+            className="h-12 px-6 rounded-tl-2xl flex items-center gap-2 font-extrabold text-sm transition hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
+            style={{ backgroundColor: showStop ? "#ef4444" : colors.secondary, color: showStop ? "#fff" : "#1a1a1a" }}
+        >
+            {locked ? (
+                <><Spinner />{t('installing')}</>
+            ) : showStop ? (
+                <>
+                    {showSpinner ? <Spinner /> : <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z" /></svg>}
+                    {t('stop')}
+                </>
+            ) : (
+                <>
+                    <Icons.Play className="w-5 h-5 fill-current" />
+                    {t('play')}
+                </>
+            )}
+        </button>
+    );
+
     const renderMyModPackCard = (instance: GameInstance) => {
         const isLaunching = launchingId === instance.id;
         const isPlaying = playingInstances.has(instance.id);
         const isInstallingThisInstance = isInstanceInstallLocked(instance, installLockState);
         const showSpinner = shouldShowLaunchSpinner(isLaunching, isPlaying);
         const showStop = shouldShowStopButton(isLaunching, isPlaying);
-        const cardBanner = instance.banner || DEFAULT_MODPACK_BANNER;
 
-        return (
-            <SmartBackground
-                key={instance.id}
-                trigger={refreshTrigger}
-                src={cardBanner}
-                onClick={() => { playClick(); handleOpenInstanceDetail(instance); }}
-                className="group relative rounded-2xl overflow-hidden cursor-pointer h-48 transition-all"
-                style={getModPackCardFrameStyle()}
-            >
-                <div className="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105"
-                    style={{ backgroundImage: "inherit" }} />
-                <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/50 to-transparent" />
-
-                <div className="absolute left-2 bottom-2 right-12 flex items-center gap-3 z-20 transition-all duration-500 ease-in-out group-hover:-translate-y-21 pointer-events-none">
-                    <div className={`w-12 h-12 rounded-xl overflow-hidden shrink-0 ${instance.icon ? "" : "bg-black/20 backdrop-blur-md border border-white/10"}`}>
-                        {instance.icon ? (
-                            <SmartImage trigger={refreshTrigger} src={instance.icon} alt={instance.name} className="w-full h-full object-cover" />
-                        ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-white/10 text-white">
-                                <Icons.Box className="w-6 h-6" />
-                            </div>
-                        )}
-                    </div>
-                    <h3 className="text-lg font-bold text-white truncate opacity-90 group-hover:opacity-100 transition-opacity">
-                        {instance.name}
-                    </h3>
-                </div>
-
-                <div className="absolute bottom-0 left-0 right-0 p-4 z-10 w-full transition-all duration-500 ease-in-out transform translate-y-full opacity-0 group-hover:translate-y-0 group-hover:opacity-100">
-                    <div className="mb-2 pl-1">
-                        <p className="text-sm text-gray-300 truncate">
-                            {instance.minecraftVersion} • {getLoaderLabel(instance.loader)}
-                            {instance.totalPlayTime > 0 && (
-                                <span className="ml-2 opacity-70">
-                                    • {formatPlayTime(instance.totalPlayTime, { minutes: t('minutes_unit'), hours: t('hours_unit') })}
-                                </span>
-                            )}
-                        </p>
-                    </div>
-
-                    <div className="flex gap-2 w-full" onClick={(e) => e.stopPropagation()}>
-                        <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); playClick(); showStop ? handleStop(instance.id) : handlePlay(instance.id); }}
-                            disabled={isInstallingThisInstance}
-                            className="flex-1 h-10 px-4 rounded-xl flex items-center justify-center gap-2 transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10 disabled:opacity-50 disabled:pointer-events-none"
-                            style={{ backgroundColor: showStop ? "#ef4444" : colors.secondary, color: showStop ? "#fff" : "#1a1a1a" }}
-                        >
-                            {isInstallingThisInstance ? (
-                                <><Spinner /><span className="font-bold">{t('installing')}</span></>
-                            ) : showStop ? (
-                                <>
-                                    {showSpinner ? <Spinner /> : <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" /></svg>}
-                                    <span className="font-bold">{t('stop')}</span>
-                                </>
-                            ) : (
-                                <>
-                                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-                                    <span className="font-bold">{t('play')}</span>
-                                </>
-                            )}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); playClick(); handleOpenFolder(instance.id); }}
-                            className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10 shrink-0 bg-white/10 text-white"
-                            title={t('open_folder')}
-                        >
-                            <Icons.Folder className="w-5 h-5" />
-                        </button>
-                        <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); playClick(); setLogViewerInstanceId(instance.id); }}
-                            className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10 shrink-0 bg-white/10 text-white"
-                            title={t('view_logs')}
-                        >
-                            <Icons.Terminal className="w-5 h-5" />
-                        </button>
-                        <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); playClick(); setDeleteConfirmId(instance.id); }}
-                            className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-red-500/20 hover:text-red-500 active:scale-95 backdrop-blur-md border border-white/10 shrink-0 bg-white/10 text-white"
-                            title={t('delete')}
-                        >
-                            <Icons.Trash className="w-5 h-5" />
-                        </button>
-                    </div>
-                </div>
-            </SmartBackground>
-        );
+        return renderCardShell({
+            key: instance.id,
+            banner: instance.banner || DEFAULT_MODPACK_BANNER,
+            onOpen: () => { playClick(); handleOpenInstanceDetail(instance); },
+            icon: instance.icon,
+            name: instance.name,
+            meta: (
+                <>
+                    {getLoaderLabel(instance.loader)} {instance.minecraftVersion}
+                    {instance.totalPlayTime > 0 && ` · ${formatPlayTime(instance.totalPlayTime, { minutes: t('minutes_unit'), hours: t('hours_unit') })}`}
+                </>
+            ),
+            actions: (
+                <>
+                    {renderPlayButton(instance.id, showStop, showSpinner, isInstallingThisInstance)}
+                    <button type="button" onClick={(e) => { e.stopPropagation(); playClick(); handleOpenFolder(instance.id); }} className={iconButton} style={iconButtonStyle} title={t('open_folder')}>
+                        <Icons.Folder className="w-4.5 h-4.5" />
+                    </button>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); playClick(); setLogViewerInstanceId(instance.id); }} className={iconButton} style={iconButtonStyle} title={t('view_logs')}>
+                        <Icons.Terminal className="w-4.5 h-4.5" />
+                    </button>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); playClick(); setDeleteConfirmId(instance.id); }} className={`${iconButton} hover:text-red-500!`} style={iconButtonStyle} title={t('delete')}>
+                        <Icons.Trash className="w-4.5 h-4.5" />
+                    </button>
+                </>
+            ),
+        });
     };
 
     const renderInstalledServerCard = (serverInstance: GameInstance, server: Server) => {
@@ -610,173 +637,66 @@ export function ModPack({
         const showSpinner = shouldShowLaunchSpinner(isLaunching, isPlaying);
         const isInstallingThisServerInstance = isInstanceInstallLocked(serverInstance, installLockState);
         const autoUpdateOn = serverInstance.autoUpdate !== false;
-        const cardBanner = serverInstance.banner || server.bannerUrl || server.iconUrl || DEFAULT_MODPACK_BANNER;
 
-        return (
-            <SmartBackground
-                key={serverInstance.id}
-                trigger={refreshTrigger}
-                src={cardBanner}
-                onClick={() => { playClick(); handleOpenInstanceDetail(serverInstance); }}
-                className="group relative rounded-2xl overflow-hidden cursor-pointer h-48 transition-all"
-                style={getModPackCardFrameStyle()}
-            >
-                <div className="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105"
-                    style={{ backgroundImage: "inherit" }}
-                />
-                <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/50 to-transparent" />
-
-                <div className="absolute left-2 bottom-2 right-12 flex items-center gap-3 z-20 transition-all duration-500 ease-in-out group-hover:-translate-y-21 pointer-events-none">
-                    <div className={`w-12 h-12 rounded-xl overflow-hidden shrink-0 pointer-events-auto ${serverInstance.icon ? "" : "bg-black/20 backdrop-blur-md border border-white/10"}`}>
-                        {serverInstance.icon ? (
-                            <SmartImage trigger={refreshTrigger} src={serverInstance.icon} alt={serverInstance.name} className="w-full h-full object-cover" />
-                        ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-white/10 text-white">
-                                <Icons.Box className="w-6 h-6" />
-                            </div>
-                        )}
-                    </div>
-                    <h3 className="text-lg font-bold text-white truncate opacity-90 group-hover:opacity-100 transition-opacity">
-                        {serverInstance.name}
-                    </h3>
-                </div>
-
-                <div className="absolute top-2 right-2 z-10 select-none opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                    <div
-                        className="flex items-center gap-2 px-2 py-1 rounded-full bg-black/40 backdrop-blur-sm border border-white/10 hover:bg-black/50 transition-colors cursor-pointer"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            playClick();
-                            handleUpdate(serverInstance.id, { autoUpdate: !autoUpdateOn });
-                        }}
-                        title={autoUpdateOn ? t('instance_auto_update_on') : t('instance_auto_update_off')}
-                    >
-                        <div className={`w-2 h-2 rounded-full ${autoUpdateOn ? "bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.5)]" : "bg-gray-400"}`} />
-                        <span className="text-[10px] text-white/80 pr-1">{t('auto_update')}</span>
-                    </div>
-                </div>
-
-                <div className="absolute bottom-0 left-0 right-0 p-4 z-10 w-full transition-all duration-500 ease-in-out transform translate-y-full opacity-0 group-hover:translate-y-0 group-hover:opacity-100">
-                    <div className="mb-2 pl-1">
-                        <p className="text-sm text-gray-300 truncate">
-                            {serverInstance.minecraftVersion} • {getLoaderLabel(serverInstance.loader)}
-                        </p>
-                    </div>
-
-                    <div className="flex gap-2 w-full">
-                        <button
-                            type="button"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                playClick();
-                                if (showStop) {
-                                    handleStop(serverInstance.id);
-                                } else {
-                                    handlePlay(serverInstance.id);
-                                }
-                            }}
-                            disabled={isInstallingThisServerInstance}
-                            className="flex-1 h-10 px-4 rounded-xl flex items-center justify-center gap-2 transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10 disabled:opacity-50 disabled:pointer-events-none"
-                            style={{
-                                backgroundColor: showStop ? "#ef4444" : colors.secondary,
-                                color: showStop ? "#fff" : "#1a1a1a",
-                            }}
-                        >
-                            {isInstallingThisServerInstance ? (
-                                <>
-                                    <Spinner />
-                                    <span className="font-bold">{t('installing')}</span>
-                                </>
-                            ) : showStop ? (
-                                <>
-                                    {showSpinner ? (
-                                        <Spinner />
-                                    ) : (
-                                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                                            <rect x="6" y="6" width="12" height="12" />
-                                        </svg>
-                                    )}
-                                    <span className="font-bold">{t('stop')}</span>
-                                </>
-                            ) : (
-                                <>
-                                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                                        <path d="M8 5v14l11-7z" />
-                                    </svg>
-                                    <span className="font-bold">{t('play')}</span>
-                                </>
-                            )}
-                        </button>
-
-                        <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); playClick(); handleOpenFolder(serverInstance.id); }}
-                            className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10 shrink-0 bg-white/10 text-white"
-                            title={t('open_folder')}
-                        >
-                            <Icons.Folder className="w-5 h-5" />
-                        </button>
-                        <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); playClick(); setLogViewerInstanceId(serverInstance.id); }}
-                            className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-white/20 active:scale-95 backdrop-blur-md border border-white/10 shrink-0 bg-white/10 text-white"
-                            title={t('view_logs')}
-                        >
-                            <Icons.Terminal className="w-5 h-5" />
-                        </button>
-                        <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); playClick(); handleRepair?.(serverInstance.id); }}
-                            className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:bg-red-500/20 hover:text-red-500 active:scale-95 backdrop-blur-md border border-white/10 shrink-0 bg-white/10 text-white"
-                            title={t('repair_files')}
-                        >
-                            <Icons.Wrench className="w-5 h-5" />
-                        </button>
-                    </div>
-                </div>
-            </SmartBackground>
-        );
+        return renderCardShell({
+            key: serverInstance.id,
+            banner: serverInstance.banner || server.bannerUrl || DEFAULT_MODPACK_BANNER,
+            onOpen: () => { playClick(); handleOpenInstanceDetail(serverInstance); },
+            icon: serverInstance.icon,
+            name: serverInstance.name,
+            meta: <>{getLoaderLabel(serverInstance.loader)} {serverInstance.minecraftVersion}</>,
+            badge: (
+                <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); playClick(); handleUpdate(serverInstance.id, { autoUpdate: !autoUpdateOn }); }}
+                    title={autoUpdateOn ? t('instance_auto_update_on') : t('instance_auto_update_off')}
+                    className="h-7 px-2.5 rounded flex items-center gap-1.5 text-xs font-semibold text-white bg-black/40 border border-white/10 hover:bg-black/60 transition-colors"
+                >
+                    <span className={`w-2 h-2 rounded-full ${autoUpdateOn ? "bg-green-400" : "bg-gray-400"}`} />
+                    {t('auto_update')}
+                </button>
+            ),
+            actions: (
+                <>
+                    {renderPlayButton(serverInstance.id, showStop, showSpinner, isInstallingThisServerInstance)}
+                    <button type="button" onClick={(e) => { e.stopPropagation(); playClick(); handleOpenFolder(serverInstance.id); }} className={iconButton} style={iconButtonStyle} title={t('open_folder')}>
+                        <Icons.Folder className="w-4.5 h-4.5" />
+                    </button>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); playClick(); setLogViewerInstanceId(serverInstance.id); }} className={iconButton} style={iconButtonStyle} title={t('view_logs')}>
+                        <Icons.Terminal className="w-4.5 h-4.5" />
+                    </button>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); playClick(); handleRepair?.(serverInstance.id); }} className={iconButton} style={iconButtonStyle} title={t('repair_files')}>
+                        <Icons.Wrench className="w-4.5 h-4.5" />
+                    </button>
+                </>
+            ),
+        });
     };
 
     const renderUninstalledServerCard = (server: Server) => {
         const isInstallingThisServerCard = isInstallTargetActive(server.id, installLockState);
         const disableServerInstallAction = isInstalling && operationType === "install";
-        const cardBanner = server.bannerUrl || server.iconUrl || DEFAULT_MODPACK_BANNER;
 
-        return (
-            <SmartBackground
-                key={server.id}
-                trigger={refreshTrigger}
-                src={cardBanner}
-                className="group relative rounded-2xl overflow-hidden h-48 transition-all"
-                style={getModPackCardFrameStyle()}
-            >
-                <div
-                    className="absolute inset-0 bg-cover bg-center transition-all duration-500 group-hover:scale-105 opacity-30 grayscale group-hover:grayscale-0"
-                    style={{ backgroundImage: "inherit" }}
-                />
-                <div className="absolute inset-0 bg-linear-to-t from-black/80 via-transparent to-transparent" />
-
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-10 transition-opacity group-hover:opacity-100">
-                    <button
-                        type="button"
-                        onClick={() => { playClick(); handleInstallServerInstance(server.storagePath || server.id); }}
-                        disabled={disableServerInstallAction}
-                        className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:pointer-events-none flex items-center gap-2"
-                    >
-                        <Icons.Download className="w-5 h-5" />
-                        {isInstallingThisServerCard ? t('installing_modpack') : t('install')}
-                    </button>
-                </div>
-
-                <div className="absolute bottom-4 left-4 right-4 z-10 pointer-events-none">
-                    <h3 className="text-xl font-bold text-white truncate text-center">
-                        {server.name}
-                    </h3>
-                    <p className="text-sm text-gray-400 text-center">{t('not_installed')}</p>
-                </div>
-            </SmartBackground>
-        );
+        return renderCardShell({
+            key: server.id,
+            banner: server.bannerUrl || DEFAULT_MODPACK_BANNER,
+            icon: server.iconUrl,
+            name: server.name,
+            meta: t('not_installed'),
+            dimArt: true,
+            actions: (
+                <button
+                    type="button"
+                    onClick={() => { playClick(); handleInstallServerInstance(server.storagePath || server.id); }}
+                    disabled={disableServerInstallAction}
+                    className="h-12 px-6 rounded-tl-2xl flex items-center gap-2 font-extrabold text-sm transition hover:brightness-110 active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
+                    style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                >
+                    {isInstallingThisServerCard ? <Spinner /> : <Icons.Download className="w-4.5 h-4.5" />}
+                    {isInstallingThisServerCard ? t('installing_modpack') : t('install')}
+                </button>
+            ),
+        });
     };
 
     const myModPacks = useMemo(
@@ -833,16 +753,16 @@ export function ModPack({
                         className="flex items-center justify-between flex-wrap gap-4"
                     >
                         <div>
-                            <h2 className="text-2xl font-bold mb-1" style={{ color: colors.onSurface }}>{t('modpacks')}</h2>
-                            <p className="text-sm opacity-70" style={{ color: colors.onSurfaceVariant }}>{t('modpacks_subtitle' as any)}</p>
+                            <h2 className="font-display text-2xl mb-1" style={{ color: colors.onSurface }}>{t('modpacks')}</h2>
+                            <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>{t('modpacks_subtitle' as any)}</p>
                         </div>
                         <button
                             type="button"
                             ref={createButtonRef}
                             onClick={() => { playClick(); setShowCreateMenu(v => !v); }}
                             disabled={isInstalling}
-                            className="flex items-center gap-2 px-4 py-2 rounded-xl transition-all hover:scale-[1.02] disabled:opacity-50"
-                            style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                            className="h-11 flex items-center gap-2 px-5 rounded-xl text-sm font-bold transition hover:brightness-105 active:scale-[0.98] disabled:opacity-50"
+                            style={{ backgroundColor: colors.secondary, color: "#111" }}
                         >
                             <Icons.Add className="w-5 h-5" />
                             Mod Pack
@@ -859,49 +779,48 @@ export function ModPack({
                                         top: menuPos.top,
                                         right: menuPos.right,
                                         zIndex: 9999,
-                                        backgroundColor: colors.surfaceContainerHighest,
-                                        border: `1px solid ${colors.outline}30`,
+                                        backgroundColor: colors.surfaceContainerHigh,
+                                        boxShadow: "0 16px 40px -12px rgba(0,0,0,0.4)",
+                                        padding: 6,
                                     }}
                                 >
                                     <button
                                         type="button"
                                         onClick={() => { playClick(); setShowCreateMenu(false); setShowCreateModal(true); }}
-                                        className="w-full flex items-center gap-3 px-4 py-3 transition-all hover:bg-white/5 text-left"
+                                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors hover:bg-black/5 text-left"
                                         style={{ color: colors.onSurface }}
                                     >
                                         <Icons.Add className="w-5 h-5 shrink-0" />
                                         <div className="flex-1 min-w-0">
-                                            <div className="font-medium text-sm">{t('create_modpack_create')}</div>
-                                            <div className="text-xs opacity-60 truncate">{t('create_your_own')}</div>
+                                            <div className="font-semibold text-[15px]">{t('create_modpack_create')}</div>
+                                            <div className="text-[13px] truncate" style={{ color: colors.onSurfaceVariant }}>{t('create_your_own')}</div>
                                         </div>
                                     </button>
-                                    <div className="h-px" style={{ backgroundColor: colors.outline + '20' }} />
-                                    <button
+                                                                        <button
                                         type="button"
                                         onClick={() => { playClick(); setShowCreateMenu(false); setShowImportModal(true); }}
                                         disabled={isInstalling}
-                                        className="w-full flex items-center gap-3 px-4 py-3 transition-all hover:bg-white/5 disabled:opacity-50 text-left"
+                                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors hover:bg-black/5 disabled:opacity-50 text-left"
                                         style={{ color: colors.onSurface }}
                                     >
                                         <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="currentColor">
                                             <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
                                         </svg>
                                         <div className="flex-1 min-w-0">
-                                            <div className="font-medium text-sm">{t('import')}</div>
-                                            <div className="text-xs opacity-60 truncate">.mrpack / .zip</div>
+                                            <div className="font-semibold text-[15px]">{t('import')}</div>
+                                            <div className="text-[13px] truncate" style={{ color: colors.onSurfaceVariant }}>.mrpack / .zip</div>
                                         </div>
                                     </button>
-                                    <div className="h-px" style={{ backgroundColor: colors.outline + '20' }} />
-                                    <button
+                                                                        <button
                                         type="button"
                                         onClick={() => { playClick(); setShowCreateMenu(false); setActiveTab("explore"); }}
-                                        className="w-full flex items-center gap-3 px-4 py-3 transition-all hover:bg-white/5 text-left"
+                                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors hover:bg-black/5 text-left"
                                         style={{ color: colors.onSurface }}
                                     >
                                         <Icons.Box className="w-5 h-5 shrink-0" />
                                         <div className="flex-1 min-w-0">
-                                            <div className="font-medium text-sm">{t('add_new_mod_pack_btn')}</div>
-                                            <div className="text-xs opacity-60 truncate">{t('choose_and_play')}</div>
+                                            <div className="font-semibold text-[15px]">{t('add_new_mod_pack_btn')}</div>
+                                            <div className="text-[13px] truncate" style={{ color: colors.onSurfaceVariant }}>{t('choose_and_play')}</div>
                                         </div>
                                     </button>
                                 </div>
@@ -910,9 +829,9 @@ export function ModPack({
                     </div>
 
                     <div>
-                        <h3 className="text-lg font-medium mb-3" style={{ color: colors.onSurface }}>{t('my_mod_packs')}</h3>
+                        <h3 className="text-lg font-bold mb-3 flex items-center gap-2" style={{ color: colors.onSurface }}>{t('my_mod_packs')}{!isLoading && <span className="text-sm font-semibold px-2 rounded-md" style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}>{myModPacks.length}</span>}</h3>
                         {isLoading ? (
-                            <div className="grid gap-4 grid-cols-2 lg:grid-cols-3">
+                            <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
                                 {Array.from({ length: 9 }).map((_, i) => renderModPackSkeleton(i))}
                             </div>
                         ) : myModPacks.length === 0 ? (
@@ -925,14 +844,14 @@ export function ModPack({
                                 <p className="text-sm" style={{ color: colors.onSurfaceVariant }}>{t('create_mod_pack_first')}</p>
                             </div>
                         ) : (
-                            <div className="grid gap-4 grid-cols-2 lg:grid-cols-3">
+                            <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
                                 {myModPacks.map(renderMyModPackCard)}
                             </div>
                         )}
                     </div>
 
                     <div>
-                        <h3 className="text-lg font-medium mb-3" style={{ color: colors.onSurface }}>{t('server_mod_packs')}</h3>
+                        <h3 className="text-lg font-bold mb-3 flex items-center gap-2" style={{ color: colors.onSurface }}>{t('server_mod_packs')}{!loadingServers && <span className="text-sm font-semibold px-2 rounded-md" style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}>{joinedServers.length}</span>}</h3>
 
                         {loadingServers ? (
                             <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
@@ -940,7 +859,7 @@ export function ModPack({
                                 <Skeleton className="h-48 rounded-2xl" colors={colors} />
                             </div>
                         ) : joinedServers.length > 0 ? (
-                            <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+                            <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
                                 {joinedServers.map(server => {
                                     const serverInstance = serverInstancesByCloudId.get(server.id);
                                     return serverInstance

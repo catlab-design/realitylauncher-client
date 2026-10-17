@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import { Icons } from "../ui/Icons";
 import { playClick } from "../../lib/sounds";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -7,140 +7,89 @@ import { useUiStore } from "../../store/uiStore";
 import { useAuthStore } from "../../store/authStore";
 
 interface SidebarProps {
-    colors: any; 
+    colors: any;
     onTabSelect?: (tabId: string) => void;
 }
 
+type NavItem = { id: string; icon: any; label: string };
+
+/** Icon colour on the theme-coloured rail. */
+const INK = "#1a1a1a";
+
+/**
+ * Top navigation, Steam / Epic style: the main pages as text tabs in the title bar (active one
+ * white with a yellow underline), utilities (admin / settings / about) as small icons after them.
+ */
 export function Sidebar({ colors, onTabSelect }: SidebarProps) {
     const config = useConfigStore();
     const { t } = useTranslation(config.language);
     const { activeTab, setActiveTab } = useUiStore();
-    const { session, accounts } = useAuthStore();
-    const [hoveredTab, setHoveredTab] = useState<string | null>(null);
+    const { session } = useAuthStore();
 
     const isAdmin = session?.isAdmin || false;
 
-    const effectiveThemeMode = React.useMemo(() => {
-        if (config.theme === "auto") {
-            const hour = new Date().getHours();
-            return hour >= 6 && hour < 18 ? "light" : "dark";
-        }
-        return config.theme;
-    }, [config.theme]);
-
-    const mainNavItems = [
-        { id: "home", icon: Icons.Home, label: t('home') },
-        { id: "servers", icon: Icons.Dns, label: t('servers') },
-        { id: "modpack", icon: Icons.Modpack, label: t('modpacks') },
-        { id: "explore", icon: Icons.Search, label: t('explore') },
-        { id: "wardrobe", icon: Icons.Hanger, label: t('wardrobe') },
+    const playItems: NavItem[] = [
+        { id: "home", icon: Icons.Home, label: t("home") },
+        { id: "servers", icon: Icons.Dns, label: t("servers") },
+        { id: "modpack", icon: Icons.Modpack, label: t("modpacks") },
+    ];
+    const discoverItems: NavItem[] = [
+        { id: "explore", icon: Icons.Search, label: t("explore") },
+        { id: "wardrobe", icon: Icons.Hanger, label: t("wardrobe") },
+    ];
+    const bottomItems: NavItem[] = [
+        ...(isAdmin ? [{ id: "admin", icon: Icons.Admin, label: t("admin") }] : []),
+        { id: "settings", icon: Icons.Settings, label: t("settings") },
+        { id: "about", icon: Icons.Info, label: t("about") },
     ];
 
-    const bottomNavItems = [
-        ...(isAdmin ? [{ id: "admin", icon: Icons.Admin, label: t('admin') }] : []),
-        { id: "settings", icon: Icons.Settings, label: t('settings') },
-        { id: "about", icon: Icons.Info, label: t('about') },
-    ];
+    const select = (id: string) => {
+        playClick();
+        if (activeTab !== id) React.startTransition(() => setActiveTab(id));
+        onTabSelect?.(id);
+    };
 
-    const renderTooltip = (id: string, label: string) => (
-        hoveredTab === id ? (
-            <div
-                className="absolute ml-3 px-3 py-1.5 rounded-lg whitespace-nowrap z-50 pointer-events-none select-none shadow-xl border border-white/10"
-                style={{
-                    backgroundColor: "rgba(0, 0, 0, 0.95)",
-                    color: "#fff",
-                    fontSize: "0.75rem",
-                    left: "100%",
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    position: "absolute",
-                    display: "block",
-                    visibility: "visible"
-                }}
+    const renderTab = ({ id, label }: NavItem) => {
+        const active = activeTab === id;
+        return (
+            <button
+                key={id}
+                onClick={() => select(id)}
+                onDragStart={(e) => e.preventDefault()}
+                draggable={false}
+                aria-current={active ? "page" : undefined}
+                className="no-drag select-none relative h-10 px-3 flex items-center text-sm font-semibold whitespace-nowrap transition-colors hover:text-white"
+                style={{ color: active ? "#ffffff" : "rgba(255,255,255,0.6)" }}
             >
                 {label}
-            </div>
-        ) : null
-    );
+                {active && <span className="absolute left-3 right-3 bottom-0 h-0.5 rounded-full" style={{ backgroundColor: colors.secondary }} />}
+            </button>
+        );
+    };
+
+    const renderUtility = ({ id, icon: Icon, label }: NavItem) => {
+        const active = activeTab === id;
+        return (
+            <button
+                key={id}
+                onClick={() => select(id)}
+                onDragStart={(e) => e.preventDefault()}
+                draggable={false}
+                aria-label={label}
+                title={label}
+                className="no-drag w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-white/10"
+                style={{ color: active ? colors.secondary : "rgba(255,255,255,0.65)" }}
+            >
+                <Icon className="w-4.5 h-4.5 pointer-events-none" />
+            </button>
+        );
+    };
 
     return (
-        <nav className="w-20 flex flex-col items-center" style={{ backgroundColor: colors.secondary }}>
-            <div className="flex-1 flex flex-col items-center gap-2 pt-[22px]">
-
-                {mainNavItems.map(({ id, icon: Icon, label }: { id: string, icon: any, label: string }) => (
-                    <div 
-                        key={id} 
-                        className="relative group select-none"
-                        onDragStart={(e) => e.preventDefault()}
-                        draggable={false}
-                        style={{ WebkitUserDrag: "none" } as React.CSSProperties}
-                        onMouseEnter={() => setHoveredTab(id)}
-                        onMouseLeave={() => setHoveredTab(null)}
-                    >
-                        <button
-                            title=""
-                            onClick={() => { 
-                                playClick(); 
-                                if (activeTab !== id) {
-                                    React.startTransition(() => setActiveTab(id));
-                                }
-                                onTabSelect?.(id);
-                            }}
-                            onDragStart={(e) => e.preventDefault()}
-                            draggable={false}
-                            className="w-14 h-14 rounded-2xl flex items-center justify-center no-drag relative select-none"
-                            style={{
-                                color: "#1a1a1a",
-                                WebkitUserDrag: "none"
-                            } as React.CSSProperties}
-                        >
-                            {activeTab === id && (
-                                <div className="absolute inset-0 bg-white/90 rounded-2xl" />
-                            )}
-                            <Icon className="w-6 h-6 z-10 relative pointer-events-none select-none" />
-                        </button>
-                        {renderTooltip(id, label)}
-                    </div>
-                ))}
-            </div>
-
-            <div className="flex-col items-center gap-2 pb-4 flex">
-                {bottomNavItems.map(({ id, icon: Icon, label }: { id: string, icon: any, label: string }) => (
-                    <div 
-                        key={id} 
-                        className="relative group select-none"
-                        onDragStart={(e) => e.preventDefault()}
-                        draggable={false}
-                        style={{ WebkitUserDrag: "none" } as React.CSSProperties}
-                        onMouseEnter={() => setHoveredTab(id)}
-                        onMouseLeave={() => setHoveredTab(null)}
-                    >
-                        <button
-                            title=""
-                            onClick={() => { 
-                                playClick(); 
-                                if (activeTab !== id) {
-                                    React.startTransition(() => setActiveTab(id));
-                                }
-                                onTabSelect?.(id);
-                            }}
-                            onDragStart={(e) => e.preventDefault()}
-                            draggable={false}
-                            className="w-14 h-14 rounded-2xl flex items-center justify-center no-drag relative select-none"
-                            style={{
-                                color: "#1a1a1a",
-                                WebkitUserDrag: "none"
-                            } as React.CSSProperties}
-                        >
-                            {activeTab === id && (
-                                <div className="absolute inset-0 bg-white/90 rounded-2xl" />
-                            )}
-                            <Icon className="w-6 h-6 z-10 relative pointer-events-none select-none" />
-                        </button>
-                        {renderTooltip(id, label)}
-                    </div>
-                ))}
-            </div>
+        <nav className="flex items-center h-10">
+            {[...playItems, ...discoverItems].map(renderTab)}
+            <span className="w-px h-4 mx-2 bg-white/15" />
+            <div className="flex items-center gap-0.5">{bottomItems.map(renderUtility)}</div>
         </nav>
     );
 }

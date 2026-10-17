@@ -513,6 +513,105 @@ async fn mc_profile(mc_token: &str) -> Result<(String, String), String> {
     Ok((uuid, name))
 }
 
+/// Body for the API's `/auth/microsoft/{login,link}`. Besides the Minecraft token it carries a Mojang
+/// player-certificate proof: the API runs on Cloudflare Workers, which Mojang's edge blocks, so it cannot
+/// check the token itself and verifies the certificate offline instead (realitylauncher-api
+/// `src/lib/minecraft-certificate.ts`). Without a proof the API falls back to the token check.
+async fn ml_identity_body(mc_token: &str, uuid: &str, username: &str) -> serde_json::Value {
+    let mut body = serde_json::json!({
+        "accessToken": mc_token,
+        "uuid": uuid,
+        "username": username,
+    });
+    match minecraft_certificate_proof(mc_token, uuid).await {
+        Ok(proof) => body["certificate"] = proof,
+        Err(e) => log::warn!("[Auth] Minecraft certificate proof unavailable: {e}"),
+    }
+    body
+}
+
+/// Fetches the player's chat-signing certificate from Mojang and signs a fresh timestamped message with its
+/// private key, proving possession. The message format must match `possessionMessage` in the API.
+async fn minecraft_certificate_proof(mc_token: &str, uuid: &str) -> Result<serde_json::Value, String> {
+    use base64::Engine as _;
+    use ring::signature::{RsaKeyPair, RSA_PKCS1_SHA256};
+
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct KeyPair {
+        private_key: String,
+        public_key: String,
+    }
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Certificate {
+        key_pair: KeyPair,
+        public_key_signature_v2: String,
+        expires_at: String,
+    }
+
+    let resp = crate::http_client::HTTP_CLIENT
+        .clone()
+        .post("https://api.minecraftservices.com/player/certificates")
+        .bearer_auth(mc_token)
+        .header("Content-Length", "0")
+        .timeout(std::time::Duration::from_secs(15))
+        .send()
+        .await
+        .map_err(|e| format!("certificate request failed: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("certificate request returned HTTP {}", resp.status()));
+    }
+    let cert: Certificate = resp
+        .json()
+        .await
+        .map_err(|e| format!("certificate parse failed: {e}"))?;
+
+    // Mojang wraps PKCS#8 / SPKI DER in "RSA PRIVATE/PUBLIC KEY" PEM labels; only the base64 matters.
+    let pem_body = |pem: &str| -> String {
+        pem.lines()
+            .filter(|l| !l.starts_with("-----"))
+            .collect::<String>()
+            .split_whitespace()
+            .collect()
+    };
+    let private_der = base64::engine::general_purpose::STANDARD
+        .decode(pem_body(&cert.key_pair.private_key))
+        .map_err(|e| format!("private key decode failed: {e}"))?;
+    let key_pair = RsaKeyPair::from_pkcs8(&private_der)
+        .or_else(|_| RsaKeyPair::from_der(&private_der))
+        .map_err(|e| format!("private key rejected: {e}"))?;
+
+    // Same instant Mojang signed: Java's Instant.toEpochMilli truncates sub-millisecond digits, as does chrono.
+    let expires_at = chrono::DateTime::parse_from_rfc3339(&cert.expires_at)
+        .map_err(|e| format!("expiresAt parse failed: {e}"))?
+        .timestamp_millis();
+
+    let timestamp = chrono::Utc::now().timestamp_millis();
+    let message = format!(
+        "reality-launcher-auth:{}:{}",
+        uuid.replace('-', "").to_lowercase(),
+        timestamp
+    );
+    let mut signature = vec![0u8; key_pair.public().modulus_len()];
+    key_pair
+        .sign(
+            &RSA_PKCS1_SHA256,
+            &ring::rand::SystemRandom::new(),
+            message.as_bytes(),
+            &mut signature,
+        )
+        .map_err(|_| "signing failed".to_string())?;
+
+    Ok(serde_json::json!({
+        "publicKey": pem_body(&cert.key_pair.public_key),
+        "publicKeySignatureV2": cert.public_key_signature_v2,
+        "expiresAt": expires_at,
+        "timestamp": timestamp,
+        "signature": base64::engine::general_purpose::STANDARD.encode(&signature),
+    }))
+}
+
 async fn exchange_with_ml_api(
     mc_token: &str,
     uuid: &str,
@@ -520,11 +619,7 @@ async fn exchange_with_ml_api(
     is_linking: bool,
     api_token_override: Option<&str>,
 ) -> Result<(Option<String>, Option<String>, Option<bool>, Option<String>), String> {
-    let body = serde_json::json!({
-        "accessToken": mc_token,
-        "uuid": uuid,
-        "username": username,
-    });
+    let body = ml_identity_body(mc_token, uuid, username).await;
 
     let client = crate::http_client::HTTP_CLIENT.clone();
 
@@ -1084,11 +1179,7 @@ async fn auth_refresh_core(force: bool) -> AuthCommandResult {
     }
 
     if let Some(api_token_str) = session.api_token.clone() {
-        let refresh_body = serde_json::json!({
-            "accessToken": mc_token,
-            "uuid": session.uuid,
-            "username": session.username,
-        });
+        let refresh_body = ml_identity_body(&mc_token, &session.uuid, &session.username).await;
 
         let client = crate::http_client::HTTP_CLIENT.clone();
         let api_resp = client
@@ -1114,11 +1205,7 @@ async fn auth_refresh_core(force: bool) -> AuthCommandResult {
             }
         }
     } else {
-        let refresh_body = serde_json::json!({
-            "accessToken": mc_token,
-            "uuid": session.uuid,
-            "username": session.username,
-        });
+        let refresh_body = ml_identity_body(&mc_token, &session.uuid, &session.username).await;
 
         let client = crate::http_client::HTTP_CLIENT.clone();
         let mut api_resp = client
@@ -1532,6 +1619,18 @@ pub async fn link_catid(
     }
 
     
+    // The API verifies the Minecraft token with Mojang, and stored tokens go stale
+    // (~24h lifetime, or an older token restored by an account switch). Always link
+    // with a freshly minted one.
+    let refreshed = auth_refresh_core(true).await;
+    if let Some(err) = refreshed.error {
+        return serde_json::json!({ "ok": false, "error": err });
+    }
+    let session = match get_session_inner() {
+        Some(s) if s.auth_type == "microsoft" => s,
+        _ => return serde_json::json!({ "ok": false, "error": "Session expired, please re-login with Microsoft." }),
+    };
+
     let login_body = serde_json::json!({ "username": username, "password": password });
     let client = crate::http_client::HTTP_CLIENT.clone();
     let login_resp = match client
@@ -1570,12 +1669,13 @@ pub async fn link_catid(
         dt.to_rfc3339()
     });
 
-    let link_body = serde_json::json!({
-        "accessToken": session.access_token.unwrap_or_default(),
-        "uuid": session.uuid,
-        "username": session.username,
-        "accessTokenExpiresAt": ms_expires_at,
-    });
+    let mut link_body = ml_identity_body(
+        session.access_token.as_deref().unwrap_or_default(),
+        &session.uuid,
+        &session.username,
+    )
+    .await;
+    link_body["accessTokenExpiresAt"] = serde_json::json!(ms_expires_at);
 
     let link_resp = match client
         .post(format!("{API_URL}/auth/microsoft/link"))
@@ -1592,7 +1692,16 @@ pub async fn link_catid(
 
     let link_status = link_resp.status();
     if !link_status.is_success() {
-        let error_text = link_resp.text().await.unwrap_or_default();
+        // Show the API's message (`{"error": "..."}`) rather than the raw JSON body.
+        let body_text = link_resp.text().await.unwrap_or_default();
+        let error_text = serde_json::from_str::<serde_json::Value>(&body_text)
+            .ok()
+            .and_then(|v| {
+                ["error", "message"]
+                    .iter()
+                    .find_map(|k| v.get(*k).and_then(|m| m.as_str()).map(str::to_string))
+            })
+            .unwrap_or(body_text);
         return serde_json::json!({ "ok": false, "error": if error_text.is_empty() { "เน€เธเธทเนเธญเธกเธ•เนเธญเนเธกเนเธชเธณเน€เธฃเนเธ".to_string() } else { error_text } });
     }
 

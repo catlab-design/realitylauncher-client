@@ -167,7 +167,6 @@ export function ProjectPreview({
             <div className="rounded-2xl sticky top-4 flex flex-col max-h-[calc(100vh-2rem)] overflow-y-auto custom-scrollbar"
                 style={{
                     backgroundColor: colors.surfaceContainer,
-                    border: `1px solid ${colors.outline}20`,
                     minHeight: "400px",
                     isolation: "isolate",
                 }}>
@@ -225,8 +224,8 @@ export function ProjectPreview({
                         <div className="flex flex-wrap gap-1.5 mb-5">
                             {project.categories.slice(0, 6).map((cat) => (
                                 <span key={cat}
-                                    className="px-2 py-0.5 rounded-md text-[11px] uppercase font-bold tracking-wider"
-                                    style={{ backgroundColor: `${colors.secondary}20`, color: colors.secondary }}>
+                                    className="h-7 px-2.5 inline-flex items-center rounded-lg text-xs font-semibold capitalize"
+                                    style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}>
                                     {cat}
                                 </span>
                             ))}
@@ -276,17 +275,17 @@ export function ProjectPreview({
                     </div>
 
                     <div className="mb-6">
-                        <h4 className="text-[13px] font-bold uppercase tracking-wider mb-2 opacity-70" style={{ color: colors.onSurfaceVariant }}>
+                        <h4 className="text-[15px] font-bold mb-2" style={{ color: colors.onSurface }}>
                             {t('about')}
                         </h4>
-                        <p className="text-sm leading-6 opacity-90 whitespace-pre-line" style={{ color: colors.onSurface }}>
+                        <p className="text-sm leading-6 whitespace-pre-line" style={{ color: colors.onSurface }}>
                             {project.description}
                         </p>
                     </div>
 
                     {project.gallery && project.gallery.length > 0 && (
                         <div className="mb-4">
-                            <h4 className="text-[13px] font-bold uppercase tracking-wider mb-2 opacity-70" style={{ color: colors.onSurfaceVariant }}>
+                            <h4 className="text-[15px] font-bold mb-2" style={{ color: colors.onSurface }}>
                                 {t('gallery')}
                             </h4>
                             <div className="grid grid-cols-2 gap-2">
@@ -297,8 +296,7 @@ export function ProjectPreview({
                                     return (
                                         <div
                                             key={idx}
-                                            className="aspect-video rounded-lg overflow-hidden border cursor-pointer hover:opacity-80 transition-opacity"
-                                            style={{ borderColor: `${colors.outline}20` }}
+                                            className="aspect-video rounded-lg overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
                                             onClick={() => setSelectedImageIndex(idx)}
                                         >
                                             <img
@@ -313,8 +311,8 @@ export function ProjectPreview({
                         </div>
                     )}
 
-                    <div className="pt-4 mt-auto border-t flex justify-between items-center text-xs"
-                        style={{ borderColor: `${colors.outline}20`, color: colors.onSurfaceVariant }}>
+                    <div className="pt-4 mt-auto border-t flex justify-between items-center text-[13px]"
+                        style={{ borderColor: colors.outlineVariant, color: colors.onSurfaceVariant }}>
                         <span>ID: {project.project_id}</span>
                         {project.latest_version && (
                             <span>{t('version_label').replace('{version}', project.latest_version)}</span>
@@ -323,7 +321,7 @@ export function ProjectPreview({
                     </div>
 
                     {(project.game_versions || project.loaders) && (
-                        <div className="pt-2 text-xs opacity-70 flex flex-wrap gap-2" style={{ color: colors.onSurfaceVariant }}>
+                        <div className="pt-2 text-[13px] flex flex-wrap gap-2" style={{ color: colors.onSurfaceVariant }}>
                             {project.loaders && project.loaders.length > 0 && (
                                 <div className="flex gap-1">
                                     <span className="font-bold">{t('loaders_label')}</span>

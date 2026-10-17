@@ -4,6 +4,21 @@ interface UiState {
     activeTab: string;
     setActiveTab: (tab: string) => void;
     lastContentTab: string;
+    /** Instance the Modpack tab should launch as soon as it has loaded (set by Play on Home). */
+    pendingLaunchId: string | null;
+    /** Server whose detail page the Servers tab should open as soon as it has its list (set by Home cards). */
+    pendingServerDetailId: string | null;
+    setPendingServerDetailId: (id: string | null) => void;
+    /** A full-bleed page is open: the title bar floats transparently over it. */
+    immersive: boolean;
+    setImmersive: (on: boolean) => void;
+    /** The page draws right from the top edge, under the transparent title bar. */
+    fullBleed: boolean;
+    setFullBleed: (on: boolean) => void;
+    /** Server modpack the Modpack tab should install as soon as it mounts (set by Install on Home). */
+    pendingInstallServerId: string | null;
+    setPendingInstallServerId: (id: string | null) => void;
+    setPendingLaunchId: (id: string | null) => void;
     setLastContentTab: (tab: string) => void;
     wardrobeMode: "microsoft" | "catskinc";
     setWardrobeMode: (mode: "microsoft" | "catskinc") => void;
@@ -35,6 +50,16 @@ export const useUiStore = create<UiState>((set) => ({
     activeTab: "home",
     setActiveTab: (tab) => set({ activeTab: tab }),
     lastContentTab: "home",
+    pendingLaunchId: null,
+    pendingServerDetailId: null,
+    setPendingServerDetailId: (id) => set({ pendingServerDetailId: id }),
+    immersive: false,
+    setImmersive: (on) => set({ immersive: on }),
+    fullBleed: false,
+    setFullBleed: (on) => set({ fullBleed: on }),
+    setPendingLaunchId: (id) => set({ pendingLaunchId: id }),
+    pendingInstallServerId: null,
+    setPendingInstallServerId: (id) => set({ pendingInstallServerId: id }),
     setLastContentTab: (tab) => set({ lastContentTab: tab }),
     wardrobeMode: (typeof window !== "undefined" && localStorage.getItem("wardrobe-mode") as "microsoft" | "catskinc") || "microsoft",
     setWardrobeMode: (mode) => {

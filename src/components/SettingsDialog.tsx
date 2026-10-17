@@ -61,7 +61,7 @@ export function SettingsDialog({
             role="dialog"
             aria-modal="true"
             aria-label={t("settings")}
-            className="flex h-[min(80vh,760px)] w-full max-w-[1520px] flex-col overflow-hidden rounded-2xl border border-white/10"
+            className="flex h-[min(86vh,860px)] w-full max-w-300 flex-col overflow-hidden rounded-2xl"
             style={{ backgroundColor: colors.surface, fontSize: 15 }}
             onClick={stopPropagation}
             initial={{ opacity: 0, y: 28, scale: 0.975 }}
@@ -70,50 +70,23 @@ export function SettingsDialog({
             transition={{ type: "spring", stiffness: 260, damping: 28, mass: 0.9 }}
           >
             <motion.div
-              className="flex items-center justify-between border-b px-6 py-3.5 sm:px-7"
-              style={{
-                borderColor: `${colors.onSurface}10`,
-                backgroundColor: colors.surfaceContainerLow || colors.surfaceContainer,
-              }}
+              className="flex items-center justify-between px-6 pt-5 pb-2 sm:px-8"
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.22, delay: 0.04, ease: "easeOut" }}
             >
-              <div className="flex items-center gap-4">
-                <div
-                  className="flex h-10 w-10 items-center justify-center rounded-md"
-                  style={{
-                    backgroundColor: colors.secondary,
-                    color: "#1a1a1a",
-                  }}
-                >
-                  <Icons.Settings className="h-5.5 w-5.5" />
-                </div>
-                <div>
-                  <h2
-                    className="text-lg font-black tracking-tight"
-                    style={{ color: colors.onSurface }}
-                  >
-                    {t("settings")}
-                  </h2>
-                  <p
-                    className="text-xs opacity-75"
-                    style={{ color: colors.onSurfaceVariant }}
-                  >
-                    {t("launcher_settings")}
-                  </p>
-                </div>
-              </div>
+              <h2 className="font-display text-2xl" style={{ color: colors.onSurface }}>
+                {t("settings")}
+              </h2>
 
               <button
                 type="button"
                 onClick={handleClose}
-                className="flex h-10 w-10 items-center justify-center rounded-full border transition-all hover:bg-white/10"
+                className="flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:brightness-110"
                 style={{
                   color: colors.onSurface,
-                  borderColor: `${colors.onSurface}15`,
-                  backgroundColor: colors.surfaceContainer,
+                  backgroundColor: colors.surfaceContainerHigh,
                 }}
                 aria-label={t("close")}
               >
@@ -122,7 +95,7 @@ export function SettingsDialog({
             </motion.div>
 
             <motion.div
-              className="min-h-0 flex-1 overflow-hidden px-6 pb-6 pt-5 sm:px-7 sm:pb-7 sm:pt-6"
+              className="min-h-0 flex-1 overflow-hidden px-6 pb-6 pt-4 sm:px-8 sm:pb-8"
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 8 }}

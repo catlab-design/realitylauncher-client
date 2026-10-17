@@ -383,7 +383,7 @@ export const api = {
             mouthOpenDataUrl: payload.mouthOpenDataUrl,
             gameDirectory: payload.gameDirectory,
         }),
-    catskincClearAssets: (payload: { mode: string; gameDirectory?: string }) =>
+    catskincClearAssets: (payload: { mode: 'all' | 'skin' | 'mouth'; gameDirectory?: string }) =>
         invoke<SimpleResult>('catskinc_clear_assets', { mode: payload.mode, gameDirectory: payload.gameDirectory }),
     minecraftGetProfile: (options?: { forceRefresh?: boolean }) =>
         invoke<any>('minecraft_get_profile', { forceRefresh: options?.forceRefresh }),

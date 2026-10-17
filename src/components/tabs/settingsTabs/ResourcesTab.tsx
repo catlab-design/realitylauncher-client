@@ -3,12 +3,13 @@ import toast from "react-hot-toast";
 import type { LauncherConfig } from "../../../types/launcher";
 import type { SettingsTabProps } from "./AccountTab";
 import { useTranslation } from "../../../hooks/useTranslation";
+import { SettingsPage, SettingsSection, SettingsRow, fieldClass, fieldStyle, buttonClass, buttonStyle, primaryButtonStyle } from "./SettingsUI";
 
 export function ResourcesTab({ config, updateConfig, colors, handleBrowseMinecraftDir }: SettingsTabProps & { handleBrowseMinecraftDir?: () => void | Promise<void> }) {
     const windowApi = (window as any).api;
     const { t } = useTranslation(config.language);
     const [isClearingCache, setIsClearingCache] = useState(false);
-    
+
     const [resolvedDir, setResolvedDir] = useState("");
     useEffect(() => {
         (async () => {
@@ -39,113 +40,113 @@ export function ResourcesTab({ config, updateConfig, colors, handleBrowseMinecra
     };
 
     return (
-        <div className="rounded-xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
-            <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "40" }}>
-                <i className="fa-solid fa-hard-drive text-lg" style={{ color: colors.secondary }}></i>
-                <h3 className="font-medium" style={{ color: colors.onSurface }}>{t('tab_resources')}</h3>
-            </div>
-            <div className="p-4 space-y-4">
+        <SettingsPage title={t('tab_resources')} colors={colors}>
+            <SettingsSection colors={colors}>
                 {}
-                <div>
-                    <p className="font-medium text-sm mb-2" style={{ color: colors.onSurface }}>{t('launcher_folder')}</p>
-                    <p className="text-xs mb-2" style={{ color: colors.onSurfaceVariant }}>{t('launcher_folder_desc')}</p>
-                    <div className="flex gap-2">
-                        <div
-                            className="flex-1 px-4 py-2.5 rounded-md border text-sm flex items-center gap-2 overflow-hidden"
-                            style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurface }}
-                        >
-                            <i className="fa-solid fa-folder" style={{ color: colors.secondary }}></i>
-                            <span className="truncate" title={config.minecraftDir || resolvedDir}>{config.minecraftDir || resolvedDir}</span>
+                <SettingsRow
+                    colors={colors}
+                    icon={<i className="fa-solid fa-folder text-base"></i>}
+                    title={t('launcher_folder')}
+                    description={t('launcher_folder_desc')}
+                    below={
+                        <div className="flex gap-2.5">
+                            <div
+                                className={`${fieldClass} flex-1 min-w-0 flex items-center gap-2.5 overflow-hidden`}
+                                style={fieldStyle(colors)}
+                            >
+                                <i className="fa-solid fa-folder text-sm shrink-0" style={{ color: colors.secondary }}></i>
+                                <span className="truncate font-mono text-[13px]" title={config.minecraftDir || resolvedDir}>{config.minecraftDir || resolvedDir}</span>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    navigator.clipboard.writeText(config.minecraftDir || resolvedDir);
+                                    toast.success(t('path_copied'));
+                                }}
+                                className={`${buttonClass} h-11 w-11 justify-center px-0`}
+                                style={buttonStyle(colors)}
+                                title={t('copy')}
+                            >
+                                <i className="fa-solid fa-copy"></i>
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    if (windowApi?.openFolder) {
+                                        await windowApi.openFolder(config.minecraftDir || resolvedDir);
+                                    } else {
+                                        toast.success(t('open_folder_electron'));
+                                    }
+                                }}
+                                className={`${buttonClass} h-11 w-11 justify-center px-0`}
+                                style={buttonStyle(colors)}
+                                title={t('open_folder')}
+                            >
+                                <i className="fa-solid fa-arrow-up-right-from-square"></i>
+                            </button>
+                            <button
+                                onClick={handleBrowseMinecraftDir}
+                                className={`${buttonClass} h-11`}
+                                style={primaryButtonStyle(colors)}
+                            >
+                                {t('select')}
+                            </button>
                         </div>
-                        <button
-                            onClick={() => {
-                                navigator.clipboard.writeText(config.minecraftDir || resolvedDir);
-                                toast.success(t('path_copied'));
-                            }}
-                            className="px-4 py-2.5 rounded-md text-sm"
-                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                            title={t('copy')}
-                        >
-                            <i className="fa-solid fa-copy"></i>
-                        </button>
-                        <button
-                            onClick={async () => {
-                                if (windowApi?.openFolder) {
-                                    await windowApi.openFolder(config.minecraftDir || resolvedDir);
-                                } else {
-                                    toast.success(t('open_folder_electron'));
-                                }
-                            }}
-                            className="px-4 py-2.5 rounded-md text-sm"
-                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                            title={t('open_folder')}
-                        >
-                            <i className="fa-solid fa-arrow-up-right-from-square"></i>
-                        </button>
-                        <button
-                            onClick={handleBrowseMinecraftDir}
-                            className="px-4 py-2.5 rounded-md text-sm font-medium"
-                            style={{ backgroundColor: colors.secondary, color: colors.onSurface }}
-                        >
-                            {t('select')}
-                        </button>
-                    </div>
-                </div>
-
-                <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
+                    }
+                />
 
                 {}
-                <div>
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('launcher_cache')}</p>
-                            <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t('launcher_cache_desc')}</p>
-                        </div>
-                        <button
-                            onClick={handleClearCache}
-                            disabled={isClearingCache}
-                            className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all"
-                            style={{
-                                backgroundColor: colors.surfaceContainerHighest,
-                                color: colors.onSurface,
-                                opacity: isClearingCache ? 0.6 : 1,
-                                cursor: isClearingCache ? "not-allowed" : "pointer",
-                            }}
-                        >
-                            <i className={`fa-solid ${isClearingCache ? "fa-spinner fa-spin" : "fa-trash"}`}></i>
-                            {isClearingCache ? t('clearing' as any) || "กำลังล้าง..." : t('clear_cache')}
-                        </button>
-                    </div>
-                </div>
+                <SettingsRow
+                    colors={colors}
+                    icon={<i className="fa-solid fa-broom text-base"></i>}
+                    title={t('launcher_cache')}
+                    description={t('launcher_cache_desc')}
+                >
+                    <button
+                        onClick={handleClearCache}
+                        disabled={isClearingCache}
+                        className={buttonClass}
+                        style={{
+                            ...buttonStyle(colors),
+                            opacity: isClearingCache ? 0.6 : 1,
+                            cursor: isClearingCache ? "not-allowed" : "pointer",
+                        }}
+                    >
+                        <i className={`fa-solid ${isClearingCache ? "fa-spinner fa-spin" : "fa-trash"}`}></i>
+                        {isClearingCache ? t('clearing' as any) || "กำลังล้าง..." : t('clear_cache')}
+                    </button>
+                </SettingsRow>
 
-                <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
-
-                <div>
-                    <div className="flex items-center justify-between mb-2">
+                <SettingsRow
+                    colors={colors}
+                    icon={<i className="fa-solid fa-download text-base"></i>}
+                    title={t('max_concurrent_downloads')}
+                    description={t('max_concurrent_downloads_desc')}
+                    below={
                         <div>
-                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('max_concurrent_downloads')}</p>
-                            <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t('max_concurrent_downloads_desc')}</p>
+                            <input
+                                type="range"
+                                min={1}
+                                max={10}
+                                step={1}
+                                value={config.maxConcurrentDownloads}
+                                onChange={(e) => updateConfig({ maxConcurrentDownloads: Number(e.target.value) })}
+                                className="w-full h-2 cursor-pointer"
+                                style={{ accentColor: colors.secondary }}
+                            />
+                            <div className="flex justify-between text-[13px] font-medium mt-1.5 px-0.5" style={{ color: colors.onSurfaceVariant }}>
+                                <span>1</span>
+                                <span>10</span>
+                            </div>
                         </div>
-                        <span className="text-sm font-medium px-3 py-1 rounded-md" style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.secondary }}>
-                            {config.maxConcurrentDownloads}
-                        </span>
-                    </div>
-                    <input
-                        type="range"
-                        min={1}
-                        max={10}
-                        step={1}
-                        value={config.maxConcurrentDownloads}
-                        onChange={(e) => updateConfig({ maxConcurrentDownloads: Number(e.target.value) })}
-                        className="w-full"
-                        style={{ accentColor: colors.secondary }}
-                    />
-                    <div className="flex justify-between text-xs mt-1" style={{ color: colors.onSurfaceVariant }}>
-                        <span>1</span>
-                        <span>10</span>
-                    </div>
-                </div>
-            </div>
-        </div>
+                    }
+                >
+                    <span
+                        className="min-w-12 h-10 px-3 inline-flex items-center justify-center rounded-lg text-base font-bold"
+                        style={{ backgroundColor: colors.secondary, color: "#111" }}
+                    >
+                        {config.maxConcurrentDownloads}
+                    </span>
+                </SettingsRow>
+            </SettingsSection>
+        </SettingsPage>
     );
 }

@@ -1,6 +1,6 @@
 [package]
 name = "ml-tauri-poc"
-version = "4.2.1"
+version = "5.0.0"
 description = "ML-Launcher POC with Tauri + Rust"
 edition = "2021"
 
@@ -30,6 +30,8 @@ urlencoding = "2"
 # so neither track needs to edit Cargo.toml.
 sha1 = "0.10"
 sha2 = "0.10"
+# RSA signing for the Mojang player-certificate proof (already built via rustls).
+ring = "0.17"
 md-5 = "0.10"
 hex = "0.4"
 zip = "2"

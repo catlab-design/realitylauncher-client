@@ -22,6 +22,9 @@
 @import "@fontsource/prompt/600.css";
 @import "@fontsource/prompt/700.css";
 @import "@fontsource-variable/inter/index.css";
+/* Display face for big headings (Latin); Thai falls back to heavy Prompt. */
+@import "@fontsource/archivo-black/400.css";
+@import "@fontsource/prompt/800.css";
 
 /* ========================================
    Base Styles
@@ -135,47 +138,58 @@ body {
    Custom Scrollbar
    ======================================== */
 
-/* Chrome, Edge, Safari */
+/* Chrome / Edge / WebView2: a floating pill on a see-through track, no arrow buttons.
+   (Chromium ignores these ::-webkit rules once scrollbar-color/width are set, and then
+   draws the native track with arrows, so the standard properties are Firefox-only below.) */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
+  background: transparent;
 }
 
-::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 4px;
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
-}
-
-/* Firefox */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.2) rgba(255, 255, 255, 0.05);
-}
-
-/* Light theme scrollbar overrides */
-[data-theme="light"] ::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.38);
+  background-clip: padding-box;
 }
 
 [data-theme="light"] ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.22);
+  background-clip: padding-box;
 }
 
 [data-theme="light"] ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.38);
+  background-clip: padding-box;
 }
 
-[data-theme="light"] * {
-  scrollbar-color: rgba(0, 0, 0, 0.3) rgba(0, 0, 0, 0.08);
+/* Firefox */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+  }
+
+  [data-theme="light"] * {
+    scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+  }
 }
 
 /* ========================================
@@ -204,6 +218,13 @@ body {
 :focus-visible {
   outline: 2px solid rgba(139, 92, 246, 0.5);
   outline-offset: 2px;
+}
+
+/* Text fields show the caret while typing; no focus ring around them. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
 }
 
 /* ========================================
@@ -573,9 +594,11 @@ div[role="status"] > div {
   background: rgba(155, 155, 155, 0.4);
 }
 
-.custom-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(155, 155, 155, 0.2) transparent;
+@supports not selector(::-webkit-scrollbar) {
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(155, 155, 155, 0.2) transparent;
+  }
 }
 
 /* Toast countdown bar — drains left-to-right over the toast's duration.
@@ -584,4 +607,19 @@ div[role="status"] > div {
 @keyframes toast-countdown {
   from { transform: scaleX(1); }
   to   { transform: scaleX(0); }
+}
+
+/* Big heavy headings (Home hero, section titles). */
+.font-display {
+  font-family: "Archivo Black", "Prompt", "Noto Sans Thai", system-ui, sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+/* Server List hero: keep its story teaser clear of the controls floating at the top on short heroes. */
+@container server-hero (max-height: 26rem) {
+  .server-hero-excerpt { display: none; }
+}
+@container server-hero (max-height: 22rem) {
+  .server-hero-story { display: none; }
 }

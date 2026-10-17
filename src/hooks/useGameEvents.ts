@@ -112,7 +112,8 @@ export function useGameEvents({
                 percent: data.percent
             });
 
-            if (data.type === "complete" || (data.percent === 100 && !isSyncEvent)) {
+            // sync-complete ends a sync (e.g. the pre-launch mod sync); without it the toast stuck at 100%.
+            if (data.type === "complete" || data.type === "sync-complete" || (data.percent === 100 && !isSyncEvent)) {
                 setTimeout(() => {
                     if (!isCancellingRef.current) {
                         setInstallingSafe(false);

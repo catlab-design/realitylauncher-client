@@ -104,11 +104,10 @@ export function FilterMenu({
             <button
                 type="button"
                 onClick={() => { playClick(); setOpen(o => !o); }}
-                className="min-h-11 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all active:scale-[0.98] relative"
+                className="h-11 px-4 rounded-xl text-sm font-semibold flex items-center gap-2 transition hover:brightness-105 active:scale-[0.98] relative"
                 style={{
-                    backgroundColor: colors.surface,
+                    backgroundColor: colors.surfaceContainerHighest,
                     color: colors.onSurface,
-                    border: `1px solid ${activeCount > 0 ? colors.secondary + "55" : colors.outline + "30"}`,
                 }}
                 aria-expanded={open ? "true" : "false"}
                 aria-haspopup="dialog"
@@ -117,13 +116,13 @@ export function FilterMenu({
                 <span className="whitespace-nowrap">{t("filter" as TranslationKey)}</span>
                 {activeCount > 0 && (
                     <span
-                        className="text-[10px] font-black px-1.5 py-0.5 rounded-md min-w-[18px] text-center"
+                        className="text-xs font-bold px-1.5 py-0.5 rounded-md min-w-5 text-center"
                         style={{ backgroundColor: colors.secondary, color: "#000" }}
                     >
                         {activeCount}
                     </span>
                 )}
-                <i className={`fa-solid fa-chevron-down text-[9px] transition-transform ${open ? "rotate-180" : ""}`} />
+                <i className={`fa-solid fa-chevron-down text-xs transition-transform ${open ? "rotate-180" : ""}`} style={{ color: colors.onSurfaceVariant }} />
             </button>
 
             <AnimatePresence>

@@ -1,7 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import type { AuthSession, LauncherConfig } from "../../types/launcher";
 import { playClick } from "../../lib/sounds";
-import { getContrastColor } from "../../lib/utils";
 import {
     AccountTab,
     AppearanceTab,
@@ -121,10 +120,10 @@ export function Settings({
     }
 
     return (
-        <div className="grid h-full min-h-0 gap-6 md:grid-cols-[240px_minmax(0,1fr)] lg:grid-cols-[260px_minmax(0,1fr)]">
+        <div className="grid h-full min-h-0 gap-8 md:grid-cols-[230px_minmax(0,1fr)] lg:grid-cols-[250px_minmax(0,1fr)]">
 			<motion.div
-                className="min-h-0 md:border-r md:pr-5 overflow-y-auto"
-                style={{ borderColor: `${colors.onSurface}10` }}
+                className="min-h-0 md:border-r md:pr-6 overflow-y-auto"
+                style={{ borderColor: colors.outlineVariant }}
                 initial={{ opacity: 0, x: -14 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.24, ease: "easeOut" }}
@@ -141,20 +140,20 @@ export function Settings({
                             <button
                                 key={item.id}
                                 onClick={() => { if (config.clickSoundEnabled) playClick(); setSettingsTab(item.id as typeof settingsTab); }}
-                                className="w-full flex items-center gap-3 px-4 py-2.5 rounded-full text-sm font-medium transition-all text-left whitespace-nowrap relative group"
+                                className="w-full h-11 flex items-center gap-3.5 px-4 rounded-xl text-[15px] font-semibold transition-colors text-left whitespace-nowrap relative group hover:bg-black/5"
                                 style={{
-                                    color: isActive ? getContrastColor(colors.secondary) : colors.onSurfaceVariant,
+                                    color: isActive ? "#111" : colors.onSurfaceVariant,
                                 }}
                             >
                                 {isActive && (
                                     <motion.div
                                         layoutId="settings-active-pill"
-                                        className="absolute inset-0 rounded-full animate-none"
+                                        className="absolute inset-0 rounded-xl animate-none"
                                         style={{ backgroundColor: colors.secondary }}
                                         transition={{ type: "spring", stiffness: 350, damping: 30 }}
                                     />
                                 )}
-                                <i className={`fa-solid ${item.icon} w-5 z-10 relative`}></i>
+                                <i className={`fa-solid ${item.icon} w-5 text-base text-center z-10 relative`}></i>
                                 <span className="z-10 relative">{item.label}</span>
                             </button>
                         );
@@ -162,7 +161,7 @@ export function Settings({
                 </motion.div>
             </motion.div>
 
-			<div className="min-w-0 overflow-y-auto overflow-x-hidden pr-1">
+			<div className="min-w-0 overflow-y-auto overflow-x-hidden pr-2">
                 <AnimatePresence mode="wait">
                     <motion.div
                         key={settingsTab}

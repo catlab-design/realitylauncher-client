@@ -30,6 +30,19 @@ import {
 
 export function Explore({ colors, config }: ExploreProps) {
     const { t } = useTranslation(config?.language);
+    // Results layout: card grid by default, compact rows optional (remembered on this machine).
+    const [listLayout, setListLayout] = useState<"grid" | "list">(() => {
+        try {
+            return localStorage.getItem("exploreLayout") === "list" ? "list" : "grid";
+        } catch {
+            return "grid";
+        }
+    });
+    const changeListLayout = (next: "grid" | "list") => {
+        setListLayout(next);
+        try { localStorage.setItem("exploreLayout", next); } catch {}
+    };
+
     const [contentSource, setContentSource] = useState<ContentSource>(CONTENT_SOURCES.MODRINTH);
     const [projectType, setProjectType] = useState<ProjectType>("modpack");
     const [searchQuery, setSearchQuery] = useState("");
@@ -863,6 +876,8 @@ export function Explore({ colors, config }: ExploreProps) {
                         showCategoryFilter={projectType === "mod" || projectType === "modpack"}
                         showEnvironmentFilter={projectType === "mod"}
                         hideFilterMenu={showInstanceModal || showVersionModal}
+                        layout={listLayout}
+                        onLayoutChange={changeListLayout}
                     />
 
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mt-4">
@@ -880,6 +895,7 @@ export function Explore({ colors, config }: ExploreProps) {
                                 onPageChange={setPage}
                                 installingProjectId={installingProjectId}
                                 installProgress={installProgress}
+                                layout={listLayout}
                             />
                         </div>
 

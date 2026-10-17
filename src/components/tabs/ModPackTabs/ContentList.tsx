@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from "react";
+import { Portal } from "../../ui/Portal";
+import { motion } from "framer-motion";
 import { Icons } from "../../ui/Icons";
 import { Skeleton } from "../../ui/Skeleton";
-import { Portal } from "../../ui/Portal";
 import { formatSize } from "./helpers";
 import type { ContentItem, DatapackItem } from "./types";
 import { playClick } from "../../../lib/sounds";
 import { useTranslation } from "../../../hooks/useTranslation";
-import { LazyContentItem } from "./LazyContentItem";
+import { LazyContentItem, CONTENT_ROW_GRID } from "./LazyContentItem";
 import { runBulkDelete, type DeleteResult } from "../../../lib/bulkDelete";
 
 function cleanName(name: string = ""): string {
@@ -130,218 +131,51 @@ export function ContentList({
 
 
 
+    const allSelected = selectedFilenames.size === filteredItems.length && filteredItems.length > 0;
+
     return (
-        <>
-            <div className="flex items-center justify-between gap-4 mb-4 w-full overflow-x-auto no-scrollbar pb-1">
-                <div className="flex items-center gap-4 shrink-0">
-                    <button
-                        onClick={() => handleSelectAll(filteredItems)}
-                        className="w-5 h-5 rounded-md flex items-center justify-center transition-all cursor-pointer border-2"
-                        style={{
-                            backgroundColor:
-                                selectedFilenames.size === filteredItems.length &&
-                                filteredItems.length > 0
-                                    ? colors.secondary
-                                    : "transparent",
-                            borderColor:
-                                selectedFilenames.size === filteredItems.length &&
-                                filteredItems.length > 0
-                                    ? colors.secondary
-                                    : colors.onSurfaceVariant,
-                        }}
-                        title={t('select_all' as any) || "Select All"}
-                    >
-                        {selectedFilenames.size === filteredItems.length &&
-                        filteredItems.length > 0 ? (
-                            <Icons.Check className="w-3.5 h-3.5" style={{ color: "#1a1a1a" }} />
-                        ) : (
-                            selectedFilenames.size > 0 && (
-                                <div
-                                    className="w-2 h-0.5 rounded-full bg-current"
-                                    style={{ backgroundColor: colors.secondary }}
-                                />
-                            )
-                        )}
-                    </button>
-
-                    {totalPages > 1 ? (
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={() => { playClick(); setPage(p => Math.max(1, p - 1)); }}
-                                disabled={page === 1}
-                                className="min-h-11 flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5 whitespace-nowrap"
-                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                            >
-                                <i className="fa-solid fa-chevron-left text-xs"></i>
-                                {t('previous')}
-                            </button>
-
-                            <span className="min-h-11 px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap flex items-center" style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}>
-                                {page} / {totalPages}
-                            </span>
-
-                            <button
-                                onClick={() => { playClick(); setPage(p => Math.min(totalPages, p + 1)); }}
-                                disabled={page === totalPages}
-                                className="min-h-11 flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5 whitespace-nowrap"
-                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                            >
-                                {t('next')}
-                                <i className="fa-solid fa-chevron-right text-xs"></i>
-                            </button>
-                        </div>
-                    ) : (
-                        <h3 className="text-lg font-medium whitespace-nowrap" style={{ color: colors.onSurface }}>
-                            {labels[contentType].title} {isLoading ? "" : `(${items.length})`}
-                        </h3>
-                    )}
+        <div
+            style={{
+                "--ghost-fg": colors.onSurfaceVariant,
+                "--ghost-hover-fg": colors.onSurface,
+                "--ghost-hover-bg": colors.surfaceContainerHighest,
+                "--search-ring": colors.secondary + "55",
+            } as React.CSSProperties}
+        >
+            {/* Toolbar: search · selection actions · pager · refresh · install */}
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+                <div
+                    className="h-10 flex items-center gap-2 px-3 rounded-xl min-w-0 flex-1 basis-56 max-w-md transition-shadow focus-within:ring-2 focus-within:ring-(--search-ring)"
+                    style={{ backgroundColor: colors.surfaceContainerHighest }}
+                >
+                    <Icons.Search className="w-4 h-4 shrink-0" style={{ color: colors.onSurfaceVariant }} />
+                    <input
+                        type="text"
+                        placeholder={(t('search_content_placeholder' as any) as string).replace('{type}', labels[contentType].title)}
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="bg-transparent outline-none text-sm w-full placeholder:opacity-70 min-w-0"
+                        style={{ color: colors.onSurface }}
+                    />
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0 max-w-full overflow-hidden">
+                {/* Bulk actions float at the bottom of the window while items are selected. */}
+                {selectedFilenames.size > 0 && (
+                    <Portal>
                     <div
-                        className="min-h-11 flex items-center gap-2 px-4 lg:px-5 py-2.5 rounded-xl transition-colors focus-within:ring-1 focus-within:ring-white/20 min-w-0 flex-1 lg:flex-none"
-                        style={{ backgroundColor: colors.surfaceContainerHighest }}
-                    >
-                        <i className="fa-solid fa-search text-sm shrink-0" style={{ color: colors.onSurfaceVariant }}></i>
-                        <input
-                            type="text"
-                            placeholder={(t('search_content_placeholder' as any) as string).replace('{type}', labels[contentType].title)}
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="bg-transparent outline-none text-sm w-full lg:w-56 placeholder:opacity-70 min-w-0"
-                            style={{ color: colors.onSurface }}
-                        />
-                    </div>
-
-                    <button
-                        onClick={() => { playClick(); onAddContent(); }}
-                        className="min-h-11 px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all hover:opacity-90 whitespace-nowrap shrink-0"
-                        style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
-                    >
-                        <i className="fa-solid fa-plus text-xs"></i>
-                        <span className="hidden sm:inline">{labels[contentType].addLabel}</span>
-                    </button>
-                    <button
-                        onClick={() => { playClick(); onRefresh && onRefresh(); }}
-                        disabled={isLoading}
-                        className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all shrink-0 ${isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10 active:scale-95'}`}
-                        style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                        title={t('refresh')}
-                    >
-                        <i className={`fa-solid fa-rotate-right text-sm ${isLoading ? 'fa-spin' : ''}`}></i>
-                    </button>
-                </div>
-            </div>
-
-            {items.length === 0 && !isLoading ? (
-                <div className="text-center py-12 rounded-2xl" style={{ backgroundColor: colors.surfaceContainer }}>
-                    <Icons.Box className="w-12 h-12 mx-auto mb-3" style={{ color: colors.onSurfaceVariant, opacity: 0.5 }} />
-                    <p className="font-medium" style={{ color: colors.onSurfaceVariant }}>
-                        {emptyMessage}
-                    </p>
-                </div>
-            ) : (
-                <div className="space-y-2">
-                    {(isLoading ? Array.from({ length: 5 }) : paginatedItems).map((item, index) => {
-                        let key = item ? ((item as any).filename + index) : `skeleton-${index}`;
-                        let content = null;
-
-                        if (item) {
-                            content = (
-                                <LazyContentItem
-                                    item={item as ContentItem | DatapackItem}
-                                    category={contentType}
-                                    colors={colors}
-                                    onToggle={onToggle}
-                                    onDelete={onDelete}
-
-                                    index={index}
-                                    isSelected={selectedFilenames.has((item as ContentItem).filename)}
-                                    onToggleSelection={(filename: string) => {
-                                        const next = new Set(selectedFilenames);
-                                        if (next.has(filename)) next.delete(filename);
-                                        else next.add(filename);
-                                        setSelectedFilenames(next);
-                                    }}
-                                    onOpenProjectDetail={onOpenProjectDetail}
-                                    onUpdate={onUpdate}
-                                    isUpdating={updatingFilenames?.has((item as ContentItem).filename)}
-                                    onSwitchVersion={onSwitchVersion}
-                                    instanceMcVersion={minecraftVersion}
-                                />
-                            );
-                        }
-
-                        return (
-                            <ContentListItemWrapper
-                                key={key}
-                                index={index}
-                                isLoading={isLoading}
-                                colors={colors}
-                            >
-                                {content}
-                            </ContentListItemWrapper>
-                        );
-                    })}
-                </div>
-            )}
-                
-            {!isLoading && totalPages > 1 && (
-                <div className="flex justify-center mt-6 animate-fade-in" style={{ animationDelay: '300ms' }}>
-                    <div className="flex items-center gap-2 p-1.5 rounded-2xl"
-                            style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}20` }}>
-
-                            <button
-                                onClick={() => {
-                                    playClick();
-                                    setPage(p => Math.max(1, p - 1));
-                                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                                }}
-                                disabled={page === 1}
-                                className="px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-2"
-                                style={{ color: colors.onSurface }}
-                            >
-                                <i className="fa-solid fa-chevron-left text-xs"></i>
-                                {t('previous')}
-                            </button>
-
-                            <div className="px-4 min-w-[90px] text-center" style={{ color: colors.onSurfaceVariant }}>
-                                <span className="text-sm font-bold" style={{ color: colors.onSurface }}>{page}</span>
-                                <span className="text-xs opacity-70 mx-1">/</span>
-                                <span className="text-sm opacity-70">{totalPages}</span>
-                            </div>
-
-                            <button
-                                onClick={() => {
-                                    playClick();
-                                    setPage(p => Math.min(totalPages, p + 1));
-                                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                                }}
-                                disabled={page === totalPages}
-                                className="px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-2"
-                                style={{ color: colors.onSurface }}
-                            >
-                                {t('next')}
-                                <i className="fa-solid fa-chevron-right text-xs"></i>
-                            </button>
-                        </div>
-                    </div>
-            )}
-
-            {selectedFilenames.size > 0 && (
-                <Portal>
-                    <div
-                        className="fixed bottom-8 left-1/2 -translate-x-1/2 z-9999 flex items-center gap-2 md:gap-3 px-4 py-2.5 md:px-6 rounded-full backdrop-blur-xl border animate-float"
+                        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 h-16 flex items-center gap-1 pl-6 pr-2.5 rounded-2xl max-w-[calc(100vw-2rem)] overflow-x-auto no-scrollbar shadow-[0_12px_40px_-12px_rgba(0,0,0,0.45)] animate-in fade-in slide-in-from-bottom-2 duration-200"
+                        // Dark floating bar in every theme; the ghost-button colours are set here because
+                        // the portal sits outside the toolbar that normally provides them.
                         style={{
-                            backgroundColor: `${colors.surfaceContainerHighest}e6`,
-                            borderColor: colors.outlineVariant || 'rgba(128,128,128,0.2)',
-                        }}
+                            backgroundColor: "#1c1c1f",
+                            "--ghost-fg": "rgba(255,255,255,0.8)",
+                            "--ghost-hover-fg": "#ffffff",
+                            "--ghost-hover-bg": "rgba(255,255,255,0.12)",
+                        } as React.CSSProperties}
                     >
-                        <span className="font-bold whitespace-nowrap text-sm md:text-base mr-1" style={{ color: colors.onSurface }}>
+                        <span className="text-base font-bold whitespace-nowrap mr-3" style={{ color: "#ffffff" }}>
                             {selectedFilenames.size} {t('selected' as any)}
                         </span>
-
-                        <div className="h-6 w-px mx-1 md:mx-2" style={{ backgroundColor: colors.outlineVariant || 'rgba(128,128,128,0.2)' }} />
 
                         {(() => {
                             const selectedItems = items.filter(item => selectedFilenames.has(item.filename));
@@ -353,10 +187,10 @@ export function ContentList({
                                     {hasDisabledItems && (
                                         <button
                                             onClick={() => handleBulkToggle(true)}
-                                            className="px-3.5 py-1.5 md:px-4 md:py-2 rounded-2xl text-xs md:text-sm font-bold transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
-                                            style={{ backgroundColor: colors.surface, color: colors.onSurface, border: `1px solid ${colors.outlineVariant || 'rgba(128,128,128,0.1)'}` }}
+                                            className="h-11 px-4 rounded-xl text-[15px] font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap text-(--ghost-hover-fg) hover:bg-(--ghost-hover-bg)"
+                                            title={t('action_enable' as any)}
                                         >
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
                                                 <circle cx="12" cy="12" r="10"></circle>
                                                 <path d="M9 12l2 2 4-4"></path>
                                             </svg>
@@ -367,10 +201,10 @@ export function ContentList({
                                     {hasEnabledItems && (
                                         <button
                                             onClick={() => handleBulkToggle(false)}
-                                            className="px-3.5 py-1.5 md:px-4 md:py-2 rounded-2xl text-xs md:text-sm font-bold transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
-                                            style={{ backgroundColor: colors.surface, color: colors.onSurfaceVariant, border: `1px solid ${colors.outlineVariant || 'rgba(128,128,128,0.1)'}` }}
+                                            className="h-11 px-4 rounded-xl text-[15px] font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap text-(--ghost-fg) hover:text-(--ghost-hover-fg) hover:bg-(--ghost-hover-bg)"
+                                            title={t('action_disable' as any)}
                                         >
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
                                                 <circle cx="12" cy="12" r="10"></circle>
                                                 <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
                                             </svg>
@@ -381,14 +215,12 @@ export function ContentList({
                             );
                         })()}
 
-                        <div className="h-6 w-px mx-1 hidden md:block" style={{ backgroundColor: colors.outlineVariant || 'rgba(128,128,128,0.2)' }} />
-
                         <button
                             onClick={handleBulkDelete}
-                            className="px-3.5 py-1.5 md:px-4 md:py-2 rounded-2xl text-xs md:text-sm font-bold transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
-                            style={{ backgroundColor: "#ff4d6d", color: "#1a1a1a" }}
+                            className="h-11 px-4 rounded-xl text-[15px] font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap text-red-500 hover:bg-red-500/10"
+                            title={t('action_remove' as any)}
                         >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
                                 <polyline points="3 6 5 6 21 6"></polyline>
                                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
                                 <line x1="10" y1="11" x2="10" y2="17"></line>
@@ -399,16 +231,204 @@ export function ContentList({
 
                         <button
                             onClick={() => setSelectedFilenames(new Set())}
-                            className="w-8 h-8 md:w-10 md:h-10 ml-1 rounded-full flex items-center justify-center transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+                            className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors shrink-0 text-(--ghost-fg) hover:text-(--ghost-hover-fg) hover:bg-(--ghost-hover-bg)"
                             title={t('cancel_selection' as any)}
                         >
-                            <Icons.Close className="w-4 h-4 md:w-5 md:h-5" style={{ color: colors.onSurfaceVariant }} />
+                            <Icons.Close className="w-5 h-5" />
                         </button>
                     </div>
-                </Portal>
+                    </Portal>
+                )}
+
+                <div className="flex items-center gap-2 ml-auto shrink-0">
+                    {totalPages > 1 && (
+                        <div className="h-10 flex items-center gap-0.5 px-1 rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
+                            <button
+                                onClick={() => { playClick(); setPage(p => Math.max(1, p - 1)); }}
+                                disabled={page === 1}
+                                className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors disabled:opacity-40 text-(--ghost-hover-fg) enabled:hover:bg-(--ghost-hover-bg)"
+                                title={t('previous')}
+                            >
+                                <Icons.ChevronLeft className="w-4 h-4" />
+                            </button>
+                            <span className="px-1.5 text-sm font-medium tabular-nums whitespace-nowrap" style={{ color: colors.onSurface }}>
+                                {page} / {totalPages}
+                            </span>
+                            <button
+                                onClick={() => { playClick(); setPage(p => Math.min(totalPages, p + 1)); }}
+                                disabled={page === totalPages}
+                                className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors disabled:opacity-40 text-(--ghost-hover-fg) enabled:hover:bg-(--ghost-hover-bg)"
+                                title={t('next')}
+                            >
+                                <Icons.ChevronRight className="w-4 h-4" />
+                            </button>
+                        </div>
+                    )}
+
+                    <button
+                        onClick={() => { playClick(); onRefresh && onRefresh(); }}
+                        disabled={isLoading}
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all shrink-0 ${isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:brightness-110 active:scale-95'}`}
+                        style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                        title={t('refresh')}
+                    >
+                        <i className={`fa-solid fa-rotate-right text-sm ${isLoading ? 'fa-spin' : ''}`}></i>
+                    </button>
+
+                    <button
+                        onClick={() => { playClick(); onAddContent(); }}
+                        className="h-10 px-4 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all hover:brightness-105 active:scale-95 whitespace-nowrap shrink-0"
+                        style={{ backgroundColor: colors.secondary, color: "#111" }}
+                        title={labels[contentType].addLabel}
+                    >
+                        <Icons.Add className="w-4 h-4" />
+                        <span className="hidden sm:inline">{labels[contentType].addLabel}</span>
+                    </button>
+                </div>
+            </div>
+
+            {items.length === 0 && !isLoading ? (
+                <div className="flex flex-col items-center justify-center text-center py-16 px-6">
+                    <div
+                        className="w-20 h-20 flex items-center justify-center mb-5"
+                    >
+                        <Icons.PaperBox className="w-16 h-16" style={{ color: colors.onSurfaceVariant }} />
+                    </div>
+                    <p className="text-lg font-semibold" style={{ color: colors.onSurface }}>
+                        {emptyMessage}
+                    </p>
+                    <button
+                        onClick={() => { playClick(); onAddContent(); }}
+                        className="mt-5 h-10 px-4 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all hover:brightness-105 active:scale-95"
+                        style={{ backgroundColor: colors.secondary, color: "#111" }}
+                    >
+                        <Icons.Add className="w-4 h-4" />
+                        {labels[contentType].addLabel}
+                    </button>
+                </div>
+            ) : (
+                <div>
+                    <div
+                        className={`${CONTENT_ROW_GRID} h-9 px-3 text-[13px] font-semibold select-none`}
+                        style={{ color: colors.onSurfaceVariant }}
+                    >
+                        <button
+                            onClick={() => handleSelectAll(filteredItems)}
+                            className="w-4.5 h-4.5 rounded-md flex items-center justify-center transition-all cursor-pointer border-[1.5px]"
+                            style={{
+                                backgroundColor: allSelected ? colors.secondary : "transparent",
+                                borderColor: allSelected || selectedFilenames.size > 0 ? colors.secondary : colors.onSurfaceVariant,
+                            }}
+                            title={t('select_all' as any) || "Select All"}
+                        >
+                            {allSelected ? (
+                                <Icons.Check className="w-3.5 h-3.5" style={{ color: "#111" }} />
+                            ) : (
+                                selectedFilenames.size > 0 && (
+                                    <div
+                                        className="w-2 h-0.5 rounded-full"
+                                        style={{ backgroundColor: colors.secondary }}
+                                    />
+                                )
+                            )}
+                        </button>
+                        <span className="truncate">{t('name')}</span>
+                        <span className="truncate hidden md:block">{t('version')}</span>
+                        <span aria-hidden="true" />
+                    </div>
+
+                    {/* Rows fade in once when loading ends (one fade for the whole list, not per row). */}
+                    <motion.div
+                        key={isLoading ? "loading" : "ready"}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.25, ease: "easeOut" }}
+                        className="space-y-0.5"
+                    >
+                        {(isLoading ? Array.from({ length: 5 }) : paginatedItems).map((item, index) => {
+                            let key = item ? ((item as any).filename + index) : `skeleton-${index}`;
+                            let content = null;
+
+                            if (item) {
+                                content = (
+                                    <LazyContentItem
+                                        item={item as ContentItem | DatapackItem}
+                                        category={contentType}
+                                        colors={colors}
+                                        onToggle={onToggle}
+                                        onDelete={onDelete}
+
+                                        index={index}
+                                        isSelected={selectedFilenames.has((item as ContentItem).filename)}
+                                        onToggleSelection={(filename: string) => {
+                                            const next = new Set(selectedFilenames);
+                                            if (next.has(filename)) next.delete(filename);
+                                            else next.add(filename);
+                                            setSelectedFilenames(next);
+                                        }}
+                                        onOpenProjectDetail={onOpenProjectDetail}
+                                        onUpdate={onUpdate}
+                                        isUpdating={updatingFilenames?.has((item as ContentItem).filename)}
+                                        onSwitchVersion={onSwitchVersion}
+                                        instanceMcVersion={minecraftVersion}
+                                    />
+                                );
+                            }
+
+                            return (
+                                <ContentListItemWrapper
+                                    key={key}
+                                    index={index}
+                                    isLoading={isLoading}
+                                    colors={colors}
+                                >
+                                    {content}
+                                </ContentListItemWrapper>
+                            );
+                        })}
+                    </motion.div>
+                </div>
             )}
 
-        </>
+            {!isLoading && totalPages > 1 && (
+                <div className="flex justify-center mt-4">
+                    <div className="flex items-center gap-1 p-1 rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
+
+                            <button
+                                onClick={() => {
+                                    playClick();
+                                    setPage(p => Math.max(1, p - 1));
+                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                }}
+                                disabled={page === 1}
+                                className="h-9 px-3 rounded-lg text-sm font-medium disabled:opacity-40 transition-colors flex items-center gap-1.5 text-(--ghost-hover-fg) enabled:hover:bg-(--ghost-hover-bg)"
+                            >
+                                <Icons.ChevronLeft className="w-4 h-4" />
+                                {t('previous')}
+                            </button>
+
+                            <div className="px-3 min-w-20 text-center text-sm tabular-nums" style={{ color: colors.onSurfaceVariant }}>
+                                <span className="font-semibold" style={{ color: colors.onSurface }}>{page}</span>
+                                <span className="mx-1">/</span>
+                                <span>{totalPages}</span>
+                            </div>
+
+                            <button
+                                onClick={() => {
+                                    playClick();
+                                    setPage(p => Math.min(totalPages, p + 1));
+                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                }}
+                                disabled={page === totalPages}
+                                className="h-9 px-3 rounded-lg text-sm font-medium disabled:opacity-40 transition-colors flex items-center gap-1.5 text-(--ghost-hover-fg) enabled:hover:bg-(--ghost-hover-bg)"
+                            >
+                                {t('next')}
+                                <Icons.ChevronRight className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+            )}
+        </div>
     );
 }
 
@@ -426,29 +446,21 @@ function ContentListItemWrapper({
 }) {
     if (isLoading) {
         return (
-            <div
-                className="min-h-[64px] flex items-center gap-4 p-4 rounded-xl"
-                style={{ backgroundColor: colors.surfaceContainer }}
-            >
-                <Skeleton className="w-12 h-12 rounded-xl" colors={colors} />
+            <div className="min-h-15 flex items-center gap-4 px-3 py-2 rounded-xl">
+                <Skeleton className="w-4.5 h-4.5 rounded-md" colors={colors} />
+                <Skeleton className="w-10 h-10 rounded-lg" colors={colors} />
                 <div className="flex-1 space-y-2">
                     <Skeleton className="h-4 w-1/3" colors={colors} />
                     <Skeleton className="h-3 w-1/4" colors={colors} />
                 </div>
-                <Skeleton className="w-12 h-6 rounded-full" colors={colors} />
-                <Skeleton className="w-10 h-10 rounded-lg" colors={colors} />
+                <Skeleton className="w-10 h-6 rounded-full" colors={colors} />
+                <Skeleton className="w-8 h-8 rounded-lg" colors={colors} />
             </div>
         );
     }
 
     return (
-        <div 
-            className="animate-fade-in opacity-0"
-            style={{ 
-                animationDelay: `${index * 50}ms`,
-                animationFillMode: 'forwards'
-            }}
-        >
+        <div>
             {children}
         </div>
     );
