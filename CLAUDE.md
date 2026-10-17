@@ -30,6 +30,7 @@
 ├── vite.config.ts                      # Vite build config
 ├── tsconfig.json / tsconfig.node.json / tsconfig.bridge.json
 ├── bun.lock
+├── .gitlab-ci.yml                     # GitLab CI: check + build/release pipeline
 ├── LICENSE (GPL-3.0)
 └── CONTRIBUTING.md / CODE_OF_CONDUCT.md / SECURITY.md
 ```
@@ -365,7 +366,7 @@ const KNOWN_UNPORTED = new Set(['fetchInstanceAgendas', 'fetchAllAgendas']);
 5. **Some UI code still uses `window.api.X()`** from the Electron era — these are validated by the bridge parity test
 6. **Fonts are self-hosted** via `@fontsource` — works offline, no Google Fonts dependency
 7. **No `public/` directory** — all assets are in `src/assets/` and imported directly
-8. **No Docker** — CI lives in `.github/workflows/` (`build.yml` tag/manual-triggered build + R2/GitHub Release, `ci.yml`)
+8. **No Docker** — CI lives in `.gitlab-ci.yml`: `check` job on MRs/main pushes; `v*` tags or a manual run with `PIPELINE_TYPE=release` build Linux/Windows/macOS installers and publish to R2 + a GitLab Release (assets in the generic package registry)
 9. **`src-tauri/src/download.rs`** — shared concurrent download engine using `tokio::sync::Semaphore` (default 8 concurrency). Accepts a progress callback, supports retry with backoff, SHA1/SHA256/SHA512 hash verification, atomic writes (temp + rename), JAR/ZIP validation, and per-error `missing_on_server` vs `failed` classification. Replaces old sequential loops in CurseForge modpack install (`install_cf_modpack`) and cloud sync (`sync_managed_mods`, `sync_server_mods` queue).
 
 ---

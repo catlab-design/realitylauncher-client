@@ -13,6 +13,7 @@
 - Pack v2 sync: installs server packs from their manifest and layers
 
 ### Changed
+- CI moved from GitHub Actions to GitLab CI (`.gitlab-ci.yml`): MR/main build check, tag- or manually-triggered multi-platform build, R2 upload and GitLab Release
 - Full v5 redesign: title-bar text navigation, Home news billboard, Steam-style Server List, redesigned settings, Install (Explore), instance page, server detail page, Skin Manager, login/CatID/Microsoft modals and toasts with a step log
 - Navigation renamed: Modpacks → Library (ไลบรารี), Explore → Install (ติดตั้ง)
 - The instance "add content" browser is now the same UI as the Install page (toolbar, list, preview)
