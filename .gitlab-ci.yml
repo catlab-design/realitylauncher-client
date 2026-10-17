@@ -1,0 +1,318 @@
+# Ported from .github/workflows/{ci,build}.yml
+#
+# CI (check):      merge requests, pushes to main (code changes only), "Run pipeline" with PIPELINE_TYPE=ci
+# Build + release: v* tags, or "Run pipeline" / API / trigger with PIPELINE_TYPE=release
+#
+# Project CI/CD variables (Settings › CI/CD › Variables):
+#   TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD   (masked, protected)
+#   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID                     (masked, protected)
+#   ENABLE_WINDOWS_RELEASE, ENABLE_MACOS_RUNNER, ENABLE_R2_RELEASE  (optional, "true"/"false")
+# Protected variables only reach protected refs: protect the `v*` tag pattern and `main`.
+
+variables:
+  PIPELINE_TYPE:
+    value: "ci"
+    options: ["ci", "release"]
+    description: "ci = build check only, release = build installers and publish"
+  VERSION:
+    value: ""
+    description: "Version to release (e.g., 4.0.0). Empty = tag name or package.json"
+  CHANGELOG:
+    value: ""
+    description: "Changelog (markdown format)"
+  BUILD_WINDOWS:
+    value: "true"
+    options: ["true", "false"]
+    description: "Also build Windows artifacts"
+  BUILD_MACOS:
+    value: "false"
+    options: ["true", "false"]
+    description: "Also build macOS artifacts (needs GitLab macOS runners)"
+  PUBLISH_RELEASE:
+    value: "true"
+    options: ["true", "false"]
+    description: "Publish release assets to R2 and GitLab Release"
+  R2_BUCKET: realitystorage
+  CDN_URL: https://cdn.reality.catlabdesign.space
+  BUN_INSTALL_CACHE_DIR: $CI_PROJECT_DIR/.bun-cache
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS && $CI_PIPELINE_SOURCE == "push"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_COMMIT_TAG =~ /^v/
+    - if: $CI_PIPELINE_SOURCE =~ /^(web|api|trigger)$/
+  auto_cancel:
+    on_new_commit: interruptible
+
+default:
+  interruptible: true
+
+stages:
+  - check
+  - prepare
+  - build
+  - release
+
+.release:
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/ || $PIPELINE_TYPE == "release"
+
+.linux:
+  image: rust:1-bookworm
+  tags: [saas-linux-medium-amd64]
+  variables:
+    CARGO_HOME: $CI_PROJECT_DIR/.cargo
+    APPIMAGE_EXTRACT_AND_RUN: "1"
+  cache:
+    key:
+      prefix: linux-$CI_JOB_NAME
+      files: [bun.lock, src-tauri/Cargo.lock]
+    paths:
+      - .bun-cache/
+      - .cargo/registry/
+      - .cargo/git/
+      - src-tauri/target/
+  before_script:
+    - apt-get update
+    - apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file unzip xdg-utils libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+    - curl -fsSL https://bun.sh/install | bash
+    - export PATH="$HOME/.bun/bin:$PATH"
+    - bun install
+
+check:
+  extends: .linux
+  stage: check
+  needs: []
+  rules:
+    - if: $CI_COMMIT_TAG || $PIPELINE_TYPE == "release"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" || $CI_PIPELINE_SOURCE == "push"
+      changes:
+        - "**/*.{ts,tsx,js,mjs,json,css,html,rs,toml,lock,properties}"
+        - src/**/*
+        - src-tauri/**/*
+        - scripts/**/*
+        - .gitlab-ci.yml
+    - if: $CI_PIPELINE_SOURCE =~ /^(web|api|trigger)$/
+  script:
+    - bun run build
+    - cargo check --manifest-path src-tauri/Cargo.toml
+
+prepare:
+  image: oven/bun:1
+  stage: prepare
+  needs: []
+  rules: !reference [.release, rules]
+  script:
+    - |
+      set -euo pipefail
+      if [ -n "${VERSION:-}" ]; then
+        RESOLVED="$VERSION"
+      elif [ -n "${CI_COMMIT_TAG:-}" ] && [[ "$CI_COMMIT_TAG" == v* ]]; then
+        RESOLVED="${CI_COMMIT_TAG#v}"
+      else
+        RESOLVED="$(bun -p "require('./package.json').version")"
+      fi
+      echo "RELEASE_VERSION=$RESOLVED" > build.env
+      echo "Resolved build version: $RESOLVED"
+      RESOLVED_VERSION="$RESOLVED" bun -e "
+        const fs = require('fs');
+        for (const p of ['./package.json', './src-tauri/tauri.conf.json']) {
+          const json = JSON.parse(fs.readFileSync(p, 'utf8'));
+          json.version = process.env.RESOLVED_VERSION;
+          fs.writeFileSync(p, JSON.stringify(json, null, 4) + '\n');
+        }
+      "
+  artifacts:
+    paths:
+      - package.json
+      - src-tauri/tauri.conf.json
+    reports:
+      dotenv: build.env
+    expire_in: 1 day
+
+build:linux:
+  extends: .linux
+  stage: build
+  needs: [prepare]
+  rules: !reference [.release, rules]
+  script:
+    - bun run tauri build
+    - mkdir -p artifacts/reality-launcher-linux
+    - cp src-tauri/target/release/bundle/appimage/*.AppImage artifacts/reality-launcher-linux/ 2>/dev/null || true
+    - cp src-tauri/target/release/bundle/deb/*.deb artifacts/reality-launcher-linux/ 2>/dev/null || true
+    - ls artifacts/reality-launcher-linux/* >/dev/null
+  artifacts:
+    name: reality-launcher-linux
+    paths: [artifacts/reality-launcher-linux/]
+    expire_in: 7 days
+
+build:windows:
+  stage: build
+  tags: [saas-windows-medium-amd64]
+  needs: [prepare]
+  rules:
+    - if: ($CI_COMMIT_TAG =~ /^v/ || $PIPELINE_TYPE == "release") && ($ENABLE_WINDOWS_RELEASE == "true" || $BUILD_WINDOWS == "true")
+  cache:
+    key:
+      prefix: windows-$CI_JOB_NAME
+      files: [bun.lock, src-tauri/Cargo.lock]
+    paths:
+      - .bun-cache/
+      - src-tauri/target/
+  script:
+    - $ErrorActionPreference = "Stop"
+    - Invoke-WebRequest https://win.rustup.rs/x86_64 -OutFile rustup-init.exe
+    - .\rustup-init.exe -y --profile minimal --default-toolchain stable
+    - $env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
+    - irm bun.sh/install.ps1 | iex
+    - $env:Path = "$env:USERPROFILE\.bun\bin;$env:Path"
+    - bun install
+    - bun run tauri build
+    - New-Item -ItemType Directory -Path artifacts/reality-launcher-windows -Force | Out-Null
+    - Copy-Item -Path src-tauri/target/release/bundle/nsis/*.exe -Destination artifacts/reality-launcher-windows/ -ErrorAction SilentlyContinue
+    - Copy-Item -Path src-tauri/target/release/bundle/msi/*.msi -Destination artifacts/reality-launcher-windows/ -ErrorAction SilentlyContinue
+    - if (-not (Get-ChildItem artifacts/reality-launcher-windows)) { throw "No Windows artifacts found" }
+  artifacts:
+    name: reality-launcher-windows
+    paths: [artifacts/reality-launcher-windows/]
+    expire_in: 7 days
+
+build:macos:
+  stage: build
+  image: macos-15-xcode-16
+  tags: [saas-macos-medium-m1]
+  needs: [prepare]
+  rules:
+    - if: ($CI_COMMIT_TAG =~ /^v/ || $PIPELINE_TYPE == "release") && ($ENABLE_MACOS_RUNNER == "true" || $BUILD_MACOS == "true")
+  cache:
+    key:
+      prefix: macos-$CI_JOB_NAME
+      files: [bun.lock, src-tauri/Cargo.lock]
+    paths:
+      - .bun-cache/
+      - src-tauri/target/
+  script:
+    - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+    - export PATH="$HOME/.cargo/bin:$PATH"
+    - curl -fsSL https://bun.sh/install | bash
+    - export PATH="$HOME/.bun/bin:$PATH"
+    - bun install
+    - bun run tauri build
+    - mkdir -p artifacts/reality-launcher-macos
+    - cp src-tauri/target/release/bundle/dmg/*.dmg artifacts/reality-launcher-macos/ 2>/dev/null || true
+    - ls artifacts/reality-launcher-macos/* >/dev/null
+  artifacts:
+    name: reality-launcher-macos
+    paths: [artifacts/reality-launcher-macos/]
+    expire_in: 7 days
+
+release:
+  image: node:22-bookworm-slim
+  stage: release
+  interruptible: false
+  needs:
+    - prepare
+    - build:linux
+    - job: build:windows
+      optional: true
+    - job: build:macos
+      optional: true
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+    - if: $PIPELINE_TYPE == "release" && $PUBLISH_RELEASE == "true"
+  before_script:
+    - apt-get update && apt-get install -y curl jq ca-certificates
+  script:
+    - |
+      set -euo pipefail
+      VERSION="$RELEASE_VERSION"
+      echo "=== Downloaded artifacts ==="
+      ls -R artifacts
+
+      if [ "${ENABLE_R2_RELEASE:-true}" = "true" ] && [ -n "${CLOUDFLARE_API_TOKEN:-}" ] && [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+        echo "R2 credentials are configured; CDN upload will run."
+        npm install -g wrangler
+        wrangler r2 bucket list
+        echo "✓ R2 authentication successful"
+
+        for file in artifacts/reality-launcher-*/*; do
+          [ -f "$file" ] || continue
+          FILENAME=$(basename "$file")
+          wrangler r2 object put --remote "$R2_BUCKET/client/$VERSION/$FILENAME" --file="$file" --content-type="application/octet-stream"
+          echo "✓ Uploaded $FILENAME"
+        done
+
+        cdn_url() {
+          [ -n "$1" ] && echo "$CDN_URL/client/$VERSION/$(basename "$1" | sed 's/ /%20/g')" || true
+        }
+        first() { find "$1" -name "$2" 2>/dev/null | head -n 1 || true; }
+
+        WIN_PATH=$(first artifacts/reality-launcher-windows "*.exe")
+        [ -n "$WIN_PATH" ] || WIN_PATH=$(first artifacts/reality-launcher-windows "*.msi")
+        MAC_PATH=$(first artifacts/reality-launcher-macos "*.dmg")
+        LINUX_PATH=$(first artifacts/reality-launcher-linux "*.AppImage")
+        [ -n "$LINUX_PATH" ] || LINUX_PATH=$(first artifacts/reality-launcher-linux "*.deb")
+
+        jq -n \
+          --arg version "$VERSION" \
+          --arg releaseDate "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          --arg changelog "${CHANGELOG:-}" \
+          --arg windows "$(cdn_url "$WIN_PATH")" \
+          --arg mac "$(cdn_url "$MAC_PATH")" \
+          --arg linux "$(cdn_url "$LINUX_PATH")" \
+          '{
+            version: $version,
+            releaseDate: $releaseDate,
+            changelog: $changelog,
+            downloads: (
+              (if $windows == "" then {} else { windows: $windows } end) +
+              (if $linux == "" then {} else { linux: $linux } end) +
+              (if $mac == "" then {} else { mac: $mac } end)
+            )
+          }' > latest.json
+
+        echo "=== latest.json ==="
+        cat latest.json
+        wrangler r2 object put --remote "$R2_BUCKET/client/latest.json" --file="latest.json" --content-type="application/json"
+        echo "✓ Uploaded latest.json"
+      else
+        echo "R2 release upload is disabled or credentials are missing."
+      fi
+
+      # Release assets go to the generic package registry (file names can't contain spaces)
+      API="$CI_API_V4_URL/projects/$CI_PROJECT_ID"
+      PKG="$API/packages/generic/reality-launcher/$VERSION"
+      LINKS='[]'
+      for file in artifacts/reality-launcher-*/* latest.json; do
+        [ -f "$file" ] || continue
+        NAME=$(basename "$file")
+        PKG_NAME=$(echo "$NAME" | tr ' ' '_')
+        curl --fail-with-body -sS -H "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file "$file" "$PKG/$PKG_NAME"
+        LINKS=$(echo "$LINKS" | jq -c --arg n "$NAME" --arg u "$PKG/$PKG_NAME" '. + [{name: $n, url: $u, link_type: "package"}]')
+        echo "✓ Attached $NAME"
+      done
+
+      NOTES=$(cat <<'EOF'
+      > ⚠️ **macOS:** builds are currently unsigned — if macOS says the app is damaged or from an unidentified developer, run once:
+      > ```bash
+      > sudo xattr -cr "/Applications/Reality Launcher.app"
+      > ```
+      > (or right-click the app → Open). See the README for details.
+      EOF
+      )
+      [ -z "${CHANGELOG:-}" ] || NOTES="$NOTES"$'\n\n'"$CHANGELOG"
+
+      jq -n \
+        --arg tag "v$VERSION" \
+        --arg name "Reality Launcher v$VERSION" \
+        --arg ref "$CI_COMMIT_SHA" \
+        --arg desc "$NOTES" \
+        --argjson links "$LINKS" \
+        '{tag_name: $tag, name: $name, ref: $ref, description: $desc, assets: {links: $links}}' > release.json
+      curl --fail-with-body -sS -X POST -H "JOB-TOKEN: $CI_JOB_TOKEN" -H "Content-Type: application/json" \
+        --data @release.json "$API/releases"
+      echo "✓ Created release v$VERSION"
