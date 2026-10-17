@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from "react";
+import { Portal } from "../../ui/Portal";
+import { AnimatePresence, motion } from "framer-motion";
+import { useMotionPreset } from "../../../lib/motion";
 import { Icons } from "../../ui/Icons";
 import { Skeleton } from "../../ui/Skeleton";
-import { Portal } from "../../ui/Portal";
-import { LazyModItem } from "./LazyModItem";
-import { formatSize } from "./helpers";
+import { LazyModItem, MOD_ROW_GRID, MOD_ROW_GRID_LOCK } from "./LazyModItem";
+import { bulkBarVariants, formatSize } from "./helpers";
 import type { ModInfo } from "./types";
 import { playClick } from "../../../lib/sounds";
 import { useTranslation } from "../../../hooks/useTranslation";
@@ -56,6 +58,8 @@ export function ModsList({
     onSwitchVersion,
 }: ModsListProps) {
     const { t } = useTranslation();
+    const m = useMotionPreset();
+    const bulkBar = bulkBarVariants(m);
     const [searchQuery, setSearchQuery] = useState("");
     const [page, setPage] = useState(1);
     const [selectedFilenames, setSelectedFilenames] = useState<Set<string>>(new Set());
@@ -164,258 +168,56 @@ export function ModsList({
         page * MODS_PER_PAGE
     );
 
+    const allSelected = selectedFilenames.size === filteredMods.length && filteredMods.length > 0;
+    const rowGrid = onToggleLock ? MOD_ROW_GRID_LOCK : MOD_ROW_GRID;
+
     return (
-        <>
-            <div className="flex items-center justify-between gap-4 mb-4 w-full overflow-x-auto no-scrollbar pb-1">
-                
-                <div className="flex items-center gap-4 shrink-0">
-                    <button
-                        onClick={() => handleSelectAll(filteredMods)}
-                        className="w-5 h-5 rounded-md flex items-center justify-center transition-all cursor-pointer border-2"
-                        style={{
-                            backgroundColor: selectedFilenames.size === filteredMods.length && filteredMods.length > 0 ? colors.secondary : "transparent",
-                            borderColor: selectedFilenames.size === filteredMods.length && filteredMods.length > 0 ? colors.secondary : colors.onSurfaceVariant
-                        }}
-                        title={t('select_all' as any) || "Select All"}
-                    >
-                        {selectedFilenames.size === filteredMods.length && filteredMods.length > 0 ? (
-                            <Icons.Check className="w-3.5 h-3.5" style={{ color: "#1a1a1a" }} />
-                        ) : (
-                            selectedFilenames.size > 0 && <div className="w-2 h-0.5 rounded-full bg-current" style={{ backgroundColor: colors.secondary }} />
-                        )}
-                    </button>
-
-                    {totalPages > 1 ? (
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={() => { playClick(); setPage(p => Math.max(1, p - 1)); }}
-                                disabled={page === 1}
-                            className="min-h-11 flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5 whitespace-nowrap"
-                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                            >
-                                <i className="fa-solid fa-chevron-left text-xs"></i>
-                                {t('previous')}
-                            </button>
-
-                            <span className="min-h-11 px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap flex items-center" style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}>
-                                {page} / {totalPages}
-                            </span>
-
-                            <button
-                                onClick={() => { playClick(); setPage(p => Math.min(totalPages, p + 1)); }}
-                                disabled={page === totalPages}
-                                className="min-h-11 flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all disabled:opacity-40 hover:bg-white/5 whitespace-nowrap"
-                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                            >
-                                {t('next')}
-                                <i className="fa-solid fa-chevron-right text-xs"></i>
-                            </button>
-                        </div>
-                    ) : (
-                        <h3 className="text-lg font-medium whitespace-nowrap" style={{ color: colors.onSurface }}>
-                            {t('mods')} {isLoading ? "" : `(${mods.length})`}
-                        </h3>
-                    )}
+        <div
+            style={{
+                "--ghost-fg": colors.onSurfaceVariant,
+                "--ghost-hover-fg": colors.onSurface,
+                "--ghost-hover-bg": colors.surfaceContainerHighest,
+                "--search-ring": colors.secondary + "55",
+            } as React.CSSProperties}
+        >
+            {/* Toolbar: search · selection actions · pager · refresh · install */}
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+                <div
+                    className="h-10 flex items-center gap-2 px-3 rounded-xl min-w-0 flex-1 basis-56 max-w-md transition-shadow focus-within:ring-2 focus-within:ring-(--search-ring)"
+                    style={{ backgroundColor: colors.surfaceContainerHighest }}
+                >
+                    <Icons.Search className="w-4 h-4 shrink-0" style={{ color: colors.onSurfaceVariant }} />
+                    <input
+                        type="text"
+                        placeholder={t('search_mod_count' as any).replace('{count}', String(mods.length))}
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="bg-transparent outline-none text-sm w-full placeholder:opacity-70 min-w-0"
+                        style={{ color: colors.onSurface }}
+                    />
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0 max-w-full overflow-hidden">
-                    <div
-                        className="min-h-11 flex items-center gap-2 px-4 lg:px-5 py-2.5 rounded-xl transition-colors focus-within:ring-1 focus-within:ring-white/20 min-w-0 flex-1 lg:flex-none"
-                        style={{ backgroundColor: colors.surfaceContainerHighest }}
-                    >
-                        <i className="fa-solid fa-search text-sm shrink-0" style={{ color: colors.onSurfaceVariant }}></i>
-                        <input
-                            type="text"
-                            placeholder={t('search_mod_count' as any).replace('{count}', String(mods.length))}
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="bg-transparent outline-none text-sm w-full lg:w-56 placeholder:opacity-70 min-w-0"
-                            style={{ color: colors.onSurface }}
-                        />
-                    </div>
-
-                    <button
-                        onClick={() => { playClick(); onAddMod(); }}
-                        className="min-h-11 px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-all hover:opacity-90 active:scale-95 shrink-0"
-                        style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
-                    >
-                        <i className="fa-solid fa-plus text-xs"></i>
-                        <span className="hidden sm:inline">{t('install_mod' as any)}</span>
-                    </button>
-
-                    <button
-                        onClick={() => { playClick(); onRefresh(); }}
-                        disabled={isLoading}
-                        className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all shrink-0 ${isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10 active:scale-95'}`}
-                        style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                        title={t('refresh')}
-                    >
-                        <i className={`fa-solid fa-rotate-right text-sm ${isLoading ? 'fa-spin' : ''}`}></i>
-                    </button>
-
-                    {isServerManaged && !showLockInfo && (
-                        <button
-                            onClick={handleShowBanner}
-                            className="w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:bg-white/10 active:scale-95 shrink-0"
-                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                            title={t('mod_lock_banner_title' as any)}
-                        >
-                            <i className="fa-solid fa-question text-sm"></i>
-                        </button>
-                    )}
-                </div>
-            </div>
-
-            {isServerManaged && showLockInfo && (
-                <div className="group relative flex items-center gap-3 p-3 lg:p-4 mb-4 rounded-xl border-l-4 pr-32"
-                     style={{ 
-                         backgroundColor: `${colors.secondary}15`, 
-                         borderColor: colors.secondary,
-                         color: colors.onSurface
-                     }}>
-                    <div className="w-8 h-8 rounded-full bg-black/5 flex items-center justify-center shrink-0">
-                        <Icons.Lock className="w-4 h-4" style={{ color: "#000000" }} />
-                    </div>
-                    <div className="text-sm">
-                        <div className="flex items-center gap-2 mb-0.5">
-                            <p className="font-bold">{t('mod_lock_banner_title' as any)}</p>
-                            <button 
-                                onClick={() => alert('เลือกไฟล์ที่ต้องการ (Checkbox) ด้านล่าง\nจากนั้นปุ่มดำเนินการ "ล็อก" และ "ปลดล็อก" จะปรากฏขึ้นบริเวณแถบเครื่องมือด้านบน')}
-                                className="px-2 py-0.5 rounded bg-black/10 hover:bg-black/20 flex items-center gap-1.5 transition-all"
-                                title="วิธีใช้งานระบบล็อกไฟล์"
-                            >
-                                <i className="fa-solid fa-question text-[10px] text-black opacity-70"></i>
-                                <span className="text-[10px] font-bold text-black opacity-80">วิธีใช้งาน</span>
-                            </button>
-                        </div>
-                        <p className="opacity-80">
-                            {(() => {
-                                const desc = t('mod_lock_banner_desc' as any);
-                                if (desc.includes('{icon}')) {
-                                    const parts = desc.split('{icon}');
-                                    return (
-                                        <>
-                                            {parts[0]}
-                                            <i className="fa-solid fa-question text-[10px] inline-block mx-0.5 text-black"></i>
-                                            {parts[1]}
-                                        </>
-                                    );
-                                }
-                                return desc;
-                            })()}
-                        </p>
-                    </div>
-
-                    <button
-                        onClick={handleHideBanner}
-                        className="absolute top-1/2 -translate-y-1/2 right-3 px-5 py-2.5 rounded-2xl flex items-center gap-2 transition-all bg-black/5 hover:bg-black/10 shrink-0 border border-black/10"
-                        title={t('hide' as any)}
-                    >
-                        <i className="fa-solid fa-question text-xs opacity-70 text-black"></i>
-                        <span className="text-sm font-bold text-black opacity-90">{t('hide' as any)}</span>
-                    </button>
-                </div>
-            )}
-
-            {filteredMods.length === 0 && !isLoading ? (
-                <div className="text-center py-12 rounded-2xl" style={{ backgroundColor: colors.surfaceContainer }}>
-                    <Icons.Box className="w-12 h-12 mx-auto mb-3" style={{ color: colors.onSurfaceVariant, opacity: 0.5 }} />
-                    <p className="font-medium" style={{ color: colors.onSurfaceVariant }}>
-                        {searchQuery ? t('no_mods_search' as any) : t('no_mods_instance' as any)}
-                    </p>
-                    <p className="text-sm mt-1" style={{ color: colors.onSurfaceVariant }}>
-                        {t('drag_jar_hint' as any)}
-                    </p>
-                </div>
-            ) : (
-                <div className="space-y-2">
-                    {(isLoading ? Array.from({ length: Math.min(paginatedMods.length > 0 ? paginatedMods.length : 12, 20) }) : paginatedMods).map((mod, index) => (
-                        <ModListItemWrapper
-                            key={isLoading ? `skeleton-${index}` : ((mod as ModInfo)?.filename || `unknown-${index}`)}
-                            index={index}
-                            isLoading={isLoading}
-                            colors={colors}
-                        >
-                            <LazyModItem
-                                mod={mod as ModInfo}
-                                instanceId={instanceId}
-                                colors={colors}
-                                formatSize={formatSize}
-                                onToggle={onToggle}
-                                onDelete={onDelete}
-                                isLocked={lockedMods.has((mod as ModInfo)?.filename)}
-                                onToggleLock={onToggleLock}
-                                isServerManaged={isServerManaged}
-                                index={index}
-                                isSelected={selectedFilenames.has((mod as ModInfo)?.filename)}
-                                onToggleSelection={handleToggleSelection}
-                                onOpenProjectDetail={onOpenProjectDetail}
-                                onUpdate={onUpdate}
-                                isUpdating={updatingFilenames?.has((mod as ModInfo)?.filename)}
-                                onSwitchVersion={onSwitchVersion}
-                                instanceMcVersion={minecraftVersion}
-                                instanceLoader={loader}
-                            />
-                        </ModListItemWrapper>
-                    ))}
-                </div>
-            )}
-
-            {!isLoading && totalPages > 1 && (
-                <div className="flex justify-center mt-6 animate-fade-in" style={{ animationDelay: '300ms' }}>
-                    <div className="flex items-center gap-2 p-1.5 rounded-2xl"
-                            style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}20` }}>
-                            <button
-                                onClick={() => {
-                                    playClick();
-                                    setPage(p => Math.max(1, p - 1));
-                                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                                }}
-                                disabled={page === 1}
-                                className="px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-2"
-                                style={{ color: colors.onSurface }}
-                            >
-                                <i className="fa-solid fa-chevron-left text-xs"></i>
-                                {t('previous')}
-                            </button>
-
-                            <div className="px-4 min-w-[90px] text-center" style={{ color: colors.onSurfaceVariant }}>
-                                <span className="text-sm font-bold" style={{ color: colors.onSurface }}>{page}</span>
-                                <span className="text-xs opacity-70 mx-1">/</span>
-                                <span className="text-sm opacity-70">{totalPages}</span>
-                            </div>
-
-                            <button
-                                onClick={() => {
-                                    playClick();
-                                    setPage(p => Math.min(totalPages, p + 1));
-                                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                                }}
-                                disabled={page === totalPages}
-                                className="px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-2"
-                                style={{ color: colors.onSurface }}
-                            >
-                                {t('next')}
-                                <i className="fa-solid fa-chevron-right text-xs"></i>
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-            {selectedFilenames.size > 0 && (
+                {/* Bulk actions float at the bottom of the window while items are selected. */}
                 <Portal>
-                    <div 
-                        className="fixed bottom-8 left-1/2 -translate-x-1/2 z-9999 flex items-center gap-2 md:gap-3 px-4 py-2.5 md:px-6 rounded-full backdrop-blur-xl border animate-float"
-                        style={{ 
-                            backgroundColor: `${colors.surfaceContainerHighest}e6`, 
-                            borderColor: colors.outlineVariant || 'rgba(128,128,128,0.2)' 
-                        }}
+                <AnimatePresence>
+                {selectedFilenames.size > 0 && (
+                    <motion.div
+                        key="bulk-action-bar"
+                        variants={bulkBar}
+                        {...m.states}
+                        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 h-16 flex items-center gap-1 pl-6 pr-2.5 rounded-2xl max-w-[calc(100vw-2rem)] overflow-x-auto no-scrollbar shadow-[0_12px_40px_-12px_rgba(0,0,0,0.45)]"
+                        // Dark floating bar in every theme; the ghost-button colours are set here because
+                        // the portal sits outside the toolbar that normally provides them.
+                        style={{
+                            backgroundColor: "#1c1c1f",
+                            "--ghost-fg": "rgba(255,255,255,0.8)",
+                            "--ghost-hover-fg": "#ffffff",
+                            "--ghost-hover-bg": "rgba(255,255,255,0.12)",
+                        } as React.CSSProperties}
                     >
-                        <span className="font-bold whitespace-nowrap text-sm md:text-base mr-1" style={{ color: colors.onSurface }}>
+                        <span className="text-base font-bold whitespace-nowrap mr-3" style={{ color: "#ffffff" }}>
                             {selectedFilenames.size} {t('selected' as any)}
                         </span>
-
-                        <div className="h-6 w-px mx-1 md:mx-2" style={{ backgroundColor: colors.outlineVariant || 'rgba(128,128,128,0.2)' }} />
 
                         {(() => {
                             const selectedMods = mods.filter(m => selectedFilenames.has(m.filename));
@@ -427,10 +229,10 @@ export function ModsList({
                                     {hasDisabledMods && (
                                         <button
                                             onClick={() => handleBulkToggle(true)}
-                                            className="px-3.5 py-1.5 md:px-4 md:py-2 rounded-2xl text-xs md:text-sm font-bold transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
-                                            style={{ backgroundColor: colors.surface, color: colors.onSurface, border: `1px solid ${colors.outlineVariant || 'rgba(128,128,128,0.1)'}` }}
+                                            className="h-11 px-4 rounded-xl text-[15px] font-semibold pressable flex items-center gap-1.5 whitespace-nowrap text-(--ghost-hover-fg) hover:bg-(--ghost-hover-bg)"
+                                            title={t('action_enable' as any)}
                                         >
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
                                                 <circle cx="12" cy="12" r="10"></circle>
                                                 <path d="M9 12l2 2 4-4"></path>
                                             </svg>
@@ -441,10 +243,10 @@ export function ModsList({
                                     {hasEnabledMods && (
                                         <button
                                             onClick={() => handleBulkToggle(false)}
-                                            className="px-3.5 py-1.5 md:px-4 md:py-2 rounded-2xl text-xs md:text-sm font-bold transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
-                                            style={{ backgroundColor: colors.surface, color: colors.onSurfaceVariant, border: `1px solid ${colors.outlineVariant || 'rgba(128,128,128,0.1)'}` }}
+                                            className="h-11 px-4 rounded-xl text-[15px] font-semibold pressable flex items-center gap-1.5 whitespace-nowrap text-(--ghost-fg) hover:text-(--ghost-hover-fg) hover:bg-(--ghost-hover-bg)"
+                                            title={t('action_disable' as any)}
                                         >
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
                                                 <circle cx="12" cy="12" r="10"></circle>
                                                 <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
                                             </svg>
@@ -457,34 +259,32 @@ export function ModsList({
 
                         {isServerManaged && onBulkLock && (
                             <>
-                                <div className="h-6 w-px mx-1 hidden md:block" style={{ backgroundColor: colors.outlineVariant || 'rgba(128,128,128,0.2)' }} />
                                 <button
                                     onClick={() => handleBulkLock(true)}
-                                    className="px-3.5 py-1.5 md:px-4 md:py-2 rounded-2xl text-xs md:text-sm font-bold transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
-                                    style={{ backgroundColor: colors.secondary, color: "#000000" }}
+                                    className="h-11 px-4 rounded-xl text-[15px] font-semibold pressable flex items-center gap-1.5 whitespace-nowrap hover:bg-(--ghost-hover-bg)"
+                                    style={{ color: colors.secondary }}
+                                    title={t('lock' as any)}
                                 >
-                                    <Icons.Lock className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                                    <Icons.Lock className="w-5 h-5" />
                                     <span className="hidden sm:inline">{t('lock' as any)}</span>
                                 </button>
                                 <button
                                     onClick={() => handleBulkLock(false)}
-                                    className="px-3.5 py-1.5 md:px-4 md:py-2 rounded-2xl text-xs md:text-sm font-bold transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
-                                    style={{ backgroundColor: 'transparent', color: colors.onSurfaceVariant, border: `1px solid ${colors.outlineVariant || 'rgba(128,128,128,0.3)'}` }}
+                                    className="h-11 px-4 rounded-xl text-[15px] font-semibold pressable flex items-center gap-1.5 whitespace-nowrap text-(--ghost-fg) hover:text-(--ghost-hover-fg) hover:bg-(--ghost-hover-bg)"
+                                    title={t('unlock' as any)}
                                 >
-                                    <Icons.Unlock className="w-3.5 h-3.5 md:w-4 md:h-4 opacity-70" />
+                                    <Icons.Unlock className="w-5 h-5" />
                                     <span className="hidden sm:inline">{t('unlock' as any)}</span>
                                 </button>
                             </>
                         )}
 
-                        <div className="h-6 w-px mx-1 hidden md:block" style={{ backgroundColor: colors.outlineVariant || 'rgba(128,128,128,0.2)' }} />
-
                         <button
                             onClick={handleBulkDelete}
-                            className="px-3.5 py-1.5 md:px-4 md:py-2 rounded-2xl text-xs md:text-sm font-bold transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
-                            style={{ backgroundColor: "#ff4d6d", color: "#1a1a1a" }}
+                            className="h-11 px-4 rounded-xl text-[15px] font-semibold pressable flex items-center gap-1.5 whitespace-nowrap text-red-500 hover:bg-red-500/10"
+                            title={t('action_remove' as any)}
                         >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
                                 <polyline points="3 6 5 6 21 6"></polyline>
                                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
                                 <line x1="10" y1="11" x2="10" y2="17"></line>
@@ -492,20 +292,262 @@ export function ModsList({
                             </svg>
                             <span className="hidden sm:inline">{t('action_remove' as any)}</span>
                         </button>
-                        
+
                         <button
                             onClick={() => setSelectedFilenames(new Set())}
-                            className="w-8 h-8 md:w-10 md:h-10 ml-1 rounded-full flex items-center justify-center transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+                            className="w-11 h-11 rounded-xl flex items-center justify-center pressable shrink-0 text-(--ghost-fg) hover:text-(--ghost-hover-fg) hover:bg-(--ghost-hover-bg)"
                             title={t('cancel_selection' as any)}
                         >
-                            <Icons.Close className="w-4 h-4 md:w-5 md:h-5" style={{ color: colors.onSurfaceVariant }} />
+                            <Icons.Close className="w-5 h-5" />
                         </button>
-                    </div>
+                    </motion.div>
+                )}
+                </AnimatePresence>
                 </Portal>
+
+                <div className="flex items-center gap-2 ml-auto shrink-0">
+                    {totalPages > 1 && (
+                        <div className="h-10 flex items-center gap-0.5 px-1 rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
+                            <button
+                                onClick={() => { playClick(); setPage(p => Math.max(1, p - 1)); }}
+                                disabled={page === 1}
+                                className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors disabled:opacity-40 text-(--ghost-hover-fg) enabled:hover:bg-(--ghost-hover-bg)"
+                                title={t('previous')}
+                            >
+                                <Icons.ChevronLeft className="w-4 h-4" />
+                            </button>
+                            <span className="px-1.5 text-sm font-medium tabular-nums whitespace-nowrap" style={{ color: colors.onSurface }}>
+                                {page} / {totalPages}
+                            </span>
+                            <button
+                                onClick={() => { playClick(); setPage(p => Math.min(totalPages, p + 1)); }}
+                                disabled={page === totalPages}
+                                className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors disabled:opacity-40 text-(--ghost-hover-fg) enabled:hover:bg-(--ghost-hover-bg)"
+                                title={t('next')}
+                            >
+                                <Icons.ChevronRight className="w-4 h-4" />
+                            </button>
+                        </div>
+                    )}
+
+                    {isServerManaged && !showLockInfo && (
+                        <button
+                            onClick={handleShowBanner}
+                            className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:brightness-110 active:scale-95 shrink-0"
+                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                            title={t('mod_lock_banner_title' as any)}
+                        >
+                            <i className="fa-solid fa-question text-sm"></i>
+                        </button>
+                    )}
+
+                    <button
+                        onClick={() => { playClick(); onRefresh(); }}
+                        disabled={isLoading}
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${isLoading ? 'opacity-50 cursor-not-allowed' : 'hover:brightness-110 active:scale-95'}`}
+                        style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                        title={t('refresh')}
+                    >
+                        <i className={`fa-solid fa-rotate-right text-sm ${isLoading ? 'fa-spin' : ''}`}></i>
+                    </button>
+
+                    <button
+                        onClick={() => { playClick(); onAddMod(); }}
+                        className="h-10 px-4 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all hover:brightness-105 active:scale-95 whitespace-nowrap shrink-0"
+                        style={{ backgroundColor: colors.secondary, color: "#111" }}
+                        title={t('install_mod' as any)}
+                    >
+                        <Icons.Add className="w-4 h-4" />
+                        <span className="hidden sm:inline">{t('install_mod' as any)}</span>
+                    </button>
+                </div>
+            </div>
+
+            <AnimatePresence initial={false}>
+            {isServerManaged && showLockInfo && (
+                <motion.div
+                    key="mod-lock-info"
+                    variants={m.fadeIn}
+                    {...m.states}
+                    className="flex items-center gap-3 p-3 mb-3 rounded-xl"
+                    style={{ backgroundColor: `${colors.secondary}14`, color: colors.onSurface }}
+                >
+                    <div
+                        className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: `${colors.secondary}26`, color: colors.secondary }}
+                    >
+                        <Icons.Lock className="w-4 h-4" />
+                    </div>
+                    <div className="text-sm flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 mb-0.5">
+                            <p className="font-semibold">{t('mod_lock_banner_title' as any)}</p>
+                            <button
+                                onClick={() => alert('เลือกไฟล์ที่ต้องการ (Checkbox) ด้านล่าง\nจากนั้นปุ่มดำเนินการ "ล็อก" และ "ปลดล็อก" จะปรากฏขึ้นบริเวณแถบเครื่องมือด้านบน')}
+                                className="h-6 px-2 rounded-md flex items-center gap-1.5 text-xs font-semibold transition-all hover:brightness-110"
+                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}
+                                title="วิธีใช้งานระบบล็อกไฟล์"
+                            >
+                                <i className="fa-solid fa-question text-xs"></i>
+                                <span>วิธีใช้งาน</span>
+                            </button>
+                        </div>
+                        <p style={{ color: colors.onSurfaceVariant }}>
+                            {(() => {
+                                const desc = t('mod_lock_banner_desc' as any);
+                                if (desc.includes('{icon}')) {
+                                    const parts = desc.split('{icon}');
+                                    return (
+                                        <>
+                                            {parts[0]}
+                                            <i className="fa-solid fa-question text-xs inline-block mx-0.5"></i>
+                                            {parts[1]}
+                                        </>
+                                    );
+                                }
+                                return desc;
+                            })()}
+                        </p>
+                    </div>
+
+                    <button
+                        onClick={handleHideBanner}
+                        className="h-9 px-3.5 rounded-lg flex items-center gap-2 text-sm font-semibold transition-all hover:brightness-110 shrink-0"
+                        style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                        title={t('hide' as any)}
+                    >
+                        {t('hide' as any)}
+                    </button>
+                </motion.div>
+            )}
+            </AnimatePresence>
+
+            {filteredMods.length === 0 && !isLoading ? (
+                <motion.div variants={m.scaleIn} {...m.states} className="flex flex-col items-center justify-center text-center py-16 px-6">
+                    <div
+                        className="w-20 h-20 flex items-center justify-center mb-5"
+                    >
+                        <Icons.PaperBox className="w-16 h-16" style={{ color: colors.onSurfaceVariant }} />
+                    </div>
+                    <p className="text-lg font-semibold" style={{ color: colors.onSurface }}>
+                        {searchQuery ? t('no_mods_search' as any) : t('no_mods_instance' as any)}
+                    </p>
+                    <p className="text-[13px] mt-1" style={{ color: colors.onSurfaceVariant }}>
+                        {t('drag_jar_hint' as any)}
+                    </p>
+                    <button
+                        onClick={() => { playClick(); onAddMod(); }}
+                        className="mt-5 h-10 px-4 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all hover:brightness-105 active:scale-95"
+                        style={{ backgroundColor: colors.secondary, color: "#111" }}
+                    >
+                        <Icons.Add className="w-4 h-4" />
+                        {t('install_mod' as any)}
+                    </button>
+                </motion.div>
+            ) : (
+                <div>
+                    <div
+                        className={`${rowGrid} h-9 px-3 text-[13px] font-semibold select-none`}
+                        style={{ color: colors.onSurfaceVariant }}
+                    >
+                        <button
+                            onClick={() => handleSelectAll(filteredMods)}
+                            className="w-4.5 h-4.5 rounded-md flex items-center justify-center transition-all cursor-pointer border-[1.5px]"
+                            style={{
+                                backgroundColor: allSelected ? colors.secondary : "transparent",
+                                borderColor: allSelected || selectedFilenames.size > 0 ? colors.secondary : colors.onSurfaceVariant
+                            }}
+                            title={t('select_all' as any) || "Select All"}
+                        >
+                            {allSelected ? (
+                                <Icons.Check className="w-3.5 h-3.5" style={{ color: "#111" }} />
+                            ) : (
+                                selectedFilenames.size > 0 && <div className="w-2 h-0.5 rounded-full" style={{ backgroundColor: colors.secondary }} />
+                            )}
+                        </button>
+                        <span className="truncate">{t('name')}</span>
+                        <span className="truncate hidden md:block">{t('version')}</span>
+                        <span aria-hidden="true" />
+                    </div>
+
+                    {/* Rows fade in once when loading ends (one fade for the whole list, not per row). */}
+                    <motion.div
+                        key={isLoading ? "loading" : `ready-${page}`}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.25, ease: "easeOut" }}
+                        className="space-y-0.5"
+                    >
+                        {(isLoading ? Array.from({ length: Math.min(paginatedMods.length > 0 ? paginatedMods.length : 12, 20) }) : paginatedMods).map((mod, index) => (
+                            <ModListItemWrapper
+                                key={isLoading ? `skeleton-${index}` : ((mod as ModInfo)?.filename || `unknown-${index}`)}
+                                index={index}
+                                isLoading={isLoading}
+                                colors={colors}
+                            >
+                                <LazyModItem
+                                    mod={mod as ModInfo}
+                                    instanceId={instanceId}
+                                    colors={colors}
+                                    formatSize={formatSize}
+                                    onToggle={onToggle}
+                                    onDelete={onDelete}
+                                    isLocked={lockedMods.has((mod as ModInfo)?.filename)}
+                                    onToggleLock={onToggleLock}
+                                    isServerManaged={isServerManaged}
+                                    index={index}
+                                    isSelected={selectedFilenames.has((mod as ModInfo)?.filename)}
+                                    onToggleSelection={handleToggleSelection}
+                                    onOpenProjectDetail={onOpenProjectDetail}
+                                    onUpdate={onUpdate}
+                                    isUpdating={updatingFilenames?.has((mod as ModInfo)?.filename)}
+                                    onSwitchVersion={onSwitchVersion}
+                                    instanceMcVersion={minecraftVersion}
+                                    instanceLoader={loader}
+                                />
+                            </ModListItemWrapper>
+                        ))}
+                    </motion.div>
+                </div>
             )}
 
+            {!isLoading && totalPages > 1 && (
+                <div className="flex justify-center mt-4">
+                    <div className="flex items-center gap-1 p-1 rounded-xl" style={{ backgroundColor: colors.surfaceContainer }}>
+                            <button
+                                onClick={() => {
+                                    playClick();
+                                    setPage(p => Math.max(1, p - 1));
+                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                }}
+                                disabled={page === 1}
+                                className="h-9 px-3 rounded-lg text-sm font-medium disabled:opacity-40 transition-colors flex items-center gap-1.5 text-(--ghost-hover-fg) enabled:hover:bg-(--ghost-hover-bg)"
+                            >
+                                <Icons.ChevronLeft className="w-4 h-4" />
+                                {t('previous')}
+                            </button>
 
-        </>
+                            <div className="px-3 min-w-20 text-center text-sm tabular-nums" style={{ color: colors.onSurfaceVariant }}>
+                                <span className="font-semibold" style={{ color: colors.onSurface }}>{page}</span>
+                                <span className="mx-1">/</span>
+                                <span>{totalPages}</span>
+                            </div>
+
+                            <button
+                                onClick={() => {
+                                    playClick();
+                                    setPage(p => Math.min(totalPages, p + 1));
+                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                }}
+                                disabled={page === totalPages}
+                                className="h-9 px-3 rounded-lg text-sm font-medium disabled:opacity-40 transition-colors flex items-center gap-1.5 text-(--ghost-hover-fg) enabled:hover:bg-(--ghost-hover-bg)"
+                            >
+                                {t('next')}
+                                <Icons.ChevronRight className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+                )}
+        </div>
     );
 }
 
@@ -523,29 +565,23 @@ function ModListItemWrapper({
 }) {
     if (isLoading) {
         return (
-            <div
-                className="min-h-[64px] flex items-center gap-4 p-4 rounded-xl"
-                style={{ backgroundColor: colors.surfaceContainer }}
-            >
-                <Skeleton className="w-12 h-12 rounded-xl" colors={colors} />
+            <div className="min-h-15 flex items-center gap-4 px-3 py-2 rounded-xl">
+                <Skeleton className="w-4.5 h-4.5 rounded-md" colors={colors} />
+                <Skeleton className="w-10 h-10 rounded-lg" colors={colors} />
                 <div className="flex-1 space-y-2">
                     <Skeleton className="h-4 w-1/3" colors={colors} />
                     <Skeleton className="h-3 w-1/4" colors={colors} />
                 </div>
-                <Skeleton className="w-12 h-6 rounded-full" colors={colors} />
-                <Skeleton className="w-10 h-10 rounded-lg" colors={colors} />
+                <Skeleton className="w-10 h-6 rounded-full" colors={colors} />
+                <Skeleton className="w-8 h-8 rounded-lg" colors={colors} />
             </div>
         );
     }
 
+    // Rows cascade in on first reveal and on page change (container is keyed by page);
+    // only the first ~14 get extra delay so the bottom of the page never lags.
     return (
-        <div 
-            className="animate-fade-in opacity-0"
-            style={{ 
-                animationDelay: `${index * 50}ms`,
-                animationFillMode: 'forwards'
-            }}
-        >
+        <div className="animate-mod-row-in" style={{ "--row-i": Math.min(index, 14) } as React.CSSProperties}>
             {children}
         </div>
     );

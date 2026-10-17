@@ -43,6 +43,13 @@ function isInstalledOlderThanLatest(
     return !isSameVersion(latestNumber, currentVersion);
 }
 
+/** Shared column template for the mods table (header row in ModsList + each row). */
+export const MOD_ROW_GRID =
+    "grid grid-cols-[1.125rem_minmax(0,1fr)_10rem] md:grid-cols-[1.125rem_minmax(0,1.25fr)_minmax(0,1fr)_10rem] items-center gap-x-4";
+/** Same as MOD_ROW_GRID but with room for the lock toggle (server-managed instances). */
+export const MOD_ROW_GRID_LOCK =
+    "grid grid-cols-[1.125rem_minmax(0,1fr)_12.5rem] md:grid-cols-[1.125rem_minmax(0,1.25fr)_minmax(0,1fr)_12.5rem] items-center gap-x-4";
+
 export interface ModInfo {
     filename: string;
     name: string;
@@ -198,13 +205,14 @@ export function LazyModItem({
                     handleOpenProject();
                 }
             }}
-            className={`grid grid-cols-[auto_3rem_minmax(220px,0.9fr)_minmax(260px,1fr)_auto] items-center gap-4 min-h-[64px] px-4 py-3 rounded-xl transition-all group ${canOpenProject ? "cursor-pointer hover:brightness-[0.98]" : ""}`}
+            className={`${onToggleLock ? MOD_ROW_GRID_LOCK : MOD_ROW_GRID} min-h-18 px-3 py-2.5 rounded-xl transition-colors group bg-(--row-bg) hover:bg-(--row-hover) ${canOpenProject ? "cursor-pointer" : ""}`}
             style={{
-                backgroundColor: isSelected ? colors.secondary + "15" : colors.surfaceContainer,
-                opacity: mod.enabled ? 1 : 0.6,
-                border: isSelected ? `1px solid ${colors.secondary}50` : "1px solid transparent",
-                marginBottom: "4px"
-            }}
+                "--row-bg": isSelected ? colors.secondary + "1f" : "transparent",
+                "--row-hover": isSelected ? colors.secondary + "29" : colors.surfaceContainer,
+                "--btn-fg": colors.onSurfaceVariant,
+                "--btn-hover-fg": colors.onSurface,
+                "--btn-hover-bg": colors.surfaceContainerHighest,
+            } as React.CSSProperties}
         >
             <div
                 onClick={(e) => {
@@ -212,67 +220,68 @@ export function LazyModItem({
                     playClick();
                     onToggleSelection?.(mod.filename);
                 }}
-                className={`w-5 h-5 rounded-md flex items-center justify-center transition-all cursor-pointer border-2 ${isSelected ? "scale-110" : "opacity-40 group-hover:opacity-100"}`}
+                className={`w-4.5 h-4.5 rounded-md flex items-center justify-center transition-all cursor-pointer border-[1.5px] ${isSelected ? "" : "opacity-50 group-hover:opacity-100"}`}
                 style={{
                     backgroundColor: isSelected ? colors.secondary : "transparent",
                     borderColor: isSelected ? colors.secondary : colors.onSurfaceVariant
                 }}
             >
-                {isSelected && <Icons.Check className="w-3.5 h-3.5" style={{ color: "#1a1a1a" }} />}
+                {isSelected && <Icons.Check className="w-3.5 h-3.5" style={{ color: "#111" }} />}
             </div>
 
-            {icon ? (
-                <img
-                    src={icon}
-                    alt={displayName}
-                    className="w-12 h-12 rounded-xl object-contain shrink-0"
-                />
-            ) : (
-                <div
-                    className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
-                    style={{ backgroundColor: colors.surfaceContainerHighest }}
-                >
-                    <Icons.Box className="w-6 h-6" style={{ color: colors.onSurfaceVariant }} />
-                </div>
-            )}
+            <div className={`flex items-center gap-3 min-w-0 transition-opacity ${mod.enabled ? "" : "opacity-60"}`}>
+                {icon ? (
+                    <img
+                        src={icon}
+                        alt={displayName}
+                        className="w-12 h-12 rounded-xl object-contain shrink-0"
+                    />
+                ) : (
+                    <div
+                        className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: colors.surfaceContainerHighest }}
+                    >
+                        <Icons.Box className="w-5 h-5" style={{ color: colors.onSurfaceVariant }} />
+                    </div>
+                )}
 
-            <div className="min-w-0 pr-4">
-                <div className="flex items-center gap-2">
-                    <p className="font-bold text-[15px] truncate" style={{ color: colors.onSurface }}>
-                        {displayName}
+                <div className="min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                        <p className="font-semibold text-base leading-tight truncate" style={{ color: colors.onSurface }}>
+                            {displayName}
+                        </p>
+                        {isLocked && (
+                            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-semibold shrink-0" style={{ backgroundColor: `${colors.secondary}20`, color: colors.secondary }}>
+                                {Icons?.Lock && <Icons.Lock className="w-3 h-3" />}
+                                {t('locked_badge' as any) || 'LOCKED'}
+                            </div>
+                        )}
+                    </div>
+                    <p className="text-sm truncate mt-0.5" style={{ color: colors.onSurfaceVariant }}>
+                        {author ? `by ${author}` : formatSize(mod.size)}
                     </p>
-                    {isLocked && (
-                        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: `${colors.secondary}20`, color: colors.secondary }}>
-                            {Icons?.Lock && <Icons.Lock className="w-2.5 h-2.5" />}
-                            {t('locked_badge' as any) || 'LOCKED'}
-                        </div>
-                    )}
                 </div>
-                <p className="text-xs truncate opacity-70 mt-1" style={{ color: colors.onSurfaceVariant }}>
-                    {author ? `by ${author}` : formatSize(mod.size)}
-                </p>
             </div>
 
-            <div className="min-w-0 pr-4 hidden md:block">
-                <p className="text-sm font-bold truncate mb-0.5 flex items-center gap-1.5" style={{ color: colors.onSurface }}>
-                    {mod.version ? `v${mod.version}` : "Unknown Version"}
-
+            <div className={`min-w-0 hidden md:block transition-opacity ${mod.enabled ? "" : "opacity-60"}`}>
+                <p className="text-sm font-medium truncate" style={{ color: colors.onSurface }}>
+                    {mod.version ? `v${mod.version}` : "—"}
                 </p>
-                <p className="text-xs truncate opacity-60" style={{ color: colors.onSurfaceVariant }}>
+                <p className="text-sm truncate mt-0.5" style={{ color: colors.onSurfaceVariant }}>
                     {mod.filename}
                 </p>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-                
+            <div className="flex items-center justify-end gap-1 shrink-0">
+
                 <button
                     onClick={(e) => { e.stopPropagation(); playClick(); onToggle(mod.filename); }}
-                    className="relative w-11 h-6 rounded-full transition-colors shrink-0"
+                    className="relative w-10 h-6 mr-1.5 rounded-full transition-colors shrink-0"
                     style={{ backgroundColor: mod.enabled ? colors.secondary : colors.surfaceContainerHighest }}
                     title={mod.enabled ? t("disable") : t("enable")}
                 >
                     <div
-                        className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all"
+                        className="absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow-sm"
                         style={{ left: mod.enabled ? "calc(100% - 20px)" : "4px" }}
                     />
                 </button>
@@ -303,7 +312,7 @@ export function LazyModItem({
                             <button
                                 onClick={handleUpdateClick}
                                 disabled={isUpdating && !onSwitchVersion}
-                                className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:bg-white/10 shrink-0 disabled:opacity-50"
+                                className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-green-500/15 shrink-0 disabled:opacity-50"
                                 style={{ color: "#22c55e" }}
                                 title={t('update_to_latest' as any) || "Update to latest"}
                                 type="button"
@@ -316,8 +325,7 @@ export function LazyModItem({
                         return (
                             <button
                                 onClick={(e) => { e.stopPropagation(); playClick(); onSwitchVersion(mod); }}
-                                className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:bg-white/10 shrink-0"
-                                style={{ color: colors.onSurfaceVariant }}
+                                className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 text-(--btn-fg) hover:text-(--btn-hover-fg) hover:bg-(--btn-hover-bg)"
                                 title={t('switch_version_title' as any) || 'Switch version'}
                                 type="button"
                             >
@@ -330,8 +338,8 @@ export function LazyModItem({
 
                 <button
                     onClick={(e) => { e.stopPropagation(); playClick(); onDelete(mod.filename); }}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:bg-white/10 shrink-0"
-                    style={{ color: colors.onSurfaceVariant, opacity: isLocked ? 0.5 : 1, cursor: isLocked ? "not-allowed" : "pointer" }}
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 text-(--btn-fg) ${isLocked ? "" : "hover:text-red-500 hover:bg-red-500/10"}`}
+                    style={{ opacity: isLocked ? 0.5 : 1, cursor: isLocked ? "not-allowed" : "pointer" }}
                     disabled={isLocked}
                     title={isLocked ? t("cannot_delete_locked") : t("delete_mod")}
                 >
@@ -343,7 +351,7 @@ export function LazyModItem({
                     </svg>
                 </button>
 
-                <button onClick={(e) => e.stopPropagation()} className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:bg-white/10 shrink-0" style={{ color: colors.onSurfaceVariant }}>
+                <button onClick={(e) => e.stopPropagation()} className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 text-(--btn-fg) hover:text-(--btn-hover-fg) hover:bg-(--btn-hover-bg)">
                     <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
                         <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"></path>
                     </svg>
@@ -352,7 +360,7 @@ export function LazyModItem({
                 {onToggleLock && (
                     <button
                         onClick={(e) => { e.stopPropagation(); playClick(); onToggleLock(mod.filename); }}
-                        className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:bg-white/10 shrink-0"
+                        className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 hover:brightness-110"
                         style={{
                             color: isLocked ? colors.secondary : colors.onSurfaceVariant,
                             backgroundColor: isLocked ? colors.secondary + "20" : "transparent"

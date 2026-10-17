@@ -2,131 +2,97 @@ import toast from "react-hot-toast";
 import type { SettingsTabProps } from "./AccountTab";
 import { useTranslation } from "../../../hooks/useTranslation";
 import { Icons } from "../../ui/Icons";
+import { SettingsPage, SettingsSection, SettingsRow, Toggle, Segmented, fieldClass, fieldStyle } from "./SettingsUI";
 
 export function LauncherTab({ config, updateConfig, colors }: SettingsTabProps) {
     const windowApi = (window as any).api;
     const { t } = useTranslation(config.language);
 
     return (
-        <div className="rounded-xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
-            <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "40" }}>
-                <i className="fa-solid fa-rocket text-lg" style={{ color: colors.secondary }}></i>
-                <h3 className="font-medium" style={{ color: colors.onSurface }}>{t("launcher_settings")}</h3>
-            </div>
-            <div className="p-4 space-y-4">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t("fullscreen")}</p>
-                        <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t("fullscreen_desc")}</p>
-                    </div>
-                    <div className="relative inline-flex items-center cursor-pointer">
-                        <button
-                            onClick={async () => {
-                                if (!windowApi) {
-                                    toast.error(t("electron_required"));
-                                    return;
-                                }
-                                await windowApi.windowMaximize();
-                                const isMaximized = await windowApi.windowIsMaximized();
-                                updateConfig({ fullscreen: isMaximized });
-                            }}
-                            className="relative w-11 h-6 rounded-full transition-all duration-300"
-                            style={{ backgroundColor: config.fullscreen ? colors.secondary : colors.outline + "40" }}
-                        >
-                            <div
-                                className="absolute left-[2px] top-[2px] w-5 h-5 bg-white rounded-full transition-transform duration-300"
-                                style={{ transform: config.fullscreen ? "translateX(20px)" : "translateX(0)" }}
-                            />
-                        </button>
-                    </div>
-                </div>
+        <SettingsPage title={t("launcher_settings")} colors={colors}>
+            <SettingsSection colors={colors}>
+                <SettingsRow title={t("fullscreen")} description={t("fullscreen_desc")} colors={colors}>
+                    <Toggle
+                        checked={!!config.fullscreen}
+                        label={t("fullscreen")}
+                        colors={colors}
+                        onChange={async () => {
+                            if (!windowApi) {
+                                toast.error(t("electron_required"));
+                                return;
+                            }
+                            await windowApi.windowMaximize();
+                            const isMaximized = await windowApi.windowIsMaximized();
+                            updateConfig({ fullscreen: isMaximized });
+                        }}
+                    />
+                </SettingsRow>
 
-                <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
-
-                <div>
-                    <div className="flex items-center justify-between mb-2">
-                        <div>
-                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t("window_size")}</p>
-                            <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t("window_size_desc")}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t("auto")}</span>
-                            <div className="relative inline-flex items-center cursor-pointer">
-                                <button
-                                    onClick={() => updateConfig({ windowAuto: !config.windowAuto })}
-                                    className="relative w-11 h-6 rounded-full transition-all duration-300"
-                                    style={{ backgroundColor: config.windowAuto ? colors.secondary : colors.outline + "40" }}
-                                >
-                                    <div
-                                        className="absolute left-[2px] top-[2px] w-5 h-5 bg-white rounded-full transition-transform duration-300"
-                                        style={{ transform: config.windowAuto ? "translateX(20px)" : "translateX(0)" }}
-                                    />
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    {!config.windowAuto && (
-                        <div className="flex gap-3 mt-3">
+                <SettingsRow
+                    title={t("window_size")}
+                    description={t("window_size_desc")}
+                    colors={colors}
+                    below={!config.windowAuto ? (
+                        <div className="flex gap-3">
                             <div className="flex-1">
-                                <label className="text-xs mb-1 block" style={{ color: colors.onSurfaceVariant }}>{t("width")}</label>
+                                <label className="text-sm font-medium mb-1.5 block" style={{ color: colors.onSurfaceVariant }}>{t("width")}</label>
                                 <input
                                     type="number"
                                     value={config.windowWidth}
                                     onChange={(e) => updateConfig({ windowWidth: Number(e.target.value) })}
-                                    className="w-full px-4 py-2.5 rounded-md border text-sm"
-                                    style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurface }}
+                                    className={`${fieldClass} w-full`}
+                                    style={fieldStyle(colors)}
                                 />
                             </div>
                             <div className="flex-1">
-                                <label className="text-xs mb-1 block" style={{ color: colors.onSurfaceVariant }}>{t("height")}</label>
+                                <label className="text-sm font-medium mb-1.5 block" style={{ color: colors.onSurfaceVariant }}>{t("height")}</label>
                                 <input
                                     type="number"
                                     value={config.windowHeight}
                                     onChange={(e) => updateConfig({ windowHeight: Number(e.target.value) })}
-                                    className="w-full px-4 py-2.5 rounded-md border text-sm"
-                                    style={{ borderColor: colors.outline, backgroundColor: colors.surface, color: colors.onSurface }}
+                                    className={`${fieldClass} w-full`}
+                                    style={fieldStyle(colors)}
                                 />
                             </div>
                         </div>
-                    )}
-                </div>
+                    ) : undefined}
+                >
+                    <span className="text-sm font-medium" style={{ color: colors.onSurfaceVariant }}>{t("auto")}</span>
+                    <Toggle
+                        checked={!!config.windowAuto}
+                        label={t("auto")}
+                        colors={colors}
+                        onChange={() => updateConfig({ windowAuto: !config.windowAuto })}
+                    />
+                </SettingsRow>
 
-                <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
+                <SettingsRow
+                    title={t("close_on_launch")}
+                    description={t("close_on_launch_desc")}
+                    colors={colors}
+                    below={
+                        <Segmented
+                            value={config.closeOnLaunch as string}
+                            colors={colors}
+                            options={[
+                                { value: "keep-open", label: t("keep_open") },
+                                { value: "hide-reopen", label: t("hide_reopen") },
+                                { value: "close", label: t("close_launcher") },
+                            ]}
+                            onChange={(value) => updateConfig({ closeOnLaunch: value as any })}
+                        />
+                    }
+                />
+            </SettingsSection>
 
-                <div className="flex items-center justify-between">
-                    <div>
-                        <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t("close_on_launch")}</p>
-                        <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t("close_on_launch_desc")}</p>
-                    </div>
-                    <div className="flex gap-1">
-                        {[
-                            { value: "keep-open", label: t("keep_open") },
-                            { value: "hide-reopen", label: t("hide_reopen") },
-                            { value: "close", label: t("close_launcher") },
-                        ].map((option) => (
-                            <button
-                                key={option.value}
-                                onClick={() => updateConfig({ closeOnLaunch: option.value as any })}
-                                className="px-3 py-1.5 rounded-md text-xs font-semibold transition-all border"
-                                style={{
-                                    backgroundColor: config.closeOnLaunch === option.value ? colors.secondary + "20" : "transparent",
-                                    borderColor: config.closeOnLaunch === option.value ? colors.secondary : "transparent",
-                                    color: config.closeOnLaunch === option.value ? colors.onSurface : colors.onSurfaceVariant,
-                                }}
-                            >
-                                {option.label}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-
-                <div className="h-px" style={{ backgroundColor: colors.outline + "30" }} />
-
-                <div className="flex items-center justify-between">
-                    <div>
-                        <p className="font-medium text-sm text-red-500">{t("reset_settings")}</p>
-                        <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t("reset_settings_desc")}</p>
-                    </div>
+            <SettingsSection colors={colors}>
+                <SettingsRow
+                    title={t("reset_settings")}
+                    description={t("reset_settings_desc")}
+                    colors={colors}
+                    danger
+                    icon={<Icons.Trash className="w-5 h-5" />}
+                >
                     <button
                         onClick={async () => {
                             if (confirm(t("reset_settings_confirm"))) {
@@ -146,13 +112,14 @@ export function LauncherTab({ config, updateConfig, colors }: SettingsTabProps) 
                                 }
                             }
                         }}
-                        className="p-2 rounded-md transition-all hover:bg-red-500/10 text-red-500 hover:text-red-400 group"
+                        className="h-10 px-4 rounded-lg border text-sm font-semibold transition inline-flex items-center gap-2 whitespace-nowrap text-red-500 border-red-500/40 hover:bg-red-500/10 hover:text-red-400"
                         title={t("reset_settings")}
                     >
-                        <Icons.Trash className="w-5 h-5" />
+                        <Icons.Trash className="w-4 h-4" />
+                        {t("reset_settings")}
                     </button>
-                </div>
-            </div>
-        </div>
+                </SettingsRow>
+            </SettingsSection>
+        </SettingsPage>
     );
 }

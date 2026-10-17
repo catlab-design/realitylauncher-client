@@ -3,29 +3,28 @@ import toast from "react-hot-toast";
 import type { GameInstance, LauncherConfig } from "../../types/launcher";
 import { playClick } from "../../lib/sounds";
 import { useTranslation } from "../../hooks/useTranslation";
-import { motion } from "framer-motion";
-import type { TranslationKey } from "../../i18n/translations";
-
-import modrinthIcon from "../../assets/modrinth.svg";
-import curseforgeIcon from "../../assets/curseforge.svg";
 
 import {
     type ModrinthProject,
     type ModVersion,
     type ContentSource,
+    type ProjectType,
+    type InstallProgress,
     CONTENT_SOURCES,
+    SEARCH_DEBOUNCE_MS,
     matchesVersion,
-    ProjectCard,
-    ImagePreviewModal,
-    normalizeImageUrl,
+    ExploreToolbar,
+    ProjectList,
+    ProjectPreview,
     ProjectDetailPage,
-    FilterMenu,
+    normalizeModrinthFull,
+    normalizeCurseforgeFull,
+    normalizeModrinthSearchHit,
+    normalizeCurseforgeSearchHit,
 } from "./ExploreTabs";
 import { Icons } from "../ui/Icons";
-import bannerImage from "../../assets/banner.png";
 
 type ContentType = "mod" | "resourcepack" | "shader" | "datapack";
-type DetailTab = "description" | "versions" | "gallery";
 
 interface InstanceContentBrowserProps {
     instance: GameInstance;
@@ -37,27 +36,67 @@ interface InstanceContentBrowserProps {
     onUpdate?: (id: string, updates: Partial<GameInstance>) => void;
 }
 
-const SORT_OPTIONS = [
-    { value: "relevance", labelKey: "sort.relevance" },
-    { value: "downloads", labelKey: "sort.downloads" },
-    { value: "follows", labelKey: "sort.follows" },
-    { value: "newest", labelKey: "sort.newest" },
-    { value: "updated", labelKey: "sort.updated" },
-];
+const CONTENT_TYPES: ContentType[] = ["mod", "resourcepack", "datapack", "shader"];
 
-const CONTENT_TABS: { type: ContentType; labelKey: string; icon: React.ComponentType<any> }[] = [
-    { type: "mod", labelKey: "mods", icon: Icons.Box },
-    { type: "resourcepack", labelKey: "resourcepacks", icon: Icons.Palette },
-    { type: "datapack", labelKey: "datapacks", icon: Icons.Scroll },
-    { type: "shader", labelKey: "shaders", icon: Icons.Sun },
-];
+const getAvailableTypes = (loader: string): ContentType[] =>
+    loader === "vanilla" ? CONTENT_TYPES.filter((type) => type !== "mod") : CONTENT_TYPES;
 
-const getAvailableTabs = (loader: string) => {
-    if (loader === "vanilla") {
-        
-        return CONTENT_TABS.filter(tab => tab.type !== "mod");
+// ---------------------------------------------------------------------------
+// Cache (same approach as Explore): search pages and full project details, kept
+// for the app session so reopening the browser, paging back, or re-selecting a
+// project is instant.
+// ---------------------------------------------------------------------------
+
+/** A cached page shows instantly; it is refetched in the background once older than this. */
+const SEARCH_FRESH_MS = 2 * 60 * 1000;
+/** Older than this, a cached page is ignored and loaded normally. */
+const SEARCH_MAX_AGE_MS = 30 * 60 * 1000;
+const SEARCH_CACHE_LIMIT = 60;
+
+type SearchParams = {
+    query: string;
+    page: number;
+    contentType: ContentType;
+    sortBy: string;
+    viewCount: number;
+    contentSource: ContentSource;
+    mcVersionFilters: string[];
+    loaderFilters: string[];
+    categoryFilters: string[];
+    environmentFilters: string[];
+};
+type SearchCacheEntry = { results: ModrinthProject[]; totalHits: number; at: number };
+const searchCache = new Map<string, SearchCacheEntry>();
+const projectDetailCache = new Map<string, ModrinthProject>();
+
+const searchKey = (params: SearchParams) => JSON.stringify(params);
+
+function rememberSearch(key: string, entry: SearchCacheEntry) {
+    searchCache.delete(key);
+    searchCache.set(key, entry);
+    while (searchCache.size > SEARCH_CACHE_LIMIT) {
+        const oldest = searchCache.keys().next().value;
+        if (oldest === undefined) break;
+        searchCache.delete(oldest);
     }
-    return CONTENT_TABS;
+}
+
+const initialSearchParams = (contentType: ContentType): SearchParams => ({
+    query: "",
+    page: 1,
+    contentType,
+    sortBy: "relevance",
+    viewCount: 20,
+    contentSource: CONTENT_SOURCES.MODRINTH,
+    mcVersionFilters: [],
+    loaderFilters: [],
+    categoryFilters: [],
+    environmentFilters: [],
+});
+
+const freshCached = (key: string) => {
+    const hit = searchCache.get(key);
+    return hit && Date.now() - hit.at < SEARCH_MAX_AGE_MS ? hit : undefined;
 };
 
 export function InstanceContentBrowser({
@@ -70,6 +109,20 @@ export function InstanceContentBrowser({
     onUpdate,
 }: InstanceContentBrowserProps) {
     const { t } = useTranslation(config?.language);
+
+    // Results layout: shared with the Install page (remembered on this machine).
+    const [listLayout, setListLayout] = useState<"grid" | "list">(() => {
+        try {
+            return localStorage.getItem("exploreLayout") === "list" ? "list" : "grid";
+        } catch {
+            return "grid";
+        }
+    });
+    const changeListLayout = (next: "grid" | "list") => {
+        setListLayout(next);
+        try { localStorage.setItem("exploreLayout", next); } catch {}
+    };
+
     const [contentType, setContentType] = useState<ContentType>(initialContentType);
     const [contentSource, setContentSource] = useState<ContentSource>(CONTENT_SOURCES.MODRINTH);
 
@@ -83,8 +136,12 @@ export function InstanceContentBrowser({
     const [page, setPage] = useState(1);
     const [viewCount, setViewCount] = useState(20);
 
-    const [results, setResults] = useState<ModrinthProject[]>([]);
-    const [totalHits, setTotalHits] = useState(0);
+    const [results, setResults] = useState<ModrinthProject[]>(
+        () => freshCached(searchKey(initialSearchParams(initialContentType)))?.results || []
+    );
+    const [totalHits, setTotalHits] = useState(
+        () => freshCached(searchKey(initialSearchParams(initialContentType)))?.totalHits || 0
+    );
     const [isLoading, setIsLoading] = useState(false);
 
     const [previewProject, setPreviewProject] = useState<ModrinthProject | null>(null);
@@ -93,60 +150,19 @@ export function InstanceContentBrowser({
     const [selectedProject, setSelectedProject] = useState<ModrinthProject | null>(null);
     const [installedIds, setInstalledIds] = useState<Set<string>>(new Set());
     const [installedNames, setInstalledNames] = useState<Set<string>>(new Set());
-    const [installedProjects, setInstalledProjects] = useState<ModrinthProject[]>([]);
 
     const [detailProject, setDetailProject] = useState<ModrinthProject | null>(null);
     const [isInstallingVersion, setIsInstallingVersion] = useState(false);
-    const [installVersionProgress, setInstallVersionProgress] = useState<{stage: string, message: string} | null>(null);
+    const [installVersionProgress, setInstallVersionProgress] = useState<InstallProgress | null>(null);
 
-    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const contentListRef = useRef<HTMLDivElement | null>(null);
-    
+    const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const filterDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const searchTokenRef = useRef(0);
+    const lastFetchedKeyRef = useRef<string | null>(null);
+    const fetchTokenRef = useRef(0);
+    const activePreviewIdRef = useRef<string | null>(null);
 
-    const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
-
-    const getImageUrl = (item: any) => {
-        if (!item) return null;
-        if (typeof item === 'string') return normalizeImageUrl(item, 'modrinth');
-
-        
-        
-        const candidate = item.rawUrl || item.raw_url || item.url || null;
-        return normalizeImageUrl(candidate, 'modrinth');
-    };
-
-    const totalPages = Math.ceil(totalHits / viewCount);
-
-    const fetchFullProjectDetails = async (project: ModrinthProject) => {
-        
-        if (contentSource !== CONTENT_SOURCES.MODRINTH) return;
-
-        
-        try {
-            const rawProject = await window.api?.modrinthGetProject?.(project.project_id);
-            if (rawProject) {
-                const fullProject: ModrinthProject = {
-                    ...project,
-                    gallery: rawProject.gallery || [], 
-                    
-                    
-                    featured_gallery: project.featured_gallery || rawProject.featured_gallery || null,
-                    icon_url: rawProject.icon_url || project.icon_url, 
-                };
-
-                
-                setPreviewProject(prev => {
-                    if (prev && prev.project_id === project.project_id) {
-                        return fullProject;
-                    }
-                    return prev;
-                });
-            }
-        } catch (err) {
-            console.error("Failed to fetch full project details:", err);
-        }
-    };
+    const totalPages = Math.max(1, Math.ceil((totalHits || results.length) / viewCount));
 
     const loadInstalledContent = useCallback(async () => {
         try {
@@ -179,7 +195,6 @@ export function InstanceContentBrowser({
                 const name = (item.name || "").toLowerCase();
                 if (filename) names.add(filename);
                 if (name) names.add(name);
-                
                 if (name) names.add(name.replace(/\s+/g, "-"));
             }
             setInstalledNames(names);
@@ -197,12 +212,13 @@ export function InstanceContentBrowser({
     const isProjectInstalled = useCallback((project: ModrinthProject): boolean => {
         if (installedIds.has(project.project_id)) return true;
 
-        const projectTitle = normalizeForMatch(project.title);
+        const projectTitle = normalizeForMatch(project.title || "");
         const projectSlug = project.slug ? normalizeForMatch(project.slug) : "";
 
         for (const name of installedNames) {
             const normalizedName = normalizeForMatch(name);
-            if (normalizedName.includes(projectTitle) || projectTitle.includes(normalizedName)) {
+            if (!normalizedName) continue;
+            if (projectTitle && normalizedName.includes(projectTitle) || projectTitle.includes(normalizedName)) {
                 return true;
             }
             if (projectSlug && (normalizedName.includes(projectSlug) || projectSlug.includes(normalizedName))) {
@@ -216,9 +232,36 @@ export function InstanceContentBrowser({
         loadInstalledContent();
     }, [loadInstalledContent]);
 
-    const loadProjects = useCallback(async () => {
+    const loadProjects = async (query?: string, overridePage?: number, force = false) => {
+        const params: SearchParams = {
+            query: query !== undefined ? query : searchQuery,
+            page: overridePage !== undefined ? overridePage : page,
+            contentType,
+            sortBy,
+            viewCount,
+            contentSource,
+            mcVersionFilters,
+            loaderFilters,
+            categoryFilters,
+            environmentFilters,
+        };
+        const cacheKey = searchKey(params);
+        if (!force && lastFetchedKeyRef.current === cacheKey) return;
+        lastFetchedKeyRef.current = cacheKey;
+
+        const cached = searchCache.get(cacheKey);
+        const cacheAge = cached ? Date.now() - cached.at : Infinity;
+        if (cached && cacheAge < SEARCH_MAX_AGE_MS) {
+            searchTokenRef.current++; // drop any slower in-flight request
+            setResults(cached.results);
+            setTotalHits(cached.totalHits);
+            setIsLoading(false);
+            if (cacheAge < SEARCH_FRESH_MS) return;
+        }
+
         const myToken = ++searchTokenRef.current;
-        setIsLoading(true);
+        // A stale cached page stays on screen while it refreshes; only a miss shows the skeleton.
+        if (!(cached && cacheAge < SEARCH_MAX_AGE_MS)) setIsLoading(true);
         try {
             if (contentSource === CONTENT_SOURCES.CURSEFORGE) {
                 const modLoaderMapping: Record<string, number> = {
@@ -228,45 +271,31 @@ export function InstanceContentBrowser({
                     'neoforge': 6
                 };
 
-                
-                
+                // CurseForge only takes a single game version + loader: use the first selection.
                 const cfVersion = mcVersionFilters[0];
                 const cfLoader = loaderFilters[0];
                 const result = await window.api?.curseforgeSearch?.({
-                    query: searchQuery,
+                    query: params.query,
                     projectType: contentType,
                     gameVersion: cfVersion || undefined,
                     modLoaderType: cfLoader ? modLoaderMapping[cfLoader.toLowerCase()] : undefined,
                     sortBy: sortBy === "downloads" ? "downloads" : sortBy === "updated" ? "updated" : "relevance",
                     pageSize: viewCount,
-                    index: (page - 1) * viewCount,
+                    index: (params.page - 1) * viewCount,
                 });
 
-                
                 if (searchTokenRef.current !== myToken) return;
 
                 if (result?.data) {
-                    const mapped: ModrinthProject[] = result.data.map((cf: any) => ({
-                        slug: cf.slug || cf.id.toString(),
-                        title: cf.name,
-                        description: cf.summary,
-                        categories: cf.categories?.map((c: any) => c.name) || [],
-                        downloads: cf.downloadCount,
-                        icon_url: normalizeImageUrl(cf.logo?.url || null, 'curseforge'),
-                        project_id: cf.id.toString(),
-                        author: cf.authors?.[0]?.name || "Unknown",
-                        versions: cf.latestFiles?.flatMap((f: any) => f.gameVersions) || [],
-                        follows: cf.thumbsUpCount || 0,
-                        client_side: "required",
-                        server_side: "optional",
-                        gallery: cf.screenshots?.map((s: any) => s.url) || [],
-                        featured_gallery: cf.screenshots?.[0]?.url || null,
-                    }));
+                    const mapped: ModrinthProject[] = result.data.map((cf: any) =>
+                        normalizeCurseforgeSearchHit(cf, t('unknown'))
+                    );
+                    const hits = result.pagination?.totalCount || mapped.length;
                     setResults(mapped);
-                    setTotalHits(result.pagination?.totalCount || mapped.length);
+                    setTotalHits(hits);
+                    rememberSearch(cacheKey, { results: mapped, totalHits: hits, at: Date.now() });
                 }
             } else {
-                
                 const facets: string[][] = [];
                 if (mcVersionFilters.length) facets.push(mcVersionFilters.map(v => `versions:${v}`));
                 if (loaderFilters.length) facets.push(loaderFilters.map(l => `categories:${l}`));
@@ -279,43 +308,29 @@ export function InstanceContentBrowser({
                 }
 
                 const result = await window.api?.modrinthSearch?.({
-                    query: searchQuery,
+                    query: params.query,
                     projectType: contentType,
                     sortBy: sortBy,
                     limit: viewCount,
-                    offset: (page - 1) * viewCount,
+                    offset: (params.page - 1) * viewCount,
                     facets: facets.length > 0 ? JSON.stringify(facets) : undefined,
                 });
 
-                // Stale request โ€” discard.
+                // Stale request: discard.
                 if (searchTokenRef.current !== myToken) return;
 
                 if (result?.hits) {
-                    const mapped: ModrinthProject[] = result.hits.map((mr: any) => ({
-                        slug: mr.slug,
-                        title: mr.title,
-                        description: mr.description,
-                        categories: mr.categories || mr.display_categories || [],
-                        downloads: mr.downloads,
-                        icon_url: normalizeImageUrl(mr.icon_url || null, 'modrinth'),
-                        project_id: mr.project_id,
-                        author: mr.author || "Unknown",
-                        versions: mr.versions || [],
-                        game_versions: mr.game_versions || [],
-                        loaders: mr.loaders || [],
-                        follows: mr.follows || 0,
-                        client_side: mr.client_side,
-                        server_side: mr.server_side,
-                        gallery: mr.gallery || [],
-                        featured_gallery: mr.featured_gallery || null,
-                        color: mr.color,
-                    }));
+                    const mapped: ModrinthProject[] = result.hits.map((mr: any) =>
+                        normalizeModrinthSearchHit(mr, t('unknown'))
+                    );
+                    const hits = result.total_hits ?? result.totalHits ?? 0;
                     setResults(mapped);
-                    setTotalHits(result.total_hits || 0);
+                    setTotalHits(hits);
+                    rememberSearch(cacheKey, { results: mapped, totalHits: hits, at: Date.now() });
                 }
             }
         } catch (error) {
-            // Only show error for the latest request โ€” stale requests fail silently.
+            // Only show error for the latest request; stale requests fail silently.
             if (searchTokenRef.current !== myToken) return;
             console.error("[ContentBrowser] Search error:", error);
             toast.error(t("search_failed"));
@@ -324,11 +339,9 @@ export function InstanceContentBrowser({
                 setIsLoading(false);
             }
         }
-    }, [searchQuery, contentSource, contentType, sortBy, page, viewCount, mcVersionFilters, loaderFilters, categoryFilters, environmentFilters, instance]);
+    };
 
-    const filterDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isFirstFilterLoadRef = useRef(true);
-
     useEffect(() => {
         if (isFirstFilterLoadRef.current) {
             isFirstFilterLoadRef.current = false;
@@ -344,32 +357,84 @@ export function InstanceContentBrowser({
         };
     }, [contentSource, contentType, sortBy, page, viewCount, mcVersionFilters, loaderFilters, categoryFilters, environmentFilters]);
 
+    // A different catalogue: drop the old preview/detail (the first new result is auto-selected).
+    useEffect(() => {
+        setPreviewProject(null);
+        setDetailProject(null);
+        activePreviewIdRef.current = null;
+    }, [contentSource, contentType]);
+
+    // Always show something: when nothing (or a vanished item) is previewed, preview the first result.
     useEffect(() => {
         if (!results || results.length === 0) {
             setPreviewProject(null);
             return;
         }
-        if (!previewProject) {
-            handleSelectProject(results[0]);
+        const previewId = previewProject?.project_id ?? null;
+        const stillExists = previewId && results.some((p) => p.project_id === previewId);
+        if (!stillExists) handleSelectProject(results[0]);
+    }, [results, previewProject]);
+
+    const fetchFullProjectDetails = async (project: ModrinthProject) => {
+        if (!project.project_id) return;
+
+        const myToken = ++fetchTokenRef.current;
+        const myProjectId = project.project_id;
+        activePreviewIdRef.current = myProjectId;
+        const isStale = () =>
+            fetchTokenRef.current !== myToken || activePreviewIdRef.current !== myProjectId;
+
+        const cacheKey = `${contentSource}:${project.project_id}`;
+        const cachedDetail = projectDetailCache.get(cacheKey);
+        if (cachedDetail) {
+            setPreviewProject(prev => (prev && prev.project_id === cachedDetail.project_id ? cachedDetail : prev));
+            setResults(prev => prev.map(p => (p.project_id === cachedDetail.project_id ? cachedDetail : p)));
             return;
         }
-        const stillExists = results.some((p) => p.project_id === previewProject.project_id);
-        if (!stillExists) handleSelectProject(results[0]);
-    }, [results]);
 
-    const handleDebouncedSearch = useCallback((value: string) => {
-        setSearchQuery(value);
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-        debounceRef.current = setTimeout(() => {
+        try {
+            let normalized: ModrinthProject | null = null;
+            if (contentSource === CONTENT_SOURCES.MODRINTH) {
+                const fullProject = await window.api?.modrinthGetProject?.(project.project_id);
+                if (isStale()) return;
+                if (fullProject) normalized = normalizeModrinthFull(fullProject, project, t('unknown'));
+            } else if (contentSource === CONTENT_SOURCES.CURSEFORGE) {
+                const result = await window.api?.curseforgeGetProject?.(project.project_id);
+                if (isStale()) return;
+                if (result?.data) normalized = normalizeCurseforgeFull(result.data, project, t('unknown'));
+            }
+            if (!normalized) return;
+            projectDetailCache.set(cacheKey, normalized);
+            const final = normalized;
+            setPreviewProject(prev => (prev && prev.project_id === final.project_id ? final : prev));
+            setResults(prev => prev.map(p => (p.project_id === final.project_id ? final : p)));
+        } catch (err) {
+            console.error("[ContentBrowser] Failed to fetch full project details:", err);
+        }
+    };
+
+    const handleSearch = () => {
+        setPage(1);
+        loadProjects(searchQuery, 1, true);
+    };
+
+    const lastSentQueryRef = useRef("");
+    const handleDebouncedSearch = (query: string) => {
+        setSearchQuery(query);
+        if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+        searchDebounceRef.current = setTimeout(() => {
+            if (query === lastSentQueryRef.current) return;
+            lastSentQueryRef.current = query;
             setPage(1);
-            loadProjects();
-        }, 300);
-    }, [loadProjects]);
+            loadProjects(query, 1);
+        }, SEARCH_DEBOUNCE_MS);
+    };
 
     const handleSelectProject = (project: ModrinthProject) => {
         if (previewProject?.project_id === project.project_id) {
             handleOpenDetail(project);
         } else {
+            activePreviewIdRef.current = project.project_id;
             setPreviewProject(project);
             fetchFullProjectDetails(project);
         }
@@ -382,69 +447,57 @@ export function InstanceContentBrowser({
 
     const fetchFullProjectForDetail = async (project: ModrinthProject) => {
         try {
-            if (contentSource === "modrinth") {
-                const fullProject = await (window.api as any)?.modrinthGetProject?.(project.project_id);
-                if (fullProject) {
-                    const normalized: ModrinthProject = {
-                        ...project,
-                        body: fullProject.body || "",
-                        source_url: fullProject.source_url || fullProject.sourceUrl || undefined,
-                        wiki_url: fullProject.wiki_url || fullProject.wikiUrl || undefined,
-                        discord_url: fullProject.discord_url || fullProject.discordUrl || undefined,
-                        issues_url: fullProject.issues_url || fullProject.issuesUrl || undefined,
-                        license: fullProject.license || undefined,
-                        date_created: fullProject.published || fullProject.date_created || fullProject.dateCreated || undefined,
-                        date_modified: fullProject.updated || fullProject.date_modified || fullProject.dateModified || undefined,
-                    };
-                    
-                     try {
-                        const team = await (window.api as any)?.modrinthGetTeam?.(project.project_id);
-                        if (team && Array.isArray(team)) {
-                            normalized.team_members = team.map((m: any) => ({
-                                user: {
-                                    username: m.user?.username || m.user?.name || 'Unknown',
-                                    avatar_url: m.user?.avatar_url || m.user?.avatarUrl || undefined,
-                                },
-                                role: m.role || 'Member',
-                            }));
-                        }
-                    } catch (e) {}
-
-                    setDetailProject(normalized);
-                }
+            if (contentSource === CONTENT_SOURCES.MODRINTH) {
+                const fullProject = await window.api?.modrinthGetProject?.(project.project_id);
+                if (!fullProject) return;
+                const normalized = normalizeModrinthFull(fullProject, project, t('unknown'));
+                // Team is a separate Modrinth endpoint and optional: don't block the page on it.
+                try {
+                    const team = await (window.api as any)?.modrinthGetTeam?.(project.project_id);
+                    if (Array.isArray(team)) {
+                        normalized.team_members = team.map((m: any) => ({
+                            user: {
+                                username: m.user?.username || m.user?.name || 'Unknown',
+                                avatar_url: m.user?.avatar_url || m.user?.avatarUrl || undefined,
+                            },
+                            role: m.role || 'Member',
+                        }));
+                    }
+                } catch {/* team fetch is optional */}
+                setDetailProject(normalized);
             } else {
                 const result = await window.api?.curseforgeGetProject?.(project.project_id);
-                if (result?.data) {
-                    const cf = result.data;
-                    const descResult = await (window.api as any)?.curseforgeGetDescription?.(project.project_id);
-
-                    const normalized: ModrinthProject = {
-                        ...project,
-                        body: descResult?.data || "",
-                        source_url: cf.links?.sourceUrl || undefined,
-                        wiki_url: cf.links?.wikiUrl || undefined,
-                        issues_url: cf.links?.issuesUrl || undefined,
-                        date_created: cf.dateCreated || undefined,
-                        date_modified: cf.dateModified || undefined,
-                        team_members: cf.authors?.map((a: any) => ({
-                            user: { username: a.name, avatar_url: undefined },
-                            role: 'Author',
-                        })) || [],
-                    };
-                    setDetailProject(normalized);
-                }
+                if (!result?.data) return;
+                const descResult = await (window.api as any)?.curseforgeGetDescription?.(project.project_id);
+                setDetailProject(normalizeCurseforgeFull(result.data, project, t('unknown'), descResult?.data));
             }
         } catch (error) {
             console.error("[ContentBrowser] Failed to fetch full project for detail:", error);
         }
     };
 
+    /** Cloud-linked instances: lock a freshly installed file so sync doesn't remove it. */
+    const autoLockInstalledFile = async (filename?: string) => {
+        if (!instance.cloudId || !filename) return;
+        try {
+            const lockedMods = new Set(instance.lockedMods || []);
+            if (!lockedMods.has(filename)) {
+                const lockRes = await (window.api as any)?.instanceToggleLock?.(instance.id, filename);
+                if (lockRes?.ok && lockRes.lockedMods && onUpdate) {
+                    onUpdate(instance.id, { lockedMods: lockRes.lockedMods });
+                }
+            }
+        } catch (e) {
+            console.error("Failed to auto-lock installed file:", e);
+        }
+    };
+
     const handleInstallVersionFromDetail = async (project: ModrinthProject, versionId: string) => {
         setIsInstallingVersion(true);
         setInstallVersionProgress({ stage: "downloading", message: "Downloading version..." });
-        
+
         try {
-             const result = await window.api?.contentDownloadToInstance?.({
+            const result = await window.api?.contentDownloadToInstance?.({
                 projectId: project.project_id,
                 versionId: versionId,
                 instanceId: instance.id,
@@ -455,28 +508,14 @@ export function InstanceContentBrowser({
             if (result?.ok) {
                 toast.success(t("install_success_name").replace("{name}", project.title));
                 setInstalledIds(prev => new Set(prev).add(project.project_id));
-                
-                if (instance.cloudId && result.filename) {
-                    try {
-                        const lockedMods = new Set(instance.lockedMods || []);
-                        if (!lockedMods.has(result.filename)) {
-                            const lockRes = await (window.api as any)?.instanceToggleLock?.(instance.id, result.filename);
-                            if (lockRes?.ok && lockRes.lockedMods && onUpdate) {
-                                onUpdate(instance.id, { lockedMods: lockRes.lockedMods });
-                            }
-                        }
-                    } catch (e) {
-                        console.error("Failed to auto-lock installed file:", e);
-                    }
-                }
-                
+                await autoLockInstalledFile(result.filename);
                 loadInstalledContent();
                 onInstalled();
             } else {
                 toast.error(result?.error || t("install_failed"));
             }
         } catch (error: any) {
-             toast.error(error?.message || t("error_occurred"));
+            toast.error(error?.message || t("error_occurred"));
         } finally {
             setIsInstallingVersion(false);
             setInstallVersionProgress(null);
@@ -512,6 +551,7 @@ export function InstanceContentBrowser({
             toast.error(t("cannot_install_mod_vanilla"));
             return;
         }
+        if (isInstalling) return;
 
         setSelectedProject(project);
         setIsInstalling(true);
@@ -570,8 +610,6 @@ export function InstanceContentBrowser({
 
             if (!bestVersion) {
                 toast.error(t("no_compatible_version_for").replace("{version}", instance.minecraftVersion).replace("{loader}", instance.loader || "vanilla"));
-                setIsInstalling(false);
-                setSelectedProject(null);
                 return;
             }
 
@@ -586,21 +624,7 @@ export function InstanceContentBrowser({
             if (result?.ok) {
                 toast.success(t("install_success_name").replace("{name}", project.title));
                 setInstalledIds(prev => new Set(prev).add(project.project_id));
-                
-                if (instance.cloudId && result.filename) {
-                    try {
-                        const lockedMods = new Set(instance.lockedMods || []);
-                        if (!lockedMods.has(result.filename)) {
-                            const lockRes = await (window.api as any)?.instanceToggleLock?.(instance.id, result.filename);
-                            if (lockRes?.ok && lockRes.lockedMods && onUpdate) {
-                                onUpdate(instance.id, { lockedMods: lockRes.lockedMods });
-                            }
-                        }
-                    } catch (e) {
-                        console.error("Failed to auto-lock installed file:", e);
-                    }
-                }
-                
+                await autoLockInstalledFile(result.filename);
                 loadInstalledContent();
                 onInstalled();
             } else {
@@ -615,547 +639,128 @@ export function InstanceContentBrowser({
         }
     };
 
+    const installingProjectId = isInstalling ? selectedProject?.project_id ?? null : null;
+    const installingProgress: InstallProgress | null = installingProjectId
+        ? { stage: "installing", message: t("installing_progress") }
+        : null;
+    const previewIsInstalling = !!previewProject && installingProjectId === previewProject.project_id;
+
+    const header = (
+        <div className="flex items-center gap-2 min-w-0 shrink-0 md:mr-3">
+            <button
+                type="button"
+                onClick={() => { playClick(); onClose(); }}
+                className="h-11 -ml-3 px-3 rounded-xl text-sm font-semibold flex items-center gap-2 whitespace-nowrap transition-colors hover:bg-black/5 active:scale-[0.98]"
+                style={{ color: colors.onSurfaceVariant }}
+            >
+                <Icons.ArrowLeft className="w-4.5 h-4.5" />
+                {t("back")}
+            </button>
+            <h1 className="font-display text-2xl truncate max-w-64" style={{ color: colors.onSurface }} title={instance.name}>
+                {instance.name}
+            </h1>
+            <span
+                className="h-7 px-2.5 rounded-lg text-xs font-semibold flex items-center whitespace-nowrap shrink-0"
+                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}
+            >
+                {instance.minecraftVersion} · {instance.loader}
+            </span>
+        </div>
+    );
+
     return (
         <div className="space-y-4">
-            {selectedImageIndex !== null && previewProject && previewProject.gallery && (
-                <ImagePreviewModal
-                    colors={colors}
-                    imageUrl={getImageUrl(previewProject.gallery[selectedImageIndex]) || ""}
-                    onClose={() => setSelectedImageIndex(null)}
-                    onNext={() => {
-                        if (previewProject?.gallery && selectedImageIndex !== null && selectedImageIndex < previewProject.gallery.length - 1) {
-                            setSelectedImageIndex(selectedImageIndex + 1);
-                        }
-                    }}
-                    onPrev={() => {
-                        if (previewProject?.gallery && selectedImageIndex !== null && selectedImageIndex > 0) {
-                            setSelectedImageIndex(selectedImageIndex - 1);
-                        }
-                    }}
-                    hasNext={previewProject?.gallery ? selectedImageIndex < previewProject.gallery.length - 1 : false}
-                    hasPrev={selectedImageIndex > 0}
-                    preloadUrls={(() => {
-                        const urls: string[] = [];
-                        if (previewProject?.gallery && selectedImageIndex !== null) {
-                            if (selectedImageIndex < previewProject.gallery.length - 1) {
-                                const next = getImageUrl(previewProject.gallery[selectedImageIndex + 1]);
-                                if (next) urls.push(next);
-                            }
-                            if (selectedImageIndex > 0) {
-                                const prev = getImageUrl(previewProject.gallery[selectedImageIndex - 1]);
-                                if (prev) urls.push(prev);
-                            }
-                        }
-                        return urls;
-                    })()}
-                    imageIndex={selectedImageIndex}
-                    totalImages={previewProject?.gallery ? previewProject.gallery.length : 0}
-                />
-            )}
-
             {detailProject ? (
                 <ProjectDetailPage
                     colors={colors}
                     project={detailProject}
-                    projectType={contentType as any}
+                    projectType={contentType}
                     contentSource={contentSource}
                     isInstallingModpack={isInstallingVersion}
                     installProgress={installVersionProgress}
                     onBack={() => setDetailProject(null)}
-                    onInstallModpack={(project) => {}}
+                    onInstallModpack={() => {}}
                     onAddToInstance={handleAddToInstance}
                     onInstallVersion={handleInstallVersionFromDetail}
                 />
             ) : (
                 <>
-                <div className="rounded-2xl" style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}30` }}>
-                    <div className="px-3 py-3 sm:px-4 flex flex-col md:flex-row md:items-center gap-3 border-b" style={{ borderColor: colors.outline + "30" }}>
-                        <button
-                            onClick={() => { playClick(); onClose(); }}
-                            className="min-h-11 px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 transition-all hover:brightness-95 active:scale-[0.98] whitespace-nowrap"
-                            style={{ color: colors.onSurfaceVariant }}
-                        >
-                            <i className="fa-solid fa-arrow-left" style={{ color: colors.secondary }}></i>
-                            {t('back')}
-                        </button>
+                    <ExploreToolbar
+                        colors={colors}
+                        leading={header}
+                        contentSource={contentSource}
+                        projectType={contentType}
+                        projectTypes={getAvailableTypes(instance.loader)}
+                        tabIndicatorLayoutId="instance-content-type-tab-underline"
+                        searchQuery={searchQuery}
+                        viewCount={viewCount}
+                        page={page}
+                        totalPages={totalPages}
+                        mcVersionFilters={mcVersionFilters}
+                        loaderFilters={loaderFilters}
+                        categoryFilters={categoryFilters}
+                        environmentFilters={environmentFilters}
+                        sortBy={sortBy}
+                        onContentSourceChange={(source) => { setContentSource(source); setPage(1); }}
+                        onProjectTypeChange={(type: ProjectType) => {
+                            if (type === "modpack") return;
+                            setContentType(type);
+                            setPage(1);
+                        }}
+                        onSearchChange={handleDebouncedSearch}
+                        onSearchSubmit={handleSearch}
+                        onViewCountChange={(count) => { setViewCount(count); setPage(1); }}
+                        onPageChange={setPage}
+                        onSortChange={(s) => { setSortBy(s); setPage(1); }}
+                        onMcVersionFiltersChange={(v) => { setMcVersionFilters(v); setPage(1); }}
+                        onLoaderFiltersChange={(l) => { setLoaderFilters(l); setPage(1); }}
+                        onCategoryFiltersChange={(c) => { setCategoryFilters(c); setPage(1); }}
+                        onEnvironmentFiltersChange={(e) => { setEnvironmentFilters(e); setPage(1); }}
+                        showCategoryFilter={true}
+                        showEnvironmentFilter={contentType === "mod"}
+                        showLoaderFilter={true}
+                        showVersionFilter={true}
+                        layout={listLayout}
+                        onLayoutChange={changeListLayout}
+                    />
 
-                        <div className="flex items-center gap-2 min-w-0 md:w-[220px]">
-                            <span className="font-medium" style={{ color: colors.onSurface }}>{instance.name}</span>
-                            <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}>
-                                {instance.minecraftVersion} • {instance.loader}
-                            </span>
-                        </div>
-
-                        <div className="flex-1 relative min-w-[220px]">
-                            <input
-                                type="text"
-                                placeholder={t('search_content_placeholder' as any).replace('{type}', contentType === "mod" ? t('mods') : contentType === "resourcepack" ? t('resourcepacks') : contentType)}
-                                value={searchQuery}
-                                onChange={(e) => handleDebouncedSearch(e.target.value)}
-                                onKeyDown={(e) => e.key === "Enter" && loadProjects()}
-                                className="w-full min-h-11 px-4 py-2.5 pl-11 rounded-xl text-sm outline-none transition-all focus:ring-2"
-                                style={{
-                                    backgroundColor: colors.surface,
-                                    border: `1px solid ${colors.outline}40`,
-                                    color: colors.onSurface,
-                                    ["--tw-ring-color" as any]: colors.secondary + "55",
-                                }}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mt-4">
+                        <div className="lg:col-span-8 xl:col-span-9">
+                            <ProjectList
+                                colors={colors}
+                                results={results}
+                                totalHits={totalHits}
+                                isLoading={isLoading}
+                                previewProjectId={previewProject?.project_id || null}
+                                page={page}
+                                totalPages={totalPages}
+                                viewCount={viewCount}
+                                onSelectProject={handleSelectProject}
+                                onPageChange={setPage}
+                                installingProjectId={installingProjectId}
+                                installProgress={installingProgress}
+                                layout={listLayout}
                             />
-                            <i className="fa-solid fa-search text-sm absolute left-4 top-1/2 -translate-y-1/2" style={{ color: colors.onSurfaceVariant }}></i>
                         </div>
 
-                        {/* Single filter trigger โ€” opens a popover with all sections (loader/version
-                            are locked to the instance and hidden here). */}
-                        <FilterMenu
-                            colors={colors}
-                            sortBy={sortBy}
-                            mcVersionFilters={mcVersionFilters}
-                            loaderFilters={loaderFilters}
-                            categoryFilters={categoryFilters}
-                            environmentFilters={environmentFilters}
-                            onSortChange={(s) => { setSortBy(s); setPage(1); }}
-                            onMcVersionFiltersChange={(v) => { setMcVersionFilters(v); setPage(1); }}
-                            onLoaderFiltersChange={(l) => { setLoaderFilters(l); setPage(1); }}
-                            onCategoryFiltersChange={(c) => { setCategoryFilters(c); setPage(1); }}
-                            onEnvironmentFiltersChange={(e) => { setEnvironmentFilters(e); setPage(1); }}
-                            showCategoryFilter={true}
-                            showEnvironmentFilter={contentType === "mod"}
-                            showLoaderFilter={true}
-                            showVersionFilter={true}
-                        />
-
-                        <div className="grid grid-cols-2 gap-2 w-full sm:w-auto md:min-w-[260px]">
-                            <button
-                                onClick={() => { playClick(); setContentSource(CONTENT_SOURCES.MODRINTH); setPage(1); }}
-                                className="min-h-11 px-4 py-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all relative group active:scale-[0.98] whitespace-nowrap"
-                                style={{
-                                    color: contentSource === CONTENT_SOURCES.MODRINTH ? "#000" : colors.onSurfaceVariant,
-                                    border: `1px solid ${contentSource === CONTENT_SOURCES.MODRINTH ? "transparent" : colors.outline + "25"}`,
-                                    backgroundColor: contentSource === CONTENT_SOURCES.MODRINTH ? "transparent" : colors.surface,
-                                }}
-                            >
-                                {contentSource === CONTENT_SOURCES.MODRINTH && (
-                                    <div
-                                        className="absolute inset-0 rounded-xl"
-                                        style={{ backgroundColor: "#1bd96a" }}
-                                    />
-                                )}
-                                <img src={modrinthIcon} alt="" className="w-4 h-4 z-10 relative" />
-                                <span className="z-10 relative">Modrinth</span>
-                            </button>
-                            <button
-                                onClick={() => { playClick(); setContentSource(CONTENT_SOURCES.CURSEFORGE); setPage(1); }}
-                                className="min-h-11 px-4 py-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all relative group active:scale-[0.98] whitespace-nowrap"
-                                style={{
-                                    color: contentSource === CONTENT_SOURCES.CURSEFORGE ? "#fff" : colors.onSurfaceVariant,
-                                    border: `1px solid ${contentSource === CONTENT_SOURCES.CURSEFORGE ? "transparent" : colors.outline + "25"}`,
-                                    backgroundColor: contentSource === CONTENT_SOURCES.CURSEFORGE ? "transparent" : colors.surface,
-                                }}
-                            >
-                                {contentSource === CONTENT_SOURCES.CURSEFORGE && (
-                                    <div
-                                        className="absolute inset-0 rounded-xl"
-                                        style={{ backgroundColor: "#f16436" }}
-                                    />
-                                )}
-                                <img src={curseforgeIcon} alt="" className="w-4 h-4 z-10 relative" />
-                                <span className="z-10 relative">CurseForge</span>
-                            </button>
+                        <div className="lg:col-span-4 xl:col-span-3">
+                            <ProjectPreview
+                                colors={colors}
+                                project={previewProject}
+                                projectType={contentType}
+                                isInstallingModpack={previewIsInstalling}
+                                installProgress={previewIsInstalling ? installingProgress : null}
+                                onInstallModpack={() => {}}
+                                onAddToInstance={handleAddToInstance}
+                                isLoading={isLoading && !previewProject}
+                                showFollows={contentSource === CONTENT_SOURCES.MODRINTH}
+                                actionLabel={t("install_to_instance_name").replace("{name}", instance.name)}
+                                isInstalled={!!previewProject && isProjectInstalled(previewProject)}
+                                blockedLabel={contentType === "mod" && instance.loader === "vanilla" ? t("vanilla_no_mod") : undefined}
+                                actionDisabled={isInstalling}
+                            />
                         </div>
                     </div>
-
-                    <div className="px-3 py-3 sm:px-4 flex flex-col lg:flex-row lg:items-center gap-3">
-                        <div className="overflow-x-auto no-scrollbar">
-                        <div className="flex items-center gap-2 min-w-max">
-                            {getAvailableTabs(instance.loader).map((tab) => {
-                                const active = contentType === tab.type;
-                                const TabIcon = tab.icon;
-                                return (
-                                    <button
-                                        key={tab.type}
-                                        onClick={() => { playClick(); setContentType(tab.type); setPage(1); }}
-                                        className="min-h-10 px-4 py-2 rounded-xl text-sm font-semibold transition-all relative group flex items-center gap-2 whitespace-nowrap active:scale-[0.98]"
-                                        style={{
-                                            color: active ? "#000" : colors.onSurfaceVariant,
-                                            border: `1px solid ${active ? "transparent" : colors.outline + "20"}`,
-                                            backgroundColor: active ? "transparent" : colors.surface,
-                                        }}
-                                    >
-                                        {active && (
-                                            <div
-                                                className="absolute inset-0 rounded-xl"
-                                                style={{ backgroundColor: colors.secondary }}
-                                            />
-                                        )}
-                                        <TabIcon className="w-3.5 h-3.5 z-10 relative" />
-                                        <span className="z-10 relative">{t(tab.labelKey as TranslationKey)}</span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                        </div>
-
-                        <div className="hidden lg:block flex-1" />
-
-                        <div className="flex items-center justify-between lg:justify-end gap-2 flex-wrap">
-                             <select
-                                 value={viewCount}
-                                 onChange={(e) => { playClick(); setViewCount(Number(e.target.value)); setPage(1); }}
-                                 className="min-h-10 px-3 py-2 rounded-xl text-sm font-semibold transition-all outline-none focus:ring-2"
-                                 style={{
-                                     backgroundColor: colors.surface,
-                                     border: `1px solid ${colors.outline}30`,
-                                     color: colors.onSurface,
-                                     ["--tw-ring-color" as any]: colors.secondary + "55",
-                                 }}
-                             >
-                                 {[10, 20, 50].map((n) => (
-                                     <option key={n} value={n}>{n}</option>
-                                 ))}
-                             </select>
-
-                             {!!(mcVersionFilters.length || loaderFilters.length || categoryFilters.length || environmentFilters.length) && (
-                                 <span
-                                     className="text-xs font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1.5"
-                                     style={{ backgroundColor: colors.secondary + "18", color: colors.secondary }}
-                                 >
-                                     <i className="fa-solid fa-filter text-[9px]"></i>
-                                     Filtered
-                                 </span>
-                             )}
-
-                             {totalPages > 0 && (
-                                 <div className="flex items-center gap-1 ml-1">
-                                     <button
-                                         onClick={() => { playClick(); setPage(Math.max(1, page - 1)); }}
-                                         disabled={page === 1}
-                                         className="min-w-10 h-10 rounded-xl flex items-center justify-center disabled:opacity-40 text-xs transition-all hover:bg-black/5 active:scale-[0.98]"
-                                         style={{ backgroundColor: colors.surface, color: colors.onSurface, border: `1px solid ${colors.outline}20` }}
-                                     >
-                                         <i className="fa-solid fa-chevron-left text-[9px]"></i>
-                                     </button>
-                                     <span className="min-h-10 px-3 rounded-xl text-sm font-semibold flex items-center" style={{ color: colors.onSurfaceVariant, backgroundColor: colors.surface }}>
-                                         {page}/{totalPages}
-                                     </span>
-                                     <button
-                                         onClick={() => { playClick(); setPage(Math.min(totalPages, page + 1)); }}
-                                         disabled={page >= totalPages}
-                                         className="min-w-10 h-10 rounded-xl flex items-center justify-center disabled:opacity-40 text-xs transition-all hover:bg-black/5 active:scale-[0.98]"
-                                         style={{ backgroundColor: colors.surface, color: colors.onSurface, border: `1px solid ${colors.outline}20` }}
-                                     >
-                                         <i className="fa-solid fa-chevron-right text-[9px]"></i>
-                                     </button>
-                                 </div>
-                             )}
-                        </div>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mt-4">
-                    <div ref={contentListRef} className="lg:col-span-8 xl:col-span-9">
-                        <div className="flex flex-col gap-4">
-                            {!isLoading && (
-                                <div className="flex items-center justify-between px-1">
-                                    <span className="text-xs font-medium" style={{ color: colors.onSurfaceVariant }}>
-                                        {t('results_count' as any).replace('{count}', totalHits.toLocaleString())}
-                                    </span>
-                                    <span className="text-[10px] px-2 py-0.5 rounded-full"
-                                        style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}>
-                                        Page {page} of {Math.max(1, totalPages)}
-                                    </span>
-                                </div>
-                            )}
-
-                            {isLoading ? (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3">
-                                    {Array.from({ length: 9 }).map((_, i) => (
-                                        <div
-                                            key={i}
-                                            className="rounded-xl overflow-hidden p-4 flex gap-4 animate-skeleton-wave"
-                                            style={{
-                                                backgroundColor: `${colors.surfaceContainer}60`,
-                                                border: `1px solid ${colors.outline}15`,
-                                                animationDelay: `${Math.min(i * 30, 150)}ms`
-                                            }}
-                                        >
-                                        <div className="w-12 h-12 rounded-xl shrink-0 overflow-hidden relative"
-                                                style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                                                
-                                            </div>
-                                            <div className="flex-1 space-y-2">
-                                                <div className="h-4 rounded overflow-hidden relative" style={{ width: `${60 + (i % 3) * 15}%`, backgroundColor: colors.surfaceContainerHighest }}>
-                                                    
-                                                </div>
-                                                <div className="h-3 rounded overflow-hidden relative" style={{ width: `${40 + (i % 4) * 10}%`, backgroundColor: colors.surfaceContainerHighest }}>
-                                                    
-                                                </div>
-                                                <div className="h-3 rounded overflow-hidden relative mt-2" style={{ width: '100%', backgroundColor: colors.surfaceContainerHighest }}>
-                                                    
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : results.length === 0 ? (
-                                <div className="flex-1 flex flex-col items-center justify-center p-12 text-center rounded-xl border border-dashed"
-                                    style={{ borderColor: colors.outline + "40", color: colors.onSurfaceVariant }}>
-                                    <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4"
-                                        style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                                        <i className="fa-solid fa-box-open text-2xl opacity-50"></i>
-                                    </div>
-                                    <h3 className="text-sm font-medium mb-1" style={{ color: colors.onSurface }}>{t('no_results')}</h3>
-                                    <p className="text-xs opacity-70">{t('try_change_filters')}</p>
-                                </div>
-                            ) : (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 pb-4">
-                                    {results.map((project, index) => (
-                                        <div
-                                            key={project.project_id}
-                                            className="animate-card-appear"
-                                            style={{ animationDelay: `${Math.min(index * 20, 150)}ms` }}
-                                        >
-                                            <ProjectCard
-                                                colors={colors}
-                                                project={project}
-                                                isActive={previewProject?.project_id === project.project_id}
-                                                onClick={() => handleSelectProject(project)}
-                                            />
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-
-                            {totalPages > 1 && (
-                                <div className="flex justify-center mt-6">
-                                    <div className="flex items-center gap-2 p-1 rounded-lg"
-                                        style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}20` }}>
-
-                                        <button
-                                            onClick={() => {
-                                                playClick();
-                                                const newPage = Math.max(1, page - 1);
-                                                setPage(newPage);
-                                                contentListRef.current?.scrollIntoView({ behavior: 'smooth' });
-                                            }}
-                                            disabled={page === 1}
-                                            className="px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-1.5"
-                                            style={{ color: colors.onSurface }}
-                                        >
-                                            <i className="fa-solid fa-chevron-left text-[10px]"></i>
-                                            {t('previous')}
-                                        </button>
-
-                                        <div className="px-3 min-w-[80px] text-center" style={{ color: colors.onSurfaceVariant }}>
-                                            <span className="text-xs font-bold" style={{ color: colors.onSurface }}>{page}</span>
-                                            <span className="text-[10px] opacity-70 mx-1">/</span>
-                                            <span className="text-xs opacity-70">{totalPages}</span>
-                                        </div>
-
-                                        <button
-                                            onClick={() => {
-                                                playClick();
-                                                const newPage = Math.min(totalPages, page + 1);
-                                                setPage(newPage);
-                                                contentListRef.current?.scrollIntoView({ behavior: 'smooth' });
-                                            }}
-                                            disabled={page >= totalPages}
-                                            className="px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-1.5"
-                                            style={{ color: colors.onSurface }}
-                                        >
-                                            {t('next')}
-                                            <i className="fa-solid fa-chevron-right text-[10px]"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="lg:col-span-4 xl:col-span-3">
-                        {previewProject ? (
-                            <div className="rounded-2xl overflow-hidden sticky top-4 flex flex-col"
-                                style={{
-                                    backgroundColor: colors.surfaceContainer,
-                                    border: `1px solid ${colors.outline}20`,
-                                    minHeight: "400px"
-                                }}>
-                                <div className="relative h-48 w-full bg-cover bg-center shrink-0"
-                                    style={{
-                                        backgroundColor: colors.surfaceContainerHighest,
-                                        backgroundImage: (() => {
-                                            const raw = previewProject.featured_gallery || (previewProject.gallery && previewProject.gallery.length > 0 ? previewProject.gallery[0] : null);
-                                            let url = getImageUrl(raw);
-                                            if (!url) {
-                                                url = bannerImage;
-                                            }
-                                            return `url(${url})`;
-                                        })()
-                                    }}>
-                                    <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent" />
-
-                                    {isProjectInstalled(previewProject) && (
-                                        <div className="absolute top-3 right-3 px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1"
-                                            style={{ backgroundColor: "#22c55e", color: "#fff" }}>
-                                            <i className="fa-solid fa-check"></i>
-                                            {t('installed' as any)}
-                                        </div>
-                                    )}
-
-                                    <div className="absolute -bottom-8 left-6 w-20 h-20 rounded-2xl p-0.5 z-10"
-                                        style={{ backgroundColor: colors.surface }}>
-                                        <div className="w-full h-full rounded-[14px] bg-cover bg-center overflow-hidden"
-                                            style={{
-                                                backgroundImage: previewProject.icon_url ? `url(${previewProject.icon_url})` : undefined,
-                                                backgroundColor: colors.surfaceContainerHighest
-                                            }}>
-                                            {!previewProject.icon_url && (
-                                                <div className="w-full h-full flex items-center justify-center">
-                                                    <Icons.Box className="w-10 h-10 opacity-50" style={{ color: colors.onSurfaceVariant }} />
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="pt-10 px-6 pb-6 flex-1 flex flex-col">
-                                    <div className="mb-4">
-                                        <h2 className="text-xl font-bold mb-1 leading-tight" style={{ color: colors.onSurface }}>
-                                            {previewProject.title}
-                                        </h2>
-                                        <div className="flex items-center gap-2 text-xs" style={{ color: colors.onSurfaceVariant }}>
-                                            <span>by <span className="font-medium" style={{ color: colors.primary }}>{previewProject.author}</span></span>
-                                            <span>•</span>
-                                            <div className="flex items-center gap-1">
-                                                <i className="fa-solid fa-download text-[10px]"></i>
-                                                {previewProject.downloads >= 1000000
-                                                    ? `${(previewProject.downloads / 1000000).toFixed(1)}M`
-                                                    : previewProject.downloads >= 1000
-                                                        ? `${(previewProject.downloads / 1000).toFixed(1)}K`
-                                                        : previewProject.downloads}
-                                            </div>
-                                            <span>•</span>
-                                            <div className="flex items-center gap-1">
-                                                <i className="fa-solid fa-heart text-[10px]"></i>
-                                                {previewProject.follows >= 1000
-                                                    ? `${(previewProject.follows / 1000).toFixed(1)}K`
-                                                    : previewProject.follows}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {previewProject.categories && previewProject.categories.length > 0 && (
-                                        <div className="flex flex-wrap gap-1.5 mb-5">
-                                            {previewProject.categories.slice(0, 6).map((cat) => (
-                                                <span key={cat}
-                                                    className="px-2 py-0.5 rounded-md text-[10px] uppercase font-bold tracking-wider"
-                                                    style={{ backgroundColor: `${colors.secondary}20`, color: colors.secondary }}>
-                                                    {cat}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    )}
-
-                                    <div className="mb-6">
-                                        {isProjectInstalled(previewProject) ? (
-                                            <div className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
-                                                style={{ backgroundColor: "#22c55e20", color: "#22c55e" }}>
-                                                <i className="fa-solid fa-check"></i>
-                                                {t('installed' as any)}
-                                            </div>
-                                        ) : contentType === "mod" && instance.loader === "vanilla" ? (
-                                            <div className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
-                                                style={{ backgroundColor: "#f59e0b20", color: "#f59e0b" }}>
-                                                <i className="fa-solid fa-ban"></i>
-                                                {t('vanilla_no_mod' as any)}
-                                            </div>
-                                        ) : isInstalling && selectedProject?.project_id === previewProject.project_id ? (
-                                            <div className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
-                                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}>
-                                                <i className="fa-solid fa-spinner fa-spin"></i>
-                                                {t('installing_progress' as any)}
-                                            </div>
-                                        ) : (
-                                            <button
-                                                onClick={() => { playClick(); handleAddToInstance(previewProject); }}
-                                                disabled={isInstalling}
-                                                className="w-full py-3 rounded-xl text-sm font-bold hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
-                                                style={{
-                                                    backgroundColor: colors.secondary,
-                                                    color: "#000"
-                                                }}
-                                            >
-                                                <i className="fa-solid fa-download"></i>
-                                                {t('install')}
-                                            </button>
-                                        )}
-                                    </div>
-
-                                    <div className="mb-6 flex-1">
-                                        <h4 className="text-sm font-black uppercase tracking-[0.25em] mb-4 flex items-center gap-3" style={{ color: colors.onSurface }}>
-                                            <span className="w-1 h-4 rounded-full" style={{ backgroundColor: colors.secondary }} />
-                                            {t('about')}
-                                        </h4>
-                                        <p className="text-xs leading-relaxed opacity-90 whitespace-pre-line" style={{ color: colors.onSurface }}>
-                                            {previewProject.description}
-                                        </p>
-                                    </div>
-
-                                    {previewProject.gallery && previewProject.gallery.length > 0 && (
-                                        <div className="mb-4">
-                                            <h4 className="text-sm font-black uppercase tracking-[0.25em] mb-4 flex items-center gap-3" style={{ color: colors.onSurface }}>
-                                                <span className="w-1 h-4 rounded-full" style={{ backgroundColor: colors.secondary }} />
-                                                {t('gallery')}
-                                            </h4>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                {previewProject.gallery.slice(0, 4).map((img, idx) => {
-                                                    const isString = typeof img === 'string';
-                                                    const url = isString ? img : img.url;
-                                                    const rawUrl = isString ? img : (img.raw_url || img.url);
-
-                                                    return (
-                                                        <div
-                                                            key={idx}
-                                                            className="aspect-video rounded-lg overflow-hidden border cursor-pointer hover:opacity-80 transition-opacity"
-                                                            style={{ borderColor: `${colors.outline}20` }}
-                                                            onClick={() => { playClick(); setSelectedImageIndex(idx); }}
-                                                        >
-                                                            <img
-                                                                src={url}
-                                                                alt="Gallery"
-                                                                className="w-full h-full object-cover"
-                                                            />
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    <div className="pt-4 mt-auto border-t text-[10px]"
-                                        style={{ borderColor: `${colors.outline}20`, color: colors.onSurfaceVariant }}>
-                                        <span>ID: {previewProject.project_id}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="h-full rounded-2xl flex flex-col items-center justify-center p-8 text-center sticky top-4 min-h-[400px]"
-                                style={{
-                                    backgroundColor: `${colors.surfaceContainer}40`,
-                                    border: `1px solid ${colors.outline}10`,
-                                    backdropFilter: "blur(20px)"
-                                }}>
-                                <div className="w-20 h-20 rounded-2xl mb-4 flex items-center justify-center"
-                                    style={{ backgroundColor: `${colors.surfaceContainerHighest}80` }}>
-                                    <i className="fa-solid fa-eye text-3xl opacity-30" style={{ color: colors.onSurfaceVariant }}></i>
-                                </div>
-                                <h3 className="text-sm font-medium mb-1" style={{ color: colors.onSurface }}>{t('select_item_to_view')}</h3>
-                                <p className="text-xs opacity-60 max-w-[200px]" style={{ color: colors.onSurfaceVariant }}>
-                                    {t('click_card_left_to_view')}
-                                </p>
-                            </div>
-                        )}
-                    </div>
-                </div>
                 </>
             )}
         </div>

@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { useTranslation } from "../../../hooks/useTranslation";
+import { motion } from "framer-motion";
+import { useMotionPreset } from "../../../lib/motion";
 
 interface ImagePreviewModalProps {
     colors: any;
@@ -17,6 +19,7 @@ interface ImagePreviewModalProps {
 export function ImagePreviewModal({ colors, imageUrl, onClose, onNext, onPrev, hasNext, hasPrev, preloadUrls, imageIndex, totalImages }: ImagePreviewModalProps) {
     const [isLoading, setIsLoading] = useState(true);
     const { t } = useTranslation();
+    const m = useMotionPreset();
 
     React.useEffect(() => {
         if (preloadUrls && preloadUrls.length > 0) {
@@ -55,7 +58,10 @@ export function ImagePreviewModal({ colors, imageUrl, onClose, onNext, onPrev, h
     };
 
     return (
-        <div className="fixed inset-0 z-100 flex flex-col items-center justify-center overflow-hidden bg-black/90 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+        <motion.div
+            variants={m.modal.backdrop}
+            {...m.states}
+            className="fixed inset-0 z-100 flex flex-col items-center justify-center overflow-hidden bg-black/90 backdrop-blur-sm p-4"
             onClick={handleBackdropClick}>
 
             {isLoading && (
@@ -69,19 +75,19 @@ export function ImagePreviewModal({ colors, imageUrl, onClose, onNext, onPrev, h
                 </div>
             )}
 
-            <div className="relative flex flex-col items-center justify-center max-w-full max-h-full" 
+            <motion.div variants={m.modal.panel} className="relative flex flex-col items-center justify-center max-w-full max-h-full"
                 onClick={e => e.stopPropagation()}>
 
                 <img
                     key={imageUrl} 
                     src={imageUrl}
                     alt="Preview"
-                    className={`max-w-[min(92vw,1400px)] max-h-[calc(100dvh-160px)] object-contain duration-300 ${isLoading ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}
+                    className={`max-w-[min(92vw,1400px)] max-h-[calc(100dvh-160px)] object-contain transition-[opacity,scale] duration-300 ease-out ${isLoading ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}
                     onLoad={() => setIsLoading(false)}
                 />
 
                 {!isLoading && (
-                    <div className="mt-4 flex items-center gap-4 px-4 py-2 rounded-full bg-black/60 backdrop-blur-md border border-white/10 z-50">
+                    <motion.div variants={m.fadeUp} initial="hidden" animate="show" className="mt-4 flex items-center gap-4 px-4 py-2 rounded-full bg-black/60 backdrop-blur-md border border-white/10 z-50">
                         <button
                             onClick={(e) => { e.stopPropagation(); onPrev?.(); }}
                             disabled={!hasPrev}
@@ -113,10 +119,10 @@ export function ImagePreviewModal({ colors, imageUrl, onClose, onNext, onPrev, h
                         >
                             <i className="fa-solid fa-xmark text-sm"></i>
                         </button>
-                    </div>
+                    </motion.div>
                 )}
 
-            </div>
-        </div>
+            </motion.div>
+        </motion.div>
     );
 }

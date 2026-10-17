@@ -1,5 +1,6 @@
-﻿import React, { useEffect, useState } from "react";
+﻿import { AnimatePresence, motion } from "framer-motion";
 import { useTranslation } from "../../hooks/useTranslation";
+import { useMotionPreset } from "../../lib/motion";
 
 interface ConfirmDialogProps {
     isOpen: boolean;
@@ -31,37 +32,25 @@ export function ConfirmDialog({
     colors,
 }: ConfirmDialogProps) {
     const { t } = useTranslation();
-    const [isAnimating, setIsAnimating] = useState(false);
-    const [shouldRender, setShouldRender] = useState(false);
+    const m = useMotionPreset();
     const finalConfirmText = confirmText ?? t("confirm");
     const finalCancelText = cancelText ?? t("cancel");
 
-    useEffect(() => {
-        if (isOpen) {
-            setShouldRender(true);
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    setIsAnimating(true);
-                });
-            });
-        } else {
-            setIsAnimating(false);
-            const timer = setTimeout(() => setShouldRender(false), 200);
-            return () => clearTimeout(timer);
-        }
-    }, [isOpen]);
-
-    if (!shouldRender) return null;
-
     return (
-        <div
-            className={`fixed inset-0 z-[110] flex items-center justify-center transition-opacity duration-200 ${isAnimating ? 'bg-black/50' : 'bg-black/0'}`}
+        <AnimatePresence>
+        {isOpen && (
+        <motion.div
+            key="confirm-dialog"
+            className="fixed inset-0 z-110 flex items-center justify-center bg-black/50"
             onClick={onClose}
+            variants={m.modal.backdrop}
+            {...m.states}
         >
-            <div
-                className={`w-full max-w-sm rounded-2xl shadow-2xl relative overflow-hidden transition-all duration-200 ${isAnimating ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}
+            <motion.div
+                className="w-full max-w-sm rounded-2xl shadow-2xl relative overflow-hidden"
                 style={{ backgroundColor: colors.surface, border: `1px solid ${colors.outline}40` }}
                 onClick={(e) => e.stopPropagation()}
+                variants={m.modal.panel}
             >
                 <div className="px-6 py-5 flex items-start gap-4">
                     <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "#fee2e2" }}>
@@ -117,7 +106,9 @@ export function ConfirmDialog({
                         {finalConfirmText}
                     </button>
                 </div>
-            </div>
-        </div>
+            </motion.div>
+        </motion.div>
+        )}
+        </AnimatePresence>
     );
 }

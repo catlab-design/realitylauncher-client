@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useMotionPreset } from "../../lib/motion";
 import { Icons } from "../ui/Icons";
 import { useTranslation } from "../../hooks/useTranslation";
 import UserManagement from "./UserManagement";
@@ -30,6 +32,7 @@ interface AdminPanelProps {
 
 export default function AdminPanel({ colors, adminToken, language }: AdminPanelProps) {
     const { t } = useTranslation(language as any);
+    const m = useMotionPreset();
     const [loading, setLoading] = useState(true);
     const [settings, setSettings] = useState<AppSettings | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -157,7 +160,7 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
                 <p style={{ color: colors.onSurface }}>{error}</p>
                 <button
                     onClick={loadSettings}
-                    className="px-4 py-2 rounded-lg"
+                    className="px-4 py-2 rounded-lg pressable"
                     style={{ backgroundColor: colors.primary, color: colors.onPrimary }}
                 >
                     {t('try_again')}
@@ -167,8 +170,8 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
     }
 
     return (
-        <div className="p-6 space-y-6 overflow-y-auto max-h-full">
-            <div className="flex items-center justify-between animate-fade-in-up">
+        <motion.div className="p-6 space-y-6 overflow-y-auto max-h-full" variants={m.staggerContainer(0.05)} initial="hidden" animate="show">
+            <motion.div variants={m.fadeUp} className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold flex items-center gap-2" style={{ color: colors.onSurface }}>
                         <Icons.Settings className="w-6 h-6" style={{ color: colors.secondary }} />
@@ -180,15 +183,15 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
                 </div>
                 <button
                     onClick={loadSettings}
-                    className="p-2 rounded-lg transition-colors hover:opacity-80"
+                    className="p-2 rounded-lg pressable hover:opacity-80"
                     style={{ backgroundColor: colors.surfaceContainerHigh }}
                     title={t('refresh')}
                 >
                     <Icons.Refresh className="w-5 h-5" style={{ color: colors.onSurface }} />
                 </button>
-            </div>
+            </motion.div>
 
-            <div className="rounded-xl p-5 animate-fade-in-up" style={{ backgroundColor: colors.surfaceContainer, animationDelay: '100ms' }}>
+            <motion.div variants={m.fadeUp} className="rounded-xl p-5" style={{ backgroundColor: colors.surfaceContainer }}>
                 <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: colors.onSurface }}>
                     <Icons.Microsoft className="w-5 h-5" style={{ color: "#00a4ef" }} />
                     {t('microsoft_oauth')}
@@ -226,7 +229,7 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
                                 <button
                                     onClick={saveClientId}
                                     disabled={saving}
-                                    className="px-3 py-2 rounded"
+                                    className="px-3 py-2 rounded pressable"
                                     style={{ backgroundColor: colors.secondary, color: colors.onPrimary }}
                                 >
                                     {saving ? <Icons.Spinner className="w-4 h-4 animate-spin" /> : <Icons.Check className="w-4 h-4" />}
@@ -236,7 +239,7 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
                                         setEditingClientId(false);
                                         setClientIdInput(settings?.microsoftClientId || "");
                                     }}
-                                    className="px-3 py-2 rounded"
+                                    className="px-3 py-2 rounded pressable"
                                     style={{ backgroundColor: colors.surfaceContainerHigh }}
                                 >
                                     <Icons.Close className="w-4 h-4" style={{ color: colors.onSurface }} />
@@ -285,7 +288,7 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
                                 <button
                                     onClick={saveDeviceClientId}
                                     disabled={saving}
-                                    className="px-3 py-2 rounded"
+                                    className="px-3 py-2 rounded pressable"
                                     style={{ backgroundColor: colors.secondary, color: colors.onPrimary }}
                                 >
                                     {saving ? <Icons.Spinner className="w-4 h-4 animate-spin" /> : <Icons.Check className="w-4 h-4" />}
@@ -295,7 +298,7 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
                                         setEditingDeviceClientId(false);
                                         setDeviceClientIdInput(settings?.microsoftDeviceClientId || "");
                                     }}
-                                    className="px-3 py-2 rounded"
+                                    className="px-3 py-2 rounded pressable"
                                     style={{ backgroundColor: colors.surfaceContainerHigh }}
                                 >
                                     <Icons.Close className="w-4 h-4" style={{ color: colors.onSurface }} />
@@ -330,7 +333,7 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
                             </div>
                             <button
                                 onClick={() => openSecretModal("microsoft")}
-                                className="px-3 py-2 rounded flex items-center gap-2 text-sm"
+                                className="px-3 py-2 rounded flex items-center gap-2 text-sm pressable"
                                 style={{ backgroundColor: colors.surface, color: colors.onSurface }}
                             >
                                 <Icons.Key className="w-4 h-4" />
@@ -339,9 +342,9 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
                         </div>
                     </div>
                 </div>
-            </div>
+            </motion.div>
 
-            <div className="rounded-xl p-5 animate-fade-in-up" style={{ backgroundColor: colors.surfaceContainer, animationDelay: '200ms' }}>
+            <motion.div variants={m.fadeUp} className="rounded-xl p-5" style={{ backgroundColor: colors.surfaceContainer }}>
                 <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: colors.onSurface }}>
                     <Icons.Box className="w-5 h-5" style={{ color: "#f16436" }} />
                     {t('curseforge_api')}
@@ -369,7 +372,7 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
                         </div>
                         <button
                             onClick={() => openSecretModal("curseforge")}
-                            className="px-3 py-2 rounded flex items-center gap-2 text-sm"
+                            className="px-3 py-2 rounded flex items-center gap-2 text-sm pressable"
                             style={{ backgroundColor: colors.surface, color: colors.onSurface }}
                         >
                             <Icons.Key className="w-4 h-4" />
@@ -377,9 +380,9 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
                         </button>
                     </div>
                 </div>
-            </div>
+            </motion.div>
 
-            <div className="rounded-xl p-5 animate-fade-in-up" style={{ backgroundColor: colors.surfaceContainer, animationDelay: '300ms' }}>
+            <motion.div variants={m.fadeUp} className="rounded-xl p-5" style={{ backgroundColor: colors.surfaceContainer }}>
                 <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: colors.onSurface }}>
                     <Icons.Info className="w-5 h-5" style={{ color: colors.secondary }} />
                     {t('system_info')}
@@ -397,17 +400,28 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
                         <span style={{ color: colors.onSurface }}>{systemInfo?.version || "N/A"}</span>
                     </div>
                 </div>
-            </div>
+            </motion.div>
 
-            <div className="animate-fade-in-up" style={{ animationDelay: '400ms' }}>
+            <motion.div variants={m.fadeUp}>
                 <UserManagement colors={colors} adminToken={adminToken} language={language} />
-            </div>
+            </motion.div>
 
+            <AnimatePresence>
             {secretModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                    <div
+                <motion.div
+                    key="admin-secret-modal"
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+                    variants={m.modal.backdrop}
+                    initial="hidden"
+                    animate="show"
+                    exit="exit"
+                >
+                    <motion.div
+                        role="dialog"
+                        aria-modal="true"
                         className="rounded-xl p-6 w-full max-w-md mx-4"
                         style={{ backgroundColor: colors.surfaceContainer }}
+                        variants={m.modal.panel}
                     >
                         <h3 className="text-lg font-bold mb-4" style={{ color: colors.onSurface }}>
                             {secretType === "microsoft" ? t('enter_client_id') : t('api_key')}
@@ -429,7 +443,7 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
                         <div className="flex gap-3 justify-end">
                             <button
                                 onClick={() => setSecretModalOpen(false)}
-                                className="px-4 py-2 rounded-lg"
+                                className="px-4 py-2 rounded-lg pressable"
                                 style={{ backgroundColor: colors.surfaceContainerHigh, color: colors.onSurface }}
                             >
                                 {t('cancel')}
@@ -437,7 +451,7 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
                             <button
                                 onClick={saveSecret}
                                 disabled={saving || !secretInput}
-                                className="px-4 py-2 rounded-lg flex items-center gap-2"
+                                className="px-4 py-2 rounded-lg flex items-center gap-2 pressable"
                                 style={{
                                     backgroundColor: colors.secondary,
                                     color: colors.onPrimary,
@@ -448,9 +462,10 @@ export default function AdminPanel({ colors, adminToken, language }: AdminPanelP
                                 {t('save')}
                             </button>
                         </div>
-                    </div>
-                </div>
+                    </motion.div>
+                </motion.div>
             )}
-        </div>
+            </AnimatePresence>
+        </motion.div>
     );
 }

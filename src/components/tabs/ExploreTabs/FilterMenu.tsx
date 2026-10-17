@@ -5,6 +5,7 @@ import type { TranslationKey } from "../../../i18n/translations";
 import { CATEGORIES, LOADERS, ENVIRONMENTS, MC_VERSIONS, SORT_OPTIONS } from "./filterOptions";
 import { FilterPopoverItem } from "./FilterPopover";
 import { playClick } from "../../../lib/sounds";
+import { useMotionPreset } from "../../../lib/motion";
 
 interface FilterMenuProps {
     colors: any;
@@ -57,6 +58,7 @@ export function FilterMenu({
     showVersionFilter = true,
 }: FilterMenuProps) {
     const { t } = useTranslation();
+    const m = useMotionPreset();
     const [open, setOpen] = useState(false);
     const [versionSearch, setVersionSearch] = useState("");
     const rootRef = useRef<HTMLDivElement>(null);
@@ -104,11 +106,10 @@ export function FilterMenu({
             <button
                 type="button"
                 onClick={() => { playClick(); setOpen(o => !o); }}
-                className="min-h-11 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all active:scale-[0.98] relative"
+                className="h-11 px-4 rounded-xl text-sm font-semibold flex items-center gap-2 transition hover:brightness-105 active:scale-[0.98] relative"
                 style={{
-                    backgroundColor: colors.surface,
+                    backgroundColor: colors.surfaceContainerHighest,
                     color: colors.onSurface,
-                    border: `1px solid ${activeCount > 0 ? colors.secondary + "55" : colors.outline + "30"}`,
                 }}
                 aria-expanded={open ? "true" : "false"}
                 aria-haspopup="dialog"
@@ -117,22 +118,21 @@ export function FilterMenu({
                 <span className="whitespace-nowrap">{t("filter" as TranslationKey)}</span>
                 {activeCount > 0 && (
                     <span
-                        className="text-[10px] font-black px-1.5 py-0.5 rounded-md min-w-[18px] text-center"
+                        className="text-xs font-bold px-1.5 py-0.5 rounded-md min-w-5 text-center"
                         style={{ backgroundColor: colors.secondary, color: "#000" }}
                     >
                         {activeCount}
                     </span>
                 )}
-                <i className={`fa-solid fa-chevron-down text-[9px] transition-transform ${open ? "rotate-180" : ""}`} />
+                <i className={`fa-solid fa-chevron-down text-xs transition-transform duration-200 ${open ? "rotate-180" : ""}`} style={{ color: colors.onSurfaceVariant }} />
             </button>
 
             <AnimatePresence>
                 {open && (
                     <motion.div
-                        initial={{ opacity: 0, y: -4 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -4 }}
-                        transition={{ duration: 0.12 }}
+                        key="filter-menu"
+                        variants={m.popover("bottom-end")}
+                        {...m.states}
                         className="absolute z-50 mt-2 right-0 w-[320px] max-w-[calc(100vw-2rem)] rounded-2xl overflow-hidden"
                         style={{
                             backgroundColor: colors.surface,
@@ -168,6 +168,7 @@ export function FilterMenu({
                                             key={opt.value}
                                             colors={colors}
                                             active={sortBy === opt.value}
+                                            layoutId="explore-sort-pill"
                                             onClick={() => onSortChange(opt.value)}
                                         >
                                             {t(opt.labelKey as TranslationKey)}

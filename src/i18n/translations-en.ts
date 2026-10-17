@@ -5,6 +5,7 @@ export const enTranslations = {
     modpacks: "Modpacks",
     modpacks_subtitle: "Manage and launch your mod packs",
     explore: "Explore",
+    install_tab: "Install",
     settings: "Settings",
     about: "About",
     admin: "Admin",
@@ -27,6 +28,23 @@ export const enTranslations = {
     read_more: "Read More",
     news_feed: "News Feed",
     jump_back_in: "Jump Back In",
+    library: "Library",
+    playing_as: "Playing as",
+    continue_playing: "Continue",
+    home_ready: "Ready to play",
+    home_online_now: "{count} players online now",
+    home_online_sub: "across {servers} servers. Jump in with your friends",
+    home_join_server: "Join a server and play with friends right away",
+    go_to_servers: "Go to servers",
+    home_recent: "Recent",
+    your_stats: "Your stats",
+    total_playtime: "Total playtime",
+    home_status: "Status",
+    home_last_played: "Last played",
+    your_servers: "Your servers",
+    players_online: "{count} online",
+    played_for: "Played {time}",
+    open_instance: "Open instance",
     welcome_guest: "Welcome Guest",
     please_login_full: "Please log in to access all features",
     no_news_yet: "No news yet",
@@ -284,6 +302,10 @@ export const enTranslations = {
     wardrobe_catskinc_mic_listening: "Listening...",
     wardrobe_catskinc_configured: "Mod Server: {ip}",
     wardrobe_catskinc_not_configured: "Mod Config not found",
+    wardrobe_catskinc_file_too_large: "File is too large (max 256MB)",
+    wardrobe_catskinc_invalid_dimensions: "CatSkinC skins must be square with a power-of-two size between 64 and 8192 px (e.g. 64x64, 128x128, 1024x1024)",
+    wardrobe_catskinc_invalid_mouth_dimensions: "Mouth-open overlay must be between 8 and 8192 px",
+    wardrobe_catskinc_mouth_size_mismatch: "Mouth-open overlay must be exactly the same size as the skin",
     checking_data: "Checking Data",
     tab_appearance: "Appearance",
     tab_game: "Game & Performance",
@@ -299,6 +321,7 @@ export const enTranslations = {
     discord_rpc: "Discord Rich Presence",
     discord_rpc_status_showing: "Showing status",
     discord_rpc_status_off: "Disabled",
+    discord_rpc_status_waiting: "Not linked to Discord yet. Open the Discord app on this PC.",
     discord_rpc_on: "Enable Discord Rich Presence",
     discord_rpc_off: "Disable Discord Rich Presence",
     telemetry: "Telemetry",
@@ -384,7 +407,10 @@ export const enTranslations = {
       "Download updates automatically and install on next launch",
     auto_update_on: "Auto-update enabled",
     auto_update_off: "Auto-update disabled",
-    update_ready_next_restart: "Update v{version} will install on next launch",
+    update_ready_next_restart: "Update v{version} will install when you close the launcher",
+    update_auto_restart_in: "Update v{version} is ready · restarting in {seconds}s",
+    update_restart_now: "Restart now",
+    update_later: "Later",
     update_available_toast: "New version v{version} available",
     check_for_updates: "Check for Updates",
     check_for_updates_desc: "Manually check for new versions",
@@ -491,6 +517,7 @@ export const enTranslations = {
     add_user: "Add User",
     no_users_found: "No users found",
     view_details: "View details",
+    more_info: "More info",
     remove_admin: "Remove Admin",
     grant_admin: "Grant Admin",
     unban: "Unban",
@@ -553,6 +580,8 @@ export const enTranslations = {
     owner_badge: "OWNER",
     public_badge: "PUBLIC",
     member_badge: "MEMBER",
+    members_label: "Members",
+    server_offline: "Offline",
     joined_servers: "Joined Servers",
     no_joined_public_servers: "No joined public servers",
     my_servers: "My Servers",
@@ -1118,4 +1147,23 @@ export const enTranslations = {
 
     
     open_filters: "Filters",
+
+    // Servers: live status cards
+    server_status_title: "Server Status",
+    server_address_copied: "Server address copied",
+    server_unreachable: "Can't reach this server right now",
+
+    // Servers: gallery
+    server_gallery_view: "View image",
+
+    // Servers: verification badge (aria-label only)
+    verified_official: "Official server",
+    verified_partner: "Partner server",
+
+    // Library: continue-playing hero
+    library_continue_playing: "Continue playing",
+    library_stat_packs: "{count} mod packs",
+    library_stat_server_packs: "{count} server packs",
+    // Instance content browser
+    install_to_instance_name: "Install to {name}",
 };

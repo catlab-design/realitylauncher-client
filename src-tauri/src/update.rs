@@ -16,6 +16,9 @@ const API_URL: &str = "https://api.reality.catlabdesign.space";
 static DOWNLOADED_INSTALLER: Lazy<Mutex<Option<PathBuf>>> = Lazy::new(|| Mutex::new(None));
 static DOWNLOADED_VERSION: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
 static DOWNLOAD_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+/// Set by the frontend once an auto-update is downloaded but deferred (game running / "later"):
+/// the installer then runs silently when the launcher exits.
+static INSTALL_ON_EXIT: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -380,9 +383,11 @@ pub async fn download_update(app: tauri::AppHandle) -> serde_json::Value {
     serde_json::json!({ "ok": true, "path": dest.to_string_lossy() })
 }
 
-/// Launch the downloaded installer and quit so it can replace the app.
+/// Install the downloaded update and quit so it can replace the app.
+/// `auto`: no clicks needed (Windows installer in passive mode) and the launcher reopens when done.
+/// macOS / Linux always swap the app in place and reopen it.
 #[tauri::command]
-pub fn install_update(app: tauri::AppHandle) -> serde_json::Value {
+pub fn install_update(app: tauri::AppHandle, auto: Option<bool>) -> serde_json::Value {
     let path = match DOWNLOADED_INSTALLER.lock().unwrap().clone() {
         Some(p) => p,
         None => return serde_json::json!({ "ok": false, "error": "No update downloaded" }),
@@ -391,11 +396,35 @@ pub fn install_update(app: tauri::AppHandle) -> serde_json::Value {
         return serde_json::json!({ "ok": false, "error": "Downloaded installer missing" });
     }
     backup_data_for_update();
-    if let Err(e) = open_installer(&path) {
+    let auto = auto.unwrap_or(false);
+    if let Err(e) = apply_update(&path, auto, auto || !cfg!(target_os = "windows")) {
         return serde_json::json!({ "ok": false, "error": e });
     }
+    // Already handled here; don't start a second installer from the exit hook.
+    INSTALL_ON_EXIT.store(false, Ordering::SeqCst);
     app.exit(0);
     serde_json::json!({ "ok": true })
+}
+
+#[tauri::command]
+pub fn set_install_update_on_exit(enabled: bool) {
+    INSTALL_ON_EXIT.store(enabled, Ordering::SeqCst);
+}
+
+/// Called from the app's exit hook: installs a deferred auto-update without asking
+/// (no relaunch, the user chose to close).
+pub fn run_pending_install_on_exit() {
+    if !INSTALL_ON_EXIT.swap(false, Ordering::SeqCst) || cfg!(debug_assertions) {
+        return;
+    }
+    let Some(path) = DOWNLOADED_INSTALLER.lock().unwrap().clone() else { return };
+    if !path.exists() {
+        return;
+    }
+    backup_data_for_update();
+    if let Err(e) = apply_update(&path, true, false) {
+        log::error!("[Update] Failed to install update on exit: {e}");
+    }
 }
 
 fn backup_data_for_update() {
@@ -411,17 +440,165 @@ fn backup_data_for_update() {
     }
 }
 
-fn open_installer(path: &Path) -> Result<(), String> {
+/// Starts replacing the app with the downloaded package.
+/// - Windows: NSIS installer; `passive` = progress bar only, `relaunch` = reopen when done.
+/// - macOS: after this process exits, copies the .app out of the dmg over the running bundle.
+/// - Linux: swaps the running AppImage file for the new one.
+/// When the app can't replace itself (deb/rpm install, read-only location), the package is
+/// opened for the user instead.
+fn apply_update(path: &Path, passive: bool, relaunch: bool) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let mut args: Vec<&str> = Vec::new();
+        if passive {
+            args.extend(["/P", "/UPDATE"]);
+            if relaunch {
+                args.push("/R");
+            }
+        }
+        open_installer(path, &args)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = passive;
+        #[cfg(target_os = "macos")]
+        let result = self_update_dmg(path, relaunch);
+        #[cfg(not(target_os = "macos"))]
+        let result = self_update_appimage(path, relaunch);
+        result.or_else(|e| {
+            log::warn!("[Update] Self-update not possible ({e}); opening the package instead");
+            open_installer(path, &[])
+        })
+    }
+}
+
+/// Runs `script` with /bin/sh once this launcher process has exited; `args` become $1, $2, ...
+/// (passed as arguments, never spliced into the script, so paths with spaces/quotes are safe).
+#[cfg_attr(target_os = "windows", allow(dead_code))]
+fn spawn_after_exit(script: &str, args: &[&str]) -> Result<(), String> {
+    use std::process::Stdio;
+    let pid = std::process::id().to_string();
+    let full = format!("while kill -0 \"$1\" 2>/dev/null; do sleep 0.3; done\nshift\n{script}");
+    std::process::Command::new("/bin/sh")
+        .arg("-c")
+        .arg(full)
+        .arg("reality-update")
+        .arg(&pid)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[cfg_attr(target_os = "windows", allow(dead_code))]
+fn dir_writable(dir: &Path) -> bool {
+    let probe = dir.join(format!(".reality-write-test-{}", std::process::id()));
+    match fs::File::create(&probe) {
+        Ok(_) => {
+            let _ = fs::remove_file(&probe);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+/// Linux: the AppImage is the whole app, so updating = replacing that one file.
+/// Renaming over a running AppImage is safe (the running process keeps the old inode).
+#[cfg_attr(target_os = "windows", allow(dead_code))]
+fn self_update_appimage(new_file: &Path, relaunch: bool) -> Result<(), String> {
+    let is_appimage = new_file
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("appimage"));
+    if !is_appimage {
+        return Err("Downloaded package is not an AppImage".into());
+    }
+    let target = std::env::var_os("APPIMAGE")
+        .map(PathBuf::from)
+        .filter(|p| p.is_file())
+        .ok_or("Not running from an AppImage")?;
+    let dir = target.parent().ok_or("AppImage has no parent directory")?;
+    if !dir_writable(dir) {
+        return Err(format!("No write access to {}", dir.display()));
+    }
+    let name = target.file_name().and_then(|n| n.to_str()).unwrap_or("Reality-Launcher.AppImage");
+    // Stage next to the target so the final rename is atomic (same filesystem).
+    let staged = dir.join(format!(".{name}.update"));
+    fs::copy(new_file, &staged).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Err(e) = fs::set_permissions(&staged, fs::Permissions::from_mode(0o755)) {
+            let _ = fs::remove_file(&staged);
+            return Err(e.to_string());
+        }
+    }
+    if let Err(e) = fs::rename(&staged, &target) {
+        let _ = fs::remove_file(&staged);
+        return Err(e.to_string());
+    }
+    if relaunch {
+        spawn_after_exit("exec \"$1\" >/dev/null 2>&1", &[&target.to_string_lossy()])?;
+    }
+    Ok(())
+}
+
+/// macOS: mount the dmg, swap the .app bundle (old one kept until the copy succeeds),
+/// unmount, reopen. Runs after exit so the running bundle isn't modified underneath us.
+#[cfg_attr(target_os = "windows", allow(dead_code))]
+fn self_update_dmg(dmg: &Path, relaunch: bool) -> Result<(), String> {
+    let app = std::env::current_exe()
+        .ok()
+        .and_then(|exe| {
+            exe.ancestors()
+                .find(|p| p.extension().is_some_and(|e| e == "app"))
+                .map(Path::to_path_buf)
+        })
+        .ok_or("Not running from an .app bundle")?;
+    let parent = app.parent().ok_or(".app bundle has no parent directory")?;
+    if !dir_writable(parent) {
+        return Err(format!("No write access to {}", parent.display()));
+    }
+    const SCRIPT: &str = r#"DMG="$1"; APP="$2"; RELAUNCH="$3"
+MNT=$(mktemp -d "${TMPDIR:-/tmp}/reality-update.XXXXXX") || exit 1
+if ! hdiutil attach -nobrowse -noautoopen -quiet -mountpoint "$MNT" "$DMG"; then
+  rmdir "$MNT"; open "$DMG"; exit 1
+fi
+SRC=$(ls -d "$MNT"/*.app 2>/dev/null | head -n 1)
+if [ -n "$SRC" ]; then
+  rm -rf "$APP.old"
+  if mv "$APP" "$APP.old"; then
+    if ditto "$SRC" "$APP"; then rm -rf "$APP.old"; else rm -rf "$APP"; mv "$APP.old" "$APP"; fi
+  fi
+fi
+hdiutil detach -quiet "$MNT"; rmdir "$MNT" 2>/dev/null
+xattr -dr com.apple.quarantine "$APP" 2>/dev/null
+if [ "$RELAUNCH" = 1 ]; then open "$APP"; fi
+exit 0"#;
+    spawn_after_exit(
+        SCRIPT,
+        &[&dmg.to_string_lossy(), &app.to_string_lossy(), if relaunch { "1" } else { "0" }],
+    )
+}
+
+fn open_installer(path: &Path, args: &[&str]) -> Result<(), String> {
     let target = path.to_string_lossy().to_string();
     #[cfg(target_os = "windows")]
     let mut cmd = {
         let mut c = std::process::Command::new("cmd");
         c.args(["/C", "start", "", &target]);
+        // NSIS options: /P passive, /R relaunch after install, /UPDATE keep shortcuts.
+        c.args(args);
         // Suppress the cmd console flash (CREATE_NO_WINDOW).
         use std::os::windows::process::CommandExt;
         c.creation_flags(0x08000000);
         c
     };
+    #[cfg(not(target_os = "windows"))]
+    let _ = args;
     #[cfg(target_os = "macos")]
     let mut cmd = {
         let mut c = std::process::Command::new("open");

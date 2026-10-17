@@ -4,7 +4,11 @@ import { Icons } from "../../ui/Icons";
 import type { GameInstance } from "../../../types/launcher";
 import { playClick } from "../../../lib/sounds";
 import { useTranslation } from "../../../hooks/useTranslation";
+import { AnimatePresence, motion } from "framer-motion";
 import { Portal } from "../../ui/Portal";
+import { useMotionPreset } from "../../../lib/motion";
+import { SettingsSection, SettingsRow, Toggle, fieldClass, fieldStyle, buttonClass, buttonStyle } from "../settingsTabs/SettingsUI";
+import { RamSlider, RamPresetChips, RAM_PRESETS, formatRam, recommendedRamFor } from "../settingsTabs/RamSlider";
 
 import modrinthIcon from "../../../assets/modrinth.svg";
 import curseforgeIcon from "../../../assets/curseforge.svg";
@@ -37,6 +41,7 @@ export function InstanceSettingsModal({
     onRepair,
 }: InstanceSettingsModalProps) {
     const { t } = useTranslation(language);
+    const m = useMotionPreset();
     const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
     const [editedName, setEditedName] = useState(instance.name);
     const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -156,6 +161,12 @@ export function InstanceSettingsModal({
     };
 
 
+    // RAM: instance.ramMB === 0 means "use the global setting".
+    const isCustomRam = instance.ramMB !== 0;
+    const ramCapMB = maxRamMB || 8192;
+    const recommendedRam = recommendedRamFor(ramCapMB, ramCapMB);
+    const ramTicks = [...RAM_PRESETS, { label: t('recommended'), value: recommendedRam }];
+
     const filteredVersions = showAllVersions
         ? gameVersions
         : gameVersions.filter((v) => v.version_type === "release");
@@ -180,8 +191,11 @@ export function InstanceSettingsModal({
 
     return (
         <Portal>
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                <div
+            <motion.div variants={m.modal.backdrop} {...m.states} className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                <motion.div
+                    variants={m.modal.panel}
+                    role="dialog"
+                    aria-modal="true"
                     className="w-[90%] max-w-[1400px] h-[65vh] min-h-[480px] rounded-2xl overflow-hidden shadow-2xl flex flex-col"
                     style={{ backgroundColor: colors.surface }}
                 >
@@ -200,7 +214,7 @@ export function InstanceSettingsModal({
                         </div>
                         <button
                             onClick={() => { playClick(); onClose(); }}
-                            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10"
+                            className="w-8 h-8 rounded-lg flex items-center justify-center pressable hover:bg-white/10"
                             style={{ color: colors.onSurfaceVariant }}
                         >
                             ✕
@@ -211,38 +225,60 @@ export function InstanceSettingsModal({
                         <div className="w-[22%] min-w-[240px] p-4 border-r flex flex-col" style={{ borderColor: colors.outline + "30" }}>
                             <button
                                 onClick={() => { playClick(); setSettingsTab("general"); }}
-                                className="w-full flex items-center gap-3 px-4 py-2 rounded-lg text-sm mb-1 transition-all"
+                                className="relative isolate w-full flex items-center gap-3 px-4 py-2 rounded-lg text-sm mb-1 pressable"
                                 style={{
-                                    backgroundColor: settingsTab === "general" ? colors.secondary : "transparent",
                                     color: settingsTab === "general" ? "#1a1a1a" : colors.onSurfaceVariant
                                 }}
                             >
+                                {settingsTab === "general" && (
+                                    <motion.span
+                                        layoutId="instance-settings-tab-pill"
+                                        transition={m.tabIndicator}
+                                        className="absolute inset-0 -z-10 rounded-lg"
+                                        style={{ backgroundColor: colors.secondary }}
+                                    />
+                                )}
                                 <i className="fa-solid fa-circle-info w-4" /> {t('general')}
                             </button>
                             <button
                                 onClick={() => { playClick(); setSettingsTab("installation"); }}
-                                className="w-full flex items-center gap-3 px-4 py-2 rounded-lg text-sm mb-1 transition-all"
+                                className="relative isolate w-full flex items-center gap-3 px-4 py-2 rounded-lg text-sm mb-1 pressable"
                                 style={{
-                                    backgroundColor: settingsTab === "installation" ? colors.secondary : "transparent",
                                     color: settingsTab === "installation" ? "#1a1a1a" : colors.onSurfaceVariant
                                 }}
                             >
+                                {settingsTab === "installation" && (
+                                    <motion.span
+                                        layoutId="instance-settings-tab-pill"
+                                        transition={m.tabIndicator}
+                                        className="absolute inset-0 -z-10 rounded-lg"
+                                        style={{ backgroundColor: colors.secondary }}
+                                    />
+                                )}
                                 <i className="fa-solid fa-download w-4" /> {t('installation')}
                             </button>
                             <button
                                 onClick={() => { playClick(); setSettingsTab("java"); }}
-                                className="w-full flex items-center gap-3 px-4 py-2 rounded-lg text-sm mb-1 transition-all"
+                                className="relative isolate w-full flex items-center gap-3 px-4 py-2 rounded-lg text-sm mb-1 pressable"
                                 style={{
-                                    backgroundColor: settingsTab === "java" ? colors.secondary : "transparent",
                                     color: settingsTab === "java" ? "#1a1a1a" : colors.onSurfaceVariant
                                 }}
                             >
+                                {settingsTab === "java" && (
+                                    <motion.span
+                                        layoutId="instance-settings-tab-pill"
+                                        transition={m.tabIndicator}
+                                        className="absolute inset-0 -z-10 rounded-lg"
+                                        style={{ backgroundColor: colors.secondary }}
+                                    />
+                                )}
                                 <i className="fa-brands fa-java w-4" /> Java
                             </button>
                         </div>
 
                         <div className="flex-1 p-6 overflow-y-auto">
-                            
+                            <AnimatePresence mode="wait" initial={false}>
+                            <motion.div key={settingsTab} variants={m.panelSwap} {...m.states}>
                             {settingsTab === "general" && (
                                 <div className="space-y-4">
                                     <div className="flex items-start gap-8">
@@ -605,56 +641,16 @@ export function InstanceSettingsModal({
                                 </div>
                             )}
                             {settingsTab === "java" && (
-                                <div className="space-y-6">
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1.5" style={{ color: colors.onSurface }}>
-                                            {t('java_install_path', { version: "" })}
-                                        </label>
-                                        <div className="flex gap-2">
-                                            <input
-                                                type="text"
-                                                value={editedJavaPath}
-                                                onChange={(e) => setEditedJavaPath(e.target.value)}
-                                                onBlur={handleSaveJava}
-                                                placeholder={config.javaPath || t('follow_system')}
-                                                className="flex-1 px-4 py-2.5 rounded-xl outline-none text-sm transition-all focus:ring-2 focus:ring-opacity-50"
-                                                style={{ 
-                                                    backgroundColor: colors.surfaceContainerHighest, 
-                                                    color: colors.onSurface,
-                                                    outlineColor: colors.primary
-                                                }}
-                                            />
-                                            <button
-                                                onClick={async () => {
-                                                    playClick();
-                                                    const result = await window.api?.browseJava?.();
-                                                    if (result) {
-                                                        setEditedJavaPath(result);
-                                                        onUpdate(instance.id, { javaPath: result });
-                                                        toast.success(t('settings_saved_success'));
-                                                    }
-                                                }}
-                                                className="px-4 py-2 rounded-xl text-sm font-medium"
-                                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                                            >
-                                                {t('browse')}
-                                            </button>
-                                        </div>
-                                        <p className="text-xs mt-1 opacity-70" style={{ color: colors.onSurfaceVariant }}>
-                                            {t('leave_empty_to_use_default')}
-                                        </p>
-                                    </div>
-                                    <div>
-                                        <div className="flex items-center gap-2 mb-4">
-                                            <div 
-                                                className="w-5 h-5 rounded flex items-center justify-center cursor-pointer transition-colors"
-                                                style={{ 
-                                                    backgroundColor: editedRam > 0 && instance.ramMB !== 0 ? "#10b981" : colors.surfaceContainerHighest,
-                                                    border: `1px solid ${editedRam > 0 && instance.ramMB !== 0 ? "#10b981" : colors.outline + "50"}`
-                                                }}
-                                                onClick={() => {
-                                                    const isCustom = instance.ramMB !== 0;
-                                                    if (isCustom) {
+                                <div className="space-y-8">
+                                    <SettingsSection colors={colors}>
+                                        <SettingsRow
+                                            colors={colors}
+                                            title={t('custom_memory_allocation' as any)}
+                                        >
+                                            <Toggle
+                                                checked={isCustomRam}
+                                                onChange={() => {
+                                                    if (isCustomRam) {
                                                         onUpdate(instance.id, { ramMB: 0 });
                                                         setEditedRam(config.ramMB);
                                                     } else {
@@ -662,164 +658,110 @@ export function InstanceSettingsModal({
                                                         setEditedRam(config.ramMB);
                                                     }
                                                 }}
-                                            >
-                                                {instance.ramMB !== 0 && <i className="fa-solid fa-check text-xs text-white"></i>}
-                                            </div>
-                                            <span className="text-sm font-medium" style={{ color: colors.onSurface }}>
-                                                {t('custom_memory_allocation' as any)}
-                                            </span>
-                                        </div>
-                                        <div className="transition-all duration-200 space-y-3">
-                                            <div className="flex items-center justify-between">
-                                                <div>
-                                                    <div className="font-medium text-sm flex items-center gap-2" style={{ color: colors.onSurface }}>
-                                                        <i className="fa-solid fa-memory text-xs opacity-70"></i>
-                                                        {t('memory_allocated')}
-                                                    </div>
-                                                    <p className="text-xs mt-0.5" style={{ color: colors.onSurfaceVariant }}>
-                                                        {/* Using a static text for now as exact translation key might differ, matching the style */}
-                                                        {t('ram_description', { gb: maxRamMB ? (maxRamMB / 1024).toFixed(0) : '8' })}
-                                                    </p>
-                                                </div>
-                                                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-colors focus-within:ring-2"
-                                                    style={{ 
-                                                        backgroundColor: colors.surfaceContainerHighest, 
-                                                        borderColor: colors.outline + "40",
-                                                        color: colors.onSurface 
-                                                    }}>
-                                                    <input
-                                                        type="number"
+                                                colors={colors}
+                                                label={t('custom_memory_allocation' as any)}
+                                            />
+                                        </SettingsRow>
+                                        <SettingsRow
+                                            colors={colors}
+                                            icon={<i className="fa-solid fa-memory text-base"></i>}
+                                            title={t('memory_allocated')}
+                                            description={t('ram_description', { gb: maxRamMB ? (maxRamMB / 1024).toFixed(0) : '8' })}
+                                            below={
+                                                <div className="space-y-3">
+                                                    <RamSlider
                                                         value={editedRam}
-                                                        onChange={(e) => {
-                                                            const val = Math.min(Math.max(512, Number(e.target.value)), maxRamMB || 8192);
-                                                            setEditedRam(val);
-                                                        }}
-                                                        onBlur={handleSaveJava}
-                                                        className="w-16 bg-transparent text-right font-mono font-medium text-sm focus:outline-none"
+                                                        maxRamMB={ramCapMB}
+                                                        ticks={ramTicks}
+                                                        onChange={setEditedRam}
+                                                        onCommit={handleSaveJava}
+                                                        colors={colors}
+                                                        disabled={!isCustomRam}
+                                                        ariaLabel={t('memory_allocated')}
                                                     />
-                                                    <span className="text-xs opacity-70">MB</span>
-                                                </div>
-                                            </div>
-                                            <div className="relative pt-2 pb-1">
-                                                <div className="h-3 w-full rounded-full relative overflow-hidden" 
-                                                    style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                                                    <div 
-                                                        className="absolute top-0 left-0 h-full rounded-full transition-all duration-150 ease-out"
-                                                        style={{ 
-                                                            width: `${((editedRam - 512) / ((maxRamMB || 8192) - 512)) * 100}%`,
-                                                            backgroundColor: "#10b981" 
+                                                    <RamPresetChips
+                                                        value={editedRam}
+                                                        capMB={ramCapMB}
+                                                        recommendedMB={recommendedRam}
+                                                        recommendedLabel={t('recommended')}
+                                                        onSelect={(ramMB, recommended) => {
+                                                            setEditedRam(ramMB);
+                                                            onUpdate(instance.id, { ramMB });
+                                                            if (recommended) toast.success(`${t('recommended')}: ${formatRam(ramMB)}`);
                                                         }}
+                                                        colors={colors}
+                                                        disabled={!isCustomRam}
                                                     />
                                                 </div>
-                                                <div className="absolute top-[14px] w-full h-3 pointer-events-none px-[6px]">
-                                                    {[0.2, 0.4, 0.6, 0.8].map((tick) => (
-                                                        <div 
-                                                            key={tick}
-                                                            className="absolute top-0 w-px h-full bg-white/20"
-                                                            style={{ left: `${tick * 100}%` }}
-                                                        />
-                                                    ))}
-                                                </div>
-                                                <input
-                                                    type="range"
-                                                    min={512}
-                                                    max={maxRamMB || 8192}
-                                                    step={256}
-                                                    value={editedRam}
-                                                    onChange={(e) => setEditedRam(Number(e.target.value))}
-                                                    onMouseUp={handleSaveJava}
-                                                    onTouchEnd={handleSaveJava}
-                                                    className="absolute top-2 left-0 w-full h-3 opacity-0 cursor-pointer"
-                                                    style={{ margin: 0 }}
-                                                />
-                                                <div className="flex justify-between text-[10px] mt-2 font-medium px-1" style={{ color: colors.onSurfaceVariant }}>
-                                                    <span>512 MB</span>
-                                                    <span className="text-center absolute left-1/2 -translate-x-1/2" style={{ opacity: 0.5 }}>
-                                                        {editedRam >= 1024 ? `${(editedRam / 1024).toFixed(1)} GB` : `${editedRam} MB`}
-                                                    </span>
-                                                    <span>{maxRamMB ? `${(maxRamMB / 1024).toFixed(1)} GB` : "8.0 GB"}</span>
-                                                </div>
-                                            </div>
-                                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
-                                                <button
-                                                    onClick={() => {
-                                                        let recommended = 4096;
-                                                        const sysRam = maxRamMB || 8192;
-                                                        if (sysRam >= 32000) recommended = 16384;
-                                                        else if (sysRam >= 16000) recommended = 8192;
-                                                        else if (sysRam >= 12000) recommended = 6144;
-                                                        else if (sysRam >= 8000) recommended = 4096;
-                                                        else recommended = Math.max(2048, sysRam - 2048);
-                                                        recommended = Math.min(recommended, sysRam);
-                                                        setEditedRam(recommended);
-                                                        onUpdate(instance.id, { ramMB: recommended });
-                                                        toast.success(`${t('recommended')}: ${recommended >= 1024 ? (recommended/1024).toFixed(1) + ' GB' : recommended + ' MB'}`);
-                                                    }}
-                                                    className="flex flex-col items-center justify-center py-2 px-1 rounded-lg border transition-all active:scale-95"
-                                                    style={{ 
-                                                        backgroundColor: colors.surface, 
-                                                        borderColor: colors.outline + "30",
-                                                        color: colors.onSurface
-                                                    }}
-                                                >
-                                                    <span className="text-xs font-medium mb-0.5"><i className="fa-solid fa-thumbs-up mr-1.5"/>{t('recommended')}</span>
-                                                </button>
-                                                {[
-                                                    { label: "Lite", value: 2048 },
-                                                    { label: "Standard", value: 4096 },
-                                                    { label: "High", value: 8192 },
-                                                    { label: "Ultra", value: 16384 },
-                                                ].map((preset) => (
-                                                    <button
-                                                        key={preset.label}
-                                                        onClick={() => {
-                                                            const val = Math.min(preset.value, maxRamMB || 8192);
-                                                            setEditedRam(val);
-                                                            onUpdate(instance.id, { ramMB: val });
-                                                        }}
-                                                        className={`flex flex-col items-center justify-center py-2 px-1 rounded-lg border transition-all active:scale-95 ${
-                                                            editedRam === preset.value 
-                                                                ? 'ring-2 ring-offset-1' 
-                                                                : 'hover:bg-black/5 dark:hover:bg-white/5'
-                                                        }`}
-                                                        style={{ 
-                                                            backgroundColor: editedRam === preset.value ? "#10b981" : colors.surface,
-                                                            borderColor: editedRam === preset.value ? "#10b981" : colors.outline + "30",
-                                                            color: colors.onSurface,
-                                                            boxShadow: editedRam === preset.value ? "0 0 0 2px #10b981" : "none"
-                                                        }}
-                                                    >
-                                                        <span className="text-xs font-medium mb-0.5">{preset.label}</span>
-                                                        <span className="text-[10px] opacity-80">{preset.value / 1024} GB</span>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1.5" style={{ color: colors.onSurface }}>
-                                            {t('java_args')}
-                                        </label>
-                                        <input
-                                            type="text"
-                                            value={editedJavaArgs}
-                                            onChange={(e) => setEditedJavaArgs(e.target.value)}
-                                            onBlur={handleSaveJava}
-                                            placeholder={t('java_args_placeholder')}
-                                            className="w-full px-4 py-2.5 rounded-xl outline-none text-sm transition-all focus:ring-2 focus:ring-opacity-50"
-                                            style={{ 
-                                                backgroundColor: colors.surfaceContainerHighest, 
-                                                color: colors.onSurface,
-                                                outlineColor: colors.primary
-                                            }}
+                                            }
                                         />
-                                        </div>
-                                    </div>
-                                )}
+                                    </SettingsSection>
+
+                                    <SettingsSection colors={colors}>
+                                        <SettingsRow
+                                            colors={colors}
+                                            icon={<Icons.Folder className="w-5 h-5" />}
+                                            title={t('java_install_path', { version: "" })}
+                                            below={
+                                                <>
+                                                    <div className="flex gap-2.5">
+                                                        <input
+                                                            type="text"
+                                                            value={editedJavaPath}
+                                                            onChange={(e) => setEditedJavaPath(e.target.value)}
+                                                            onBlur={handleSaveJava}
+                                                            placeholder={config.javaPath || t('follow_system')}
+                                                            className={`${fieldClass} flex-1 min-w-0 font-mono text-[13px]`}
+                                                            style={fieldStyle(colors)}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={async () => {
+                                                                playClick();
+                                                                const result = await window.api?.browseJava?.();
+                                                                if (result) {
+                                                                    setEditedJavaPath(result);
+                                                                    onUpdate(instance.id, { javaPath: result });
+                                                                    toast.success(t('settings_saved_success'));
+                                                                }
+                                                            }}
+                                                            className={`${buttonClass} h-11`}
+                                                            style={buttonStyle(colors)}
+                                                        >
+                                                            {t('browse')}
+                                                        </button>
+                                                    </div>
+                                                    <p className="text-sm mt-2" style={{ color: colors.onSurfaceVariant }}>
+                                                        {t('leave_empty_to_use_default')}
+                                                    </p>
+                                                </>
+                                            }
+                                        />
+                                        <SettingsRow
+                                            colors={colors}
+                                            icon={<i className="fa-brands fa-java text-lg"></i>}
+                                            title={t('java_args')}
+                                            below={
+                                                <input
+                                                    type="text"
+                                                    value={editedJavaArgs}
+                                                    onChange={(e) => setEditedJavaArgs(e.target.value)}
+                                                    onBlur={handleSaveJava}
+                                                    placeholder={t('java_args_placeholder')}
+                                                    className={`${fieldClass} w-full font-mono text-sm`}
+                                                    style={fieldStyle(colors)}
+                                                />
+                                            }
+                                        />
+                                    </SettingsSection>
+                                </div>
+                            )}
+                            </motion.div>
+                            </AnimatePresence>
                             </div>
                         </div>
-                    </div>
-                </div>
+                    </motion.div>
+                </motion.div>
             </Portal>
         );
     }

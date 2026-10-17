@@ -27,7 +27,7 @@ static STATE: Lazy<Mutex<DiscordState>> = Lazy::new(|| {
         client: None,
         is_ready: false,
         is_initializing: false,
-        start_timestamp: chrono::Utc::now().timestamp_millis(),
+        start_timestamp: chrono::Utc::now().timestamp(),
         enabled: true,
         last_game_status: None,
         last_game_server_name: None,
@@ -51,24 +51,18 @@ async fn ensure_connected() -> bool {
     state.is_initializing = true;
     drop(state);
 
-    match DiscordIpcClient::new(CLIENT_ID) {
-        Ok(mut client) => match client.connect() {
-            Ok(_) => {
-                let mut state = STATE.lock().unwrap();
-                state.client = Some(client);
-                state.is_ready = true;
-                state.is_initializing = false;
-                println!("[Discord RPC] Connected!");
-                true
-            }
-            Err(e) => {
-                println!("[Discord RPC] Failed to connect: {e}");
-                STATE.lock().unwrap().is_initializing = false;
-                false
-            }
-        },
+    let mut client = DiscordIpcClient::new(CLIENT_ID);
+    match client.connect() {
+        Ok(_) => {
+            let mut state = STATE.lock().unwrap();
+            state.client = Some(client);
+            state.is_ready = true;
+            state.is_initializing = false;
+            println!("[Discord RPC] Connected!");
+            true
+        }
         Err(e) => {
-            println!("[Discord RPC] Failed to create client: {e}");
+            println!("[Discord RPC] Failed to connect: {e}");
             STATE.lock().unwrap().is_initializing = false;
             false
         }
@@ -193,7 +187,7 @@ pub async fn discord_rpc_set_enabled(enabled: bool) -> Result<(), String> {
             disconnect();
             return Ok(());
         }
-        state.start_timestamp = chrono::Utc::now().timestamp_millis();
+        state.start_timestamp = chrono::Utc::now().timestamp();
     }
 
     if enabled {
@@ -299,6 +293,8 @@ async fn discord_rpc_update_raw(
 
     let (mut details, mut state_text, large_key, large_text) =
         map_status_to_activity(&final_status, &final_server_name, &final_server_icon);
+    // Activity name override (Discord shows it as the card header / "Playing <name>").
+    let mut activity_name: Option<String> = None;
 
     if final_status == "playing" || final_status == "launching" {
         if final_cloud_id.is_some() {
@@ -308,11 +304,13 @@ async fn discord_rpc_update_raw(
                 .map(|(active, members)| format!("Playing {}/{}", active, members))
                 .unwrap_or_else(|| "Playing".to_string());
 
-            details = format!("{} | {}", name_str, p_str);
+            activity_name = Some(name_str.to_string());
+            details = p_str;
             let _ = final_ping_ms;
             state_text = username;
         } else {
             let name_str = final_server_name.as_deref().unwrap_or("Minecraft");
+            activity_name = Some(name_str.to_string());
             details = name_str.to_string();
 
             let sp_label = match lang.as_str() {
@@ -361,6 +359,11 @@ async fn discord_rpc_update_raw(
         .state(&state_text)
         .assets(assets)
         .timestamps(discord_rich_presence::activity::Timestamps::new().start(start_ts));
+    if let Some(ref name) = activity_name {
+        activity = activity
+            .name(name.as_str())
+            .status_display_type(discord_rich_presence::activity::StatusDisplayType::Name);
+    }
 
     let button_text = format!("Reality Launcher v{}", env!("CARGO_PKG_VERSION"));
     activity = activity.buttons(vec![discord_rich_presence::activity::Button::new(
@@ -368,9 +371,17 @@ async fn discord_rpc_update_raw(
         "https://reality.catlabdesign.space",
     )]);
 
-    let mut state = STATE.lock().map_err(|e| e.to_string())?;
-    let client = state.client.as_mut().ok_or_else(|| "Client not connected".to_string())?;
-    client.set_activity(activity).map_err(|e| e.to_string())?;
+    let send_result = {
+        let mut state = STATE.lock().map_err(|e| e.to_string())?;
+        let client = state.client.as_mut().ok_or_else(|| "Client not connected".to_string())?;
+        client.set_activity(activity).map_err(|e| e.to_string())
+    };
+
+    if let Err(e) = send_result {
+        println!("[Discord RPC] set_activity failed ({e}); dropping connection so the next update reconnects");
+        disconnect();
+        return Err(e);
+    }
 
     Ok(())
 }

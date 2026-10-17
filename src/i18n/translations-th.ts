@@ -5,6 +5,7 @@ export const thTranslations = {
     modpacks: "มอดแพ็ก",
     modpacks_subtitle: "จัดการและเปิดเล่น Mod Pack ของคุณ",
     explore: "สำรวจ",
+    install_tab: "ติดตั้ง",
     settings: "ตั้งค่า",
     about: "เกี่ยวกับ",
     admin: "ผู้ดูแล",
@@ -60,6 +61,10 @@ export const thTranslations = {
     wardrobe_catskinc_mic_listening: "กำลังฟังเสียง...",
     wardrobe_catskinc_configured: "เซิร์ฟเวอร์ม็อด: {ip}",
     wardrobe_catskinc_not_configured: "ไม่พบการตั้งค่าม็อด",
+    wardrobe_catskinc_file_too_large: "ไฟล์ใหญ่เกินไป (สูงสุด 256MB)",
+    wardrobe_catskinc_invalid_dimensions: "สกิน CatSkinC ต้องเป็นสี่เหลี่ยมจัตุรัส ขนาดยกกำลังสองระหว่าง 64 ถึง 8192 px (เช่น 64x64, 128x128, 1024x1024)",
+    wardrobe_catskinc_invalid_mouth_dimensions: "เลเยอร์เปิดปากต้องมีขนาดระหว่าง 8 ถึง 8192 px",
+    wardrobe_catskinc_mouth_size_mismatch: "เลเยอร์เปิดปากต้องมีขนาดเท่ากับไฟล์สกินพอดี",
     checking_data: "กำลังตรวจสอบไฟล์",
 
     
@@ -97,6 +102,23 @@ export const thTranslations = {
     read_more: "อ่านเพิ่มเติม",
     news_feed: "ประชาสัมพันธ์",
     jump_back_in: "เล่นต่อจากครั้งก่อน",
+    library: "ไลบรารี",
+    playing_as: "กำลังเล่นเป็น",
+    continue_playing: "เล่นต่อ",
+    home_ready: "พร้อมเล่น",
+    home_online_now: "{count} คนออนไลน์อยู่ตอนนี้",
+    home_online_sub: "ใน {servers} เซิร์ฟเวอร์ เข้าไปเล่นกับเพื่อนได้เลย",
+    home_join_server: "เข้าร่วมเซิร์ฟเวอร์ แล้วเล่นกับเพื่อนได้ทันที",
+    go_to_servers: "ไปที่เซิร์ฟเวอร์",
+    home_recent: "ล่าสุด",
+    your_stats: "สถิติของคุณ",
+    total_playtime: "เวลาเล่นรวม",
+    home_status: "สถานะ",
+    home_last_played: "เล่นล่าสุด",
+    your_servers: "เซิร์ฟเวอร์ของคุณ",
+    players_online: "{count} คนออนไลน์",
+    played_for: "เล่นไปแล้ว {time}",
+    open_instance: "เปิดหน้ามอดแพ็ก",
     welcome_guest: "ยินดีต้อนรับ",
     please_login_full: "เข้าสู่ระบบเพื่อใช้งานได้ครบทุกฟีเจอร์",
     start_your_adventure: "เริ่มผจญภัยกันเลย",
@@ -308,6 +330,7 @@ export const thTranslations = {
     discord_rpc: "Discord Rich Presence",
     discord_rpc_status_showing: "กำลังแสดงสถานะ",
     discord_rpc_status_off: "ปิดอยู่",
+    discord_rpc_status_waiting: "ยังเชื่อมต่อ Discord ไม่ได้ เปิดแอป Discord บนเครื่องก่อน",
     discord_rpc_on: "เปิด Discord Rich Presence",
     discord_rpc_off: "ปิด Discord Rich Presence",
     telemetry: "Telemetry",
@@ -391,7 +414,10 @@ export const thTranslations = {
     auto_update_desc: "โหลดอัปเดตอัตโนมัติ และติดตั้งตอนเปิดแอปครั้งถัดไป",
     auto_update_on: "เปิดอัปเดตอัตโนมัติ",
     auto_update_off: "ปิดอัปเดตอัตโนมัติ",
-    update_ready_next_restart: "อัปเดต v{version} จะติดตั้งตอนเปิดแอปครั้งหน้า",
+    update_ready_next_restart: "อัปเดต v{version} จะติดตั้งเมื่อปิด Launcher",
+    update_auto_restart_in: "อัปเดต v{version} พร้อมแล้ว · รีสตาร์ทใน {seconds} วิ",
+    update_restart_now: "รีสตาร์ทเลย",
+    update_later: "ภายหลัง",
     update_available_toast: "มีเวอร์ชันใหม่ v{version} พร้อมดาวน์โหลด",
     check_for_updates: "ตรวจสอบอัปเดต",
     check_for_updates_desc: "ค้นหาเวอร์ชันใหม่ด้วยตนเอง",
@@ -564,6 +590,7 @@ export const thTranslations = {
     add_user: "เพิ่มผู้ใช้",
     no_users_found: "ไม่พบผู้ใช้",
     view_details: "ดูรายละเอียด",
+    more_info: "ดูข้อมูลเพิ่มเติม",
     remove_admin: "ถอดสิทธิ์ Admin",
     grant_admin: "ให้สิทธิ์ Admin",
     unban: "ปลดแบน",
@@ -627,6 +654,8 @@ export const thTranslations = {
     owner_badge: "เจ้าของ",
     public_badge: "สาธารณะ",
     member_badge: "สมาชิก",
+    members_label: "สมาชิก",
+    server_offline: "ออฟไลน์",
     joined_servers: "ที่เข้าร่วมแล้ว",
     no_joined_public_servers: "ไม่มีเซิร์ฟเวอร์สาธารณะที่เข้าร่วม",
     my_servers: "เซิร์ฟเวอร์ของฉัน",
@@ -1124,4 +1153,23 @@ export const thTranslations = {
 
     
     open_filters: "ตัวกรอง",
+
+    // Servers: live status cards
+    server_status_title: "สถานะเซิร์ฟเวอร์",
+    server_address_copied: "คัดลอกที่อยู่เซิร์ฟเวอร์แล้ว",
+    server_unreachable: "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ในขณะนี้",
+
+    // Servers: gallery
+    server_gallery_view: "ดูรูปภาพ",
+
+    // Servers: verification badge (aria-label only)
+    verified_official: "เซิร์ฟเวอร์ทางการ",
+    verified_partner: "เซิร์ฟเวอร์พาร์ทเนอร์",
+
+    // Library: continue-playing hero
+    library_continue_playing: "เล่นต่อ",
+    library_stat_packs: "{count} Mod Pack",
+    library_stat_server_packs: "{count} แพ็กเซิร์ฟเวอร์",
+    // Instance content browser
+    install_to_instance_name: "ติดตั้งลง {name}",
 };

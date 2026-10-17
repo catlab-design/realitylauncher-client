@@ -1,6 +1,8 @@
 import React from "react";
 import { useTranslation } from "../../../hooks/useTranslation";
+import { motion } from "framer-motion";
 import { Portal } from "../../ui/Portal";
+import { useMotionPreset } from "../../../lib/motion";
 
 export interface InstallProgress {
     stage: string;
@@ -25,6 +27,7 @@ export interface InstallProgressModalProps {
 
 export function InstallProgressModal({ colors, installProgress, title, isBytes, onCancel, onMinimize, disableBackdropClick, language }: InstallProgressModalProps) {
     const { t } = useTranslation(language);
+    const m = useMotionPreset();
 
     const formatBytes = (bytes: number) => {
         if (bytes === 0) return "0 B";
@@ -38,7 +41,9 @@ export function InstallProgressModal({ colors, installProgress, title, isBytes, 
     const totalDisplay = isBytes ? formatBytes(installProgress.total || 0) : (installProgress.total || 0).toString();
     return (
         <Portal>
-            <div 
+            <motion.div
+                variants={m.modal.backdrop}
+                {...m.states}
                 className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
                 onClick={(e) => {
                     if (e.target === e.currentTarget && onMinimize && !disableBackdropClick) {
@@ -46,7 +51,7 @@ export function InstallProgressModal({ colors, installProgress, title, isBytes, 
                     }
                 }}
             >
-                <div className="w-[380px] rounded-2xl p-5 relative" style={{ backgroundColor: colors.surface }}>
+                <motion.div variants={m.modal.panel} role="dialog" aria-modal="true" className="w-[380px] rounded-2xl p-5 relative" style={{ backgroundColor: colors.surface }}>
                     {onMinimize && (
                         <button
                             onClick={onMinimize}
@@ -92,9 +97,9 @@ export function InstallProgressModal({ colors, installProgress, title, isBytes, 
                                 </div>
                                 <div className="h-1.5 rounded-full overflow-hidden w-full" style={{ backgroundColor: colors.surfaceContainerHighest }}>
                                     <div
-                                        className="h-full rounded-full transition-all duration-300 ease-out"
+                                        className="h-full w-full rounded-full transition-transform duration-300 ease-out"
                                         style={{
-                                            width: `${installProgress.percent}%`,
+                                            transform: `translateX(${Math.min(100, Math.max(0, installProgress.percent)) - 100}%)`,
                                             backgroundColor: colors.secondary,
                                         }}
                                     />
@@ -111,14 +116,14 @@ export function InstallProgressModal({ colors, installProgress, title, isBytes, 
                     <div className="pt-2 flex justify-end border-t" style={{ borderColor: `${colors.outline}20` }}>
                         <button
                             onClick={onCancel}
-                            className="text-sm font-medium px-4 py-2 rounded-lg hover:bg-red-500/10 active:scale-95 transition-all"
+                            className="text-sm font-medium px-4 py-2 rounded-lg hover:bg-red-500/10 pressable"
                             style={{ color: colors.error || "#ef4444" }}
                         >
                             {t('cancel')}
                         </button>
                     </div>
-                </div>
-            </div>
+                </motion.div>
+            </motion.div>
         </Portal>
     );
 }

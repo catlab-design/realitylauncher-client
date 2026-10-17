@@ -1,3 +1,37 @@
+## [5.0.0] — Unreleased
+
+### Added
+- Launcher self-update: re-checks every 30 minutes while open, auto-downloads, then restarts into the new version after a 15-second countdown ("Restart now" / "Later"); while a game is running, or after "Later", the update installs silently when the launcher closes (`set_install_update_on_exit`)
+- Windows runs the NSIS installer passively (`/P /R /UPDATE`, progress bar only, relaunches when done); macOS swaps the `.app` out of the downloaded `.dmg` after exit (old bundle kept until the copy succeeds, quarantine flag cleared); Linux replaces the running AppImage in place — falls back to opening the package when the app can't replace itself (deb/rpm installs, read-only locations)
+- Server gallery: images uploaded in the Portal show under the server description and in a landscape "Read more" story modal with a 16:9 viewer, thumbnails and lightbox
+- Official / Partner verification badges on servers and the instance page
+- Server status cards (IP, favicon, live MOTD) and arrow-scrolled rails (`ScrollStrip`) for server carousels and the hero thumbnail rail
+- Library "continue playing" hero and Home quick-link tiles inside the news hero
+- Skin Manager 3D preview room (white tiles and light tubes, MineDevice-style pixel art) behind the skin model
+- Shared motion presets (`src/lib/motion.ts`) with reduced-motion support: page and panel transitions, showcase hero entrances, cascading mod-list rows
+- RAM slider presets shared between Settings › Game and the instance Java tab (`RamSlider`, `RamPresetChips`)
+- Pack v2 sync: installs server packs from their manifest and layers
+
+### Changed
+- Full v5 redesign: title-bar text navigation, Home news billboard, Steam-style Server List, redesigned settings, Install (Explore), instance page, server detail page, Skin Manager, login/CatID/Microsoft modals and toasts with a step log
+- Navigation renamed: Modpacks → Library (ไลบรารี), Explore → Install (ติดตั้ง)
+- The instance "add content" browser is now the same UI as the Install page (toolbar, list, preview)
+- Library cards show the icon beside the name at the top; the auto-update badge is a switch
+- Discord Rich Presence (crate 1.x) shows the server / instance name as the activity name while playing
+- CatSkinC follows the current mod API and takes its default host from the published `servers.json` (`globalIp`, cached hourly), falling back to `storage-skin.catlabdesign.space`
+- Caches with stale-while-revalidate for the server list and images, Install search results and project details, and Home news (with a loading skeleton)
+
+### Fixed
+- Saved accounts no longer disappear after login or on a cloud auth error; "Invalid Minecraft access token" on CatID link/refresh fixed by sending a Mojang player-certificate proof (the API can't reach Mojang from Workers)
+- Fabric/Quilt instances failed to launch with no main class: the loader profile libraries (loader, intermediary, mixin, asm) were never downloaded
+- The progress toast stayed open after a launch's mod sync completed
+- The custom background image was never saved: the persisted store exceeded the localStorage quota before the disk save ran
+- CatSkinC sync failed with `error sending request for url (https://storage-api.catskin.space/auth/session)`: saved hosts on the retired `catskin.space` domain are migrated to the current default (and rewritten in the instance's `catskinc.json` so the mod follows)
+- `default_catskinc_url()` recursed forever when the default host was the built-in one
+- Opening an instance from the Library kept the Library's scroll position instead of starting at the top
+- Tab indicator pills could land misaligned during page transitions
+- The update toast claimed the update "will install on next launch" although nothing installed it
+
 ## [4.2.1] — 2026-08-23
 
 ### Security

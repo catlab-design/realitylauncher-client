@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { useMotionPreset } from "../../../lib/motion";
 import toast from "react-hot-toast";
 import { playClick } from "../../../lib/sounds";
 import type { LauncherConfig } from "../../../types/launcher";
 import type { SettingsTabProps } from "./AccountTab";
 import { useTranslation } from "../../../hooks/useTranslation";
+import { SettingsPage, SettingsSection, SettingsRow, fieldClass, fieldStyle, buttonClass, buttonStyle, primaryButtonStyle } from "./SettingsUI";
 
 interface JavaInstallProgress {
     majorVersion: number;
@@ -21,6 +23,7 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
     const [installProgress, setInstallProgress] = useState<JavaInstallProgress | null>(null);
     const [detectedJavasForModal, setDetectedJavasForModal] = useState<{ targetKey: "java25" | "java21" | "java17" | "java8"; versionLabel: string; javas: any[] } | null>(null);
     const { t } = useTranslation(config.language);
+    const m = useMotionPreset();
 
     const windowApi = (window as any).api;
 
@@ -45,32 +48,36 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
         const isInstallingThis = installingJava === version || !!progressForThis;
 
         return (
-            <div>
-                <p className="font-medium text-sm mb-2" style={{ color: colors.onSurface }}>{t('java_install_path').replace('{version}', label)}</p>
+            <SettingsRow
+                colors={colors}
+                icon={<i className="fa-brands fa-java text-xl" style={{ color: "#f89820" }} />}
+                title={t('java_install_path').replace('{version}', label)}
+                below={
+            <div className="space-y-3">
                 <input
                     type="text"
                     value={config.javaPaths?.[pathKey] || "/path/to/java"}
                     readOnly
-                    className="w-full px-4 py-2.5 rounded-md border text-sm mb-2"
+                    title={config.javaPaths?.[pathKey] || undefined}
+                    className={`${fieldClass} w-full font-mono text-[13px]`}
                     style={{
-                        borderColor: colors.outline,
-                        backgroundColor: colors.surface,
+                        ...fieldStyle(colors),
                         color: config.javaPaths?.[pathKey] ? colors.onSurface : colors.onSurfaceVariant
                     }}
                 />
 
                 {}
                 {isInstallingThis && progressForThis && (
-                    <div className="mb-3">
-                        <div className="flex justify-between text-xs mb-1" style={{ color: colors.onSurfaceVariant }}>
-                            <span>{progressForThis.message}</span>
-                            <span>{progressForThis.percent}%</span>
+                    <div>
+                        <div className="flex justify-between gap-4 text-sm mb-1.5" style={{ color: colors.onSurfaceVariant }}>
+                            <span className="truncate">{progressForThis.message}</span>
+                            <span className="font-semibold shrink-0" style={{ color: colors.onSurface }}>{progressForThis.percent}%</span>
                         </div>
-                        <div className="w-full h-2 rounded-full overflow-hidden" style={{ backgroundColor: colors.surfaceContainerHighest }}>
+                        <div className="w-full h-2.5 rounded-full overflow-hidden" style={{ backgroundColor: colors.surfaceContainerHighest }}>
                             <div
-                                className="h-full rounded-full transition-all duration-300"
+                                className="h-full w-full rounded-full transition-transform duration-300 ease-out"
                                 style={{
-                                    width: `${progressForThis.percent}%`,
+                                    transform: `translateX(${progressForThis.percent - 100}%)`,
                                     backgroundColor: progressForThis.phase === "error" ? "#ef4444" : colors.secondary
                                 }}
                             />
@@ -78,7 +85,7 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                     </div>
                 )}
 
-                <div className="flex gap-2 flex-wrap">
+                <div className="flex gap-2.5 flex-wrap">
                     <button
                         onClick={async () => {
                             if (config.clickSoundEnabled) playClick();
@@ -95,10 +102,9 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                             finally { setInstallingJava(null); }
                         }}
                         disabled={isInstallingThis}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-opacity"
+                        className={buttonClass}
                         style={{
-                            backgroundColor: colors.secondary,
-                            color: "#1a1a1a",
+                            ...primaryButtonStyle(colors),
                             opacity: isInstallingThis ? 0.7 : 1
                         }}
                     >
@@ -121,8 +127,8 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                             finally { setIsDetectingJava(false); }
                         }}
                         disabled={isDetectingJava}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium"
-                        style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                        className={buttonClass}
+                        style={buttonStyle(colors)}
                     >
                         <i className="fa-solid fa-magnifying-glass"></i>
                         {t('detect')}
@@ -136,8 +142,8 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                                 toast.success(t('java_configured_successfully').replace('{version}', label));
                             }
                         }}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium"
-                        style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                        className={buttonClass}
+                        style={buttonStyle(colors)}
                     >
                         <i className="fa-solid fa-folder-open"></i>
                         {t('browse')}
@@ -162,8 +168,8 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                             finally { setTestingJavaPath(null); }
                         }}
                         disabled={testingJavaPath === config.javaPaths?.[pathKey]}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium"
-                        style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                        className={buttonClass}
+                        style={buttonStyle(colors)}
                     >
                         <i className={`fa-solid ${testingJavaPath === config.javaPaths?.[pathKey] ? "fa-spinner fa-spin" : "fa-play"}`}></i>
                         {t('test')}
@@ -186,8 +192,8 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                                 }
                             }}
                             disabled={deletingJava === version}
-                            className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium"
-                            style={{ backgroundColor: "#ef444420", color: "#ef4444" }}
+                            className={buttonClass}
+                            style={{ backgroundColor: "rgba(239,68,68,0.12)", borderColor: "rgba(239,68,68,0.35)", color: "#ef4444" }}
                         >
                             <i className={`fa-solid ${deletingJava === version ? "fa-spinner fa-spin" : "fa-trash"}`}></i>
                             {deletingJava === version ? t('deleting') : t('clear')}
@@ -195,66 +201,73 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                     )}
                 </div>
             </div>
+                }
+            />
         );
     };
 
     return (
-        <div className="rounded-xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
-            <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "40" }}>
-                <i className="fa-brands fa-java text-lg" style={{ color: colors.secondary }}></i>
-                <h3 className="font-medium" style={{ color: colors.onSurface }}>{t('tab_java')}</h3>
-            </div>
-            <div className="p-4 space-y-6">
-                {renderJavaSection(25, "25", "java25", (v) => v >= 25)}
-                {renderJavaSection(21, "21", "java21", (v) => v >= 21 && v < 25)}
-                {renderJavaSection(17, "17", "java17", (v) => v >= 17 && v < 21)}
-                {renderJavaSection(8, "8", "java8", (v) => v >= 8 && v < 17)}
-            </div>
+        <>
+            <SettingsPage title={t('tab_java')} colors={colors}>
+                <SettingsSection colors={colors}>
+                    {renderJavaSection(25, "25", "java25", (v) => v >= 25)}
+                    {renderJavaSection(21, "21", "java21", (v) => v >= 21 && v < 25)}
+                    {renderJavaSection(17, "17", "java17", (v) => v >= 17 && v < 21)}
+                    {renderJavaSection(8, "8", "java8", (v) => v >= 8 && v < 17)}
+                </SettingsSection>
+            </SettingsPage>
 
             <AnimatePresence>
                 {detectedJavasForModal && (
-                    <div className="fixed inset-0 z-100 flex items-center justify-center p-4 backdrop-blur-sm" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
+                    <motion.div
+                        key="java-detected-modal"
+                        className="fixed inset-0 z-100 flex items-center justify-center p-4 backdrop-blur-sm"
+                        style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
+                        variants={m.modal.backdrop}
+                        initial="hidden"
+                        animate="show"
+                        exit="exit"
+                    >
                         <motion.div
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.95 }}
-                            transition={{ duration: 0.15, ease: "easeOut" }}
-                            className="w-full max-w-4xl rounded-lg flex flex-col overflow-hidden"
-                            style={{ backgroundColor: colors.surface, border: `1px solid ${colors.outline}40` }}
+                            role="dialog"
+                            aria-modal="true"
+                            variants={m.modal.panel}
+                            className="w-full max-w-4xl rounded-2xl flex flex-col overflow-hidden shadow-2xl"
+                            style={{ backgroundColor: colors.surface, border: `1px solid ${colors.outlineVariant}` }}
                         >
-                            <div className="px-5 py-4 flex items-center justify-between border-b" style={{ borderColor: `${colors.outline}40` }}>
-                                <h3 className="font-semibold text-lg" style={{ color: colors.onSurface }}>
+                            <div className="px-6 py-5 flex items-center justify-between border-b" style={{ borderColor: colors.outlineVariant }}>
+                                <h3 className="font-bold text-xl" style={{ color: colors.onSurface }}>
                                     Select Java Version
                                 </h3>
                                 <button
                                     onClick={() => { if (config.clickSoundEnabled) playClick(); setDetectedJavasForModal(null); }}
-                                    className="opacity-70 hover:opacity-100 transition-opacity flex items-center justify-center w-8 h-8 rounded-full"
+                                    className="hover:brightness-110 transition flex items-center justify-center w-10 h-10 rounded-full"
                                     style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                                 >
                                     <i className="fa-solid fa-xmark"></i>
                                 </button>
                             </div>
-                            <div className="p-4 overflow-y-auto max-h-[50vh] custom-scrollbar">
-                                <table className="w-full text-left text-sm whitespace-nowrap">
+                            <div className="px-6 py-4 overflow-y-auto max-h-[50vh] custom-scrollbar">
+                                <table className="w-full text-left text-[15px] whitespace-nowrap">
                                     <thead>
                                         <tr style={{ color: colors.onSurfaceVariant }}>
-                                            <th className="font-medium pb-3 pr-4">Version</th>
-                                            <th className="font-medium pb-3 pr-4 w-full">Path</th>
-                                            <th className="font-medium pb-3 text-right">Actions</th>
+                                            <th className="text-sm font-semibold pb-3 pr-4">Version</th>
+                                            <th className="text-sm font-semibold pb-3 pr-4 w-full">Path</th>
+                                            <th className="text-sm font-semibold pb-3 text-right">Actions</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y" style={{ borderColor: `${colors.outline}20` }}>
+                                    <tbody className="divide-y" style={{ borderColor: colors.outlineVariant }}>
                                         {detectedJavasForModal.javas.map((java, idx) => {
                                             const isSelected = config.javaPaths?.[detectedJavasForModal.targetKey] === java.path;
                                             return (
                                                 <tr key={idx} style={{ color: colors.onSurface }}>
-                                                    <td className="py-3 pr-4 font-mono">{java.majorVersion}</td>
-                                                    <td className="py-3 pr-4">
-                                                        <div className="max-w-[400px] sm:max-w-[500px] md:max-w-[700px] truncate overflow-hidden text-ellipsis" title={java.path}>
+                                                    <td className="py-3.5 pr-4 font-mono font-semibold">{java.majorVersion}</td>
+                                                    <td className="py-3.5 pr-4">
+                                                        <div className="max-w-100 sm:max-w-125 md:max-w-175 truncate overflow-hidden text-ellipsis font-mono text-[13px]" title={java.path}>
                                                             {java.path}
                                                         </div>
                                                     </td>
-                                                    <td className="py-3 text-right">
+                                                    <td className="py-3.5 text-right">
                                                         <button
                                                             onClick={() => {
                                                                 if (config.clickSoundEnabled) playClick();
@@ -263,12 +276,11 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                                                                 setDetectedJavasForModal(null);
                                                             }}
                                                             disabled={isSelected}
-                                                            className="px-4 py-1.5 rounded-md font-medium text-xs transition-colors whitespace-nowrap flex items-center justify-center gap-2 ml-auto"
+                                                            className="h-10 px-4 rounded-lg font-semibold text-sm transition hover:brightness-110 whitespace-nowrap flex items-center justify-center gap-2 ml-auto"
                                                             style={{
-                                                                backgroundColor: isSelected ? "transparent" : colors.surfaceContainerHighest,
-                                                                color: isSelected ? colors.onSurfaceVariant : colors.onSurface,
-                                                                border: isSelected ? `1px solid ${colors.outline}40` : "1px solid transparent",
-                                                                opacity: isSelected ? 0.8 : 1
+                                                                backgroundColor: isSelected ? "transparent" : colors.secondary,
+                                                                color: isSelected ? colors.onSurfaceVariant : "#111",
+                                                                border: isSelected ? `1px solid ${colors.outlineVariant}` : `1px solid ${colors.secondary}`
                                                             }}
                                                         >
                                                             <i className={`fa-solid ${isSelected ? "fa-check" : "fa-plus"}`}></i>
@@ -281,19 +293,19 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                                     </tbody>
                                 </table>
                             </div>
-                            <div className="px-5 py-4 flex justify-end" style={{ backgroundColor: colors.surfaceContainer, borderTop: `1px solid ${colors.outline}40` }}>
+                            <div className="px-6 py-4 flex justify-end" style={{ backgroundColor: colors.surfaceContainer, borderTop: `1px solid ${colors.outlineVariant}` }}>
                                 <button
                                     onClick={() => { if (config.clickSoundEnabled) playClick(); setDetectedJavasForModal(null); }}
-                                    className="px-5 py-2 rounded-md text-sm font-medium transition-colors"
-                                    style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                                    className={buttonClass}
+                                    style={buttonStyle(colors)}
                                 >
                                     Cancel
                                 </button>
                             </div>
                         </motion.div>
-                    </div>
+                    </motion.div>
                 )}
             </AnimatePresence>
-        </div>
+        </>
     );
 }

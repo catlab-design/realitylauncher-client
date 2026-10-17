@@ -1,6 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, type CSSProperties } from "react";
 import toast from "react-hot-toast";
+import { AnimatePresence, motion } from "framer-motion";
 import { Icons } from "../ui/Icons";
+import { useMotionPreset } from "../../lib/motion";
 import { InstanceContentBrowser } from "./InstanceContentBrowser";
 import {
     CONTENT_SOURCES,
@@ -71,6 +73,15 @@ export function InstanceDetail({
     isInstallLocked = false,
 }: InstanceDetailProps) {
     const { t } = useTranslation(config.language);
+    const m = useMotionPreset();
+    // Open at the top: the Library list may have been scrolled, and opening an instance is a view
+    // change inside the same tab (the shell only resets scroll on tab switches).
+    const rootRef = useRef<HTMLDivElement>(null);
+    useLayoutEffect(() => {
+        const scroller = rootRef.current?.closest("main");
+        if (scroller) scroller.scrollTop = 0;
+    }, [instance.id]);
+
     const [mods, setMods] = useState<ModInfo[]>([]);
     const [modsLoading, setModsLoading] = useState(true);
 
@@ -829,6 +840,29 @@ export function InstanceDetail({
         };
     }, [contentTab, instance.id, loadedTabs]);
 
+    // Pack tabs are small: fetch them shortly after open so every tab shows its count
+    // without having to be clicked first (mods stay lazy, they are the heavy list).
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            const packs: Array<[ContentCategory, () => Promise<void>]> = [
+                ["resourcepacks", loadResourcepacks],
+                ["shaders", loadShaders],
+                ["datapacks", loadDatapacks],
+            ];
+            for (const [tab, load] of packs) {
+                void load().then(() => {
+                    setLoadedTabs(prev => {
+                        if (prev.has(tab)) return prev;
+                        const next = new Set(prev);
+                        next.add(tab);
+                        return next;
+                    });
+                });
+            }
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [instance.id]);
+
     const handleToggleMod = async (filename: string) => {
         try {
             const result = await (window.api as any)?.instanceToggleMod?.(instance.id, filename);
@@ -986,107 +1020,146 @@ export function InstanceDetail({
 
     return (
         <div
-            className="space-y-4 relative w-full animate-fade-in"
+            ref={rootRef}
+            className="space-y-5 relative w-full animate-fade-in"
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
         >
+            <AnimatePresence>
             {isDragging && (
-                <div
-                    className="fixed top-20 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-6 py-3 rounded-full pointer-events-none animate-pulse"
-                    style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                <motion.div
+                    key="drop-hint"
+                    variants={m.popover("bottom")}
+                    {...m.states}
+                    className="fixed top-20 left-1/2 -translate-x-1/2 z-50 pointer-events-none"
                 >
-                    <Icons.Folder className="w-6 h-6" />
-                    <span className="font-medium">{t('drop_to_add_content' as any).replace('{ext}', validExtsLabel).replace('{type}', contentTypeLabel)}</span>
-                </div>
+                    <div
+                        className="flex items-center gap-3 px-6 py-3 rounded-full animate-pulse"
+                        style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                    >
+                        <Icons.Folder className="w-6 h-6" />
+                        <span className="font-medium">{t('drop_to_add_content' as any).replace('{ext}', validExtsLabel).replace('{type}', contentTypeLabel)}</span>
+                    </div>
+                </motion.div>
             )}
+            </AnimatePresence>
 
-            {!showContentBrowser && !installedDetailProject && (instance.banner ? (
-                <div className="rounded-2xl overflow-hidden relative mb-6 border" style={{ borderColor: colors.outline + "30", backgroundColor: colors.surfaceContainer }}>
-                    <div className="relative h-48 w-full bg-cover bg-center"
-                        style={{
-                            backgroundColor: colors.surfaceContainerHighest,
-                        }}>
-                        <img
-                            src={instance.banner}
-                            onError={(e) => {
-                                e.currentTarget.style.display = 'none';
-                            }}
-                            className="absolute inset-0 w-full h-full object-cover"
-                            alt="banner"
-                        />
-                        <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent" />
+            {!showContentBrowser && !installedDetailProject && (
+                <div
+                    className="relative overflow-hidden -mx-6 -mt-3"
+                    style={(instance.banner ? {
+                        // Over the banner art everything goes white.
+                        "--ghost-fg": "rgba(255,255,255,0.85)",
+                        "--ghost-hover-fg": "#ffffff",
+                        "--ghost-hover-bg": "rgba(255,255,255,0.15)",
+                        "--head-fg": "#ffffff",
+                        "--head-sub": "rgba(255,255,255,0.75)",
+                    } : {
+                        "--ghost-fg": colors.onSurfaceVariant,
+                        "--ghost-hover-fg": colors.onSurface,
+                        "--ghost-hover-bg": colors.surfaceContainerHighest,
+                        "--head-fg": colors.onSurface,
+                        "--head-sub": colors.onSurfaceVariant,
+                    }) as CSSProperties}
+                >
+                    {instance.banner && (
+                        <motion.div variants={m.fadeIn} {...m.states} className="absolute inset-0 pointer-events-none" aria-hidden="true">
+                            <img
+                                src={instance.banner}
+                                onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                }}
+                                className="absolute inset-0 w-full h-full object-cover"
+                                alt=""
+                            />
+                            <div
+                                className="absolute inset-0"
+                                style={{ backgroundImage: "linear-gradient(to right, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.45) 50%, rgba(0,0,0,0.2) 100%)" }}
+                            />
+                        </motion.div>
+                    )}
 
-                        <button
+                    <motion.div
+                        variants={m.staggerContainer(0.04)}
+                        {...m.states}
+                        className={`relative flex flex-wrap items-center gap-x-4 gap-y-3 px-6 ${instance.banner ? "pt-36 pb-5" : "py-5"}`}
+                    >
+                        <motion.button
+                            variants={m.fadeUp}
                             onClick={() => { playClick(); onBack(); }}
-                            className="absolute top-4 left-4 w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95 z-20 backdrop-blur-md"
-                            style={{ backgroundColor: "rgba(0,0,0,0.5)", color: "#ffffff" }}
+                            className="w-9 h-9 rounded-full flex items-center justify-center pressable shrink-0 text-(--ghost-fg) hover:text-(--ghost-hover-fg) hover:bg-(--ghost-hover-bg)"
+                            title={t('back' as any)}
                         >
                             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
                             </svg>
-                        </button>
+                        </motion.button>
 
-                        <div className="absolute -bottom-8 left-8 w-24 h-24 rounded-2xl p-1 z-10"
-                            style={{ backgroundColor: (instance.icon?.startsWith("data:") || instance.icon?.startsWith("file://") || instance.icon?.startsWith("http")) ? 'transparent' : colors.surface }}>
-                            <div className="w-full h-full rounded-[14px] bg-cover bg-center overflow-hidden flex items-center justify-center"
-                                style={{
-                                    backgroundColor: (instance.icon?.startsWith("data:") || instance.icon?.startsWith("file://") || instance.icon?.startsWith("http")) ? 'transparent' : colors.surfaceContainerHighest
-                                }}>
-                                {instance.icon?.startsWith("data:") || instance.icon?.startsWith("file://") || instance.icon?.startsWith("http") ? (
-                                    <img src={instance.icon} alt="icon" className="w-full h-full object-cover" />
-                                ) : (
-                                    <Icons.Box className="w-10 h-10 opacity-50" style={{ color: colors.onSurfaceVariant }} />
-                                )}
-                            </div>
-                        </div>
-                    </div>
+                        <motion.div
+                            variants={m.scaleIn}
+                            className="w-16 h-16 rounded-2xl flex items-center justify-center overflow-hidden shrink-0"
+                            style={{ backgroundColor: (instance.icon?.startsWith("data:") || instance.icon?.startsWith("file://") || instance.icon?.startsWith("http")) ? 'transparent' : colors.surfaceContainerHighest }}
+                        >
+                            {instance.icon?.startsWith("data:") || instance.icon?.startsWith("file://") || instance.icon?.startsWith("http") ? (
+                                <img src={instance.icon} alt="icon" className="w-full h-full object-cover" />
+                            ) : (
+                                <Icons.Box className="w-8 h-8" style={{ color: colors.onSurfaceVariant }} />
+                            )}
+                        </motion.div>
 
-                    <div className="pt-12 px-8 pb-8 flex flex-col md:flex-row md:items-end gap-6">
-                        <div className="flex-1 min-w-0">
-                            <h2 className="text-3xl font-black tracking-tight mb-2 truncate" style={{ color: colors.onSurface }}>{instance.name}</h2>
-                            <div className="flex flex-wrap items-center gap-4 text-sm font-medium" style={{ color: colors.onSurfaceVariant }}>
-                                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full" style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                                    {getLoaderLabel(instance.loader)}
-                                    <span className="w-1 h-1 rounded-full bg-current opacity-50" />
-                                    {instance.minecraftVersion}
-                                </div>
+                        <motion.div variants={m.fadeUp} className="flex-1 min-w-48">
+                            <h2 className="font-display text-2xl font-bold leading-tight truncate" style={{ color: "var(--head-fg)" }}>{instance.name}</h2>
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1 text-sm" style={{ color: "var(--head-sub)" }}>
+                                <span className="flex items-center gap-1.5">
+                                    <Icons.Box className="w-3.5 h-3.5 opacity-70" />
+                                    {getLoaderLabel(instance.loader)} {instance.minecraftVersion}
+                                </span>
 
                                 {instance.totalPlayTime > 0 && (
-                                    <div className="flex items-center gap-1.5">
-                                        <i className="fa-solid fa-clock text-xs opacity-70"></i>
-                                        <span>{formatPlayTime(instance.totalPlayTime, { minutes: t('minutes_unit'), hours: t('hours_unit') })}</span>
-                                    </div>
+                                    <>
+                                        <span className="opacity-50">&bull;</span>
+                                        <span className="flex items-center gap-1.5">
+                                            <Icons.Clock className="w-3.5 h-3.5 opacity-70" />
+                                            {formatPlayTime(instance.totalPlayTime, { minutes: t('minutes_unit'), hours: t('hours_unit') })}
+                                        </span>
+                                    </>
+                                )}
+
+                                {instance.lastPlayedAt && !Number.isNaN(new Date(instance.lastPlayedAt).getTime()) && (
+                                    <>
+                                        <span className="opacity-50">&bull;</span>
+                                        <span>
+                                            {t('home_last_played')} {new Date(instance.lastPlayedAt).toLocaleDateString()}
+                                        </span>
+                                    </>
                                 )}
                             </div>
-                        </div>
+                        </motion.div>
 
-                        <div className="flex items-center gap-3">
+                        <motion.div variants={m.fadeUp} className="flex items-center gap-2 ml-auto mt-8">
                             <button
                                 onClick={() => { playClick(); onOpenFolder(instance.id); }}
-                                className="w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:bg-white/5 active:scale-95"
-                                style={{ border: `1px solid ${colors.outline}30`, color: colors.onSurface }}
+                                className="w-12 h-12 rounded-xl flex items-center justify-center pressable text-(--ghost-fg) hover:text-(--ghost-hover-fg) hover:bg-(--ghost-hover-bg)"
                                 title={t('open_folder')}
                             >
-                                <Icons.Folder className="w-5 h-5" />
+                                <Icons.Folder className="w-6 h-6" />
                             </button>
 
                             <button
                                 onClick={() => { playClick(); onViewLogs(instance.id); }}
-                                className="w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:bg-white/5 active:scale-95"
-                                style={{ border: `1px solid ${colors.outline}30`, color: colors.onSurface }}
+                                className="w-12 h-12 rounded-xl flex items-center justify-center pressable text-(--ghost-fg) hover:text-(--ghost-hover-fg) hover:bg-(--ghost-hover-bg)"
                                 title={t('view_logs')}
                             >
-                                <Icons.Terminal className="w-5 h-5" />
+                                <Icons.Terminal className="w-6 h-6" />
                             </button>
 
                             <button
                                 onClick={() => { playClick(); setShowSettings(true); }}
-                                className="w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:bg-white/5 active:scale-95"
-                                style={{ border: `1px solid ${colors.outline}30`, color: colors.onSurface }}
+                                className="w-12 h-12 rounded-xl flex items-center justify-center pressable text-(--ghost-fg) hover:text-(--ghost-hover-fg) hover:bg-(--ghost-hover-bg)"
                                 title={t('settings')}
                             >
-                                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                                <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
                                     <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
                                 </svg>
                             </button>
@@ -1094,21 +1167,21 @@ export function InstanceDetail({
                             <button
                                 onClick={() => { playClick(); handlePlayStop(); }}
                                 disabled={disablePlayStopButton || isInstallLocked}
-                                className="h-12 px-8 rounded-xl font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50 flex items-center gap-2"
+                                className="h-12 px-8 ml-2 rounded-xl text-base font-bold pressable transition-[color,background-color,opacity,scale,filter] hover:brightness-105 disabled:opacity-50 flex items-center gap-2 whitespace-nowrap"
                                 style={{
                                     backgroundColor: showStopAction ? "#ef4444" : colors.secondary,
-                                    color: showStopAction ? "#ffffff" : "#1a1a1a"
+                                    color: showStopAction ? "#ffffff" : "#111"
                                 }}
                             >
                                 {isInstallLocked ? (
                                     <>
-                                        <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                        <div className="w-4.5 h-4.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                                         {t('installing')}
                                     </>
                                 ) : showStopAction ? (
                                     <>
                                         {showLaunchSpinner ? (
-                                            <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                            <div className="w-4.5 h-4.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                                         ) : (
                                             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                                                 <path d="M6 6h12v12H6z" />
@@ -1125,115 +1198,10 @@ export function InstanceDetail({
                                     </>
                                 )}
                             </button>
-                        </div>
-                    </div>
+                        </motion.div>
+                    </motion.div>
                 </div>
-            ) : (
-                <div className="flex flex-col md:flex-row items-start md:items-center gap-6 mb-8 pt-2">
-                    <button
-                        onClick={() => { playClick(); onBack(); }}
-                        className="w-10 h-10 rounded-xl flex items-center justify-center transition-all hover:scale-105 active:scale-95 shrink-0"
-                        style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                    >
-                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
-                        </svg>
-                    </button>
-
-                    <div className="w-24 h-24 rounded-2xl flex items-center justify-center text-4xl overflow-hidden shrink-0"
-                        style={{ backgroundColor: (instance.icon?.startsWith("data:") || instance.icon?.startsWith("file://") || instance.icon?.startsWith("http")) ? 'transparent' : colors.surfaceContainer }}>
-                        {instance.icon?.startsWith("data:") || instance.icon?.startsWith("file://") || instance.icon?.startsWith("http") ? (
-                            <img src={instance.icon} alt="icon" className="w-full h-full object-cover" />
-                        ) : (
-                            <Icons.Box className="w-12 h-12" style={{ color: colors.onSurfaceVariant }} />
-                        )}
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                        <h2 className="text-3xl font-black tracking-tight mb-2 truncate" style={{ color: colors.onSurface }}>{instance.name}</h2>
-                        <div className="flex flex-wrap items-center gap-4 text-sm font-medium" style={{ color: colors.onSurfaceVariant }}>
-                            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full" style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                                {getLoaderLabel(instance.loader)}
-                                <span className="w-1 h-1 rounded-full bg-current opacity-50" />
-                                {instance.minecraftVersion}
-                            </div>
-
-                            {instance.totalPlayTime > 0 && (
-                                <div className="flex items-center gap-1.5">
-                                    <i className="fa-solid fa-clock text-xs opacity-70"></i>
-                                    <span>{formatPlayTime(instance.totalPlayTime, { minutes: t('minutes_unit'), hours: t('hours_unit') })}</span>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                        <button
-                            onClick={() => { playClick(); onOpenFolder(instance.id); }}
-                            className="w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:bg-white/5 active:scale-95"
-                            style={{ border: `1px solid ${colors.outline}30`, color: colors.onSurface }}
-                            title={t('open_folder')}
-                        >
-                            <Icons.Folder className="w-5 h-5" />
-                        </button>
-
-                        <button
-                            onClick={() => { playClick(); onViewLogs(instance.id); }}
-                            className="w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:bg-white/5 active:scale-95"
-                            style={{ border: `1px solid ${colors.outline}30`, color: colors.onSurface }}
-                            title={t('view_logs')}
-                        >
-                            <Icons.Terminal className="w-5 h-5" />
-                        </button>
-
-                        <button
-                            onClick={() => { playClick(); setShowSettings(true); }}
-                            className="w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:bg-white/5 active:scale-95"
-                            style={{ border: `1px solid ${colors.outline}30`, color: colors.onSurface }}
-                            title={t('settings')}
-                        >
-                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
-                            </svg>
-                        </button>
-
-                        <button
-                            onClick={() => { playClick(); handlePlayStop(); }}
-                            disabled={disablePlayStopButton || isInstallLocked}
-                            className="h-12 px-8 rounded-xl font-bold transition-all hover:scale-105 active:scale-95 disabled:opacity-50 flex items-center gap-2"
-                            style={{
-                                backgroundColor: showStopAction ? "#ef4444" : colors.secondary,
-                                color: showStopAction ? "#ffffff" : "#1a1a1a"
-                            }}
-                        >
-                            {isInstallLocked ? (
-                                <>
-                                    <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                                    {t('installing')}
-                                </>
-                            ) : showStopAction ? (
-                                <>
-                                    {showLaunchSpinner ? (
-                                        <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                                    ) : (
-                                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                                            <path d="M6 6h12v12H6z" />
-                                        </svg>
-                                    )}
-                                    {t('stop')}
-                                </>
-                            ) : (
-                                <>
-                                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                                        <path d="M8 5v14l11-7z" />
-                                    </svg>
-                                    {t('play')}
-                                </>
-                            )}
-                        </button>
-                    </div>
-                </div>
-            ))}
+            )}
 
 
             {installedDetailProject ? (
@@ -1281,7 +1249,8 @@ export function InstanceDetail({
                         loader={instance.loader}
                     />
 
-                    <div>
+                    <AnimatePresence mode="wait" initial={false}>
+                    <motion.div key={contentTab} variants={m.panelSwap} {...m.states}>
                         {contentTab === "mods" && (
                             <ModsList
                                 colors={colors}
@@ -1398,12 +1367,15 @@ export function InstanceDetail({
                                 onSwitchVersion={(item) => handleOpenSwitcher(item, "shader")}
                             />
                         )}
-                    </div>
+                    </motion.div>
+                    </AnimatePresence>
                 </>
             )}
 
+            <AnimatePresence>
             {switcherTarget && (
                 <VersionSwitcherModal
+                    key="version-switcher"
                     colors={colors}
                     title={
                         (switcherTarget.item as any).displayName ||
@@ -1423,10 +1395,13 @@ export function InstanceDetail({
                     onSwitch={handleConfirmSwitchVersion}
                 />
             )}
+            </AnimatePresence>
 
+            <AnimatePresence>
             {
                 showSettings && (
                     <InstanceSettingsModal
+                        key="instance-settings"
                         colors={colors}
                         instance={instance}
                         onClose={() => setShowSettings(false)}
@@ -1439,6 +1414,7 @@ export function InstanceDetail({
                     />
                 )
             }
+            </AnimatePresence>
         </div >
     );
 }

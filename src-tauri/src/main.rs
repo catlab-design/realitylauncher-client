@@ -9,6 +9,7 @@ mod auth;
 mod cloud;
 mod config;
 mod content;
+mod pack_v2;
 mod curseforge;
 mod discord;
 mod download;
@@ -153,6 +154,7 @@ fn main() {
             update::check_latest_version,
             update::download_update,
             update::install_update,
+            update::set_install_update_on_exit,
             
             fs_utils::open_folder,
             fs_utils::open_url,
@@ -191,6 +193,7 @@ fn main() {
             discord::discord_rpc_is_connected,
             
             social::server_ping,
+            social::instance_saved_servers,
             
             telemetry::telemetry_log_event,
             
@@ -212,6 +215,7 @@ fn main() {
         .run(|_app_handle, event| {
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 tauri::async_runtime::block_on(telemetry::track_app_close());
+                update::run_pending_install_on_exit();
             }
         });
 }

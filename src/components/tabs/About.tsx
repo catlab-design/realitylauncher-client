@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "../../hooks/useTranslation";
 import { Icons } from "../ui/Icons";
 import { MCHead } from "../ui/MCHead";
+import { useMotionPreset } from "../../lib/motion";
 import rLogo from "../../assets/r.png";
 
 import rdcwLogo from "../../assets/rdcw_logo_transparent.webp";
@@ -113,25 +114,10 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
 
     const fontStack = "'Inter', 'Prompt', sans-serif";
 
-    const containerVariants = {
-        hidden: { opacity: 0 },
-        visible: {
-            opacity: 1,
-            transition: {
-                staggerChildren: 0.1,
-                delayChildren: 0.2
-            }
-        }
-    };
-
-    const itemVariants = {
-        hidden: { y: 20, opacity: 0 },
-        visible: { 
-            y: 0, 
-            opacity: 1,
-            transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] as any }
-        }
-    };
+    // Shared presets: quick section stagger, no up-front delay, reduced-motion aware.
+    const m = useMotionPreset();
+    const containerVariants = m.staggerContainer(0.06);
+    const itemVariants = m.fadeUp;
 
     return (
         <div
@@ -144,7 +130,7 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
             <motion.div 
                 variants={containerVariants}
                 initial="hidden"
-                animate="visible"
+                animate="show"
                 className="max-w-3xl mx-auto w-full space-y-16 pb-24"
             >
                 <motion.div variants={itemVariants} className="flex items-center gap-6 pt-4">
@@ -192,18 +178,19 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
                                 };
                                 const roleText = config?.language === "th" ? (partner.roleTh || partner.role) : (config?.language === "jp" ? (partner.roleJp || partner.role) : partner.role);
                                 return (
-                                    <div
+                                    <motion.div
                                         key={partner.id}
                                         className="group flex flex-col items-center gap-4 cursor-pointer"
                                         onClick={handlePartnerClick}
+                                        {...m.hoverLift}
                                     >
                                         <img
                                             src={partner.imageUrl}
                                             alt={partner.name}
-                                            className="h-12 w-auto transition-all duration-500 group-hover:scale-110 object-contain rounded-[10px]"
+                                            className="h-12 w-auto transition-transform duration-300 group-hover:scale-110 object-contain rounded-[10px]"
                                         />
-                                        <div className="flex flex-col items-center gap-1 transition-all">
-                                            <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-all">
+                                        <div className="flex flex-col items-center gap-1">
+                                            <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
                                                 <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: colors.onSurface }}>
                                                     {partner.name}
                                                 </span>
@@ -213,7 +200,7 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
                                                 {roleText}
                                             </span>
                                         </div>
-                                    </div>
+                                    </motion.div>
                                 );
                             })
                         )}
@@ -232,19 +219,19 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
                         {TEAM.map((member) => (
                             <motion.div
                                 key={member.userGame}
-                                whileHover={{ scale: 1.02, backgroundColor: colors.onSurface + '04' }}
-                                className="group relative flex items-start gap-4 p-5 rounded-[24px] border border-white/5 bg-white/2 transition-all duration-500"
-                                style={{ borderColor: colors.outlineVariant || colors.outline }}
+                                {...m.hoverLift}
+                                className="group relative flex items-start gap-4 p-5 rounded-3xl border border-white/5 bg-white/2 hover:bg-(--card-hover) transition-colors duration-300"
+                                style={{ borderColor: colors.outlineVariant || colors.outline, "--card-hover": colors.onSurface + '04' } as React.CSSProperties}
                             >
                                 <div className="shrink-0 relative">
-                                    <div 
-                                        className="absolute inset-0 blur-lg rounded-full opacity-0 group-hover:opacity-20 transition-opacity duration-700"
+                                    <div
+                                        className="absolute inset-0 blur-lg rounded-full opacity-0 group-hover:opacity-20 transition-opacity duration-300"
                                         style={{ backgroundColor: colors.primary }}
                                     />
                                     <MCHead
                                         username={member.userGame}
                                         size={52}
-                                        className="relative rounded-full ring-2 ring-white/5 group-hover:ring-primary/40 transition-all duration-500"
+                                        className="relative rounded-full ring-2 ring-white/5 group-hover:ring-primary/40 transition-shadow duration-300"
                                     />
                                 </div>
                                 <div className="space-y-1.5 min-w-0">
@@ -288,10 +275,9 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
                         <div className="h-4 w-px bg-white/10" />
 
                         <motion.button
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
+                            {...m.hoverScale}
                             onClick={() => (window as any).api.openExternal('https://discord.com/invite/PewhYEehFQ')}
-                            className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-white/3 border border-white/5 hover:bg-white/8 transition-all"
+                            className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-white/3 border border-white/5 hover:bg-white/8 transition-colors"
                             style={{ color: colors.onSurface }}
                         >
                             <Icons.Discord className="w-5 h-5" />
@@ -299,10 +285,9 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
                         </motion.button>
                         
                         <motion.button
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
+                            {...m.hoverScale}
                             onClick={() => (window as any).api.openExternal('https://github.com/catlab-design/realitylauncher-client')}
-                            className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-white/3 border border-white/5 hover:bg-white/8 transition-all"
+                            className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-white/3 border border-white/5 hover:bg-white/8 transition-colors"
                             style={{ color: colors.onSurface }}
                         >
                             <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor"><path d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.9-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.89 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2z"/></svg>

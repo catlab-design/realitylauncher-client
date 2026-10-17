@@ -65,6 +65,13 @@ export const useConfigStore = create<ConfigState>()(
         }),
         {
             name: 'reality_config',
+            // The background image is a base64 data URL (often several MB). Mirroring it into
+            // localStorage blew the quota, the store write threw, and the config never reached
+            // disk. config.json (loaded at startup) is its only store.
+            partialize: (state) => {
+                const { backgroundImage: _backgroundImage, ...rest } = state;
+                return rest as ConfigState;
+            },
             migrate: (persistedState: any) => {
                 if (persistedState && typeof persistedState.closeOnLaunch === 'boolean') {
                     persistedState.closeOnLaunch = persistedState.closeOnLaunch ? 'hide-reopen' : 'keep-open';

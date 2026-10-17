@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 
 import { toast } from "react-hot-toast";
+import { AnimatePresence, motion } from "framer-motion";
 
 import { ChangelogModal } from "./ui/ChangelogModal";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
@@ -9,6 +10,7 @@ import { CatIDLoginModal } from "./auth/CatIDLoginModal";
 import { MicrosoftVerificationModal } from "./auth/MicrosoftVerificationModal";
 import { MCHead } from "./ui/MCHead";
 import { Icons } from "./ui/Icons";
+import { useMotionPreset } from "../lib/motion";
 import type { AuthSession } from "../types/launcher";
 import type { TranslationKey } from "../i18n/translations";
 import { playClick } from "../lib/sounds";
@@ -183,6 +185,8 @@ export function LauncherAppOverlays({
   isDragging,
   setIsDragging,
 }: LauncherAppOverlaysProps) {
+  const m = useMotionPreset();
+
   return (
     <>
       <ChangelogModal
@@ -265,51 +269,28 @@ export function LauncherAppOverlays({
         colors={colors}
       />
 
+      <AnimatePresence>
       {catIDRegisterOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5 animate-in fade-in duration-300">
-          <div
-            className="flex w-full max-w-[480px] flex-col overflow-hidden rounded-2xl border border-white/10"
+        <motion.div key="catid-register" className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5" variants={m.modal.backdrop} {...m.states}>
+          <motion.div
+            className="flex w-full max-w-[520px] flex-col overflow-hidden rounded-3xl shadow-2xl"
             style={{ backgroundColor: colors.surface }}
+            variants={m.modal.panel}
           >
-            
-            <div
-              className="flex items-center justify-between border-b px-6 py-4"
-              style={{
-                borderColor: `${colors.onSurface}10`,
-                backgroundColor: colors.surfaceContainerLow || colors.surfaceContainer,
-              }}
-            >
-              <div className="flex items-center gap-4">
-                <div
-                  className="flex h-10 w-10 items-center justify-center rounded-md"
-                  style={{
-                    backgroundColor: "#8b5cf6",
-                    color: "#ffffff",
-                  }}
-                >
-                  <svg className="w-5.5 h-5.5" viewBox="0 0 24 24" fill="#ffffff">
-                    <path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-                  </svg>
-                </div>
-                <div>
-                  <h2 className="text-base font-black tracking-tight" style={{ color: colors.onSurface }}>
-                    {t("create_new_account")}
-                  </h2>
-                  <p className="text-xs opacity-75" style={{ color: colors.onSurfaceVariant }}>
-                    {t("start_new_journey")}
-                  </p>
-                </div>
+            <div className="flex items-start justify-between gap-4 px-8 pt-8 pb-2">
+              <div>
+                <h2 className="font-display text-3xl leading-tight" style={{ color: colors.onSurface }}>
+                  {t("create_new_account")}
+                </h2>
+                <p className="text-base mt-2" style={{ color: colors.onSurfaceVariant }}>
+                  {t("start_new_journey")}
+                </p>
               </div>
-
               <button
                 type="button"
                 onClick={() => setCatIDRegisterOpen(false)}
-                className="flex h-10 w-10 items-center justify-center rounded-full border transition-all hover:bg-white/10"
-                style={{
-                  color: colors.onSurface,
-                  borderColor: `${colors.onSurface}15`,
-                  backgroundColor: colors.surfaceContainer,
-                }}
+                className="flex h-10 w-10 items-center justify-center rounded-full shrink-0 transition hover:brightness-110"
+                style={{ color: colors.onSurface, backgroundColor: colors.surfaceContainerHighest }}
                 aria-label={t("close")}
               >
                 <Icons.Close className="w-5 h-5" />
@@ -317,19 +298,19 @@ export function LauncherAppOverlays({
             </div>
 
             
-            <div className="px-6 py-6 flex flex-col gap-4">
+            <div className="px-8 pt-5 pb-8 flex flex-col gap-4">
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold" style={{ color: colors.onSurface }}>
                     {t("username")}
                   </label>
                   <input
                     id="catid-reg-username"
                     type="text"
                     placeholder={t("username_placeholder")}
-                    className="w-full px-4 py-3 rounded-xl border border-white/5 transition-all outline-none focus:ring-2 focus:ring-purple-500/30"
+                    className="w-full h-12 px-4 rounded-xl border border-transparent outline-none text-[15px]"
                     style={{
-                      backgroundColor: colors.surfaceContainer,
+                      backgroundColor: colors.surfaceContainerHighest,
                       color: colors.onSurface,
                     }}
                     value={catIDRegisterData.username}
@@ -341,17 +322,17 @@ export function LauncherAppOverlays({
                     }
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold" style={{ color: colors.onSurface }}>
                     {t("email")}
                   </label>
                   <input
                     id="catid-reg-email"
                     type="email"
                     placeholder={t("email")}
-                    className="w-full px-4 py-3 rounded-xl border border-white/5 transition-all outline-none focus:ring-2 focus:ring-purple-500/30"
+                    className="w-full h-12 px-4 rounded-xl border border-transparent outline-none text-[15px]"
                     style={{
-                      backgroundColor: colors.surfaceContainer,
+                      backgroundColor: colors.surfaceContainerHighest,
                       color: colors.onSurface,
                     }}
                     value={catIDRegisterData.email}
@@ -365,17 +346,17 @@ export function LauncherAppOverlays({
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold" style={{ color: colors.onSurface }}>
                   {t("password")}
                 </label>
                 <input
                   id="catid-reg-password"
                   type="password"
                   placeholder={t("password")}
-                  className="w-full px-4 py-3 rounded-xl border border-white/5 transition-all outline-none focus:ring-2 focus:ring-purple-500/30"
+                  className="w-full h-12 px-4 rounded-xl border border-transparent outline-none text-[15px]"
                   style={{
-                    backgroundColor: colors.surfaceContainer,
+                    backgroundColor: colors.surfaceContainerHighest,
                     color: colors.onSurface,
                   }}
                   value={catIDRegisterData.password}
@@ -388,17 +369,17 @@ export function LauncherAppOverlays({
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold" style={{ color: colors.onSurface }}>
                   {t("confirm_password")}
                 </label>
                 <input
                   id="catid-reg-confirm"
                   type="password"
                   placeholder={t("confirm_password")}
-                  className="w-full px-4 py-3 rounded-xl border border-white/5 transition-all outline-none focus:ring-2 focus:ring-purple-500/30"
+                  className="w-full h-12 px-4 rounded-xl border border-transparent outline-none text-[15px]"
                   style={{
-                    backgroundColor: colors.surfaceContainer,
+                    backgroundColor: colors.surfaceContainerHighest,
                     color: colors.onSurface,
                   }}
                   value={catIDRegisterData.confirmPassword}
@@ -415,7 +396,7 @@ export function LauncherAppOverlays({
                 <button
                   onClick={() => void handleCatIDRegister()}
                   disabled={isRegistering}
-                  className="w-full py-3.5 rounded-xl font-black text-sm transition-all hover:scale-[1.01] active:scale-[0.99] shadow-md disabled:opacity-50"
+                  className="w-full h-12 rounded-xl text-base font-bold transition hover:brightness-105 active:scale-[0.99] disabled:opacity-50"
                   style={{ backgroundColor: "#8b5cf6", color: "#ffffff" }}
                 >
                   {t("register_now")}
@@ -425,22 +406,25 @@ export function LauncherAppOverlays({
                     setCatIDRegisterOpen(false);
                     setCatIDLoginOpen(true);
                   }}
-                  className="w-full py-2.5 rounded-xl font-bold opacity-60 hover:opacity-100 transition-all text-xs"
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold opacity-70 hover:opacity-100 transition-opacity"
                   style={{ color: colors.onSurface }}
                 >
                   {t("already_have_account")}
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
+      <AnimatePresence>
       {verificationWaiting && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5 animate-in fade-in duration-300">
-          <div
+        <motion.div key="verification-waiting" className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5" variants={m.modal.backdrop} {...m.states}>
+          <motion.div
             className="flex w-full max-w-[480px] flex-col overflow-hidden rounded-2xl border border-white/10"
             style={{ backgroundColor: colors.surface }}
+            variants={m.modal.panel}
           >
             
             <div
@@ -530,15 +514,18 @@ export function LauncherAppOverlays({
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
+      <AnimatePresence>
       {forgotPasswordOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5 animate-in fade-in duration-300">
-          <div
+        <motion.div key="forgot-password" className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5" variants={m.modal.backdrop} {...m.states}>
+          <motion.div
             className="flex w-full max-w-[480px] flex-col overflow-hidden rounded-2xl border border-white/10"
             style={{ backgroundColor: colors.surface }}
+            variants={m.modal.panel}
           >
             
             <div
@@ -794,53 +781,33 @@ export function LauncherAppOverlays({
                 </>
               )}
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
+      <AnimatePresence>
       {linkCatIDOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5 animate-in fade-in duration-300">
-          <div
-            className="flex w-full max-w-[480px] flex-col overflow-hidden rounded-2xl border border-white/10"
+        <motion.div key="link-catid" className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5" variants={m.modal.backdrop} {...m.states}>
+          <motion.div
+            className="flex w-full max-w-[520px] flex-col overflow-hidden rounded-3xl shadow-2xl"
             style={{ backgroundColor: colors.surface }}
+            variants={m.modal.panel}
           >
-            
-            <div
-              className="flex items-center justify-between border-b px-6 py-4"
-              style={{
-                borderColor: `${colors.onSurface}10`,
-                backgroundColor: colors.surfaceContainerLow || colors.surfaceContainer,
-              }}
-            >
-              <div className="flex items-center gap-4">
-                <div
-                  className="flex h-10 w-10 items-center justify-center rounded-md"
-                  style={{
-                    backgroundColor: colors.secondary,
-                    color: "#1a1a1a",
-                  }}
-                >
-                  <Icons.Refresh className="h-5.5 w-5.5" />
-                </div>
-                <div>
-                  <h2 className="text-base font-black tracking-tight" style={{ color: colors.onSurface }}>
-                    {t("connect_account")}
-                  </h2>
-                  <p className="text-xs opacity-75" style={{ color: colors.onSurfaceVariant }}>
-                    {t("sync_account")}
-                  </p>
-                </div>
+            <div className="flex items-start justify-between gap-4 px-8 pt-8 pb-2">
+              <div>
+                <h2 className="font-display text-3xl leading-tight" style={{ color: colors.onSurface }}>
+                  {t("connect_account")}
+                </h2>
+                <p className="text-base mt-2" style={{ color: colors.onSurfaceVariant }}>
+                  {t("sync_account")}
+                </p>
               </div>
-
               <button
                 type="button"
                 onClick={() => setLinkCatIDOpen(false)}
-                className="flex h-10 w-10 items-center justify-center rounded-full border transition-all hover:bg-white/10"
-                style={{
-                  color: colors.onSurface,
-                  borderColor: `${colors.onSurface}15`,
-                  backgroundColor: colors.surfaceContainer,
-                }}
+                className="flex h-10 w-10 items-center justify-center rounded-full shrink-0 transition hover:brightness-110"
+                style={{ color: colors.onSurface, backgroundColor: colors.surfaceContainerHighest }}
                 aria-label={t("close")}
               >
                 <Icons.Close className="w-5 h-5" />
@@ -848,25 +815,25 @@ export function LauncherAppOverlays({
             </div>
 
             
-            <div className="px-6 py-6 flex flex-col gap-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>
+            <div className="px-8 pt-5 pb-8 flex flex-col gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-semibold" style={{ color: colors.onSurface }}>
                   {t("catid_username")}
                 </label>
                 <input
                   id="link-catid-username"
                   type="text"
                   placeholder={t("catid_username")}
-                  className="w-full px-4 py-3 rounded-xl border border-white/5 transition-all outline-none focus:ring-2 focus:ring-yellow-500/30"
+                  className="w-full h-12 px-4 rounded-xl border border-transparent outline-none text-[15px]"
                   style={{
-                    backgroundColor: colors.surfaceContainer,
+                    backgroundColor: colors.surfaceContainerHighest,
                     color: colors.onSurface,
                   }}
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider" style={{ color: colors.onSurface }}>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold" style={{ color: colors.onSurface }}>
                   {t("password")}
                 </label>
                 <div className="relative">
@@ -874,22 +841,22 @@ export function LauncherAppOverlays({
                     id="link-catid-password"
                     type={showLinkPassword ? "text" : "password"}
                     placeholder={t("password")}
-                    className="w-full px-4 py-3 rounded-xl border border-white/5 transition-all outline-none focus:ring-2 focus:ring-yellow-500/30 pr-12"
+                    className="w-full h-12 pl-4 pr-12 rounded-xl border border-transparent outline-none text-[15px]"
                     style={{
-                      backgroundColor: colors.surfaceContainer,
+                      backgroundColor: colors.surfaceContainerHighest,
                       color: colors.onSurface,
                     }}
                   />
                   <button
                     type="button"
                     onClick={() => setShowLinkPassword(!showLinkPassword)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-all hover:bg-white/5 opacity-50 hover:opacity-100"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-lg flex items-center justify-center transition-opacity opacity-60 hover:opacity-100"
                     style={{ color: colors.onSurface }}
                   >
                     {showLinkPassword ? (
-                      <Icons.EyeOff className="w-4 h-4" />
+                      <Icons.EyeOff className="w-5 h-5" />
                     ) : (
-                      <Icons.Eye className="w-4 h-4" />
+                      <Icons.Eye className="w-5 h-5" />
                     )}
                   </button>
                 </div>
@@ -914,7 +881,7 @@ export function LauncherAppOverlays({
                   }
                   await handleLinkCatID(username, password);
                 }}
-                className="w-full py-3.5 rounded-xl font-black text-sm transition-all hover:scale-[1.01] active:scale-[0.99] shadow-md mt-4"
+                className="w-full h-12 rounded-xl text-base font-bold transition hover:brightness-105 active:scale-[0.99] mt-4"
                 style={{
                   backgroundColor: colors.secondary,
                   color: "#1a1a1a",
@@ -923,15 +890,18 @@ export function LauncherAppOverlays({
                 {t("connect_now")}
               </button>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
+      <AnimatePresence>
       {accountManagerOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5 animate-in fade-in duration-300">
-          <div
+        <motion.div key="account-manager" className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5" variants={m.modal.backdrop} {...m.states}>
+          <motion.div
             className="flex w-full max-w-[540px] flex-col overflow-hidden rounded-2xl border border-white/10"
             style={{ backgroundColor: colors.surface }}
+            variants={m.modal.panel}
           >
             
             <div
@@ -1074,15 +1044,18 @@ export function LauncherAppOverlays({
                 {t("back_to_main")}
               </button>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
+      <AnimatePresence>
       {importModpackOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5 animate-in fade-in duration-300">
-          <div
+        <motion.div key="import-modpack" className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5" variants={m.modal.backdrop} {...m.states}>
+          <motion.div
             className="flex w-full max-w-[540px] flex-col overflow-hidden rounded-2xl border border-white/10"
             style={{ backgroundColor: colors.surface }}
+            variants={m.modal.panel}
           >
             
             <div
@@ -1291,9 +1264,10 @@ export function LauncherAppOverlays({
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </>
   );
 }

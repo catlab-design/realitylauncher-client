@@ -513,6 +513,13 @@ async fn launch_game(
         emit_progress(&app, "modloader", "Installing mod loader...", 0.75);
         let loader_json =
             install_mod_loader(&instance, &minecraft_dir_val, &libraries_dir, &java_path).await?;
+        // Fabric/Quilt profiles only list their libraries (loader, intermediary, mixin, asm);
+        // nothing else downloads them, and build_classpath skips missing jars, which left the
+        // game without its main class. Forge/NeoForge installers fetch their own.
+        if matches!(instance.loader, LoaderType::Fabric | LoaderType::Quilt) {
+            emit_progress(&app, "modloader", "Downloading mod loader libraries...", 0.8);
+            ensure_libraries(&loader_json, &libraries_dir).await?;
+        }
         merge_inherited_version(&loader_json, &minecraft_dir_val)?
     } else {
         version_json
@@ -1949,14 +1956,17 @@ async fn ensure_libraries(
                     .map(|s| s.to_string());
                 (p, u, s)
             } else if lib.get("name").is_some() {
+                // Maven-style entry (Fabric/Quilt): repo base URL, often with a trailing slash.
                 let name = lib.get("name").and_then(|n| n.as_str()).unwrap_or("");
                 let rel = maven_to_path(name);
                 let base = lib
                     .get("url")
                     .and_then(|u| u.as_str())
-                    .unwrap_or("https://libraries.minecraft.net");
+                    .unwrap_or("https://libraries.minecraft.net")
+                    .trim_end_matches('/');
                 let u = rel.as_ref().map(|rp| format!("{base}/{rp}"));
-                (rel, u, None)
+                let s = lib.get("sha1").and_then(|s| s.as_str()).map(|s| s.to_string());
+                (rel, u, s)
             } else {
                 continue;
             };
@@ -2320,7 +2330,12 @@ pub async fn instances_preinstall(app: tauri::AppHandle, id: String) -> Result<(
         let java_path =
             crate::java::ensure_compatible_java(&app, &instance, &config_val, required_java)
                 .await?;
-        install_mod_loader(&instance, &minecraft_dir_val, &libraries_dir, &java_path).await?;
+        let loader_json =
+            install_mod_loader(&instance, &minecraft_dir_val, &libraries_dir, &java_path).await?;
+        // Same as launch: Fabric/Quilt libraries are only listed in the profile.
+        if matches!(instance.loader, LoaderType::Fabric | LoaderType::Quilt) {
+            ensure_libraries(&loader_json, &libraries_dir).await?;
+        }
     }
 
     Ok(())

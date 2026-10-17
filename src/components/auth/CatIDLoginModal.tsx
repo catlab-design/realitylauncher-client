@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Icons } from "../ui/Icons";
 import { useTranslation } from "../../hooks/useTranslation";
 import { playClick } from "../../lib/sounds";
+import { useMotionPreset } from "../../lib/motion";
 import toast from "react-hot-toast";
 
 interface CatIDLoginModalProps {
@@ -23,6 +24,7 @@ export function CatIDLoginModal({
     colors
 }: CatIDLoginModalProps) {
     const { t } = useTranslation();
+    const m = useMotionPreset();
     const [isLoading, setIsLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
 
@@ -56,97 +58,77 @@ export function CatIDLoginModal({
                 <motion.div
                     className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5"
                     onClick={handleClose}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0, transition: { duration: 0.18, ease: "easeInOut" } }}
-                    transition={{ duration: 0.24, ease: "easeOut" }}
+                    variants={m.modal.backdrop}
+                    {...m.states}
                 >
                     <motion.div
                         role="dialog"
                         aria-modal="true"
-                        className="flex w-full max-w-[480px] flex-col overflow-hidden rounded-2xl border border-white/10"
+                        aria-label={t('id_catlab')}
+                        className="flex w-full max-w-[520px] flex-col overflow-hidden rounded-3xl shadow-2xl"
                         style={{ backgroundColor: colors.surface }}
                         onClick={(e) => e.stopPropagation()}
-                        initial={{ opacity: 0, y: 28, scale: 0.975 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 18, scale: 0.985 }}
-                        transition={{ type: "spring", stiffness: 260, damping: 28, mass: 0.9 }}
+                        variants={m.modal.panel}
                     >
-                        <div
-                            className="flex items-center justify-between border-b px-6 py-4"
-                            style={{
-                                borderColor: `${colors.onSurface}10`,
-                                backgroundColor: colors.surfaceContainerLow || colors.surfaceContainer,
-                            }}
-                        >
-                            <div className="flex items-center gap-4">
-                                <div
-                                    className="flex h-10 w-10 items-center justify-center rounded-md"
-                                    style={{
-                                        backgroundColor: "#8b5cf6",
-                                        color: "#ffffff",
-                                    }}
-                                >
-                                    <Icons.Person className="h-5.5 w-5.5" />
-                                </div>
-                                <div>
-                                    <h2 className="text-base font-black tracking-tight" style={{ color: colors.onSurface }}>
-                                        {t('id_catlab')}
-                                    </h2>
-                                    <p className="text-xs opacity-75" style={{ color: colors.onSurfaceVariant }}>
-                                        {t('welcome_back')}
-                                    </p>
-                                </div>
+                        <div className="flex items-start justify-between gap-4 px-8 pt-8 pb-2">
+                            <div>
+                                <h2 className="font-display text-3xl leading-tight" style={{ color: colors.onSurface }}>
+                                    {t('id_catlab')}
+                                </h2>
+                                <p className="text-base mt-2" style={{ color: colors.onSurfaceVariant }}>
+                                    {t('welcome_back')}
+                                </p>
                             </div>
-
                             <button
                                 type="button"
                                 onClick={handleClose}
-                                className="flex h-10 w-10 items-center justify-center rounded-full border transition-all hover:bg-white/10"
-                                style={{
-                                    color: colors.onSurface,
-                                    borderColor: `${colors.onSurface}15`,
-                                    backgroundColor: colors.surfaceContainer,
-                                }}
+                                className="flex h-10 w-10 items-center justify-center rounded-full shrink-0 transition hover:brightness-110"
+                                style={{ color: colors.onSurface, backgroundColor: colors.surfaceContainerHighest }}
                                 aria-label={t('close')}
                             >
                                 <Icons.Close className="w-5 h-5" />
                             </button>
                         </div>
 
-                        <div className="px-6 py-6 flex flex-col gap-4">
-                            <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider"
-                                    style={{ color: colors.onSurface }}>
+                        <div className="px-8 pt-5 pb-8 flex flex-col gap-4">
+                            <div className="space-y-2">
+                                <label htmlFor="catid-username" className="block text-sm font-semibold" style={{ color: colors.onSurface }}>
                                     {t('username')}
                                 </label>
                                 <input
                                     id="catid-username"
                                     type="text"
+                                    autoFocus
                                     placeholder={t('username')}
-                                    className="w-full px-4 py-3 rounded-xl border border-white/5 transition-all outline-none focus:ring-2 focus:ring-purple-500/30"
-                                    style={{
-                                        backgroundColor: colors.surfaceContainer,
-                                        color: colors.onSurface,
-                                    }}
+                                    className="w-full h-12 px-4 rounded-xl border border-transparent outline-none text-[15px]"
+                                    style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                                 />
                             </div>
 
-                            <div className="space-y-1.5">
-                                <label className="text-[10px] font-black uppercase ml-1 opacity-40 tracking-wider"
-                                    style={{ color: colors.onSurface }}>
-                                    {t('password')}
-                                </label>
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <label htmlFor="catid-password" className="block text-sm font-semibold" style={{ color: colors.onSurface }}>
+                                        {t('password')}
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            playClick();
+                                            onForgotPassword();
+                                        }}
+                                        className="text-sm font-semibold hover:underline"
+                                        style={{ color: "#8b5cf6" }}
+                                    >
+                                        {t('forgot_password')}
+                                    </button>
+                                </div>
                                 <div className="relative">
                                     <input
                                         id="catid-password"
                                         type={showPassword ? "text" : "password"}
                                         placeholder={t('password')}
-                                        className="w-full px-4 py-3 rounded-xl border border-white/5 transition-all outline-none focus:ring-2 focus:ring-purple-500/30 pr-12"
-                                        style={{
-                                            backgroundColor: colors.surfaceContainer,
-                                            color: colors.onSurface,
-                                        }}
+                                        className="w-full h-12 pl-4 pr-12 rounded-xl border border-transparent outline-none text-[15px]"
+                                        style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                                         onKeyDown={(e) => {
                                             if (e.key === "Enter") handleLogin();
                                         }}
@@ -154,34 +136,20 @@ export function CatIDLoginModal({
                                     <button
                                         type="button"
                                         onClick={() => setShowPassword(!showPassword)}
-                                        className="absolute right-4 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-all hover:bg-white/5 opacity-50 hover:opacity-100"
+                                        aria-label={t('password')}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-lg flex items-center justify-center transition-opacity opacity-60 hover:opacity-100"
                                         style={{ color: colors.onSurface }}
                                     >
-                                        {showPassword ? (
-                                            <Icons.EyeOff className="w-4 h-4" />
-                                        ) : (
-                                            <Icons.Eye className="w-4 h-4" />
-                                        )}
+                                        {showPassword ? <Icons.EyeOff className="w-5 h-5" /> : <Icons.Eye className="w-5 h-5" />}
                                     </button>
                                 </div>
                             </div>
 
-                            <button
-                                onClick={() => {
-                                    playClick();
-                                    onForgotPassword();
-                                }}
-                                className="text-xs font-black text-right w-full hover:underline transition-all tracking-wide opacity-80"
-                                style={{ color: "#8b5cf6" }}
-                            >
-                                {t('forgot_password')}
-                            </button>
-
-                            <div className="flex gap-3 mt-4">
+                            <div className="flex gap-3 mt-3">
                                 <button
                                     onClick={handleLogin}
                                     disabled={isLoading}
-                                    className="flex-[2] py-3.5 rounded-xl font-black text-sm transition-all hover:scale-[1.01] active:scale-[0.99] shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="flex-[2] h-12 rounded-xl text-base font-bold transition hover:brightness-105 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
                                     style={{ backgroundColor: "#8b5cf6", color: "#ffffff" }}
                                 >
                                     {isLoading ? "..." : t('login')}
@@ -191,8 +159,8 @@ export function CatIDLoginModal({
                                         playClick();
                                         onRegister();
                                     }}
-                                    className="flex-1 py-3.5 rounded-xl font-bold border transition-all hover:bg-white/5 text-sm"
-                                    style={{ borderColor: `${colors.onSurface}15`, color: colors.onSurface }}
+                                    className="flex-1 h-12 rounded-xl text-base font-semibold transition hover:brightness-95"
+                                    style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                                 >
                                     {t('register')}
                                 </button>

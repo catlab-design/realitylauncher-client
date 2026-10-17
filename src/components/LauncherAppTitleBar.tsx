@@ -1,4 +1,5 @@
 import type { CSSProperties, Dispatch, SetStateAction } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 
 import { NotificationInbox } from "./ui/NotificationInbox";
 import { AppVersionBadge } from "./ui/AppVersionBadge";
@@ -9,6 +10,7 @@ import rIcon from "../assets/r.svg";
 import type { AuthSession, GameInstance, LauncherConfig } from "../types/launcher";
 import type { TranslationKey } from "../i18n/translations";
 import { playClick } from "../lib/sounds";
+import { useMotionPreset } from "../lib/motion";
 
 interface LauncherPalette {
   primary: string;
@@ -59,6 +61,8 @@ interface LauncherAppTitleBarProps {
   handleLinkMicrosoft: () => void | Promise<void>;
   handleLogout: () => void | Promise<void>;
   updateConfig: (newConfig: Partial<LauncherConfig>) => void | Promise<void>;
+  /** Page navigation shown after the app name. */
+  nav?: React.ReactNode;
 }
 
 export function LauncherAppTitleBar({
@@ -86,30 +90,32 @@ export function LauncherAppTitleBar({
   handleLinkMicrosoft,
   handleLogout,
   updateConfig,
+  nav,
 }: LauncherAppTitleBarProps) {
+  const m = useMotionPreset();
   return (
     <header
       data-tauri-drag-region
-      className="h-10 flex items-center justify-between pr-0 drag-region transition-[background] duration-300"
+      className="h-10 flex items-center justify-between pr-0 drag-region transition-[background] duration-300 backdrop-blur-xl"
       style={{
         background: config.backgroundImage ? "transparent" : titleBarColors.background,
       }}
     >
       <div className="flex items-center h-full">
         <div
-          className="w-20 h-full flex items-center justify-center no-drag"
-          style={{ backgroundColor: colors.secondary }}
+          className="pl-4 pr-1 h-full flex items-center justify-center no-drag"
         >
           <img
             src={rIcon}
             alt="Logo"
-            className="w-13 h-13 object-contain select-none transform translate-y-2"
+            className="w-8 h-8 object-contain select-none"
             draggable={false}
             style={{ WebkitUserDrag: "none" } as CSSProperties}
           />
         </div>
 
-        <div className="flex items-center gap-2 pl-4">
+        {/* App name hides on narrower windows so the page tabs never run into the account controls. */}
+        <div className={`items-center gap-2 pl-4 ${nav ? "hidden xl:flex" : "flex"}`}>
           <h1
             className="text-[18px] leading-none font-bold"
             style={{
@@ -121,11 +127,12 @@ export function LauncherAppTitleBar({
           </h1>
           <AppVersionBadge
             colors={colors}
-            className="border border-white/10 font-semibold tracking-tight"
-            bgColor={titleBarColors.versionBg}
-            textColor={titleBarColors.versionText}
+            className="px-0! py-0! text-[13px] font-medium tabular-nums self-end mb-px"
+            bgColor="transparent"
+            textColor={titleBarColors.muted}
           />
         </div>
+        {nav && <div className="ml-3 xl:ml-6">{nav}</div>}
       </div>
 
       <div
@@ -251,13 +258,17 @@ export function LauncherAppTitleBar({
             </svg>
           </button>
 
+          <AnimatePresence>
           {accountDropdownOpen && (
-            <div
+            <motion.div
+              key="account-dropdown"
               className="absolute top-full right-0 mt-2 w-64 rounded-2xl shadow-xl p-4 z-50"
               style={{
                 backgroundColor: colors.surface,
                 border: `1px solid ${colors.outline}`,
               }}
+              variants={m.popover("bottom-end")}
+              {...m.states}
             >
               <p
                 className="text-xs font-medium mb-3"
@@ -443,8 +454,9 @@ export function LauncherAppTitleBar({
                   <span className="text-sm">{t("logout")}</span>
                 </button>
               </div>
-            </div>
+            </motion.div>
           )}
+          </AnimatePresence>
 
           {accountDropdownOpen && (
             <div

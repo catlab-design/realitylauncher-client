@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import gsap from "gsap";
 import { toast } from "react-hot-toast";
+import { MotionConfig } from "framer-motion";
 
 import { LoadingScreen } from "./ui/LoadingScreen";
 import { ErrorBoundary as UIErrorBoundary } from "./ui/ErrorBoundary";
@@ -23,9 +24,14 @@ import {
   shouldAutoOpenFirstRunLoginPrompt,
 } from "../lib/firstRunOnboarding";
 
+/** Seconds before an auto-downloaded update restarts the launcher into the new version. */
+const AUTO_INSTALL_COUNTDOWN_S = 15;
+const UPDATE_RECHECK_MS = 30 * 60 * 1000;
+
 function LauncherAppContent() {
   const rootRef = useRef<HTMLDivElement>(null);
   const autoUpdateVersionRef = useRef<string | null>(null);
+  const autoInstallVersionRef = useRef<string | null>(null);
 
   const config = useConfigStore();
   const {
@@ -189,20 +195,21 @@ function LauncherAppContent() {
     return config.theme;
   }, [config.theme]);
 
+  // Always a dark bar, whatever the theme: the white logo and white text stay readable.
   const titleBarColors = useMemo(() => {
     return {
-      background: colors.surface,
-      border: colors.outlineVariant,
-      text: colors.onSurface,
-      muted: colors.onSurfaceVariant,
-      hover: colors.surfaceContainerHigh,
-      active: colors.surfaceContainerHighest,
-      accent: colors.primary,
-      dotRing: colors.surface,
-      versionBg: effectiveThemeMode === 'light' ? colors.primaryContainer : colors.surfaceContainerHighest,
-      versionText: colors.onSurface,
+      background: 'rgba(12, 12, 14, 0.5)',
+      border: '#26262a',
+      text: '#f5f5f5',
+      muted: '#b4b4bb',
+      hover: 'rgba(255,255,255,0.1)',
+      active: 'rgba(255,255,255,0.16)',
+      accent: colors.secondary,
+      dotRing: '#1c1c1f',
+      versionBg: 'rgba(255,255,255,0.14)',
+      versionText: '#f5f5f5',
     };
-  }, [colors, effectiveThemeMode]);
+  }, [colors]);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", effectiveThemeMode);
@@ -246,17 +253,81 @@ function LauncherAppContent() {
 
     if (windowApi?.onUpdateDownloaded) {
       cleanups.push(windowApi.onUpdateDownloaded((data: { version: string }) => {
-        if (config.autoUpdateEnabled) {
-          toast.success(t('update_ready_next_restart').replace('{version}', data.version), {
-            duration: 8000,
-            id: "global-update-downloaded",
-          });
-        }
+        if (!config.autoUpdateEnabled) return;
+        if (autoInstallVersionRef.current === data.version) return;
+        autoInstallVersionRef.current = data.version;
+        void startAutoInstall(data.version);
       }));
     }
 
     return () => cleanups.forEach(fn => fn());
   }, [config.autoUpdateEnabled, config.language]);
+
+  // Auto-update: once the new version is downloaded, restart into it after a short countdown
+  // (the user can say "later"). While a game is running, or after "later", it installs
+  // silently when the launcher closes instead.
+  const startAutoInstall = async (version: string) => {
+    const windowApi = (window as any).api;
+    const deferToExit = () => {
+      void windowApi?.setInstallUpdateOnExit?.(true);
+      toast.success(t('update_ready_next_restart').replace('{version}', version), {
+        duration: 8000,
+        id: "global-update-downloaded",
+      });
+    };
+    if (await windowApi?.isGameRunning?.().catch(() => false)) {
+      deferToExit();
+      return;
+    }
+    let seconds = AUTO_INSTALL_COUNTDOWN_S;
+    let cancelled = false;
+    const render = () =>
+      toast(
+        (tt) => (
+          <div className="flex items-center gap-3">
+            <span className="text-sm">
+              {t('update_auto_restart_in').replace('{version}', version).replace('{seconds}', String(seconds))}
+            </span>
+            <button
+              type="button"
+              className="h-8 px-3 rounded-full text-xs font-bold text-[#111] shrink-0"
+              style={{ backgroundColor: colors.secondary }}
+              onClick={() => { cancelled = true; clearInterval(timer); toast.dismiss(tt.id); void windowApi?.installUpdate?.(true); }}
+            >
+              {t('update_restart_now')}
+            </button>
+            <button
+              type="button"
+              className="h-8 px-3 rounded-full text-xs font-semibold opacity-70 hover:opacity-100 shrink-0"
+              onClick={() => { cancelled = true; clearInterval(timer); toast.dismiss(tt.id); deferToExit(); }}
+            >
+              {t('update_later')}
+            </button>
+          </div>
+        ),
+        { id: "global-update-restart", duration: Infinity, icon: "\u2b06\ufe0f" },
+      );
+    render();
+    const timer = setInterval(async () => {
+      if (cancelled) return;
+      seconds -= 1;
+      if (seconds > 0) { render(); return; }
+      clearInterval(timer);
+      toast.dismiss("global-update-restart");
+      // A game may have started during the countdown.
+      if (await windowApi?.isGameRunning?.().catch(() => false)) deferToExit();
+      else void windowApi?.installUpdate?.(true);
+    }, 1000);
+  };
+
+  // Re-check periodically so a launcher left open still picks up new releases.
+  useEffect(() => {
+    if (!config.autoUpdateEnabled) return;
+    const id = setInterval(() => {
+      void (window as any).api?.checkLatestVersion?.().catch(() => {});
+    }, UPDATE_RECHECK_MS);
+    return () => clearInterval(id);
+  }, [config.autoUpdateEnabled]);
 
   const [servers] = useState<Server[]>([]);
   const [news] = useState<NewsItem[]>([]);
@@ -525,8 +596,8 @@ function LauncherAppContent() {
     const checkExpiration = () => {
       if (session?.authType === "catid" && session.tokenExpiresAt) {
         if (Date.now() >= session.tokenExpiresAt) {
+          // Log out but keep the account in the list so the user can sign in again.
           console.log("[Auth] Session expired, logging out...");
-          removeAccountAction(session.uuid, session.authType);
           setSession(null);
           window.api?.logout?.();
           toast.error(t('session_expired'));
@@ -569,8 +640,12 @@ function LauncherAppContent() {
       try {
         const result = await window.api?.loginCatIDToken?.(token);
         if (result?.ok && result.session) {
-          if (result.session.authType === "catid") {
-            setSession(result.session);
+          // Rust sends the provider as `type`; normalize to `authType`.
+          const rawType = result.session.authType ?? result.session.type;
+          if (rawType === "catid") {
+            const deepLinkSession = { ...result.session, authType: "catid" } as AuthSession;
+            addAccount(deepLinkSession);
+            setSession(deepLinkSession);
           }
           toast.success(t('login_success'), { id: loadingId });
         } else {
@@ -737,7 +812,12 @@ function LauncherAppContent() {
   }, [deviceCodePolling, deviceCodeData, isLinkingMicrosoft]);
 
   const updateConfig = async (newConfig: Partial<LauncherConfig>) => {
-    config.setConfig(newConfig);
+    // A local-store failure (e.g. storage quota) must never stop the save to disk below.
+    try {
+      config.setConfig(newConfig);
+    } catch (error) {
+      console.error("[Config] Local store update failed:", error);
+    }
 
     try {
       if (window.api?.setConfig) {
@@ -768,35 +848,36 @@ function LauncherAppContent() {
       const result = await window.api.loginCatID(username, password);
       toast.dismiss(toastId);
 
-      if (!result.ok || !result.session) {
+      // Backend returns the stored session as `account` (expiresAt already in ms).
+      const account = result.account;
+      if (!result.ok || !account) {
         toast.error(result.error || t('login_failed'));
         return false;
       }
 
       const newSession: AuthSession = {
         authType: "catid",
-        username: result.session.username,
-        uuid: result.session.uuid,
-        minecraftUuid: result.session.minecraftUuid,
-        accessToken: result.session.token,
-        tokenExpiresAt: result.session.expiresAt
-          ? new Date(result.session.expiresAt).getTime()
-          : undefined,
-        avatarUrl: result.session.avatarUrl,
-        avatarSource: result.session.avatarSource,
+        username: account.username,
+        uuid: account.uuid,
+        accessToken: account.accessToken ?? undefined,
+        apiToken: account.apiToken ?? undefined,
+        tokenExpiresAt: account.expiresAt ?? undefined,
+        avatarUrl: account.avatarUrl,
+        avatarSource: account.avatarSource,
+        createdAt: Date.now(),
       };
 
       addAccount(newSession);
       setSession(newSession);
       toast.success(t('welcome_user').replace('{username}', newSession.username));
 
-      if (result.session.token) {
-        setAdminToken(result.session.token);
+      if (newSession.accessToken) {
+        setAdminToken(newSession.accessToken);
         try {
-          const adminCheck = await window.api?.checkAdminStatus(result.session.token);
+          const adminCheck = await window.api?.checkAdminStatus(newSession.accessToken);
           if (adminCheck?.isAdmin) {
             setIsAdmin(true);
-            console.log("[Admin] User is admin:", result.session.username);
+            console.log("[Admin] User is admin:", newSession.username);
             updateAccount({ ...newSession, isAdmin: true });
           }
         } catch (e) {
@@ -913,23 +994,19 @@ function LauncherAppContent() {
   };
 
   const selectAccount = async (account: AuthSession) => {
-    setSession(account);
     setAccountManagerOpen(false);
-    toast.success(t('switched_to_account').replace('{username}', account.username));
 
-    let finalSession: AuthSession = account;
-
+    // Switch the backend first: pages refetch cloud data as soon as the UI session
+    // changes, and would otherwise hit the previous (or no) backend session.
     try {
-      const refreshedSession = await window.api?.setActiveSession?.(account);
-      if (refreshedSession) {
-        console.log("[Auth] Backend returned refreshed session:", refreshedSession.username);
-        finalSession = refreshedSession as AuthSession;
-        updateAccount(refreshedSession);
-        setSession(finalSession);
-      }
+      await window.api?.setActiveSession?.(account);
     } catch (err) {
       console.error("[Auth] Failed to sync session with backend:", err);
     }
+
+    const finalSession: AuthSession = account;
+    setSession(finalSession);
+    toast.success(t('switched_to_account').replace('{username}', account.username));
 
     if (finalSession.authType === "catid" && finalSession.accessToken) {
       setAdminToken(finalSession.accessToken);
@@ -954,7 +1031,7 @@ function LauncherAppContent() {
 
   const removeAccountFromList = async (account: AuthSession) => {
     removeAccountAction(account.uuid, account.authType);
-    if (session?.username === account.username && session?.authType === account.authType) {
+    if (session?.uuid === account.uuid && session?.authType === account.authType) {
       await window.api?.logout();
       setSession(null);
     }
@@ -1321,7 +1398,11 @@ function LauncherAppContent() {
 export default function LauncherApp() {
   return (
     <UIErrorBoundary>
-      <LauncherAppContent />
+      {/* "user": honour the OS reduce-motion setting app-wide (transforms/layout become
+          instant, opacity fades stay). useMotionPreset() reads this same config. */}
+      <MotionConfig reducedMotion="user">
+        <LauncherAppContent />
+      </MotionConfig>
     </UIErrorBoundary>
   );
 }

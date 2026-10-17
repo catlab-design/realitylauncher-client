@@ -695,12 +695,15 @@ fn list_packs_in_dir(instance_id: &str, subdir: &str, content_type: &str) -> Lis
             let (icon, modrinth_id, curseforge_id, installed_version_id) =
                 pack_row_extras(&links, content_type, &file_name, &path);
 
+            // Packs carry no version metadata (pack.mcmeta has none), so read it from the filename.
+            let version = infer_version_from_filename(&file_name);
             items.push(serde_json::json!({
                 "filename": file_name,
                 "name": name,
                 "enabled": enabled,
                 "size": size,
                 "isDirectory": is_dir,
+                "version": version,
                 "icon": icon,
                 "modrinthProjectId": modrinth_id,
                 "curseforgeProjectId": curseforge_id,
@@ -773,6 +776,7 @@ pub fn instance_list_datapacks(instance_id: String) -> ListResult {
                             "enabled": enabled,
                             "size": size,
                             "isDirectory": is_dir,
+                            "version": infer_version_from_filename(&file_name),
                             "worldName": world_name,
                             "icon": icon,
                             "modrinthProjectId": modrinth_id,
