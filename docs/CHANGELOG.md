@@ -1,6 +1,7 @@
 ## [5.0.0] — Unreleased
 
 ### Added
+- Mirror GitLab releases to GitHub Releases (`mirror:github`, opt-in via `MIRROR_GITHUB_RELEASE`)
 - Launcher self-update: re-checks every 30 minutes while open, auto-downloads, then restarts into the new version after a 15-second countdown ("Restart now" / "Later"); while a game is running, or after "Later", the update installs silently when the launcher closes (`set_install_update_on_exit`)
 - Windows runs the NSIS installer passively (`/P /R /UPDATE`, progress bar only, relaunches when done); macOS swaps the `.app` out of the downloaded `.dmg` after exit (old bundle kept until the copy succeeds, quarantine flag cleared); Linux replaces the running AppImage in place — falls back to opening the package when the app can't replace itself (deb/rpm installs, read-only locations)
 - Server gallery: images uploaded in the Portal show under the server description and in a landscape "Read more" story modal with a 16:9 viewer, thumbnails and lightbox
@@ -13,6 +14,7 @@
 - Pack v2 sync: installs server packs from their manifest and layers
 
 ### Changed
+- About links to the GitLab project
 - CI moved from GitHub Actions to GitLab CI (`.gitlab-ci.yml`): MR/main build check, tag- or manually-triggered multi-platform build, R2 upload and GitLab Release
 - Full v5 redesign: title-bar text navigation, Home news billboard, Steam-style Server List, redesigned settings, Install (Explore), instance page, server detail page, Skin Manager, login/CatID/Microsoft modals and toasts with a step log
 - Navigation renamed: Modpacks → Library (ไลบรารี), Explore → Install (ติดตั้ง)

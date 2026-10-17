@@ -286,7 +286,7 @@ export function About({ colors, config }: { colors: any; config?: { language?: "
                         
                         <motion.button
                             {...m.hoverScale}
-                            onClick={() => (window as any).api.openExternal('https://github.com/catlab-design/realitylauncher-client')}
+                            onClick={() => (window as any).api.openExternal('https://gitlab.com/catlab-design/realitylauncher/realitylauncher-client')}
                             className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-white/3 border border-white/5 hover:bg-white/8 transition-colors"
                             style={{ color: colors.onSurface }}
                         >
