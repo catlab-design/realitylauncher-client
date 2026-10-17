@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Icons } from "../../ui/Icons";
+import { motion } from "framer-motion";
 import { Portal } from "../../ui/Portal";
+import { useMotionPreset } from "../../../lib/motion";
 import { playClick } from "../../../lib/sounds";
 import { useTranslation } from "../../../hooks/useTranslation";
 
@@ -105,6 +107,7 @@ export function VersionSwitcherModal({
     onSwitch,
 }: VersionSwitcherModalProps) {
     const { t } = useTranslation();
+    const m = useMotionPreset();
     const [versions, setVersions] = useState<VersionEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -182,14 +185,19 @@ export function VersionSwitcherModal({
 
     return (
         <Portal>
-            <div
+            <motion.div
+                variants={m.modal.backdrop}
+                {...m.states}
                 className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
                 style={{ backgroundColor: "rgba(0,0,0,0.55)" }}
                 onClick={onClose}
             >
-                <div
+                <motion.div
+                    variants={m.modal.panel}
+                    role="dialog"
+                    aria-modal="true"
                     onClick={(e) => e.stopPropagation()}
-                    className="w-full max-w-3xl max-h-[85vh] rounded-2xl flex flex-col overflow-hidden animate-fade-in"
+                    className="w-full max-w-3xl max-h-[85vh] rounded-2xl flex flex-col overflow-hidden"
                     style={{ backgroundColor: colors.surface, border: `1px solid ${colors.outline}30` }}
                 >
                     <div
@@ -273,7 +281,7 @@ export function VersionSwitcherModal({
                                 {t("no_versions_found" as any) || "No matching versions"}
                             </div>
                         ) : (
-                            <div className="space-y-1.5">
+                            <motion.div variants={m.fadeIn} initial="hidden" animate="show" className="space-y-1.5">
                                 {filtered.map((v) => {
                                     const isCurrent = Boolean(
                                         (currentVersionId && v.id === currentVersionId) ||
@@ -372,7 +380,7 @@ export function VersionSwitcherModal({
                                         </button>
                                     );
                                 })}
-                            </div>
+                            </motion.div>
                         )}
                     </div>
 
@@ -391,7 +399,7 @@ export function VersionSwitcherModal({
                             <button
                                 type="button"
                                 onClick={onClose}
-                                className="px-4 py-2 rounded-xl text-sm font-medium transition-all hover:bg-white/5"
+                                className="px-4 py-2 rounded-xl text-sm font-medium pressable hover:bg-white/5"
                                 style={{
                                     color: colors.onSurface,
                                     border: `1px solid ${colors.outline}40`,
@@ -403,7 +411,7 @@ export function VersionSwitcherModal({
                                 type="button"
                                 onClick={handleConfirm}
                                 disabled={!selectedId || isInstalling}
-                                className="px-5 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] active:scale-95"
+                                className="px-5 py-2 rounded-xl text-sm font-bold flex items-center gap-2 pressable disabled:opacity-50 disabled:cursor-not-allowed hover:brightness-110"
                                 style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
                             >
                                 {isInstalling ? (
@@ -420,8 +428,8 @@ export function VersionSwitcherModal({
                             </button>
                         </div>
                     </div>
-                </div>
-            </div>
+                </motion.div>
+            </motion.div>
         </Portal>
     );
 }

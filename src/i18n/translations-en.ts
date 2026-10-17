@@ -5,6 +5,7 @@ export const enTranslations = {
     modpacks: "Modpacks",
     modpacks_subtitle: "Manage and launch your mod packs",
     explore: "Explore",
+    install_tab: "Install",
     settings: "Settings",
     about: "About",
     admin: "Admin",
@@ -406,7 +407,10 @@ export const enTranslations = {
       "Download updates automatically and install on next launch",
     auto_update_on: "Auto-update enabled",
     auto_update_off: "Auto-update disabled",
-    update_ready_next_restart: "Update v{version} will install on next launch",
+    update_ready_next_restart: "Update v{version} will install when you close the launcher",
+    update_auto_restart_in: "Update v{version} is ready · restarting in {seconds}s",
+    update_restart_now: "Restart now",
+    update_later: "Later",
     update_available_toast: "New version v{version} available",
     check_for_updates: "Check for Updates",
     check_for_updates_desc: "Manually check for new versions",
@@ -1143,4 +1147,23 @@ export const enTranslations = {
 
     
     open_filters: "Filters",
+
+    // Servers: live status cards
+    server_status_title: "Server Status",
+    server_address_copied: "Server address copied",
+    server_unreachable: "Can't reach this server right now",
+
+    // Servers: gallery
+    server_gallery_view: "View image",
+
+    // Servers: verification badge (aria-label only)
+    verified_official: "Official server",
+    verified_partner: "Partner server",
+
+    // Library: continue-playing hero
+    library_continue_playing: "Continue playing",
+    library_stat_packs: "{count} mod packs",
+    library_stat_server_packs: "{count} server packs",
+    // Instance content browser
+    install_to_instance_name: "Install to {name}",
 };

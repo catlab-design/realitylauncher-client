@@ -3,6 +3,8 @@ import { useTranslation } from "../../../hooks/useTranslation";
 import type { ModrinthProject, InstallProgress } from "./types";
 import { ProjectCard } from "./ProjectCard";
 import { Icons } from "../../ui/Icons";
+import { motion } from "framer-motion";
+import { useMotionPreset } from "../../../lib/motion";
 
 interface ProjectListProps {
     colors: any;
@@ -36,6 +38,7 @@ export function ProjectList({
     layout = "grid",
 }: ProjectListProps) {
     const { t } = useTranslation();
+    const m = useMotionPreset();
     const containerRef = useRef<HTMLDivElement>(null);
 
     const handlePageChange = (newPage: number) => {
@@ -85,19 +88,24 @@ export function ProjectList({
                     ))}
                 </div>
             ) : results.length === 0 ? (
-                <div className="flex-1 flex flex-col items-center justify-center p-12 text-center rounded-2xl"
+                <motion.div variants={m.scaleIn} {...m.states} className="flex-1 flex flex-col items-center justify-center p-12 text-center rounded-2xl"
                     style={{ backgroundColor: colors.surfaceContainer, color: colors.onSurfaceVariant }}>
                     <Icons.Search className="w-10 h-10 mb-4" style={{ color: colors.onSurfaceVariant }} />
                     <h3 className="text-lg font-bold mb-1" style={{ color: colors.onSurface }}>{t('no_results')}</h3>
                     <p className="text-sm">{t('try_change_filters')}</p>
-                </div>
+                </motion.div>
             ) : (
-                <div className={layout === "list" ? "flex flex-col gap-0.5 pb-4" : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 pb-4"}>
+                <motion.div
+                    key={`${layout}-${page}`}
+                    variants={m.fadeIn}
+                    {...m.states}
+                    className={layout === "list" ? "flex flex-col gap-0.5 pb-4" : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 pb-4"}
+                >
                     {results.map((project, index) => (
-                        <div
+                        <motion.div
                             key={project.project_id}
-                            className="animate-card-appear"
-                            style={{ animationDelay: `${Math.min(index * 20, 150)}ms` }}
+                            variants={layout === "grid" ? m.showcaseItem : undefined}
+                            custom={index}
                         >
                             <ProjectCard
                                 colors={colors}
@@ -108,9 +116,9 @@ export function ProjectList({
                                 installProgress={installProgress}
                                 layout={layout}
                             />
-                        </div>
+                        </motion.div>
                     ))}
-                </div>
+                </motion.div>
             )}
 
             {!isLoading && results.length > 0 && totalPages > 1 && (
@@ -121,7 +129,7 @@ export function ProjectList({
                         <button
                             onClick={() => handlePageChange(Math.max(1, page - 1))}
                             disabled={page === 1}
-                            className="px-3 py-1.5 rounded-md text-sm font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-1.5"
+                            className="px-3 py-1.5 rounded-md text-sm font-medium disabled:opacity-40 hover:bg-white/5 pressable flex items-center gap-1.5"
                             style={{ color: colors.onSurface }}
                         >
                             <i className="fa-solid fa-chevron-left text-xs"></i>
@@ -137,7 +145,7 @@ export function ProjectList({
                         <button
                             onClick={() => handlePageChange(Math.min(totalPages, page + 1))}
                             disabled={page >= totalPages}
-                            className="px-3 py-1.5 rounded-md text-sm font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-1.5"
+                            className="px-3 py-1.5 rounded-md text-sm font-medium disabled:opacity-40 hover:bg-white/5 pressable flex items-center gap-1.5"
                             style={{ color: colors.onSurface }}
                         >
                             {t('next' as any)}

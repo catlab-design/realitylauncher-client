@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
@@ -10,6 +11,7 @@ import { formatNumber } from "./helpers";
 import { ImagePreviewModal } from "./ImagePreviewModal";
 import { Icons } from "../../ui/Icons";
 import { playClick } from "../../../lib/sounds";
+import { useMotionPreset } from "../../../lib/motion";
 import { normalizeModrinthVersion, normalizeCurseforgeVersion } from "./normalizers";
 import { useUiStore } from "../../../store/uiStore";
 import bannerImage from "../../../assets/banner.png";
@@ -102,6 +104,7 @@ export function ProjectDetailPage({
     onInstallVersion,
 }: ProjectDetailPageProps) {
     const { t } = useTranslation();
+    const m = useMotionPreset();
     const [activeTab, setActiveTab] = useState<DetailTab>("description");
 
     // Full-bleed page: the hero runs up under the see-through title bar.
@@ -297,8 +300,10 @@ export function ProjectDetailPage({
 
     return (
         <>
+            <AnimatePresence>
             {selectedImageIndex !== null && project?.gallery && (
                 <ImagePreviewModal
+                    key="image-preview"
                     colors={colors}
                     imageUrl={getImageUrl(project.gallery[selectedImageIndex], false) || ""}
                     onClose={() => setSelectedImageIndex(null)}
@@ -322,6 +327,7 @@ export function ProjectDetailPage({
                     totalImages={project.gallery ? project.gallery.length : 0}
                 />
             )}
+            </AnimatePresence>
 
             <div className="space-y-0 -mx-6 -mt-3">
                 <div className="relative h-80 w-full overflow-hidden bg-cover bg-center"
@@ -344,8 +350,14 @@ export function ProjectDetailPage({
                         {t('back')}
                     </button>
 
-                    <div className="absolute bottom-0 left-0 right-0 p-6 flex items-end gap-5 z-10">
-                        <div className="w-20 h-20 rounded-2xl overflow-hidden shrink-0 border-2 border-white/10"
+                    <motion.div
+                        variants={m.staggerContainer(0.05)}
+                        {...m.states}
+                        className="absolute bottom-0 left-0 right-0 p-6 flex items-end gap-5 z-10"
+                    >
+                        <motion.div
+                            variants={m.scaleIn}
+                            className="w-20 h-20 rounded-2xl overflow-hidden shrink-0 border-2 border-white/10"
                             style={{ backgroundColor: colors.surfaceContainerHighest }}>
                             {project.icon_url ? (
                                 <img src={project.icon_url} alt={project.title} className="w-full h-full object-cover" />
@@ -354,9 +366,9 @@ export function ProjectDetailPage({
                                     <Icons.Box className="w-8 h-8 opacity-50" style={{ color: '#fff' }} />
                                 </div>
                             )}
-                        </div>
+                        </motion.div>
 
-                        <div className="flex-1 min-w-0">
+                        <motion.div variants={m.fadeUp} className="flex-1 min-w-0">
                             <h1 className="font-display text-3xl text-white mb-1.5 truncate">
                                 {currentProject.title}
                             </h1>
@@ -395,33 +407,38 @@ export function ProjectDetailPage({
                                     </>
                                 )}
                             </div>
-                        </div>
+                        </motion.div>
 
-                        <div className="shrink-0">
+                        <motion.div variants={m.fadeUp} className="shrink-0">
                             {isInstallingModpack || installProgress ? (
-                                <div className="px-6 py-3 rounded-xl flex items-center gap-3 backdrop-blur-md"
+                                <motion.div
+                                    variants={m.scaleIn}
+                                    initial="hidden"
+                                    animate="show"
+                                    className="px-6 py-3 rounded-xl flex items-center gap-3 backdrop-blur-md"
                                     style={{ backgroundColor: 'rgba(0,0,0,0.5)', border: `1px solid ${accentColor}` }}>
                                     <i className="fa-solid fa-spinner fa-spin" style={{ color: accentColor }} />
                                     <span className="text-sm text-white font-medium">
                                         {installProgress?.message || t('processing')}
                                     </span>
-                                </div>
+                                </motion.div>
                             ) : (
-                                <button
+                                <motion.button
+                                    {...(isInstalledProject ? {} : m.hoverLift)}
                                     onClick={() => { playClick(); handleAction(); }}
-                                    className={`px-6 py-3 rounded-xl text-sm font-bold transition-all flex items-center gap-2 active:scale-95 ${isInstalledProject ? "cursor-default" : "hover:-translate-y-0.5"}`}
+                                    className={`px-6 py-3 rounded-xl text-sm font-bold transition-[filter] flex items-center gap-2 ${isInstalledProject ? "cursor-default" : "hover:brightness-105"}`}
                                     style={{ backgroundColor: accentColor, color: "#000" }}
                                 >
                                     <i className={`fa-solid ${isInstalledProject ? "fa-check" : projectType === "modpack" ? "fa-download" : "fa-plus"}`} style={{ color: "#000" }} />
                                     {isInstalledProject ? (t('installed' as any) || "ติดตั้งแล้ว") : projectType === "modpack" ? (t('install_as_new_instance')) : (t('add_to_instance'))}
-                                </button>
+                                </motion.button>
                             )}
-                        </div>
-                    </div>
+                        </motion.div>
+                    </motion.div>
                 </div>
 
                 {currentProject.categories && currentProject.categories.length > 0 && (
-                    <div className="px-6 pt-4 pb-1 flex items-center gap-2 flex-wrap"
+                    <motion.div variants={m.fadeIn} {...m.states} className="px-6 pt-4 pb-1 flex items-center gap-2 flex-wrap"
                         style={{ backgroundColor: colors.surfaceContainer }}>
                         {currentProject.categories.map((cat) => (
                             <span key={cat}
@@ -430,7 +447,7 @@ export function ProjectDetailPage({
                                 {cat}
                             </span>
                         ))}
-                    </div>
+                    </motion.div>
                 )}
 
                 <div className="px-6 py-3"
@@ -441,12 +458,19 @@ export function ProjectDetailPage({
                             <button
                                 key={tab.id}
                                 onClick={() => { playClick(); setActiveTab(tab.id); }}
-                                className="h-9 px-4 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 relative"
+                                className="h-9 px-4 rounded-lg text-sm font-semibold pressable flex items-center gap-2 relative isolate"
                                 style={{
                                     color: activeTab === tab.id ? '#111' : colors.onSurfaceVariant,
-                                    backgroundColor: activeTab === tab.id ? colors.secondary : 'transparent',
                                 }}
                             >
+                                {activeTab === tab.id && (
+                                    <motion.span
+                                        layoutId="project-detail-tab-pill"
+                                        transition={m.tabIndicator}
+                                        className="absolute inset-0 -z-10 rounded-lg"
+                                        style={{ backgroundColor: colors.secondary }}
+                                    />
+                                )}
                                 <i className={`${tab.icon} text-sm`} />
                                 {tab.label}
                             </button>
@@ -456,8 +480,10 @@ export function ProjectDetailPage({
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-0 overflow-hidden">
                     <div className="lg:col-span-9 p-7 min-w-0 overflow-hidden" style={{ backgroundColor: `${colors.surface}` }}>
+                        <AnimatePresence mode="wait" initial={false}>
+                        <motion.div key={activeTab} variants={m.panelSwap} {...m.states}>
                         {activeTab === "description" && (
-                            <div className="animate-fade-in">
+                            <div>
                                 {bodyLoading ? (
                                     <div className="space-y-3 animate-pulse">
                                         {Array.from({ length: 8 }).map((_, i) => (
@@ -469,7 +495,10 @@ export function ProjectDetailPage({
                                         ))}
                                     </div>
                                 ) : bodyHtml ? (
-                                    <div
+                                    <motion.div
+                                        variants={m.fadeIn}
+                                        initial="hidden"
+                                        animate="show"
                                         className="max-w-4xl mx-auto markdown-body text-[15px] leading-relaxed"
                                         style={{ color: colors.onSurface }}
                                     >
@@ -586,7 +615,7 @@ export function ProjectDetailPage({
                                         >
                                             {/^\s*</.test(bodyHtml) ? bodyHtml.replace(/^[ \t]+/gm, "") : bodyHtml}
                                         </ReactMarkdown>
-                                    </div>
+                                    </motion.div>
                                 ) : (
                                     <div className="py-8">
                                         <p className="max-w-4xl mx-auto text-[15px] leading-relaxed whitespace-pre-line" style={{ color: colors.onSurface }}>
@@ -598,7 +627,7 @@ export function ProjectDetailPage({
                         )}
 
                         {activeTab === "versions" && (
-                            <div className="animate-fade-in space-y-4">
+                            <div className="space-y-4">
                                 <div className="flex items-center gap-3 flex-wrap">
                                     <div className="flex items-center gap-2.5 h-10 px-3.5 rounded-xl flex-1 min-w-50 transition-all focus-within:ring-2"
                                         style={{
@@ -622,12 +651,19 @@ export function ProjectDetailPage({
                                             <button
                                                 key={ch}
                                                 onClick={() => { playClick(); setChannelFilter(ch); setVersionsPage(1); }}
-                                                className="h-8 px-3 rounded-lg text-[13px] font-semibold transition-all capitalize"
+                                                className="h-8 px-3 rounded-lg text-[13px] font-semibold pressable capitalize relative isolate"
                                                 style={{
-                                                    backgroundColor: channelFilter === ch ? accentColor : 'transparent',
                                                     color: channelFilter === ch ? "#111" : colors.onSurfaceVariant,
                                                 }}
                                             >
+                                                {channelFilter === ch && (
+                                                    <motion.span
+                                                        layoutId="project-detail-channel-pill"
+                                                        transition={m.tabIndicator}
+                                                        className="absolute inset-0 -z-10 rounded-lg"
+                                                        style={{ backgroundColor: accentColor }}
+                                                    />
+                                                )}
                                                 {ch === "all" ? (t('all' as any) || "All") : ch}
                                             </button>
                                         ))}
@@ -676,7 +712,14 @@ export function ProjectDetailPage({
                                         </p>
                                     </div>
                                 ) : (
-                                    <div className="rounded-xl overflow-hidden" style={{ backgroundColor: colors.surfaceContainer }}>
+                                    <motion.div
+                                        key={`${channelFilter}-${versionFilter}-${versionsPage}`}
+                                        variants={m.fadeIn}
+                                        initial="hidden"
+                                        animate="show"
+                                        className="rounded-xl overflow-hidden"
+                                        style={{ backgroundColor: colors.surfaceContainer }}
+                                    >
                                         <div className="grid grid-cols-12 gap-2 px-4 py-3 text-[13px] font-semibold"
                                             style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}>
                                             <div className="col-span-4">{t('name' as any) || "Name"}</div>
@@ -758,13 +801,13 @@ export function ProjectDetailPage({
                                                 </div>
                                             </div>
                                         ))}
-                                    </div>
+                                    </motion.div>
                                 )}
                             </div>
                         )}
 
                         {activeTab === "gallery" && project.gallery && (
-                            <div className="animate-fade-in">
+                            <div>
                                 <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                                     {project.gallery.map((img, idx) => {
                                         const url = getImageUrl(img);
@@ -789,9 +832,14 @@ export function ProjectDetailPage({
                                 </div>
                             </div>
                         )}
+                        </motion.div>
+                        </AnimatePresence>
                     </div>
 
-                    <div className="lg:col-span-3 p-6 space-y-7 flex flex-col"
+                    <motion.div
+                        variants={m.fadeUp}
+                        {...m.states}
+                        className="lg:col-span-3 p-6 space-y-7 flex flex-col"
                         style={{ backgroundColor: colors.surfaceContainer }}>
 
                         <div>
@@ -1018,7 +1066,7 @@ export function ProjectDetailPage({
                                 </div>
                             )}
                         </div>
-                    </div>
+                    </motion.div>
                 </div>
             </div>
         </>

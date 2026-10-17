@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { useMotionPreset } from "../../../lib/motion";
 import toast from "react-hot-toast";
 import { playClick } from "../../../lib/sounds";
 import type { LauncherConfig } from "../../../types/launcher";
@@ -22,6 +23,7 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
     const [installProgress, setInstallProgress] = useState<JavaInstallProgress | null>(null);
     const [detectedJavasForModal, setDetectedJavasForModal] = useState<{ targetKey: "java25" | "java21" | "java17" | "java8"; versionLabel: string; javas: any[] } | null>(null);
     const { t } = useTranslation(config.language);
+    const m = useMotionPreset();
 
     const windowApi = (window as any).api;
 
@@ -73,9 +75,9 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                         </div>
                         <div className="w-full h-2.5 rounded-full overflow-hidden" style={{ backgroundColor: colors.surfaceContainerHighest }}>
                             <div
-                                className="h-full rounded-full transition-all duration-300"
+                                className="h-full w-full rounded-full transition-transform duration-300 ease-out"
                                 style={{
-                                    width: `${progressForThis.percent}%`,
+                                    transform: `translateX(${progressForThis.percent - 100}%)`,
                                     backgroundColor: progressForThis.phase === "error" ? "#ef4444" : colors.secondary
                                 }}
                             />
@@ -217,12 +219,19 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
 
             <AnimatePresence>
                 {detectedJavasForModal && (
-                    <div className="fixed inset-0 z-100 flex items-center justify-center p-4 backdrop-blur-sm" style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
+                    <motion.div
+                        key="java-detected-modal"
+                        className="fixed inset-0 z-100 flex items-center justify-center p-4 backdrop-blur-sm"
+                        style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
+                        variants={m.modal.backdrop}
+                        initial="hidden"
+                        animate="show"
+                        exit="exit"
+                    >
                         <motion.div
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.95 }}
-                            transition={{ duration: 0.15, ease: "easeOut" }}
+                            role="dialog"
+                            aria-modal="true"
+                            variants={m.modal.panel}
                             className="w-full max-w-4xl rounded-2xl flex flex-col overflow-hidden shadow-2xl"
                             style={{ backgroundColor: colors.surface, border: `1px solid ${colors.outlineVariant}` }}
                         >
@@ -294,7 +303,7 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
                                 </button>
                             </div>
                         </motion.div>
-                    </div>
+                    </motion.div>
                 )}
             </AnimatePresence>
         </>

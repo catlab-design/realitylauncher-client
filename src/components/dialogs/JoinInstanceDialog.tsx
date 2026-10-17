@@ -103,9 +103,9 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-md animate-in fade-in duration-300" onClick={handleClose}>
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/40 backdrop-blur-md animate-in fade-in duration-200" onClick={handleClose}>
             <div
-                className="flex w-full max-w-3xl h-[480px] rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.5)] overflow-hidden animate-in slide-in-from-bottom-8 duration-500 relative border border-white/10 z-51"
+                className="flex w-full max-w-3xl h-120 rounded-[2.5rem] shadow-[0_32px_64px_rgba(0,0,0,0.5)] overflow-hidden animate-in fade-in zoom-in-95 slide-in-from-bottom-4 duration-300 relative border border-white/10 z-51"
                 style={{ backgroundColor: bg, color: text }}
                 onClick={(e) => e.stopPropagation()}
             >
@@ -113,7 +113,7 @@ export function JoinInstanceDialog({ isOpen, onClose, onSuccess, initialKey = ''
                     <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-yellow-500/10 to-transparent pointer-events-none" />
                     <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-yellow-500/5 blur-[60px] rounded-full pointer-events-none" />
 
-                    <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-yellow-500/30 z-10 animate-in zoom-in duration-700" style={{ backgroundColor: primary }}>
+                    <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-2xl shadow-yellow-500/30 z-10 animate-in fade-in zoom-in duration-300" style={{ backgroundColor: primary }}>
                         <Icons.Key className="w-10 h-10" style={{ color: onPrimary }} />
                     </div>
 

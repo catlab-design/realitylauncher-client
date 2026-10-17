@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import toast, { Toaster } from "react-hot-toast";
 import { AnimatePresence, motion } from "framer-motion";
 
+import { useMotionPreset } from "../lib/motion";
 import { Sidebar } from "./layout/Sidebar";
 import { ErrorBoundary as UIErrorBoundary } from "./ui/ErrorBoundary";
 import { LauncherAppTitleBar } from "./LauncherAppTitleBar";
@@ -96,6 +97,7 @@ function ProgressToastCard({
   detailsLabel?: string;
   closeLabel?: string;
 }) {
+  const m = useMotionPreset();
   // Local UI state: this component keeps its identity while progress updates re-render it.
   const [minimized, setMinimized] = React.useState(false);
   const [detailsOpen, setDetailsOpen] = React.useState(false);
@@ -117,9 +119,10 @@ function ProgressToastCard({
   const bar = (height: string) => (
     <div className={`${height} rounded-full overflow-hidden w-full relative`} style={{ backgroundColor: colors.surfaceContainerHighest }}>
       {percent !== undefined ? (
+        // Full-width fill slid left by the remaining percent: animates transform, not width.
         <div
-          className="h-full rounded-full transition-all duration-300 ease-out"
-          style={{ width: `${percent}%`, backgroundColor: colors.secondary }}
+          className="h-full w-full rounded-full transition-transform duration-300 ease-out"
+          style={{ transform: `translateX(${Math.min(100, Math.max(0, percent)) - 100}%)`, backgroundColor: colors.secondary }}
         />
       ) : (
         <div className="absolute inset-y-0 left-0 w-1/3 animate-[shimmer_1.5s_infinite]" style={{ backgroundColor: colors.secondary }} />
@@ -137,14 +140,10 @@ function ProgressToastCard({
     <>
       <motion.div
         layout
-        initial={{ opacity: 0, x: 40, scale: 0.96 }}
-        animate={{
-          opacity: visible ? 1 : 0,
-          x: visible ? 0 : 40,
-          scale: visible ? 1 : 0.96,
-        }}
-        exit={{ opacity: 0, x: 40, scale: 0.96 }}
-        transition={{ type: "spring", stiffness: 420, damping: 34, mass: 0.8 }}
+        variants={m.toast}
+        initial="hidden"
+        animate={visible ? "show" : "exit"}
+        exit="exit"
         className={`${minimized ? "w-72" : "w-95"} max-w-[calc(100vw-3rem)] rounded-2xl overflow-hidden`}
         style={{ backgroundColor: colors.surfaceContainerHigh || colors.surfaceContainer || "#1e1e1e" }}
       >
@@ -221,18 +220,24 @@ function ProgressToastCard({
       </motion.div>
 
       {/* Details popup: everything the card has no room for. */}
-      {detailsOpen && createPortal(
-        <div
-          className="fixed inset-0 z-10000 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150"
+      {createPortal(
+        <AnimatePresence>
+        {detailsOpen && (
+        <motion.div
+          key="progress-details"
+          className="fixed inset-0 z-10000 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm"
           onClick={() => setDetailsOpen(false)}
+          variants={m.modal.backdrop}
+          {...m.states}
         >
-          <div
+          <motion.div
             role="dialog"
             aria-modal="true"
             aria-label={title}
-            className="w-full max-w-xl rounded-3xl p-7 shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+            className="w-full max-w-xl rounded-3xl p-7 shadow-2xl"
             style={{ backgroundColor: colors.surface }}
             onClick={(e) => e.stopPropagation()}
+            variants={m.modal.panel}
           >
             <div className="flex items-start gap-4">
               <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ backgroundColor: `${colors.secondary}26` }}>
@@ -308,8 +313,10 @@ function ProgressToastCard({
                 {minimizeLabel}
               </button>
             </div>
-          </div>
-        </div>,
+          </motion.div>
+        </motion.div>
+        )}
+        </AnimatePresence>,
         document.body
       )}
     </>
@@ -370,6 +377,8 @@ interface LauncherAppShellProps {
 export function LauncherAppShell({
   colors, titleBarColors, config, session, accounts, selectedInstance, inboxOpen, setInboxOpen, announcements, userNotifications, unreadCount, setInvitations, setServerRefreshTrigger, setNotificationRefreshTrigger, accountDropdownOpen, setAccountDropdownOpen, t, selectAccount, removeAccountFromList, setLoginDialogOpen, setLinkCatIDOpen, handleLinkMicrosoft, handleLogout, updateConfig, contentTab, settingsDialogOpen, onCloseSettingsDialog, news, servers, selectedServer, setSelectedServer, setSelectedInstance, setActiveTab, serverRefreshTrigger, settingsTab, setSettingsTab, setImportModpackOpen, handleShowConfirm, handleBrowseJava, handleBrowseMinecraftDir, handleUnlink, isAdmin, adminToken, isInstalling, installProgress, operationType, handleCancelInstall, handleRepair,
 }: LauncherAppShellProps) {
+  const m = useMotionPreset();
+  const mainRef = React.useRef<HTMLElement>(null);
   const [shouldRenderSettingsDialog, setShouldRenderSettingsDialog] = React.useState(false);
   const [hoveredToastId, setHoveredToastId] = React.useState<string | null>(null);
   const immersive = useUiStore((state) => state.immersive);
@@ -538,14 +547,10 @@ export function LauncherAppShell({
           return (
             <motion.div
               layout
-              initial={{ opacity: 0, x: 40, scale: 0.96 }}
-              animate={{
-                opacity: toastItem.visible ? 1 : 0,
-                x: toastItem.visible ? 0 : 40,
-                scale: toastItem.visible ? 1 : 0.96,
-              }}
-              exit={{ opacity: 0, x: 40, scale: 0.96 }}
-              transition={{ type: "spring", stiffness: 420, damping: 34, mass: 0.8 }}
+              variants={m.toast}
+              initial="hidden"
+              animate={toastItem.visible ? "show" : "exit"}
+              exit="exit"
               className="group flex items-center gap-3.5 p-3.5 pr-3 rounded-2xl backdrop-blur-xl w-95 max-w-[calc(100vw-3rem)] relative overflow-hidden"
               style={{
                 backgroundColor: colors.surfaceContainerHigh || colors.surfaceContainer || "#1e1e1e",
@@ -554,9 +559,9 @@ export function LauncherAppShell({
               onMouseLeave={() => setHoveredToastId((prev) => (prev === toastItem.id ? null : prev))}
             >
               <motion.div
-                initial={{ scale: 0.6, opacity: 0 }}
+                initial={m.reduced ? { opacity: 0 } : { scale: 0.6, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                transition={{ type: "spring", stiffness: 400, damping: 20, delay: 0.06 }}
+                transition={m.reduced ? { duration: 0.12 } : { type: "spring", stiffness: 400, damping: 20, delay: 0.06 }}
                 className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
                 style={{ backgroundColor: `${accent}1f`, color: accent }}
               >
@@ -610,16 +615,19 @@ export function LauncherAppShell({
 
         <div className="relative flex-1 flex flex-col overflow-hidden -mt-10">
           <main
+            ref={mainRef}
             className={`flex-1 overflow-y-auto overflow-x-hidden px-6 relative ${fullBleed ? "pt-3 pb-6" : "pt-13 pb-6"}`}
           >
             <div className="h-full">
-              <AnimatePresence mode="wait">
+              {/* Tab switch: quick fade-out, then the next page fades + rises 8px in (~250ms total).
+                  mode="wait" is required: the outgoing page must unmount (running its
+                  fullBleed/immersive cleanup) before the incoming page mounts and sets its own.
+                  The shared <main> scroller is reset in between so a page never opens mid-scroll. */}
+              <AnimatePresence mode="wait" onExitComplete={() => mainRef.current?.scrollTo({ top: 0 })}>
                 <motion.div
                   key={contentTab}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.12, ease: "easeInOut" }}
+                  variants={m.page}
+                  {...m.states}
                   className="h-full"
                 >
                   <React.Suspense fallback={<TabLoadingFallback colors={colors} />}>

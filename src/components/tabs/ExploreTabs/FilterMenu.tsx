@@ -5,6 +5,7 @@ import type { TranslationKey } from "../../../i18n/translations";
 import { CATEGORIES, LOADERS, ENVIRONMENTS, MC_VERSIONS, SORT_OPTIONS } from "./filterOptions";
 import { FilterPopoverItem } from "./FilterPopover";
 import { playClick } from "../../../lib/sounds";
+import { useMotionPreset } from "../../../lib/motion";
 
 interface FilterMenuProps {
     colors: any;
@@ -57,6 +58,7 @@ export function FilterMenu({
     showVersionFilter = true,
 }: FilterMenuProps) {
     const { t } = useTranslation();
+    const m = useMotionPreset();
     const [open, setOpen] = useState(false);
     const [versionSearch, setVersionSearch] = useState("");
     const rootRef = useRef<HTMLDivElement>(null);
@@ -122,16 +124,15 @@ export function FilterMenu({
                         {activeCount}
                     </span>
                 )}
-                <i className={`fa-solid fa-chevron-down text-xs transition-transform ${open ? "rotate-180" : ""}`} style={{ color: colors.onSurfaceVariant }} />
+                <i className={`fa-solid fa-chevron-down text-xs transition-transform duration-200 ${open ? "rotate-180" : ""}`} style={{ color: colors.onSurfaceVariant }} />
             </button>
 
             <AnimatePresence>
                 {open && (
                     <motion.div
-                        initial={{ opacity: 0, y: -4 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -4 }}
-                        transition={{ duration: 0.12 }}
+                        key="filter-menu"
+                        variants={m.popover("bottom-end")}
+                        {...m.states}
                         className="absolute z-50 mt-2 right-0 w-[320px] max-w-[calc(100vw-2rem)] rounded-2xl overflow-hidden"
                         style={{
                             backgroundColor: colors.surface,
@@ -167,6 +168,7 @@ export function FilterMenu({
                                             key={opt.value}
                                             colors={colors}
                                             active={sortBy === opt.value}
+                                            layoutId="explore-sort-pill"
                                             onClick={() => onSortChange(opt.value)}
                                         >
                                             {t(opt.labelKey as TranslationKey)}

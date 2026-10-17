@@ -1,6 +1,8 @@
-import { useState, useEffect, useRef, type CSSProperties } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, type CSSProperties } from "react";
 import toast from "react-hot-toast";
+import { AnimatePresence, motion } from "framer-motion";
 import { Icons } from "../ui/Icons";
+import { useMotionPreset } from "../../lib/motion";
 import { InstanceContentBrowser } from "./InstanceContentBrowser";
 import {
     CONTENT_SOURCES,
@@ -71,6 +73,15 @@ export function InstanceDetail({
     isInstallLocked = false,
 }: InstanceDetailProps) {
     const { t } = useTranslation(config.language);
+    const m = useMotionPreset();
+    // Open at the top: the Library list may have been scrolled, and opening an instance is a view
+    // change inside the same tab (the shell only resets scroll on tab switches).
+    const rootRef = useRef<HTMLDivElement>(null);
+    useLayoutEffect(() => {
+        const scroller = rootRef.current?.closest("main");
+        if (scroller) scroller.scrollTop = 0;
+    }, [instance.id]);
+
     const [mods, setMods] = useState<ModInfo[]>([]);
     const [modsLoading, setModsLoading] = useState(true);
 
@@ -1009,20 +1020,30 @@ export function InstanceDetail({
 
     return (
         <div
+            ref={rootRef}
             className="space-y-5 relative w-full animate-fade-in"
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
         >
+            <AnimatePresence>
             {isDragging && (
-                <div
-                    className="fixed top-20 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-6 py-3 rounded-full pointer-events-none animate-pulse"
-                    style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                <motion.div
+                    key="drop-hint"
+                    variants={m.popover("bottom")}
+                    {...m.states}
+                    className="fixed top-20 left-1/2 -translate-x-1/2 z-50 pointer-events-none"
                 >
-                    <Icons.Folder className="w-6 h-6" />
-                    <span className="font-medium">{t('drop_to_add_content' as any).replace('{ext}', validExtsLabel).replace('{type}', contentTypeLabel)}</span>
-                </div>
+                    <div
+                        className="flex items-center gap-3 px-6 py-3 rounded-full animate-pulse"
+                        style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                    >
+                        <Icons.Folder className="w-6 h-6" />
+                        <span className="font-medium">{t('drop_to_add_content' as any).replace('{ext}', validExtsLabel).replace('{type}', contentTypeLabel)}</span>
+                    </div>
+                </motion.div>
             )}
+            </AnimatePresence>
 
             {!showContentBrowser && !installedDetailProject && (
                 <div
@@ -1043,7 +1064,7 @@ export function InstanceDetail({
                     }) as CSSProperties}
                 >
                     {instance.banner && (
-                        <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
+                        <motion.div variants={m.fadeIn} {...m.states} className="absolute inset-0 pointer-events-none" aria-hidden="true">
                             <img
                                 src={instance.banner}
                                 onError={(e) => {
@@ -1056,21 +1077,27 @@ export function InstanceDetail({
                                 className="absolute inset-0"
                                 style={{ backgroundImage: "linear-gradient(to right, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.45) 50%, rgba(0,0,0,0.2) 100%)" }}
                             />
-                        </div>
+                        </motion.div>
                     )}
 
-                    <div className={`relative flex flex-wrap items-center gap-x-4 gap-y-3 px-6 ${instance.banner ? "pt-36 pb-5" : "py-5"}`}>
-                        <button
+                    <motion.div
+                        variants={m.staggerContainer(0.04)}
+                        {...m.states}
+                        className={`relative flex flex-wrap items-center gap-x-4 gap-y-3 px-6 ${instance.banner ? "pt-36 pb-5" : "py-5"}`}
+                    >
+                        <motion.button
+                            variants={m.fadeUp}
                             onClick={() => { playClick(); onBack(); }}
-                            className="w-9 h-9 rounded-full flex items-center justify-center transition-colors active:scale-95 shrink-0 text-(--ghost-fg) hover:text-(--ghost-hover-fg) hover:bg-(--ghost-hover-bg)"
+                            className="w-9 h-9 rounded-full flex items-center justify-center pressable shrink-0 text-(--ghost-fg) hover:text-(--ghost-hover-fg) hover:bg-(--ghost-hover-bg)"
                             title={t('back' as any)}
                         >
                             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
                             </svg>
-                        </button>
+                        </motion.button>
 
-                        <div
+                        <motion.div
+                            variants={m.scaleIn}
                             className="w-16 h-16 rounded-2xl flex items-center justify-center overflow-hidden shrink-0"
                             style={{ backgroundColor: (instance.icon?.startsWith("data:") || instance.icon?.startsWith("file://") || instance.icon?.startsWith("http")) ? 'transparent' : colors.surfaceContainerHighest }}
                         >
@@ -1079,9 +1106,9 @@ export function InstanceDetail({
                             ) : (
                                 <Icons.Box className="w-8 h-8" style={{ color: colors.onSurfaceVariant }} />
                             )}
-                        </div>
+                        </motion.div>
 
-                        <div className="flex-1 min-w-48">
+                        <motion.div variants={m.fadeUp} className="flex-1 min-w-48">
                             <h2 className="font-display text-2xl font-bold leading-tight truncate" style={{ color: "var(--head-fg)" }}>{instance.name}</h2>
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1 text-sm" style={{ color: "var(--head-sub)" }}>
                                 <span className="flex items-center gap-1.5">
@@ -1108,12 +1135,12 @@ export function InstanceDetail({
                                     </>
                                 )}
                             </div>
-                        </div>
+                        </motion.div>
 
-                        <div className="flex items-center gap-2 ml-auto mt-8">
+                        <motion.div variants={m.fadeUp} className="flex items-center gap-2 ml-auto mt-8">
                             <button
                                 onClick={() => { playClick(); onOpenFolder(instance.id); }}
-                                className="w-12 h-12 rounded-xl flex items-center justify-center transition-colors active:scale-95 text-(--ghost-fg) hover:text-(--ghost-hover-fg) hover:bg-(--ghost-hover-bg)"
+                                className="w-12 h-12 rounded-xl flex items-center justify-center pressable text-(--ghost-fg) hover:text-(--ghost-hover-fg) hover:bg-(--ghost-hover-bg)"
                                 title={t('open_folder')}
                             >
                                 <Icons.Folder className="w-6 h-6" />
@@ -1121,7 +1148,7 @@ export function InstanceDetail({
 
                             <button
                                 onClick={() => { playClick(); onViewLogs(instance.id); }}
-                                className="w-12 h-12 rounded-xl flex items-center justify-center transition-colors active:scale-95 text-(--ghost-fg) hover:text-(--ghost-hover-fg) hover:bg-(--ghost-hover-bg)"
+                                className="w-12 h-12 rounded-xl flex items-center justify-center pressable text-(--ghost-fg) hover:text-(--ghost-hover-fg) hover:bg-(--ghost-hover-bg)"
                                 title={t('view_logs')}
                             >
                                 <Icons.Terminal className="w-6 h-6" />
@@ -1129,7 +1156,7 @@ export function InstanceDetail({
 
                             <button
                                 onClick={() => { playClick(); setShowSettings(true); }}
-                                className="w-12 h-12 rounded-xl flex items-center justify-center transition-colors active:scale-95 text-(--ghost-fg) hover:text-(--ghost-hover-fg) hover:bg-(--ghost-hover-bg)"
+                                className="w-12 h-12 rounded-xl flex items-center justify-center pressable text-(--ghost-fg) hover:text-(--ghost-hover-fg) hover:bg-(--ghost-hover-bg)"
                                 title={t('settings')}
                             >
                                 <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
@@ -1140,7 +1167,7 @@ export function InstanceDetail({
                             <button
                                 onClick={() => { playClick(); handlePlayStop(); }}
                                 disabled={disablePlayStopButton || isInstallLocked}
-                                className="h-12 px-8 ml-2 rounded-xl text-base font-bold transition-all hover:brightness-105 active:scale-95 disabled:opacity-50 disabled:active:scale-100 flex items-center gap-2 whitespace-nowrap"
+                                className="h-12 px-8 ml-2 rounded-xl text-base font-bold pressable transition-[color,background-color,opacity,scale,filter] hover:brightness-105 disabled:opacity-50 flex items-center gap-2 whitespace-nowrap"
                                 style={{
                                     backgroundColor: showStopAction ? "#ef4444" : colors.secondary,
                                     color: showStopAction ? "#ffffff" : "#111"
@@ -1171,8 +1198,8 @@ export function InstanceDetail({
                                     </>
                                 )}
                             </button>
-                        </div>
-                    </div>
+                        </motion.div>
+                    </motion.div>
                 </div>
             )}
 
@@ -1222,7 +1249,8 @@ export function InstanceDetail({
                         loader={instance.loader}
                     />
 
-                    <div>
+                    <AnimatePresence mode="wait" initial={false}>
+                    <motion.div key={contentTab} variants={m.panelSwap} {...m.states}>
                         {contentTab === "mods" && (
                             <ModsList
                                 colors={colors}
@@ -1339,12 +1367,15 @@ export function InstanceDetail({
                                 onSwitchVersion={(item) => handleOpenSwitcher(item, "shader")}
                             />
                         )}
-                    </div>
+                    </motion.div>
+                    </AnimatePresence>
                 </>
             )}
 
+            <AnimatePresence>
             {switcherTarget && (
                 <VersionSwitcherModal
+                    key="version-switcher"
                     colors={colors}
                     title={
                         (switcherTarget.item as any).displayName ||
@@ -1364,10 +1395,13 @@ export function InstanceDetail({
                     onSwitch={handleConfirmSwitchVersion}
                 />
             )}
+            </AnimatePresence>
 
+            <AnimatePresence>
             {
                 showSettings && (
                     <InstanceSettingsModal
+                        key="instance-settings"
                         colors={colors}
                         instance={instance}
                         onClose={() => setShowSettings(false)}
@@ -1380,6 +1414,7 @@ export function InstanceDetail({
                     />
                 )
             }
+            </AnimatePresence>
         </div >
     );
 }

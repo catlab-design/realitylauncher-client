@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { Portal } from "../../ui/Portal";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
+import { useMotionPreset } from "../../../lib/motion";
 import { Icons } from "../../ui/Icons";
 import { Skeleton } from "../../ui/Skeleton";
-import { formatSize } from "./helpers";
+import { bulkBarVariants, formatSize } from "./helpers";
 import type { ContentItem, DatapackItem } from "./types";
 import { playClick } from "../../../lib/sounds";
 import { useTranslation } from "../../../hooks/useTranslation";
@@ -58,6 +59,8 @@ export function ContentList({
     onSwitchVersion,
 }: ContentListProps) {
     const { t } = useTranslation();
+    const m = useMotionPreset();
+    const bulkBar = bulkBarVariants(m);
     const [searchQuery, setSearchQuery] = useState("");
     const [page, setPage] = useState(1);
     const ITEMS_PER_PAGE = 20;
@@ -160,10 +163,14 @@ export function ContentList({
                 </div>
 
                 {/* Bulk actions float at the bottom of the window while items are selected. */}
+                <Portal>
+                <AnimatePresence>
                 {selectedFilenames.size > 0 && (
-                    <Portal>
-                    <div
-                        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 h-16 flex items-center gap-1 pl-6 pr-2.5 rounded-2xl max-w-[calc(100vw-2rem)] overflow-x-auto no-scrollbar shadow-[0_12px_40px_-12px_rgba(0,0,0,0.45)] animate-in fade-in slide-in-from-bottom-2 duration-200"
+                    <motion.div
+                        key="bulk-action-bar"
+                        variants={bulkBar}
+                        {...m.states}
+                        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 h-16 flex items-center gap-1 pl-6 pr-2.5 rounded-2xl max-w-[calc(100vw-2rem)] overflow-x-auto no-scrollbar shadow-[0_12px_40px_-12px_rgba(0,0,0,0.45)]"
                         // Dark floating bar in every theme; the ghost-button colours are set here because
                         // the portal sits outside the toolbar that normally provides them.
                         style={{
@@ -187,7 +194,7 @@ export function ContentList({
                                     {hasDisabledItems && (
                                         <button
                                             onClick={() => handleBulkToggle(true)}
-                                            className="h-11 px-4 rounded-xl text-[15px] font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap text-(--ghost-hover-fg) hover:bg-(--ghost-hover-bg)"
+                                            className="h-11 px-4 rounded-xl text-[15px] font-semibold pressable flex items-center gap-1.5 whitespace-nowrap text-(--ghost-hover-fg) hover:bg-(--ghost-hover-bg)"
                                             title={t('action_enable' as any)}
                                         >
                                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
@@ -201,7 +208,7 @@ export function ContentList({
                                     {hasEnabledItems && (
                                         <button
                                             onClick={() => handleBulkToggle(false)}
-                                            className="h-11 px-4 rounded-xl text-[15px] font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap text-(--ghost-fg) hover:text-(--ghost-hover-fg) hover:bg-(--ghost-hover-bg)"
+                                            className="h-11 px-4 rounded-xl text-[15px] font-semibold pressable flex items-center gap-1.5 whitespace-nowrap text-(--ghost-fg) hover:text-(--ghost-hover-fg) hover:bg-(--ghost-hover-bg)"
                                             title={t('action_disable' as any)}
                                         >
                                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
@@ -217,7 +224,7 @@ export function ContentList({
 
                         <button
                             onClick={handleBulkDelete}
-                            className="h-11 px-4 rounded-xl text-[15px] font-semibold transition-colors flex items-center gap-1.5 whitespace-nowrap text-red-500 hover:bg-red-500/10"
+                            className="h-11 px-4 rounded-xl text-[15px] font-semibold pressable flex items-center gap-1.5 whitespace-nowrap text-red-500 hover:bg-red-500/10"
                             title={t('action_remove' as any)}
                         >
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
@@ -231,14 +238,15 @@ export function ContentList({
 
                         <button
                             onClick={() => setSelectedFilenames(new Set())}
-                            className="w-11 h-11 rounded-xl flex items-center justify-center transition-colors shrink-0 text-(--ghost-fg) hover:text-(--ghost-hover-fg) hover:bg-(--ghost-hover-bg)"
+                            className="w-11 h-11 rounded-xl flex items-center justify-center pressable shrink-0 text-(--ghost-fg) hover:text-(--ghost-hover-fg) hover:bg-(--ghost-hover-bg)"
                             title={t('cancel_selection' as any)}
                         >
                             <Icons.Close className="w-5 h-5" />
                         </button>
-                    </div>
-                    </Portal>
+                    </motion.div>
                 )}
+                </AnimatePresence>
+                </Portal>
 
                 <div className="flex items-center gap-2 ml-auto shrink-0">
                     {totalPages > 1 && (
@@ -288,7 +296,7 @@ export function ContentList({
             </div>
 
             {items.length === 0 && !isLoading ? (
-                <div className="flex flex-col items-center justify-center text-center py-16 px-6">
+                <motion.div variants={m.scaleIn} {...m.states} className="flex flex-col items-center justify-center text-center py-16 px-6">
                     <div
                         className="w-20 h-20 flex items-center justify-center mb-5"
                     >
@@ -305,7 +313,7 @@ export function ContentList({
                         <Icons.Add className="w-4 h-4" />
                         {labels[contentType].addLabel}
                     </button>
-                </div>
+                </motion.div>
             ) : (
                 <div>
                     <div

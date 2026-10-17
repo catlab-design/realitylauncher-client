@@ -208,7 +208,7 @@ export function ConnectionsTab({ config, updateConfig, colors }: SettingsTabProp
                             <button
                                 type="button"
                                 onClick={() => handleSaveIp(catskinIp)}
-                                className={`${buttonClass} h-11 cursor-pointer active:scale-95`}
+                                className={`${buttonClass} h-11 cursor-pointer`}
                                 style={primaryButtonStyle(colors)}
                             >
                                 <i className="fa-solid fa-floppy-disk text-sm"></i>
@@ -220,7 +220,7 @@ export function ConnectionsTab({ config, updateConfig, colors }: SettingsTabProp
                                     setCatskinIp("storage-skin.catlabdesign.space");
                                     handleSaveIp("storage-skin.catlabdesign.space");
                                 }}
-                                className={`${buttonClass} h-11 w-11 px-0 justify-center cursor-pointer active:scale-95`}
+                                className={`${buttonClass} h-11 w-11 px-0 justify-center cursor-pointer`}
                                 style={buttonStyle(colors)}
                                 title={t('reset_settings')}
                             >

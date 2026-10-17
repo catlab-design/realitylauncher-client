@@ -188,8 +188,8 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
                         </div>
                         <div className="w-full h-2 rounded-full overflow-hidden" style={{ backgroundColor: colors.surfaceContainerHighest }}>
                             <div
-                                className="h-full rounded-full transition-all duration-300"
-                                style={{ width: `${downloadProgress}%`, backgroundColor: colors.secondary }}
+                                className="h-full w-full rounded-full transition-transform duration-300 ease-out"
+                                style={{ transform: `translateX(${downloadProgress - 100}%)`, backgroundColor: colors.secondary }}
                             />
                         </div>
                     </div>

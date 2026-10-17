@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
+import { useMotionPreset } from "../../lib/motion";
 import { useTranslation } from "../../hooks/useTranslation";
 import { playClick, toastSuccess, toastError } from "../../lib/sounds";
 import type { Server, LauncherConfig } from "../../types/launcher";
@@ -11,7 +12,9 @@ import {
     ServerCardRowSkeleton,
     ServerStatusStrip,
     getServerAddress,
+    splitServerAddress,
     type Instance,
+    type ServerAddressInfo,
     type ServerFlags,
     type ServerPing,
 } from "./ServerItem";
@@ -23,7 +26,74 @@ import { useAuthStore } from "../../store/authStore";
 import { useProgressStore } from "../../store/progressStore";
 import { useLaunchStore } from "../../store/launchStore";
 import { useUiStore } from "../../store/uiStore";
+import { useConfigStore } from "../../store/configStore";
 import { type AuthSession } from "../../types/launcher";
+
+// ---------------------------------------------------------------------------
+// Cache: the page paints instantly from the last known server list + pings
+// (per account, memory + localStorage), then refreshes in the background.
+// ---------------------------------------------------------------------------
+
+type ServersSnapshot = {
+    uid: string;
+    instances: { owned: Instance[]; member: Instance[] };
+    pings: Record<string, ServerPing>;
+    savedAt: number;
+};
+
+const SERVERS_CACHE_KEY = "servers-cache-v1";
+const IMAGE_STAMP_KEY = "servers-image-stamp";
+/** Image URLs keep the same cache-busting stamp this long, so banners/icons come from the HTTP cache. */
+const IMAGE_STAMP_TTL_MS = 6 * 60 * 60 * 1000;
+
+let serversMemoryCache: ServersSnapshot | null = null;
+
+function readServersCache(uid: string | undefined): ServersSnapshot | null {
+    if (!uid) return null;
+    if (serversMemoryCache?.uid === uid) return serversMemoryCache;
+    try {
+        const parsed = JSON.parse(localStorage.getItem(SERVERS_CACHE_KEY) || "null") as ServersSnapshot | null;
+        if (parsed && parsed.uid === uid && parsed.instances) {
+            serversMemoryCache = parsed;
+            return parsed;
+        }
+    } catch { /* corrupt or unavailable storage: start empty */ }
+    return null;
+}
+
+function writeServersCache(snapshot: ServersSnapshot) {
+    serversMemoryCache = snapshot;
+    try {
+        // Favicons are data URLs and can be large; keep them in memory only.
+        const pings: Record<string, ServerPing> = {};
+        for (const [id, ping] of Object.entries(snapshot.pings)) pings[id] = { ...ping, favicon: null };
+        localStorage.setItem(SERVERS_CACHE_KEY, JSON.stringify({ ...snapshot, pings }));
+    } catch { /* quota or private mode: memory cache still works */ }
+}
+
+function readImageStamp(): number {
+    try {
+        const saved = Number(localStorage.getItem(IMAGE_STAMP_KEY));
+        if (saved && Date.now() - saved < IMAGE_STAMP_TTL_MS) return saved;
+    } catch { /* fall through */ }
+    return bumpImageStamp();
+}
+
+function bumpImageStamp(): number {
+    const now = Date.now();
+    try { localStorage.setItem(IMAGE_STAMP_KEY, String(now)); } catch { /* ignore */ }
+    return now;
+}
+
+/** Warms the HTTP cache for images that are about to be shown. */
+const preloadedImages = new Set<string>();
+function preloadImage(url: string) {
+    if (!url || preloadedImages.has(url) || url.startsWith("data:") || url.startsWith("blob:")) return;
+    preloadedImages.add(url);
+    const img = new Image();
+    img.decoding = "async";
+    img.src = url;
+}
 
 interface ServerMenuProps {
     servers: Server[];
@@ -65,8 +135,12 @@ export function ServerMenu({
         setInstallingInstanceId,
     } = useProgressStore();
 
-    const [instances, setInstances] = useState<{ owned: Instance[]; member: Instance[] } | null>(null);
-    const [loading, setLoading] = useState(true);
+    // With a custom app background the page body stays see-through so the image shows.
+    const hasAppBackground = useConfigStore((s) => !!s.backgroundImage);
+    const [instances, setInstances] = useState<{ owned: Instance[]; member: Instance[] } | null>(
+        () => readServersCache(session?.uuid)?.instances ?? null,
+    );
+    const [loading, setLoading] = useState(() => !readServersCache(session?.uuid));
     const [apiError, setApiError] = useState<string | null>(null);
 
     const [logViewerInstanceId, setLogViewerInstanceId] = useState<string | null>(null);
@@ -88,7 +162,7 @@ export function ServerMenu({
             setViewingInstance(found);
         }
     }, [pendingServerDetailId, loading, instances]);
-    const [timestamp, setTimestamp] = useState(Date.now());
+    const [timestamp, setTimestamp] = useState(readImageStamp);
     const [localInstancesByCloudId, setLocalInstancesByCloudId] = useState<Map<string, any>>(new Map());
 
     const [activeTab, setActiveTabState] = useState<ActiveTab>("my");
@@ -108,10 +182,12 @@ export function ServerMenu({
 
     const [joinedServers, setJoinedServers] = useState<any[]>([]);
 
-    // Live player counts from the launcher's Minecraft status ping, keyed by instance id.
-    const [pingById, setPingById] = useState<Record<string, ServerPing>>({});
+    // Live status from the launcher's Minecraft status ping, keyed by instance id.
+    const [pingById, setPingById] = useState<Record<string, ServerPing>>(() => readServersCache(session?.uuid)?.pings ?? {});
+    // First servers.dat entry of installed servers that have no address on the API (status strip fallback).
+    const [savedServerById, setSavedServerById] = useState<Record<string, { ip: string; name: string; icon: string | null }>>({});
 
-    const reduceMotion = !!useReducedMotion();
+    const m = useMotionPreset();
     const setImmersive = useUiStore((state) => state.setImmersive);
     const setFullBleed = useUiStore((state) => state.setFullBleed);
     const listRootRef = React.useRef<HTMLDivElement>(null);
@@ -444,41 +520,97 @@ export function ServerMenu({
         if (activeTab === "explore") fetchPublicInstances(searchQuery);
     }, [activeTab]);
 
-    // Ping each listed server's first address for its live status (players online / max).
-    useEffect(() => {
+    // Pings each target's address; every result lands as soon as it arrives (a slow server doesn't hold up the rest).
+    const pingServers = React.useCallback((targets: { id: string; address: string }[]) => {
         const ping = (window.api as any)?.serverPing;
-        if (!ping) return;
+        if (!ping || targets.length === 0) return undefined;
+        let cancelled = false;
+        for (const { id, address } of targets) {
+            // "host:port" / "[v6]:port" (IPv6 literals without brackets are pinged on the default port).
+            const { host, port } = splitServerAddress(address);
+            Promise.resolve()
+                .then(() => ping(host, port))
+                .then((res: any): ServerPing => {
+                    if (!res) return { online: false, players: null };
+                    const players = res.players && typeof res.players.online === "number" && typeof res.players.max === "number"
+                        ? { online: res.players.online, max: res.players.max }
+                        : null;
+                    return {
+                        online: !!res.online,
+                        players,
+                        motd: typeof res.motd === "string" ? res.motd : null,
+                        motdRaw: res.motdRaw ?? null,
+                        latency: typeof res.latency === "number" ? res.latency : null,
+                        version: typeof res.version === "string" ? res.version : null,
+                        favicon: typeof res.favicon === "string" && res.favicon.startsWith("data:image/") ? res.favicon : null,
+                        error: typeof res.error === "string" ? res.error : null,
+                    };
+                }, (err: any): ServerPing => ({ online: false, players: null, error: String(err?.message || err) }))
+                .then((result) => {
+                    if (!cancelled) setPingById((prev) => ({ ...prev, [id]: result }));
+                });
+        }
+        return () => { cancelled = true; };
+    }, []);
+
+    // Keep the cache in step with what's on screen (never overwrite it with an error result).
+    useEffect(() => {
+        if (!session?.uuid || !instances || apiError) return;
+        writeServersCache({ uid: session.uuid, instances, pings: pingById, savedAt: Date.now() });
+    }, [session?.uuid, instances, pingById, apiError]);
+
+    // Fetch banners/icons as soon as the list is known, so the hero and cards don't pop in late.
+    useEffect(() => {
+        const listed = [...(instances?.owned || []), ...(instances?.member || [])];
+        for (const inst of listed) {
+            if (inst.bannerUrl) preloadImage(getWithTimestamp(inst.bannerUrl));
+            if (inst.iconUrl) preloadImage(getWithTimestamp(inst.iconUrl));
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [instances, timestamp]);
+
+    // Ping each listed server's first address for its live status.
+    useEffect(() => {
         const listed = [...(instances?.owned || []), ...(instances?.member || []), ...publicInstances.slice(0, 20)];
         const targets = listed
             .map((inst) => ({ id: inst.id, address: getServerAddress(inst) }))
             .filter((x, i, a): x is { id: string; address: string } => !!x.address && a.findIndex((y) => y.id === x.id) === i);
-        if (targets.length === 0) return;
+        return pingServers(targets);
+    }, [instances, publicInstances, pingServers]);
+
+    // Installed servers without an address on the API: take the first entry of their in-game server list.
+    useEffect(() => {
+        const read = (window.api as any)?.instanceSavedServers;
+        if (!read || !instances) return;
+        const targets = [...instances.owned, ...instances.member]
+            .filter((inst, i, a) => !getServerAddress(inst) && isServerInstalled(inst) && a.findIndex((x) => x.id === inst.id) === i);
+        if (targets.length === 0) {
+            setSavedServerById((prev) => (Object.keys(prev).length === 0 ? prev : {}));
+            return;
+        }
         let cancelled = false;
-        Promise.all(targets.map(async ({ id, address }) => {
-            // "host:port" (IPv6 literals without brackets are pinged as-is on the default port).
-            const parts = address.split(":");
-            const port = parts.length === 2 ? parseInt(parts[1], 10) : NaN;
-            const host = parts.length === 2 ? parts[0] : address;
+        Promise.all(targets.map(async (inst) => {
             try {
-                const res = await ping(host, Number.isFinite(port) ? port : undefined);
-                if (!res) return null;
-                const players = res.players && typeof res.players.online === "number" && typeof res.players.max === "number"
-                    ? { online: res.players.online, max: res.players.max }
+                const list = await read(resolveLocalId(inst));
+                const first = Array.isArray(list) ? list.find((s: any) => typeof s?.ip === "string" && s.ip.trim()) : null;
+                return first
+                    ? [inst.id, { ip: first.ip.trim() as string, name: typeof first.name === "string" ? first.name : "", icon: typeof first.icon === "string" ? first.icon : null }] as const
                     : null;
-                return [id, { online: !!res.online, players }] as const;
             } catch {
                 return null;
             }
         })).then((entries) => {
             if (cancelled) return;
-            setPingById((prev) => {
-                const next = { ...prev };
-                for (const entry of entries) if (entry) next[entry[0]] = entry[1];
-                return next;
-            });
+            const next: Record<string, { ip: string; name: string; icon: string | null }> = {};
+            for (const entry of entries) if (entry) next[entry[0]] = entry[1];
+            setSavedServerById(next);
         });
         return () => { cancelled = true; };
-    }, [instances, publicInstances]);
+    }, [instances, isServerInstalled, resolveLocalId]);
+
+    useEffect(() => {
+        return pingServers(Object.entries(savedServerById).map(([id, saved]) => ({ id, address: saved.ip })));
+    }, [savedServerById, pingServers]);
 
     const handleSearchSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -593,6 +725,13 @@ export function ServerMenu({
         };
     };
     const getPing = (inst: Instance): ServerPing | undefined => pingById[inst.id];
+    // The instance's "Server address" field first, else its first servers.dat entry.
+    const getAddress = (inst: Instance): ServerAddressInfo | null => {
+        const address = getServerAddress(inst);
+        if (address) return { address, source: "api" };
+        const saved = savedServerById[inst.id];
+        return saved ? { address: saved.ip, source: "local", name: saved.name, icon: saved.icon } : null;
+    };
 
     const showHero = !!session && !loading && !isSearching && !!heroInstance;
     // Loading draws a hero placeholder too; the controls sit on top of either, so nothing jumps when data lands.
@@ -620,7 +759,7 @@ export function ServerMenu({
         };
     }, [viewingInstance, showHero, setImmersive]);
 
-    const scrollBehavior: ScrollBehavior = reduceMotion ? "auto" : "smooth";
+    const scrollBehavior: ScrollBehavior = m.reduced ? "auto" : "smooth";
     const selectFromCard = (inst: Instance) => {
         selectHero(inst);
         listRootRef.current?.closest("main")?.scrollTo({ top: 0, behavior: scrollBehavior });
@@ -662,11 +801,21 @@ export function ServerMenu({
                             role="tab"
                             aria-selected={active}
                             onClick={() => { playClick(); setActiveTabState(tab.id); }}
-                            className="flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-sm font-semibold whitespace-nowrap transition-colors"
-                            style={active
-                                ? { backgroundColor: colors.onSurface, color: colors.surface }
-                                : { color: colors.onSurfaceVariant }}
+                            className="pressable relative isolate flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-sm font-semibold whitespace-nowrap"
+                            style={{ color: active ? colors.surface : colors.onSurfaceVariant }}
                         >
+                            {/* Active pill. Not a shared layoutId: it was measured mid page-transition
+                                (the page scales/moves in) and could settle a few px off the track. */}
+                            {active && (
+                                <motion.span
+                                    key="servers-tab-pill"
+                                    initial={m.reduced ? { opacity: 0 } : { opacity: 0, scale: 0.92 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    transition={m.tabIndicator}
+                                    className="absolute inset-0 -z-10 rounded-lg"
+                                    style={{ backgroundColor: colors.onSurface }}
+                                />
+                            )}
                             <span>{tab.label}</span>
                             {tab.count !== null && (
                                 <span
@@ -743,7 +892,7 @@ export function ServerMenu({
                     <button
                         type="button"
                         onClick={() => { playClick(); setIsExploreJoinedExpanded(!isExploreJoinedExpanded); }}
-                        className="h-10 pl-3.5 pr-2 rounded-full flex items-center gap-2 text-sm font-semibold select-none shrink-0 transition hover:brightness-105"
+                        className="pressable h-10 pl-3.5 pr-2 rounded-full flex items-center gap-2 text-sm font-semibold select-none shrink-0 hover:brightness-105"
                         style={isExploreJoinedExpanded
                             ? { backgroundColor: colors.secondary, color: "#111" }
                             : { backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
@@ -763,8 +912,8 @@ export function ServerMenu({
 
             <button
                 type="button"
-                onClick={() => { playClick(); fetchInstances(); }}
-                className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center transition hover:brightness-95 active:scale-95"
+                onClick={() => { playClick(); setTimestamp(bumpImageStamp()); fetchInstances(); }}
+                className="pressable w-10 h-10 shrink-0 rounded-full flex items-center justify-center hover:brightness-95"
                 style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                 title={t('retry') || "Refresh"}
                 aria-label={t('retry') || "Refresh"}
@@ -778,7 +927,7 @@ export function ServerMenu({
                     setActiveTabState(activeTab === "join" ? "my" : "join");
                     setJoinKey("");
                 }}
-                className="h-10 px-4 shrink-0 rounded-full flex items-center gap-2 text-sm font-bold transition hover:brightness-105 active:scale-95"
+                className="pressable h-10 px-4 shrink-0 rounded-full flex items-center gap-2 text-sm font-bold hover:brightness-105"
                 style={activeTab === "join"
                     ? { backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }
                     : { backgroundColor: colors.secondary, color: "#111" }}
@@ -811,6 +960,8 @@ export function ServerMenu({
                     isPlaying={playingInstances.has(resolveLocalId(viewingInstance))}
                     isLaunching={launchingId === resolveLocalId(viewingInstance)}
                     isMember={joinedServers.some(s => s.id === viewingInstance.id)}
+                    address={getAddress(viewingInstance)?.address ?? null}
+                    ping={getPing(viewingInstance)}
                     colors={colors}
                     t={t}
                     getWithTimestamp={getWithTimestamp}
@@ -819,7 +970,7 @@ export function ServerMenu({
                 <div
                     ref={listRootRef}
                     className="-mx-6 -mt-3 -mb-6 relative flex min-h-[calc(100%+2.25rem)] flex-col pb-16 animate-fade-in"
-                    style={{ backgroundColor: colors.surface }}
+                    style={{ backgroundColor: hasAppBackground ? "transparent" : colors.surface }}
                 >
                     {/* Hero: the selected server's art runs under the title bar, with the controls floating on it. */}
                     {showHero && heroInstance ? (
@@ -979,14 +1130,16 @@ export function ServerMenu({
                                     <ServerCardRows instances={displayedInstances} selectedId={heroInstance?.id ?? null} {...cardHandlers} />
                                 )}
 
-                                {/* Live status of the listed servers (only those that answered a ping). */}
-                                {!showPublic && displayedInstances.some((inst: any) => !!pingById[inst.id]) && (
-                                    <section className="animate-fade-in">
-                                        <h3 className="mb-3 text-base font-bold" style={{ color: colors.onSurface }}>{t('online_players')}</h3>
+                                {/* Live status of the listed servers that have an address (cards skeleton until their first ping). */}
+                                {!showPublic && displayedInstances.some((inst: any) => !!getAddress(inst)) && (
+                                    <motion.section variants={m.fadeUp} {...m.states}>
+                                        <h3 className="mb-3 text-base font-bold" style={{ color: colors.onSurface }}>{t('server_status_title')}</h3>
                                         <ServerStatusStrip
                                             instances={displayedInstances}
+                                            getAddress={getAddress}
                                             getFlags={getFlags}
                                             getPing={getPing}
+                                            getWithTimestamp={getWithTimestamp}
                                             colors={colors}
                                             t={t}
                                             onPlay={handlePlayServer}
@@ -994,7 +1147,7 @@ export function ServerMenu({
                                             onJoin={handleJoinServer}
                                             onInstall={handleInstall}
                                         />
-                                    </section>
+                                    </motion.section>
                                 )}
                             </div>
                         )}

@@ -1,4 +1,5 @@
 import type { CSSProperties, Dispatch, SetStateAction } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 
 import { NotificationInbox } from "./ui/NotificationInbox";
 import { AppVersionBadge } from "./ui/AppVersionBadge";
@@ -9,6 +10,7 @@ import rIcon from "../assets/r.svg";
 import type { AuthSession, GameInstance, LauncherConfig } from "../types/launcher";
 import type { TranslationKey } from "../i18n/translations";
 import { playClick } from "../lib/sounds";
+import { useMotionPreset } from "../lib/motion";
 
 interface LauncherPalette {
   primary: string;
@@ -90,6 +92,7 @@ export function LauncherAppTitleBar({
   updateConfig,
   nav,
 }: LauncherAppTitleBarProps) {
+  const m = useMotionPreset();
   return (
     <header
       data-tauri-drag-region
@@ -255,13 +258,17 @@ export function LauncherAppTitleBar({
             </svg>
           </button>
 
+          <AnimatePresence>
           {accountDropdownOpen && (
-            <div
+            <motion.div
+              key="account-dropdown"
               className="absolute top-full right-0 mt-2 w-64 rounded-2xl shadow-xl p-4 z-50"
               style={{
                 backgroundColor: colors.surface,
                 border: `1px solid ${colors.outline}`,
               }}
+              variants={m.popover("bottom-end")}
+              {...m.states}
             >
               <p
                 className="text-xs font-medium mb-3"
@@ -447,8 +454,9 @@ export function LauncherAppTitleBar({
                   <span className="text-sm">{t("logout")}</span>
                 </button>
               </div>
-            </div>
+            </motion.div>
           )}
+          </AnimatePresence>
 
           {accountDropdownOpen && (
             <div

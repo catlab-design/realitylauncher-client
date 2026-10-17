@@ -136,7 +136,7 @@ export function AccountTab({
                             </div>
                             <button
                                 onClick={handleLogout}
-                                className={`${buttonClass} transition-all hover:bg-red-500/10`}
+                                className={`${buttonClass} hover:bg-red-500/10`}
                                 style={{ backgroundColor: "rgba(239,68,68,0.12)", borderColor: "rgba(239,68,68,0.35)", color: "#ef4444" }}
                             >
                                 <i className="fa-solid fa-right-from-bracket text-sm"></i>
@@ -314,7 +314,7 @@ export function AccountTab({
 
                 <button
                     onClick={() => setLoginDialogOpen(true)}
-                    className="w-full h-12 rounded-xl text-[15px] font-semibold border-2 border-dashed transition-all hover:brightness-110 flex items-center justify-center gap-2"
+                    className="w-full h-12 rounded-xl text-[15px] font-semibold border-2 border-dashed pressable hover:brightness-110 flex items-center justify-center gap-2"
                     style={{
                         borderColor: colors.secondary,
                         color: colors.secondary,

@@ -4,6 +4,8 @@ import type { ModrinthProject, InstallProgress } from "./types";
 import { formatNumber } from "./helpers";
 import { playClick } from "../../../lib/sounds";
 import { Icons } from "../../ui/Icons";
+import { AnimatePresence, motion } from "framer-motion";
+import { useMotionPreset } from "../../../lib/motion";
 
 interface ProjectCardProps {
     colors: any;
@@ -19,6 +21,7 @@ interface ProjectCardProps {
 export function ProjectCard({ colors, project, isActive, onClick, isInstalling, installProgress, layout = "grid" }: ProjectCardProps) {
     const [isHovered, setIsHovered] = useState(false);
     const { t } = useTranslation();
+    const m = useMotionPreset();
 
 
     // Accent used by the grid card's hover glow.
@@ -37,17 +40,19 @@ export function ProjectCard({ colors, project, isActive, onClick, isInstalling, 
                     backgroundColor: isActive ? colors.surfaceContainerHighest : isHovered ? colors.surfaceContainer : "transparent",
                 }}
             >
+                <AnimatePresence>
                 {isInstalling && (
-                    <div className="absolute inset-0 z-20 flex items-center justify-center gap-3 bg-black/45 backdrop-blur-[2px]">
+                    <motion.div key="installing" variants={m.fadeIn} {...m.states} className="absolute inset-0 z-20 flex items-center justify-center gap-3 bg-black/45 backdrop-blur-[2px]">
                         <i className="fa-solid fa-spinner fa-spin text-lg" style={{ color: colors.secondary }}></i>
                         <span className="text-sm font-semibold text-white">{installProgress?.message || "Installing..."}</span>
                         {installProgress?.percent !== undefined && (
                             <div className="w-28 h-1.5 rounded-full overflow-hidden bg-white/20">
-                                <div className="h-full transition-all duration-300" style={{ width: `${installProgress.percent}%`, backgroundColor: colors.secondary }} />
+                                <div className="h-full w-full rounded-full transition-transform duration-300 ease-out" style={{ transform: `translateX(${Math.min(100, Math.max(0, installProgress.percent)) - 100}%)`, backgroundColor: colors.secondary }} />
                             </div>
                         )}
-                    </div>
+                    </motion.div>
                 )}
+                </AnimatePresence>
 
                 <div className="flex items-center gap-4 px-3 py-3 min-h-20">
                     <div className="w-14 h-14 rounded-xl shrink-0 overflow-hidden" style={{ backgroundColor: colors.surfaceContainerHighest }}>
@@ -89,16 +94,15 @@ export function ProjectCard({ colors, project, isActive, onClick, isInstalling, 
     }
 
     return (
-        <button
+        <motion.button
+            {...(isActive ? { whileTap: m.hoverLift.whileTap } : m.hoverLift)}
             onClick={() => { playClick(); onClick(); }}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
-            className="group relative w-full text-left rounded-2xl overflow-hidden transition-all duration-200"
+            className="group relative w-full text-left rounded-2xl overflow-hidden transition-[background-color,box-shadow] duration-200"
             style={{
                 backgroundColor: isActive ? colors.surfaceContainerHighest : colors.surfaceContainer,
                 boxShadow: isActive ? `inset 0 0 0 2px ${colors.secondary}` : "none",
-                transform: isHovered && !isActive ? "translateY(-2px)" : "none",
-                willChange: "transform",
             }}
         >
             <div
@@ -108,8 +112,9 @@ export function ProjectCard({ colors, project, isActive, onClick, isInstalling, 
                 }}
             />
 
+            <AnimatePresence>
             {isInstalling && (
-                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/40 backdrop-blur-[2px]">
+                <motion.div key="installing" variants={m.fadeIn} {...m.states} className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/40 backdrop-blur-[2px]">
                     <div className="flex flex-col items-center gap-2 p-3 rounded-lg"
                          style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}30` }}>
                         <i className="fa-solid fa-spinner fa-spin text-lg" style={{ color: colors.secondary }}></i>
@@ -119,17 +124,18 @@ export function ProjectCard({ colors, project, isActive, onClick, isInstalling, 
                         {installProgress?.percent !== undefined && (
                             <div className="w-24 h-1 rounded-full overflow-hidden" style={{ backgroundColor: `${colors.onSurface}10` }}>
                                 <div
-                                    className="h-full transition-all duration-300"
+                                    className="h-full w-full rounded-full transition-transform duration-300 ease-out"
                                     style={{
-                                        width: `${installProgress.percent}%`,
+                                        transform: `translateX(${Math.min(100, Math.max(0, installProgress.percent)) - 100}%)`,
                                         backgroundColor: colors.secondary
                                     }}
                                 />
                             </div>
                         )}
                     </div>
-                </div>
+                </motion.div>
             )}
+            </AnimatePresence>
 
             <div className="p-4 flex items-start gap-4 relative z-10">
                 <div
@@ -178,6 +184,6 @@ export function ProjectCard({ colors, project, isActive, onClick, isInstalling, 
                     </div>
                 </div>
             </div>
-        </button>
+        </motion.button>
     );
 }

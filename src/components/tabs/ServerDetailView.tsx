@@ -1,9 +1,14 @@
 import React from "react";
+import { motion } from "framer-motion";
 import { Icons } from "../ui/Icons";
 import { playClick } from "../../lib/sounds";
+import { useMotionPreset } from "../../lib/motion";
 import { useUiStore } from "../../store/uiStore";
 import appBanner from "../../assets/banner.png";
 import { ServerSocialButtons, StoryReaderModal, useServerStory } from "./serverStory";
+import { GalleryLightbox, ServerGalleryStrip, normalizeGallery } from "./ServerGallery";
+import type { ServerPing } from "./ServerItem";
+import { VerifiedBadge } from "../ui/VerifiedBadge";
 
 interface ServerDetailViewProps {
     instance: any;
@@ -16,6 +21,10 @@ interface ServerDetailViewProps {
     isPlaying: boolean;
     isLaunching: boolean;
     isMember: boolean;
+    /** Server address to show (falls back to instance.address). */
+    address?: string | null;
+    /** Live status ping; adds a players chip when the server is online. */
+    ping?: ServerPing;
     colors: any;
     t: (key: any) => string;
     getWithTimestamp: (url: string | null | undefined) => string;
@@ -33,18 +42,22 @@ export function ServerDetailView({
     isPlaying,
     isLaunching,
     isMember,
+    address: addressProp,
+    ping,
     colors,
     t,
     getWithTimestamp,
     onViewLogs,
 }: ServerDetailViewProps) {
+    const m = useMotionPreset();
     const heroImage = instance.bannerUrl || instance.image || instance.iconUrl;
     const isActive = isPlaying || isLaunching;
+    const address: string | null = instance.address || addressProp || null;
 
     const [addressCopied, setAddressCopied] = React.useState(false);
     const copyAddress = () => {
-        if (!instance.address) return;
-        navigator.clipboard?.writeText(instance.address).then(() => {
+        if (!address) return;
+        navigator.clipboard?.writeText(address).then(() => {
             setAddressCopied(true);
             setTimeout(() => setAddressCopied(false), 1500);
         });
@@ -61,16 +74,31 @@ export function ServerDetailView({
 
     const [storyOpen, setStoryOpen] = React.useState(false);
     const closeStory = React.useCallback(() => setStoryOpen(false), []);
+    // Gallery thumbnail clicked: open the reader on that image.
+    const [storyGalleryIndex, setStoryGalleryIndex] = React.useState<number | null>(null);
+    const openStoryAt = React.useCallback((index: number | null) => { setStoryGalleryIndex(index); setStoryOpen(true); }, []);
     const { source: storySource, hasStory, headline: storyHeadline, excerpt: storyExcerpt } = useServerStory(instance);
+
+    // Gallery: thumbnails above the action row; the banner stays the hero art.
+    const gallery = React.useMemo(() => normalizeGallery(instance.gallery), [instance.gallery]);
+    const [lightboxIndex, setLightboxIndex] = React.useState<number | null>(null);
+    const closeLightbox = React.useCallback(() => setLightboxIndex(null), []);
+    React.useEffect(() => { setLightboxIndex(null); }, [instance.id]);
 
     const glass = "bg-black/45 backdrop-blur-xl";
     const chip = `h-9 px-3.5 rounded-full flex items-center gap-2 text-sm font-semibold text-white ${glass}`;
 
     return (
         // Bleed past <main>'s padding so the art runs edge to edge.
-        <div className="-mx-6 -mt-3 -mb-6 relative h-[calc(100%+2.25rem)] overflow-hidden animate-fade-in z-10" style={{ backgroundColor: "#000" }}>
+        <motion.div
+            className="-mx-6 -mt-3 -mb-6 relative h-[calc(100%+2.25rem)] overflow-hidden z-10"
+            style={{ backgroundColor: "#000" }}
+            variants={m.staggerContainer(0.06)}
+            {...m.states}
+        >
             {/* Backdrop */}
-            <img
+            <motion.img
+                variants={m.fadeIn}
                 src={heroImage ? getWithTimestamp(heroImage) : appBanner}
                 alt=""
                 aria-hidden="true"
@@ -81,13 +109,13 @@ export function ServerDetailView({
             <div className="absolute inset-0 bg-linear-to-r from-black/30 via-transparent to-transparent" />
 
             {/* Top-left: back + identity */}
-            <div className="absolute top-15 left-6 right-6 z-10">
+            <motion.div variants={m.slideIn("left", 12)} className="absolute top-15 left-6 right-6 z-10">
                 <div className="flex items-center gap-4 min-w-0">
                     <button
                         type="button"
                         onClick={() => { playClick(); onBack(); }}
                         aria-label={t("back")}
-                        className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 text-white transition hover:bg-black/70 active:scale-95 ${glass}`}
+                        className={`pressable w-11 h-11 rounded-full flex items-center justify-center shrink-0 text-white hover:bg-black/70 ${glass}`}
                     >
                         <Icons.ArrowLeft className="w-5 h-5" />
                     </button>
@@ -104,8 +132,9 @@ export function ServerDetailView({
                     )}
                     <div className="min-w-0">
                         <div className="flex items-center gap-3 flex-wrap">
-                            <h1 className="font-display text-3xl md:text-4xl text-white leading-tight truncate drop-shadow-lg">
-                                {instance.name}
+                            <h1 className="flex min-w-0 items-center gap-2.5 font-display text-3xl md:text-4xl text-white leading-tight drop-shadow-lg">
+                                <span className="truncate">{instance.name}</span>
+                                <VerifiedBadge verification={instance.verification} size="lg" label />
                             </h1>
                             {instance.modpack && (
                                 <div className={chip}>
@@ -113,25 +142,31 @@ export function ServerDetailView({
                                     {instance.modpack}
                                 </div>
                             )}
-                            {instance.address && (
+                            {address && (
                                 <button
                                     type="button"
                                     onClick={() => { playClick(); copyAddress(); }}
                                     title={t("copy") || "Copy"}
-                                    className={`${chip} font-mono transition hover:bg-black/70 active:scale-[0.98]`}
+                                    className={`${chip} pressable font-mono hover:bg-black/70`}
                                 >
                                     <Icons.Dns className="w-4 h-4" />
-                                    {instance.address}
+                                    {address}
                                     {addressCopied ? <Icons.Check className="w-4 h-4 text-emerald-400" /> : <Icons.Copy className="w-4 h-4 text-white/60" />}
                                 </button>
+                            )}
+                            {ping && (
+                                <motion.div variants={m.scaleIn} initial="hidden" animate="show" className={`${chip} tabular-nums`} title={ping.online ? t("online_players") : t("server_offline")}>
+                                    <span className={`w-2 h-2 rounded-full ${ping.online ? "bg-[#22c55e]" : "bg-[#ef4444]"}`} />
+                                    {ping.online && ping.players ? `${ping.players.online}/${ping.players.max}` : t("server_offline")}
+                                </motion.div>
                             )}
                         </div>
                     </div>
                 </div>
-            </div>
+            </motion.div>
 
             {/* Bottom-left: a short teaser; the full story opens in a reader so the art stays clear. */}
-            <div className="absolute left-8 bottom-8 z-10 w-[min(36rem,calc(100%-30rem))] drop-shadow-[0_1px_3px_rgba(0,0,0,0.85)]">
+            <motion.div variants={m.fadeUp} className="absolute left-8 bottom-8 z-10 w-[min(36rem,calc(100%-30rem))] drop-shadow-[0_1px_3px_rgba(0,0,0,0.85)]">
                 {storyHeadline && (
                     <p className="font-display text-2xl leading-snug text-white line-clamp-2">{storyHeadline}</p>
                 )}
@@ -141,46 +176,54 @@ export function ServerDetailView({
                 {hasStory && (
                     <button
                         type="button"
-                        onClick={() => { playClick(); setStoryOpen(true); }}
-                        className={`mt-4 h-10 px-4 rounded-full flex items-center gap-2 text-sm font-semibold text-white transition hover:bg-black/70 ${glass}`}
+                        onClick={() => { playClick(); openStoryAt(null); }}
+                        className={`pressable mt-4 h-10 px-4 rounded-full flex items-center gap-2 text-sm font-semibold text-white hover:bg-black/70 ${glass}`}
                     >
                         {t("read_more")}
                         <Icons.ChevronRight className="w-4 h-4" />
                     </button>
                 )}
-            </div>
+                {/* Gallery thumbnails under the description (hidden when empty). */}
+                {gallery.length > 0 && (
+                    <div className="mt-5">
+                        <ServerGalleryStrip images={gallery} onOpen={openStoryAt} t={t} />
+                    </div>
+                )}
+            </motion.div>
 
             {/* Bottom-right: the one action */}
-            <div className="absolute right-6 bottom-6 z-10 flex items-center gap-3">
+            <motion.div variants={m.fadeUp} className="absolute right-6 bottom-6 z-10 flex items-center gap-3">
                 <ServerSocialButtons socials={instance.socials} websiteUrl={instance.websiteUrl} />
                 {!isMember ? (
-                    <button
+                    <motion.button
                         type="button"
+                        {...m.hoverScale}
                         onClick={(e) => { e.stopPropagation(); playClick(); onJoin(instance); }}
-                        className="h-14 px-9 rounded-full flex items-center justify-center gap-2.5 text-lg font-bold shadow-xl transition hover:brightness-105 active:scale-[0.97]"
+                        className="h-14 px-9 rounded-full flex items-center justify-center gap-2.5 text-lg font-bold shadow-xl hover:brightness-105"
                         style={{ backgroundColor: colors.secondary, color: "#111" }}
                     >
                         <Icons.UserPlus className="w-5 h-5" />
                         {t("join")}
-                    </button>
+                    </motion.button>
                 ) : isInstalled ? (
                     <>
                         <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); playClick(); onViewLogs(e, instance); }}
-                            className="w-14 h-14 rounded-full flex items-center justify-center text-white shadow-xl transition hover:bg-black/70 active:scale-95 bg-black/50 backdrop-blur-xl"
+                            className="pressable w-14 h-14 rounded-full flex items-center justify-center text-white shadow-xl hover:bg-black/70 bg-black/50 backdrop-blur-xl"
                             title={t("logs")}
                         >
                             <Icons.Terminal className="w-5 h-5" />
                         </button>
-                        <button
+                        <motion.button
                             type="button"
+                            {...m.hoverScale}
                             onClick={(e) => {
                                 e.stopPropagation();
                                 playClick();
                                 isActive ? onStop(e, instance.storagePath || instance.id) : onPlay(e, instance);
                             }}
-                            className="h-14 px-9 rounded-full flex items-center justify-center gap-2.5 text-lg font-bold shadow-xl transition hover:brightness-105 active:scale-[0.97]"
+                            className="h-14 px-9 rounded-full flex items-center justify-center gap-2.5 text-lg font-bold shadow-xl hover:brightness-105"
                             style={isActive ? { backgroundColor: colors.error || "#ef4444", color: "#fff" } : { backgroundColor: colors.secondary, color: "#111" }}
                         >
                             {isLaunching ? (
@@ -199,29 +242,41 @@ export function ServerDetailView({
                                     {t("play")}
                                 </>
                             )}
-                        </button>
+                        </motion.button>
                     </>
                 ) : (
-                    <button
+                    <motion.button
                         type="button"
+                        {...m.hoverScale}
                         onClick={(e) => { e.stopPropagation(); playClick(); onInstall(e, instance); }}
-                        className="h-14 px-9 rounded-full flex items-center justify-center gap-2.5 text-lg font-bold shadow-xl transition hover:brightness-105 active:scale-[0.97]"
+                        className="h-14 px-9 rounded-full flex items-center justify-center gap-2.5 text-lg font-bold shadow-xl hover:brightness-105"
                         style={{ backgroundColor: colors.secondary, color: "#111" }}
                     >
                         <Icons.Download className="w-5 h-5" />
                         {t("install")}
-                    </button>
+                    </motion.button>
                 )}
-            </div>
+            </motion.div>
+
+            <GalleryLightbox
+                images={gallery}
+                index={lightboxIndex}
+                onIndexChange={setLightboxIndex}
+                onClose={closeLightbox}
+                t={t}
+            />
 
             <StoryReaderModal
                 open={storyOpen}
                 onClose={closeStory}
+                initialGalleryIndex={storyGalleryIndex}
                 title={instance.name}
                 source={storySource}
                 t={t}
+                imageUrl={heroImage ? getWithTimestamp(heroImage) : appBanner}
+                images={gallery}
             />
-        </div>
+        </motion.div>
     );
 }
 

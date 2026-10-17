@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 
 import { toast } from "react-hot-toast";
+import { AnimatePresence, motion } from "framer-motion";
 
 import { ChangelogModal } from "./ui/ChangelogModal";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
@@ -9,6 +10,7 @@ import { CatIDLoginModal } from "./auth/CatIDLoginModal";
 import { MicrosoftVerificationModal } from "./auth/MicrosoftVerificationModal";
 import { MCHead } from "./ui/MCHead";
 import { Icons } from "./ui/Icons";
+import { useMotionPreset } from "../lib/motion";
 import type { AuthSession } from "../types/launcher";
 import type { TranslationKey } from "../i18n/translations";
 import { playClick } from "../lib/sounds";
@@ -183,6 +185,8 @@ export function LauncherAppOverlays({
   isDragging,
   setIsDragging,
 }: LauncherAppOverlaysProps) {
+  const m = useMotionPreset();
+
   return (
     <>
       <ChangelogModal
@@ -265,11 +269,13 @@ export function LauncherAppOverlays({
         colors={colors}
       />
 
+      <AnimatePresence>
       {catIDRegisterOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5 animate-in fade-in duration-300">
-          <div
+        <motion.div key="catid-register" className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5" variants={m.modal.backdrop} {...m.states}>
+          <motion.div
             className="flex w-full max-w-[520px] flex-col overflow-hidden rounded-3xl shadow-2xl"
             style={{ backgroundColor: colors.surface }}
+            variants={m.modal.panel}
           >
             <div className="flex items-start justify-between gap-4 px-8 pt-8 pb-2">
               <div>
@@ -407,15 +413,18 @@ export function LauncherAppOverlays({
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
+      <AnimatePresence>
       {verificationWaiting && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5 animate-in fade-in duration-300">
-          <div
+        <motion.div key="verification-waiting" className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5" variants={m.modal.backdrop} {...m.states}>
+          <motion.div
             className="flex w-full max-w-[480px] flex-col overflow-hidden rounded-2xl border border-white/10"
             style={{ backgroundColor: colors.surface }}
+            variants={m.modal.panel}
           >
             
             <div
@@ -505,15 +514,18 @@ export function LauncherAppOverlays({
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
+      <AnimatePresence>
       {forgotPasswordOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5 animate-in fade-in duration-300">
-          <div
+        <motion.div key="forgot-password" className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5" variants={m.modal.backdrop} {...m.states}>
+          <motion.div
             className="flex w-full max-w-[480px] flex-col overflow-hidden rounded-2xl border border-white/10"
             style={{ backgroundColor: colors.surface }}
+            variants={m.modal.panel}
           >
             
             <div
@@ -769,15 +781,18 @@ export function LauncherAppOverlays({
                 </>
               )}
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
+      <AnimatePresence>
       {linkCatIDOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5 animate-in fade-in duration-300">
-          <div
+        <motion.div key="link-catid" className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5" variants={m.modal.backdrop} {...m.states}>
+          <motion.div
             className="flex w-full max-w-[520px] flex-col overflow-hidden rounded-3xl shadow-2xl"
             style={{ backgroundColor: colors.surface }}
+            variants={m.modal.panel}
           >
             <div className="flex items-start justify-between gap-4 px-8 pt-8 pb-2">
               <div>
@@ -875,15 +890,18 @@ export function LauncherAppOverlays({
                 {t("connect_now")}
               </button>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
+      <AnimatePresence>
       {accountManagerOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5 animate-in fade-in duration-300">
-          <div
+        <motion.div key="account-manager" className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5" variants={m.modal.backdrop} {...m.states}>
+          <motion.div
             className="flex w-full max-w-[540px] flex-col overflow-hidden rounded-2xl border border-white/10"
             style={{ backgroundColor: colors.surface }}
+            variants={m.modal.panel}
           >
             
             <div
@@ -1026,15 +1044,18 @@ export function LauncherAppOverlays({
                 {t("back_to_main")}
               </button>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
+      <AnimatePresence>
       {importModpackOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5 animate-in fade-in duration-300">
-          <div
+        <motion.div key="import-modpack" className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5" variants={m.modal.backdrop} {...m.states}>
+          <motion.div
             className="flex w-full max-w-[540px] flex-col overflow-hidden rounded-2xl border border-white/10"
             style={{ backgroundColor: colors.surface }}
+            variants={m.modal.panel}
           >
             
             <div
@@ -1243,9 +1264,10 @@ export function LauncherAppOverlays({
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </>
   );
 }

@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import gsap from "gsap";
 import { toast } from "react-hot-toast";
+import { MotionConfig } from "framer-motion";
 
 import { LoadingScreen } from "./ui/LoadingScreen";
 import { ErrorBoundary as UIErrorBoundary } from "./ui/ErrorBoundary";
@@ -23,9 +24,14 @@ import {
   shouldAutoOpenFirstRunLoginPrompt,
 } from "../lib/firstRunOnboarding";
 
+/** Seconds before an auto-downloaded update restarts the launcher into the new version. */
+const AUTO_INSTALL_COUNTDOWN_S = 15;
+const UPDATE_RECHECK_MS = 30 * 60 * 1000;
+
 function LauncherAppContent() {
   const rootRef = useRef<HTMLDivElement>(null);
   const autoUpdateVersionRef = useRef<string | null>(null);
+  const autoInstallVersionRef = useRef<string | null>(null);
 
   const config = useConfigStore();
   const {
@@ -247,17 +253,81 @@ function LauncherAppContent() {
 
     if (windowApi?.onUpdateDownloaded) {
       cleanups.push(windowApi.onUpdateDownloaded((data: { version: string }) => {
-        if (config.autoUpdateEnabled) {
-          toast.success(t('update_ready_next_restart').replace('{version}', data.version), {
-            duration: 8000,
-            id: "global-update-downloaded",
-          });
-        }
+        if (!config.autoUpdateEnabled) return;
+        if (autoInstallVersionRef.current === data.version) return;
+        autoInstallVersionRef.current = data.version;
+        void startAutoInstall(data.version);
       }));
     }
 
     return () => cleanups.forEach(fn => fn());
   }, [config.autoUpdateEnabled, config.language]);
+
+  // Auto-update: once the new version is downloaded, restart into it after a short countdown
+  // (the user can say "later"). While a game is running, or after "later", it installs
+  // silently when the launcher closes instead.
+  const startAutoInstall = async (version: string) => {
+    const windowApi = (window as any).api;
+    const deferToExit = () => {
+      void windowApi?.setInstallUpdateOnExit?.(true);
+      toast.success(t('update_ready_next_restart').replace('{version}', version), {
+        duration: 8000,
+        id: "global-update-downloaded",
+      });
+    };
+    if (await windowApi?.isGameRunning?.().catch(() => false)) {
+      deferToExit();
+      return;
+    }
+    let seconds = AUTO_INSTALL_COUNTDOWN_S;
+    let cancelled = false;
+    const render = () =>
+      toast(
+        (tt) => (
+          <div className="flex items-center gap-3">
+            <span className="text-sm">
+              {t('update_auto_restart_in').replace('{version}', version).replace('{seconds}', String(seconds))}
+            </span>
+            <button
+              type="button"
+              className="h-8 px-3 rounded-full text-xs font-bold text-[#111] shrink-0"
+              style={{ backgroundColor: colors.secondary }}
+              onClick={() => { cancelled = true; clearInterval(timer); toast.dismiss(tt.id); void windowApi?.installUpdate?.(true); }}
+            >
+              {t('update_restart_now')}
+            </button>
+            <button
+              type="button"
+              className="h-8 px-3 rounded-full text-xs font-semibold opacity-70 hover:opacity-100 shrink-0"
+              onClick={() => { cancelled = true; clearInterval(timer); toast.dismiss(tt.id); deferToExit(); }}
+            >
+              {t('update_later')}
+            </button>
+          </div>
+        ),
+        { id: "global-update-restart", duration: Infinity, icon: "\u2b06\ufe0f" },
+      );
+    render();
+    const timer = setInterval(async () => {
+      if (cancelled) return;
+      seconds -= 1;
+      if (seconds > 0) { render(); return; }
+      clearInterval(timer);
+      toast.dismiss("global-update-restart");
+      // A game may have started during the countdown.
+      if (await windowApi?.isGameRunning?.().catch(() => false)) deferToExit();
+      else void windowApi?.installUpdate?.(true);
+    }, 1000);
+  };
+
+  // Re-check periodically so a launcher left open still picks up new releases.
+  useEffect(() => {
+    if (!config.autoUpdateEnabled) return;
+    const id = setInterval(() => {
+      void (window as any).api?.checkLatestVersion?.().catch(() => {});
+    }, UPDATE_RECHECK_MS);
+    return () => clearInterval(id);
+  }, [config.autoUpdateEnabled]);
 
   const [servers] = useState<Server[]>([]);
   const [news] = useState<NewsItem[]>([]);
@@ -742,7 +812,12 @@ function LauncherAppContent() {
   }, [deviceCodePolling, deviceCodeData, isLinkingMicrosoft]);
 
   const updateConfig = async (newConfig: Partial<LauncherConfig>) => {
-    config.setConfig(newConfig);
+    // A local-store failure (e.g. storage quota) must never stop the save to disk below.
+    try {
+      config.setConfig(newConfig);
+    } catch (error) {
+      console.error("[Config] Local store update failed:", error);
+    }
 
     try {
       if (window.api?.setConfig) {
@@ -1323,7 +1398,11 @@ function LauncherAppContent() {
 export default function LauncherApp() {
   return (
     <UIErrorBoundary>
-      <LauncherAppContent />
+      {/* "user": honour the OS reduce-motion setting app-wide (transforms/layout become
+          instant, opacity fades stay). useMotionPreset() reads this same config. */}
+      <MotionConfig reducedMotion="user">
+        <LauncherAppContent />
+      </MotionConfig>
     </UIErrorBoundary>
   );
 }

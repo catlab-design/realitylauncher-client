@@ -1,9 +1,15 @@
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
+import { motion } from "framer-motion";
+import { SPRING, useMotionPreset } from "../../../lib/motion";
 
 /**
  * Shared building blocks for the settings tabs, so every tab has the same
  * rhythm: a page title, grouped sections, and one rounded card per setting
  * with a readable title/description on the left and its control on the right.
+ *
+ * Motion: when a section mounts, the page staggers its blocks and each section
+ * staggers its rows (fade + 8px rise). Sections themselves don't move, so rows
+ * never stack two offsets. Everything is quick and reduced-motion aware.
  */
 
 type Colors = any;
@@ -14,16 +20,17 @@ export function SettingsPage({ title, description, colors, children }: {
     colors: Colors;
     children: ReactNode;
 }) {
+    const m = useMotionPreset();
     return (
-        <div className="space-y-8 pb-4">
-            <header>
+        <motion.div className="space-y-8 pb-4" variants={m.staggerContainer(0.05)} initial="hidden" animate="show">
+            <motion.header variants={m.fadeUp}>
                 <h3 className="font-display text-2xl" style={{ color: colors.onSurface }}>{title}</h3>
                 {description && (
                     <p className="text-[15px] mt-1.5" style={{ color: colors.onSurfaceVariant }}>{description}</p>
                 )}
-            </header>
+            </motion.header>
             {children}
-        </div>
+        </motion.div>
     );
 }
 
@@ -34,19 +41,20 @@ export function SettingsSection({ title, description, colors, action, children }
     action?: ReactNode;
     children: ReactNode;
 }) {
+    const m = useMotionPreset();
     return (
-        <section>
+        <motion.section variants={m.staggerContainer(0.03)}>
             {(title || action) && (
-                <div className="flex items-end justify-between gap-4 mb-3 px-1">
+                <motion.div variants={m.fadeUp} className="flex items-end justify-between gap-4 mb-3 px-1">
                     <div>
                         {title && <h4 className="text-base font-bold" style={{ color: colors.onSurface }}>{title}</h4>}
                         {description && <p className="text-sm mt-0.5" style={{ color: colors.onSurfaceVariant }}>{description}</p>}
                     </div>
                     {action}
-                </div>
+                </motion.div>
             )}
             <div className="space-y-2.5">{children}</div>
-        </section>
+        </motion.section>
     );
 }
 
@@ -60,10 +68,12 @@ export function SettingsRow({ title, description, colors, children, below, dange
     danger?: boolean;
     icon?: ReactNode;
 }) {
+    const m = useMotionPreset();
     return (
-        <div
+        <motion.div
             className="rounded-xl px-5 py-4"
             style={{ backgroundColor: danger ? "rgba(239,68,68,0.08)" : colors.surfaceContainer }}
+            variants={m.fadeUp}
         >
             <div className="flex items-center justify-between gap-6">
                 <div className="flex items-center gap-3.5 min-w-0">
@@ -85,7 +95,7 @@ export function SettingsRow({ title, description, colors, children, below, dange
                 {children && <div className="shrink-0 flex items-center gap-2">{children}</div>}
             </div>
             {below && <div className="mt-4">{below}</div>}
-        </div>
+        </motion.div>
     );
 }
 
@@ -96,8 +106,9 @@ export function Toggle({ checked, onChange, colors, disabled, label }: {
     disabled?: boolean;
     label?: string;
 }) {
+    const m = useMotionPreset();
     return (
-        <button
+        <motion.button
             type="button"
             role="switch"
             aria-checked={checked}
@@ -106,12 +117,17 @@ export function Toggle({ checked, onChange, colors, disabled, label }: {
             onClick={() => onChange(!checked)}
             className="relative w-12 h-7 rounded-full transition-colors duration-200 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ backgroundColor: checked ? colors.secondary : colors.outline }}
+            whileTap={disabled ? undefined : m.pressable.whileTap}
         >
-            <span
-                className="absolute top-1 left-1 w-5 h-5 rounded-full shadow transition-transform duration-200"
-                style={{ transform: checked ? "translateX(20px)" : "translateX(0)", backgroundColor: checked ? "#111" : "#fff" }}
+            {/* Spring thumb; the slight stretch on press reads as a physical switch. */}
+            <motion.span
+                className="absolute top-1 left-1 w-5 h-5 rounded-full shadow transition-colors duration-200"
+                style={{ backgroundColor: checked ? "#111" : "#fff" }}
+                initial={false}
+                animate={{ x: checked ? 20 : 0 }}
+                transition={m.reduced ? { duration: 0 } : SPRING.snappy}
             />
-        </button>
+        </motion.button>
     );
 }
 
@@ -122,8 +138,11 @@ export function Segmented<V extends string>({ value, options, onChange, colors }
     onChange: (value: V) => void;
     colors: Colors;
 }) {
+    const m = useMotionPreset();
+    // One sliding pill per Segmented instance (unique layoutId so groups never share it).
+    const pillId = `settings-segmented-${useId()}`;
     return (
-        <div className="inline-flex p-1 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHighest }}>
+        <div className="isolate inline-flex p-1 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHighest }}>
             {options.map((option) => {
                 const active = option.value === value;
                 return (
@@ -131,10 +150,18 @@ export function Segmented<V extends string>({ value, options, onChange, colors }
                         key={option.value}
                         type="button"
                         onClick={() => onChange(option.value)}
-                        className="h-9 px-4 rounded-md text-sm font-semibold transition-colors whitespace-nowrap"
-                        style={active ? { backgroundColor: colors.secondary, color: "#111" } : { color: colors.onSurfaceVariant }}
+                        className="relative h-9 px-4 rounded-md text-sm font-semibold transition-colors whitespace-nowrap"
+                        style={{ color: active ? "#111" : colors.onSurfaceVariant }}
                     >
-                        {option.label}
+                        {active && (
+                            <motion.span
+                                layoutId={pillId}
+                                transition={m.tabIndicator}
+                                className="absolute inset-0 z-1 rounded-md"
+                                style={{ backgroundColor: colors.secondary }}
+                            />
+                        )}
+                        <span className="relative z-2">{option.label}</span>
                     </button>
                 );
             })}
@@ -151,7 +178,7 @@ export const fieldStyle = (colors: Colors) => ({
 });
 
 /** Secondary button used inside rows (Browse, Open folder, …). */
-export const buttonClass = "h-10 px-4 rounded-lg border text-sm font-semibold transition hover:brightness-110 inline-flex items-center gap-2 whitespace-nowrap disabled:opacity-50";
+export const buttonClass = "h-10 px-4 rounded-lg border text-sm font-semibold transition hover:brightness-110 active:scale-97 disabled:active:scale-100 inline-flex items-center gap-2 whitespace-nowrap disabled:opacity-50";
 export const buttonStyle = (colors: Colors) => ({
     backgroundColor: colors.surfaceContainerHighest,
     borderColor: "transparent",

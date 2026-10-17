@@ -423,6 +423,25 @@ declare global {
         requiresRelogin?: boolean;
         error?: string;
       }>;
+      /** Minecraft server-list status ping (src-tauri social::server_ping). */
+      serverPing: (host: string, port?: number) => Promise<{
+        online: boolean;
+        host: string;
+        port: number;
+        players: { online: number; max: number; sample?: string[] } | null;
+        /** Plain-text MOTD. */
+        motd: string | null;
+        /** Raw `description`: legacy section-sign string or chat component JSON. */
+        motdRaw?: unknown;
+        latency: number | null;
+        version: string | null;
+        protocol?: number | null;
+        /** data:image/png;base64,... */
+        favicon: string | null;
+        error: string | null;
+      }>;
+      /** Entries of the instance's in-game multiplayer list (servers.dat), in order. */
+      instanceSavedServers: (instanceId: string) => Promise<Array<{ name: string; ip: string; icon: string | null }>>;
       catskincGetConfig: (gameDirectory?: string) => Promise<{ ok: boolean; configured: boolean; ip: string }>;
       catskincGetSelectedSkin: (gameDirectory?: string) => Promise<{
         ok: boolean;
@@ -724,7 +743,8 @@ declare global {
       isDevMode: () => Promise<boolean>;
       checkForUpdates: () => Promise<void>;
       downloadUpdate: () => Promise<void>;
-      installUpdate: () => Promise<void>;
+      installUpdate: (auto?: boolean) => Promise<void>;
+      setInstallUpdateOnExit: (enabled: boolean) => Promise<void>;
       getAppVersion: () => Promise<string>;
       checkLatestVersion: () => Promise<{
         ok: boolean;

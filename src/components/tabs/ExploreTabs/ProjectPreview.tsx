@@ -5,6 +5,8 @@ import { formatNumber } from "./helpers";
 import { ImagePreviewModal } from "./ImagePreviewModal";
 import bannerImage from "../../../assets/banner.png";
 import { Icons } from "../../ui/Icons";
+import { AnimatePresence, motion } from "framer-motion";
+import { useMotionPreset } from "../../../lib/motion";
 
 interface ProjectPreviewProps {
     colors: any;
@@ -16,6 +18,13 @@ interface ProjectPreviewProps {
     onAddToInstance: (project: ModrinthProject) => void;
     isLoading?: boolean;
     showFollows?: boolean;
+    /** Overrides the install button label (e.g. "Install to <instance>"). */
+    actionLabel?: string;
+    /** Already present in the target instance: shows an "Installed" state instead of the button. */
+    isInstalled?: boolean;
+    /** When set, the action can't run here: shows this message instead of the button. */
+    blockedLabel?: string;
+    actionDisabled?: boolean;
 }
 
 export function ProjectPreview({
@@ -28,8 +37,13 @@ export function ProjectPreview({
     onAddToInstance,
     isLoading = false,
     showFollows = true,
+    actionLabel,
+    isInstalled = false,
+    blockedLabel,
+    actionDisabled = false,
 }: ProjectPreviewProps) {
     const { t } = useTranslation();
+    const m = useMotionPreset();
     const [selectedImageIndex, setSelectedImageIndex] = React.useState<number | null>(null);
 
     React.useEffect(() => {
@@ -89,7 +103,7 @@ export function ProjectPreview({
 
     if (!project) {
         return (
-            <div className="h-full rounded-2xl flex flex-col items-center justify-center p-8 text-center sticky top-4 min-h-[400px]"
+            <motion.div variants={m.fadeIn} {...m.states} className="h-full rounded-2xl flex flex-col items-center justify-center p-8 text-center sticky top-4 min-h-[400px]"
                 style={{
                     backgroundColor: `${colors.surfaceContainer}40`,
                     border: `1px solid ${colors.outline}10`,
@@ -103,7 +117,7 @@ export function ProjectPreview({
                 <p className="text-sm opacity-60 max-w-[240px]" style={{ color: colors.onSurfaceVariant }}>
                     {t('click_card_left_to_view')}
                 </p>
-            </div>
+            </motion.div>
         );
     }
 
@@ -128,8 +142,10 @@ export function ProjectPreview({
 
     return (
         <>
+            <AnimatePresence>
             {selectedImageIndex !== null && project?.gallery && (
                 <ImagePreviewModal
+                    key="image-preview"
                     colors={colors}
                     imageUrl={getImageUrl(project.gallery[selectedImageIndex]) || ""}
                     onClose={() => setSelectedImageIndex(null)}
@@ -163,6 +179,7 @@ export function ProjectPreview({
                     totalImages={project.gallery ? project.gallery.length : 0}
                 />
             )}
+            </AnimatePresence>
 
             <div className="rounded-2xl sticky top-4 flex flex-col max-h-[calc(100vh-2rem)] overflow-y-auto custom-scrollbar"
                 style={{
@@ -171,12 +188,25 @@ export function ProjectPreview({
                     isolation: "isolate",
                 }}>
 
-                <div className="relative h-48 w-full bg-cover bg-center shrink-0"
+                <motion.div
+                    key={`hero-${project.project_id}`}
+                    variants={m.fadeIn}
+                    initial="hidden"
+                    animate="show"
+                    className="relative h-48 w-full bg-cover bg-center shrink-0"
                     style={{
                         backgroundColor: colors.surfaceContainerHighest,
                         backgroundImage: heroImage ? `url(${heroImage})` : undefined
                     }}>
                     <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent" />
+
+                    {isInstalled && (
+                        <div className="absolute top-3 right-3 h-7 px-2.5 rounded-lg text-xs font-semibold flex items-center gap-1.5"
+                            style={{ backgroundColor: "#22c55e", color: "#fff" }}>
+                            <Icons.Check className="w-3.5 h-3.5" />
+                            {t('installed')}
+                        </div>
+                    )}
 
                     <div className="absolute -bottom-8 left-6 w-20 h-20 rounded-2xl p-0.5 z-10"
                         style={{ backgroundColor: colors.surface }}>
@@ -194,9 +224,15 @@ export function ProjectPreview({
                             )}
                         </div>
                     </div>
-                </div>
+                </motion.div>
 
-                <div className="pt-10 px-6 pb-6 flex-1 flex flex-col">
+                <motion.div
+                    key={`body-${project.project_id}`}
+                    variants={m.fadeUp}
+                    initial="hidden"
+                    animate="show"
+                    className="pt-10 px-6 pb-6 flex-1 flex flex-col"
+                >
                     <div className="mb-4">
                         <h2 className="text-2xl font-bold mb-1 leading-tight" style={{ color: colors.onSurface }}>
                             {project.title}
@@ -233,8 +269,19 @@ export function ProjectPreview({
                     )}
 
                     <div className="mb-6">
-                        {isInstallingModpack || installProgress ? (
-                            <div className="rounded-xl p-4 border border-dashed text-center"
+                        {isInstalled ? (
+                            <div className="w-full py-3 rounded-xl text-[15px] font-bold flex items-center justify-center gap-2"
+                                style={{ backgroundColor: "#22c55e20", color: "#16a34a" }}>
+                                <Icons.Check className="w-4 h-4" />
+                                {t('installed')}
+                            </div>
+                        ) : blockedLabel ? (
+                            <div className="w-full py-3 rounded-xl text-[15px] font-bold flex items-center justify-center gap-2"
+                                style={{ backgroundColor: "#f59e0b20", color: "#d97706" }}>
+                                {blockedLabel}
+                            </div>
+                        ) : isInstallingModpack || installProgress ? (
+                            <motion.div variants={m.scaleIn} initial="hidden" animate="show" className="rounded-xl p-4 border border-dashed text-center"
                                 style={{ backgroundColor: `${colors.surfaceContainer}40`, borderColor: colors.secondary }}>
                                 <div className="flex flex-col items-center gap-2">
                                     <i className="fa-solid fa-spinner fa-spin text-xl mb-1" style={{ color: colors.secondary }}></i>
@@ -244,22 +291,29 @@ export function ProjectPreview({
                                     {typeof installProgress?.percent === "number" && (
                                         <div className="w-full h-1.5 rounded-full mt-1 overflow-hidden"
                                             style={{ backgroundColor: `${colors.onSurface}10` }}>
-                                            <div className="h-full transition-all duration-300"
-                                                style={{ width: `${installProgress.percent}%`, backgroundColor: colors.secondary }} />
+                                            <div className="h-full w-full rounded-full transition-transform duration-300 ease-out"
+                                                style={{ transform: `translateX(${Math.min(100, Math.max(0, installProgress.percent)) - 100}%)`, backgroundColor: colors.secondary }} />
                                         </div>
                                     )}
                                 </div>
-                            </div>
+                            </motion.div>
                         ) : (
-                            <button
+                            <motion.button
+                                {...m.hoverLift}
                                 onClick={handleAction}
-                                className="w-full py-3 rounded-xl text-[15px] font-bold hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 active:scale-95"
+                                disabled={actionDisabled}
+                                className="w-full py-3 rounded-xl text-[15px] font-bold transition-[filter,opacity] hover:brightness-105 flex items-center justify-center gap-2 disabled:opacity-50"
                                 style={{
                                     backgroundColor: colors.secondary,
                                     color: "#1a1a1a"
                                 }}
                             >
-                                {projectType === "modpack" ? (
+                                {actionLabel ? (
+                                    <>
+                                        <i className="fa-solid fa-download"></i>
+                                        <span className="truncate">{actionLabel}</span>
+                                    </>
+                                ) : projectType === "modpack" ? (
                                     <>
                                         <i className="fa-solid fa-download"></i>
                                         {t('install_as_new_instance')}
@@ -270,7 +324,7 @@ export function ProjectPreview({
                                         {t('add_to_instance')}
                                     </>
                                 )}
-                            </button>
+                            </motion.button>
                         )}
                     </div>
 
@@ -294,8 +348,9 @@ export function ProjectPreview({
                                     const url = isString ? img : img.url;
 
                                     return (
-                                        <div
+                                        <motion.div
                                             key={idx}
+                                            {...m.hoverScale}
                                             className="aspect-video rounded-lg overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
                                             onClick={() => setSelectedImageIndex(idx)}
                                         >
@@ -304,7 +359,7 @@ export function ProjectPreview({
                                                 alt={t('gallery')}
                                                 className="w-full h-full object-cover"
                                             />
-                                        </div>
+                                        </motion.div>
                                     );
                                 })}
                             </div>
@@ -336,7 +391,7 @@ export function ProjectPreview({
                             )}
                         </div>
                     )}
-                </div>
+                </motion.div>
             </div>
         </>
     );

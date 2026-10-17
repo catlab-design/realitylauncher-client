@@ -1,6 +1,8 @@
 import { AnimatePresence, motion } from "framer-motion";
 import type { AuthSession, LauncherConfig } from "../../types/launcher";
+import { useRef } from "react";
 import { playClick } from "../../lib/sounds";
+import { useMotionPreset } from "../../lib/motion";
 import {
     AccountTab,
     AppearanceTab,
@@ -52,6 +54,8 @@ export function Settings({
     onLinkMicrosoft,
 }: SettingsProps) {
     const { t } = useTranslation(config.language);
+    const m = useMotionPreset();
+    const contentRef = useRef<HTMLDivElement>(null);
     const tabItems = [
         { id: "account", icon: "fa-user", label: t('tab_account') },
         { id: "language", icon: "fa-language", label: t('language') },
@@ -124,16 +128,10 @@ export function Settings({
 			<motion.div
                 className="min-h-0 md:border-r md:pr-6 overflow-y-auto"
                 style={{ borderColor: colors.outlineVariant }}
-                initial={{ opacity: 0, x: -14 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.24, ease: "easeOut" }}
+                variants={m.slideIn("left", 12)}
+                {...m.states}
             >
-                <motion.div
-                    className="space-y-1 py-1"
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.24, delay: 0.06, ease: "easeOut" }}
-                >
+                <div className="space-y-1 py-1">
                     {tabItems.map((item) => {
                         const isActive = settingsTab === item.id;
                         return (
@@ -150,7 +148,7 @@ export function Settings({
                                         layoutId="settings-active-pill"
                                         className="absolute inset-0 rounded-xl animate-none"
                                         style={{ backgroundColor: colors.secondary }}
-                                        transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                                        transition={m.tabIndicator}
                                     />
                                 )}
                                 <i className={`fa-solid ${item.icon} w-5 text-base text-center z-10 relative`}></i>
@@ -158,17 +156,16 @@ export function Settings({
                             </button>
                         );
                     })}
-                </motion.div>
+                </div>
             </motion.div>
 
-			<div className="min-w-0 overflow-y-auto overflow-x-hidden pr-2">
-                <AnimatePresence mode="wait">
+			<div ref={contentRef} className="min-w-0 overflow-y-auto overflow-x-hidden pr-2">
+                {/* Section switch: quick crossfade + 10px slide; each section opens at its top. */}
+                <AnimatePresence mode="wait" initial={false} onExitComplete={() => contentRef.current?.scrollTo({ top: 0 })}>
                     <motion.div
                         key={settingsTab}
-                        initial={{ opacity: 0, x: 18 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -12 }}
-                        transition={{ duration: 0.24, ease: "easeOut" }}
+                        variants={m.panelSwap}
+                        {...m.states}
                     >
                         {content}
                     </motion.div>

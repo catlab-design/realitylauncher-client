@@ -1,5 +1,6 @@
 ﻿import React, { useEffect, useState, useRef, useCallback } from "react";
 import toast from "react-hot-toast";
+import { AnimatePresence } from "framer-motion";
 import { useTranslation } from "../../hooks/useTranslation";
 
 import {
@@ -28,6 +29,33 @@ import {
     normalizeCurseforgeSearchHit,
 } from "./ExploreTabs";
 
+// ---------------------------------------------------------------------------
+// Cache: search pages and full project details, kept for the app session so
+// going back to this tab, paging back, or re-selecting a project is instant.
+// ---------------------------------------------------------------------------
+
+/** A cached page shows instantly; it is refetched in the background once older than this. */
+const SEARCH_FRESH_MS = 2 * 60 * 1000;
+/** Older than this, a cached page is ignored and loaded normally. */
+const SEARCH_MAX_AGE_MS = 30 * 60 * 1000;
+const SEARCH_CACHE_LIMIT = 60;
+
+type SearchCacheEntry = { results: ModrinthProject[]; totalHits: number; at: number };
+const searchCache = new Map<string, SearchCacheEntry>();
+let lastSearchKey: string | null = null;
+const projectDetailCache = new Map<string, ModrinthProject>();
+
+function rememberSearch(key: string, entry: SearchCacheEntry) {
+    searchCache.delete(key);
+    searchCache.set(key, entry);
+    while (searchCache.size > SEARCH_CACHE_LIMIT) {
+        const oldest = searchCache.keys().next().value;
+        if (oldest === undefined) break;
+        searchCache.delete(oldest);
+    }
+    lastSearchKey = key;
+}
+
 export function Explore({ colors, config }: ExploreProps) {
     const { t } = useTranslation(config?.language);
     // Results layout: card grid by default, compact rows optional (remembered on this machine).
@@ -46,11 +74,11 @@ export function Explore({ colors, config }: ExploreProps) {
     const [contentSource, setContentSource] = useState<ContentSource>(CONTENT_SOURCES.MODRINTH);
     const [projectType, setProjectType] = useState<ProjectType>("modpack");
     const [searchQuery, setSearchQuery] = useState("");
-    const [results, setResults] = useState<ModrinthProject[]>([]);
+    const [results, setResults] = useState<ModrinthProject[]>(() => (lastSearchKey && searchCache.get(lastSearchKey)?.results) || []);
     const [isLoading, setIsLoading] = useState(false);
     const [sortBy, setSortBy] = useState("relevance");
     const [page, setPage] = useState(1);
-    const [totalHits, setTotalHits] = useState(0);
+    const [totalHits, setTotalHits] = useState(() => (lastSearchKey && searchCache.get(lastSearchKey)?.totalHits) || 0);
     const [viewCount, setViewCount] = useState(20);
 
     const totalPages = Math.max(1, Math.ceil((totalHits || results.length) / viewCount));
@@ -175,14 +203,15 @@ export function Explore({ colors, config }: ExploreProps) {
         }
         const previewId = previewProject?.project_id ?? null;
         const stillExists = previewId && results.some((p) => p.project_id === previewId);
+        // Always show something: when nothing (or a vanished item) is previewed, preview the first result.
+        // (The old "already auto-selected this id" guard left the panel empty when the same first item
+        // came back, e.g. after switching type and back or from the results cache.)
         if (!stillExists) {
             const first = results[0];
-            if (lastAutoSelectedRef.current !== first.project_id) {
-                lastAutoSelectedRef.current = first.project_id;
-                handleSelectProject(first);
-            }
+            lastAutoSelectedRef.current = first.project_id;
+            handleSelectProject(first);
         }
-    }, [results]);
+    }, [results, previewProject]);
 
     const fetchFullProjectDetails = async (project: ModrinthProject) => {
         if (!project.project_id) return;
@@ -193,6 +222,13 @@ export function Explore({ colors, config }: ExploreProps) {
         activePreviewIdRef.current = myProjectId;
         const isStale = () =>
             fetchTokenRef.current !== myToken || activePreviewIdRef.current !== myProjectId;
+
+        const cachedDetail = projectDetailCache.get(`${contentSource}:${project.project_id}`);
+        if (cachedDetail) {
+            setPreviewProject(prev => (prev && prev.project_id === cachedDetail.project_id ? cachedDetail : prev));
+            setResults(prev => prev.map(p => (p.project_id === cachedDetail.project_id ? cachedDetail : p)));
+            return;
+        }
 
         try {
             let normalized: ModrinthProject | null = null;
@@ -206,6 +242,7 @@ export function Explore({ colors, config }: ExploreProps) {
                 if (result?.data) normalized = normalizeCurseforgeFull(result.data, project, t('unknown'));
             }
             if (!normalized) return;
+            projectDetailCache.set(`${contentSource}:${project.project_id}`, normalized);
             const final = normalized;
             
             setPreviewProject(prev => (prev && prev.project_id === final.project_id ? final : prev));
@@ -262,8 +299,21 @@ export function Explore({ colors, config }: ExploreProps) {
 
         lastFetchedParamsRef.current = params;
 
+        const cacheKey = JSON.stringify(params);
+        const cached = searchCache.get(cacheKey);
+        const cacheAge = cached ? Date.now() - cached.at : Infinity;
+        if (cached && cacheAge < SEARCH_MAX_AGE_MS) {
+            searchTokenRef.current++; // drop any slower in-flight request
+            setResults(cached.results);
+            setTotalHits(cached.totalHits);
+            setIsLoading(false);
+            lastSearchKey = cacheKey;
+            if (cacheAge < SEARCH_FRESH_MS) return;
+        }
+
         const myToken = ++searchTokenRef.current;
-        setIsLoading(true);
+        // A stale cached page stays on screen while it refreshes; only a miss shows the skeleton.
+        if (!(cached && cacheAge < SEARCH_MAX_AGE_MS)) setIsLoading(true);
         try {
             if (contentSource === CONTENT_SOURCES.MODRINTH) {
                 
@@ -298,7 +348,9 @@ export function Explore({ colors, config }: ExploreProps) {
                     );
                     setResults(normalized);
                     // Modrinth sometimes returns 'total_hits' (snake_case) or 'totalHits' depending on the source
-                    setTotalHits(result.total_hits ?? result.totalHits ?? 0);
+                    const hits = result.total_hits ?? result.totalHits ?? 0;
+                    setTotalHits(hits);
+                    rememberSearch(cacheKey, { results: normalized, totalHits: hits, at: Date.now() });
                 }
             } else {
                 const modLoaderMapping: Record<string, number> = {
@@ -330,7 +382,9 @@ export function Explore({ colors, config }: ExploreProps) {
                         normalizeCurseforgeSearchHit(cf, t('unknown'))
                     );
                     setResults(normalized);
-                    setTotalHits(result.pagination?.totalCount || 0);
+                    const hits = result.pagination?.totalCount || 0;
+                    setTotalHits(hits);
+                    rememberSearch(cacheKey, { results: normalized, totalHits: hits, at: Date.now() });
                 }
             }
         } catch (error) {
@@ -782,8 +836,10 @@ export function Explore({ colors, config }: ExploreProps) {
 
     return (
         <div className="space-y-4">
+            <AnimatePresence>
             {pendingInstall && (
                 <ConfirmInstallDialog
+                    key="confirm-install"
                     colors={colors}
                     project={pendingInstall.project}
                     duplicate={pendingInstall.duplicate}
@@ -791,9 +847,12 @@ export function Explore({ colors, config }: ExploreProps) {
                     onConfirm={() => beginInstallModpack(pendingInstall.project)}
                 />
             )}
+            </AnimatePresence>
 
+            <AnimatePresence>
             {showInstanceModal && selectedProject && (
                 <InstanceSelectModal
+                    key="instance-select"
                     colors={colors}
                     selectedProjectTitle={selectedProject.title}
                     instances={instances}
@@ -808,9 +867,12 @@ export function Explore({ colors, config }: ExploreProps) {
                     onSelectInstance={handleSelectInstanceForContent}
                 />
             )}
+            </AnimatePresence>
 
+            <AnimatePresence>
             {showVersionModal && versionModalProject && (
                 <VersionSelectModal
+                    key="version-select"
                     colors={colors}
                     title={versionModalTitle}
                     projectTitle={versionModalProject.title}
@@ -833,6 +895,7 @@ export function Explore({ colors, config }: ExploreProps) {
                     }}
                 />
             )}
+            </AnimatePresence>
 
             {detailProject ? (
                 <ProjectDetailPage

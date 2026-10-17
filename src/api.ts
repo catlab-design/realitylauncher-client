@@ -314,7 +314,8 @@ export const api = {
     getAppVersion: () => invoke<string>('get_app_version'),
     isDevMode: () => invoke<boolean>('is_dev_mode'),
     downloadUpdate: () => invoke<any>('download_update'),
-    installUpdate: () => invoke<any>('install_update'),
+    installUpdate: (auto?: boolean) => invoke<any>('install_update', { auto }),
+    setInstallUpdateOnExit: (enabled: boolean) => invoke<void>('set_install_update_on_exit', { enabled }),
 
     windowMinimize: () => invoke<void>('window_minimize'),
     windowMaximize: () => invoke<void>('window_maximize'),
@@ -370,6 +371,8 @@ export const api = {
     getNotifications: () => invoke<any[]>('notifications_fetch_user'),
     telemetryLogEvent: (eventType: string, data?: any) => invoke<void>('telemetry_log_event', { eventType, data }),
     serverPing: (host: string, port?: number) => invoke<any>('server_ping', { host, port }),
+    instanceSavedServers: (instanceId: string) =>
+        invoke<{ name: string; ip: string; icon: string | null }[]>('instance_saved_servers', { instanceId }),
 
     catskincGetConfig: (gameDirectory?: string) => invoke<any>('catskinc_get_config', { gameDirectory }),
     catskincSaveConfig: (payload: { ip: string; gameDirectory?: string }) =>

@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "react-hot-toast";
+import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "../../hooks/useTranslation";
+import { useMotionPreset } from "../../lib/motion";
 import { useConfigStore } from "../../store/configStore";
 import { useAuthStore } from "../../store/authStore";
 import { useUiStore } from "../../store/uiStore";
@@ -66,6 +68,15 @@ let cachedWardrobeProfile:
         profile: MinecraftProfile;
     }
     | null = null;
+
+/** True when a #rrggbb colour is dark (theme surface → pick the stage's light/dark look). */
+function isDarkHex(hex: string): boolean {
+    const m = /^#?([0-9a-f]{6})/i.exec(hex || "");
+    if (!m) return false;
+    const n = parseInt(m[1], 16);
+    const lum = (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
+    return lum < 0.45;
+}
 
 function normalizeVariant(input?: string | null): SkinVariant {
     return String(input || "").toLowerCase() === "slim" ? "slim" : "classic";
@@ -159,6 +170,7 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
     const config = useConfigStore();
     const { session } = useAuthStore();
     const { t } = useTranslation(config.language);
+    const m = useMotionPreset();
 
     const isMicrosoftSession = session?.authType === "microsoft";
     const isLinkedCatidSession = session?.authType === "catid" && !!session?.minecraftUuid;
@@ -801,10 +813,10 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
     if (!session) {
         return (
             <div className="h-full flex items-center justify-center p-6">
-                <div className="text-center space-y-3">
+                <motion.div className="text-center space-y-3" variants={m.scaleIn} initial="hidden" animate="show">
                     <Icons.Person className="w-12 h-12 mx-auto opacity-40" style={{ color: colors.onSurface }} />
                     <p className="font-bold text-lg" style={{ color: colors.onSurface }}>{t("not_logged_in")}</p>
-                </div>
+                </motion.div>
             </div>
         );
     }
@@ -820,8 +832,9 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
 
         return (
             <div className="h-full flex items-center justify-center p-6">
-                <div className="flex flex-col items-center text-center p-8 rounded-2xl max-w-sm space-y-5"
-                    style={{ backgroundColor: colors.surfaceContainer }}>
+                <motion.div className="flex flex-col items-center text-center p-8 rounded-2xl max-w-sm space-y-5"
+                    style={{ backgroundColor: colors.surfaceContainer }}
+                    variants={m.scaleIn} initial="hidden" animate="show">
                     <Icons.Microsoft className="w-12 h-12" style={{ color: "#00A4EF" }} />
                     <div>
                         <p className="font-bold text-lg" style={{ color: colors.onSurface }}>{guardTitle}</p>
@@ -844,7 +857,7 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
                             {t("login_with_microsoft") || "Login with Microsoft"}
                         </button>
                     )}
-                </div>
+                </motion.div>
             </div>
         );
     }
@@ -854,100 +867,46 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
         color: active ? "#111" : colors.onSurfaceVariant,
     });
 
+    // Shared sliding fill for the segmented controls (z-1 over the track, under every label at z-2).
+    const segmentPill = (layoutId: string, className: string, backgroundColor: string) => (
+        <motion.span
+            layoutId={layoutId}
+            transition={m.tabIndicator}
+            className={`absolute inset-0 z-1 ${className}`}
+            style={{ backgroundColor }}
+        />
+    );
+
     return (
-        <div className="h-full min-h-[560px] flex flex-col gap-5 animate-fade-in">
-            <div className="flex flex-wrap items-center justify-between gap-4 shrink-0">
-                <div className="min-w-0">
-                    <h2 className="font-display text-2xl" style={{ color: colors.onSurface }}>
-                        {t("wardrobe")}
-                    </h2>
-                    <p className="text-[15px] mt-1" style={{ color: colors.onSurfaceVariant }}>
-                        {t("wardrobe_desc")}
-                    </p>
-                </div>
-                <div className="flex items-center gap-3">
-                    <div
-                        className="flex items-center gap-1 p-1 rounded-xl"
-                        style={{ backgroundColor: colors.surfaceContainerHighest }}
-                    >
-                        <button
-                            onClick={() => setMode("microsoft")}
-                            className="h-8 px-4 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
-                            style={{
-                                backgroundColor: mode === "microsoft" ? colors.surface : "transparent",
-                                color: mode === "microsoft" ? colors.onSurface : colors.onSurfaceVariant,
-                            }}
-                        >
-                            {t("wardrobe_mode_microsoft")}
-                        </button>
-                        <button
-                            onClick={() => {
-                                if (!canManageProfile) {
-                                    toast.error("Microsoft account is required to authenticate with CatSkinC.");
-                                    return;
-                                }
-                                setMode("catskinc");
-                            }}
-                            className="h-8 px-4 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
-                            style={{
-                                backgroundColor: mode === "catskinc" ? colors.surface : "transparent",
-                                color: mode === "catskinc" ? colors.onSurface : colors.onSurfaceVariant,
-                            }}
-                        >
-                            {t("wardrobe_mode_catskinc")}
-                        </button>
-                    </div>
-
-                    <button
-                        onClick={() => syncProfile({ force: true })}
-                        disabled={isLoadingProfile}
-                        aria-label={t("wardrobe_refresh_profile")}
-                        title={t("wardrobe_refresh_profile")}
-                        className="w-10 h-10 shrink-0 rounded-xl flex items-center justify-center transition hover:brightness-110 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2"
-                        style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}
-                    >
-                        <Icons.Refresh className={`w-5 h-5 ${isLoadingProfile ? "animate-spin" : ""}`} />
-                    </button>
-
-                    <div
-                        className="h-10 flex items-center gap-2 px-3.5 rounded-xl text-sm font-semibold max-w-[220px]"
-                        style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
-                    >
-                        <Icons.Microsoft className="w-4 h-4 shrink-0" style={{ color: "#00A4EF" }} />
-                        <span className="truncate">{profile?.name || session?.username || "-"}</span>
-                    </div>
-                </div>
-            </div>
-
+        <motion.div className="h-full min-h-140 flex flex-col gap-5" variants={m.staggerContainer(0.05)} initial="hidden" animate="show">
             <div className="flex-1 min-h-0 flex gap-5">
-                <div
+                <motion.div
                     className="relative flex-1 min-w-0 rounded-2xl overflow-hidden"
                     style={{
                         backgroundColor: previewBackground.card,
                         backgroundImage: previewBackground.gradient,
                     }}
+                    variants={m.fadeUp}
                 >
                     <SkinPreview3D
                         skinUrl={previewSkin}
                         variant={variant}
                         backgroundColor={previewBackground.canvas}
                         animationType={animationType}
+                        room={{ dark: isDarkHex(colors.surface), accent: colors.secondary || "#ffde59" }}
                         onResetRotation={(fn) => (resetRotationRef.current = fn)}
                         onSkinLoadStateChange={setIsPreviewSkinLoading}
                     />
 
-                    <div
-                        className="absolute left-1/2 -translate-x-1/2 w-64 h-16 pointer-events-none select-none flex items-center justify-center"
-                        style={{ bottom: "calc(14% - 2rem)", perspective: "1000px" }}
-                    >
-                        <div className="absolute w-40 h-40 border rounded-full" style={{ borderColor: `${colors.outline}1a`, transform: "rotateX(75deg)" }} />
-                        <div className="absolute w-28 h-28 border rounded-full" style={{ borderColor: `${colors.outline}0d`, transform: "rotateX(75deg)" }} />
-                    </div>
 
+                    <AnimatePresence initial={false}>
                     {(isLoadingProfile || isPreviewSkinLoading || !profileFetched || isLoadingCatskincSkin) && (
-                        <div
+                        <motion.div
+                            key="wardrobe-preview-loading"
                             className="absolute inset-0 animate-skeleton-wave flex items-center justify-center"
                             style={{ backgroundColor: previewBackground.overlay }}
+                            variants={m.fadeIn}
+                            {...m.states}
                         >
                             <div
                                 className="h-9 px-4 rounded-full text-sm font-semibold flex items-center gap-2"
@@ -956,8 +915,9 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
                                 <Icons.Spinner className="w-4 h-4 animate-spin" />
                                 {t("loading")}
                             </div>
-                        </div>
+                        </motion.div>
                     )}
+                    </AnimatePresence>
 
                     <div className="absolute top-4 left-5 select-none pointer-events-none">
                         <p className="text-sm font-semibold" style={{ color: colors.onSurface }}>
@@ -968,50 +928,90 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
                         </p>
                     </div>
 
-                    <button
+                    <motion.button
                         onClick={() => resetRotationRef.current?.()}
                         aria-label={t("wardrobe_reset_rotation")}
                         title={t("wardrobe_reset_rotation")}
-                        className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-md transition hover:brightness-110 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2"
+                        className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-md transition-[filter] hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2"
                         style={{ backgroundColor: previewBackground.buttonBackground, color: previewBackground.buttonText }}
+                        {...m.hoverScale}
                     >
                         <Icons.Refresh className="w-5 h-5" />
-                    </button>
+                    </motion.button>
 
+                    <AnimatePresence>
                     {mode === "catskinc" && finalMouthOpenUrl && (
-                        <button
+                        <motion.button
+                            key="wardrobe-mic-test"
                             onClick={toggleMicTest}
                             aria-label={testMicActive ? "Stop microphone test" : "Test mouth overlay via microphone"}
                             title={testMicActive ? "Stop microphone test" : "Test mouth overlay via microphone"}
-                            className="absolute bottom-4 left-4 w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-md transition hover:brightness-110 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2"
+                            className="absolute bottom-4 left-4 w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-md transition-[filter,background-color,color] hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2"
                             style={{
                                 backgroundColor: testMicActive ? colors.secondary : previewBackground.buttonBackground,
                                 color: testMicActive ? "#111" : previewBackground.buttonText,
                             }}
+                            variants={m.scaleIn}
+                            {...m.states}
+                            {...m.hoverScale}
                         >
                             <Icons.Mic className={`w-5 h-5 ${testMicActive ? "animate-pulse" : ""}`} />
-                        </button>
+                        </motion.button>
                     )}
+                    </AnimatePresence>
 
                     <div
-                        className="absolute bottom-4 left-1/2 -translate-x-1/2 w-max max-w-[calc(100%-2rem)] flex flex-wrap items-center justify-center gap-1 p-1 rounded-3xl backdrop-blur-md"
+                        className="isolate absolute bottom-4 left-1/2 -translate-x-1/2 w-max max-w-[calc(100%-2rem)] flex flex-wrap items-center justify-center gap-1 p-1 rounded-3xl backdrop-blur-md"
                         style={{ backgroundColor: previewBackground.hintBackground }}
                     >
                         {SKIN_ANIMATIONS.map(({ id, label }) => (
                             <button
                                 key={id}
                                 onClick={() => setAnimationType(id)}
-                                className="h-9 px-3.5 rounded-full text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
-                                style={segmentButtonStyle(animationType === id)}
+                                className="relative h-9 px-3.5 rounded-full text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
+                                style={{ color: segmentButtonStyle(animationType === id).color }}
                             >
-                                {label}
+                                {animationType === id && segmentPill("wardrobe-animation-pill", "rounded-full", colors.secondary)}
+                                <span className="relative z-2">{label}</span>
                             </button>
                         ))}
                     </div>
-                </div>
+                </motion.div>
 
-                <div className="w-[380px] shrink-0 min-h-0 flex flex-col">
+                <motion.div variants={m.fadeUp} className="w-95 shrink-0 min-h-0 flex flex-col">
                     <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-6 pr-1">
+                        {/* Skin source: Microsoft profile or the CatSkinC mod. */}
+                        <div
+                            className="isolate grid grid-cols-2 gap-1 p-1 rounded-xl shrink-0"
+                            style={{ backgroundColor: colors.surfaceContainerHighest }}
+                        >
+                            <button
+                                onClick={() => setMode("microsoft")}
+                                className="relative h-10 px-3 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
+                                style={{ color: mode === "microsoft" ? colors.onSurface : colors.onSurfaceVariant }}
+                            >
+                                {mode === "microsoft" && segmentPill("wardrobe-mode-pill", "rounded-lg", colors.surface)}
+                                <span className="relative z-2 inline-flex items-center justify-center gap-2">
+                                    <Icons.Microsoft className="w-4 h-4 shrink-0" style={{ color: "#00A4EF" }} />
+                                    {t("wardrobe_mode_microsoft")}
+                                </span>
+                            </button>
+                            <button
+                                onClick={() => {
+                                    if (!canManageProfile) {
+                                        toast.error("Microsoft account is required to authenticate with CatSkinC.");
+                                        return;
+                                    }
+                                    setMode("catskinc");
+                                }}
+                                className="relative h-10 px-3 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
+                                style={{ color: mode === "catskinc" ? colors.onSurface : colors.onSurfaceVariant }}
+                            >
+                                {mode === "catskinc" && segmentPill("wardrobe-mode-pill", "rounded-lg", colors.surface)}
+                                <span className="relative z-2">{t("wardrobe_mode_catskinc")}</span>
+                            </button>
+                        </div>
+
                         <div className="flex items-center gap-4">
                             <div
                                 className="w-14 h-14 rounded-xl overflow-hidden flex items-center justify-center shrink-0"
@@ -1023,7 +1023,7 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
                                     className="w-full h-full rounded-xl"
                                 />
                             </div>
-                            <div className="min-w-0">
+                            <div className="min-w-0 flex-1">
                                 <h3 className="text-lg font-bold truncate leading-tight" style={{ color: colors.onSurface }}>
                                     {profile?.name || session?.username || "-"}
                                 </h3>
@@ -1038,6 +1038,15 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
                                     )}
                                 </p>
                             </div>
+                            <button
+                                onClick={() => syncProfile({ force: true })}
+                                disabled={isLoadingProfile}
+                                aria-label={t("wardrobe_refresh_profile")}
+                                className="ml-auto w-10 h-10 shrink-0 rounded-xl flex items-center justify-center transition hover:brightness-110 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2"
+                                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}
+                            >
+                                <Icons.Refresh className={`w-5 h-5 ${isLoadingProfile ? "animate-spin" : ""}`} />
+                            </button>
                         </div>
 
                         <div>
@@ -1045,23 +1054,20 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
                                 {t("wardrobe_variant")}
                             </p>
                             <div
-                                className="grid grid-cols-2 gap-1 p-1 rounded-xl"
+                                className="isolate grid grid-cols-2 gap-1 p-1 rounded-xl"
                                 style={{ backgroundColor: colors.surfaceContainer }}
                             >
-                                <button
-                                    onClick={() => setVariant("classic")}
-                                    className="h-11 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
-                                    style={segmentButtonStyle(variant === "classic")}
-                                >
-                                    Classic
-                                </button>
-                                <button
-                                    onClick={() => setVariant("slim")}
-                                    className="h-11 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
-                                    style={segmentButtonStyle(variant === "slim")}
-                                >
-                                    Slim
-                                </button>
+                                {(["classic", "slim"] as const).map((value) => (
+                                    <button
+                                        key={value}
+                                        onClick={() => setVariant(value)}
+                                        className="relative h-11 rounded-lg text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
+                                        style={{ color: segmentButtonStyle(variant === value).color }}
+                                    >
+                                        {variant === value && segmentPill("wardrobe-variant-pill", "rounded-lg", colors.secondary)}
+                                        <span className="relative z-2">{value === "classic" ? "Classic" : "Slim"}</span>
+                                    </button>
+                                ))}
                             </div>
                         </div>
 
@@ -1078,19 +1084,23 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
                                 className="hidden"
                             />
 
-                            <button
+                            <motion.button
                                 onClick={() => fileInputRef.current?.click()}
-                                className="w-full flex items-center gap-4 p-4 rounded-xl text-left transition hover:brightness-110 active:scale-[0.99] cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2"
+                                className="w-full flex items-center gap-4 p-4 rounded-xl text-left transition-[filter] hover:brightness-110 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2"
                                 style={{ backgroundColor: colors.surfaceContainer }}
+                                {...m.hoverLift}
                             >
                                 <div
-                                    className="w-11 h-11 rounded-lg flex items-center justify-center shrink-0"
+                                    className="w-11 h-11 rounded-lg flex items-center justify-center shrink-0 transition-colors"
                                     style={{
                                         backgroundColor: selectedFileName ? colors.secondary : colors.surfaceContainerHighest,
                                         color: selectedFileName ? "#111" : colors.onSurfaceVariant,
                                     }}
                                 >
-                                    {selectedFileName ? <Icons.Check className="w-5 h-5" /> : <Icons.Upload className="w-5 h-5" />}
+                                    {/* Re-keyed so the icon pops when a file is picked or cleared. */}
+                                    <motion.span key={selectedFileName ? "check" : "upload"} className="flex" variants={m.scaleIn} initial="hidden" animate="show">
+                                        {selectedFileName ? <Icons.Check className="w-5 h-5" /> : <Icons.Upload className="w-5 h-5" />}
+                                    </motion.span>
                                 </div>
                                 <div className="min-w-0 flex-1">
                                     <p className="text-[15px] font-semibold truncate" style={{ color: colors.onSurface }}>
@@ -1100,7 +1110,7 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
                                         {selectedFileName ? "Ready to apply" : mode === "catskinc" ? "PNG (Square, 64-8192 px)" : "PNG (Aspect Ratio 1:1 or 2:1)"}
                                     </p>
                                 </div>
-                            </button>
+                            </motion.button>
 
                             <input
                                 ref={mouthFileInputRef}
@@ -1111,24 +1121,28 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
                             />
                         </div>
 
+                        <AnimatePresence initial={false}>
                         {mode === "catskinc" && (
-                            <div>
+                            <motion.div key="wardrobe-mouth-overlay" variants={m.fadeUp} {...m.states}>
                                 <p className="text-sm font-semibold mb-2.5" style={{ color: colors.onSurface }}>
                                     {t("wardrobe_catskinc_mouth_open")}
                                 </p>
-                                <button
+                                <motion.button
                                     onClick={() => mouthFileInputRef.current?.click()}
-                                    className="w-full flex items-center gap-4 p-4 rounded-xl text-left transition hover:brightness-110 active:scale-[0.99] cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2"
+                                    className="w-full flex items-center gap-4 p-4 rounded-xl text-left transition-[filter] hover:brightness-110 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2"
                                     style={{ backgroundColor: colors.surfaceContainer }}
+                                    {...m.hoverLift}
                                 >
                                     <div
-                                        className="w-11 h-11 rounded-lg flex items-center justify-center shrink-0"
+                                        className="w-11 h-11 rounded-lg flex items-center justify-center shrink-0 transition-colors"
                                         style={{
                                             backgroundColor: mouthOpenFileName ? colors.secondary : colors.surfaceContainerHighest,
                                             color: mouthOpenFileName ? "#111" : colors.onSurfaceVariant,
                                         }}
                                     >
-                                        {mouthOpenFileName ? <Icons.Check className="w-5 h-5" /> : <Icons.Upload className="w-5 h-5" />}
+                                        <motion.span key={mouthOpenFileName ? "check" : "upload"} className="flex" variants={m.scaleIn} initial="hidden" animate="show">
+                                            {mouthOpenFileName ? <Icons.Check className="w-5 h-5" /> : <Icons.Upload className="w-5 h-5" />}
+                                        </motion.span>
                                     </div>
                                     <div className="min-w-0 flex-1">
                                         <p className="text-[15px] font-semibold truncate" style={{ color: colors.onSurface }}>
@@ -1138,49 +1152,72 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
                                             {mouthOpenFileName ? "Overlay loaded" : "PNG (same size as skin)"}
                                         </p>
                                     </div>
-                                </button>
-                            </div>
+                                </motion.button>
+                            </motion.div>
                         )}
+                        </AnimatePresence>
 
+                        <AnimatePresence initial={false}>
                         {profileError && (
-                            <div className="text-sm font-medium px-4 py-3 rounded-xl bg-red-500/10 text-red-500">
+                            <motion.div
+                                key="wardrobe-profile-error"
+                                role="alert"
+                                className="text-sm font-medium px-4 py-3 rounded-xl bg-red-500/10 text-red-500"
+                                variants={m.scaleIn}
+                                {...m.states}
+                            >
                                 {profileError}
-                            </div>
+                            </motion.div>
                         )}
+                        </AnimatePresence>
                     </div>
 
                     <div className="shrink-0 grid grid-cols-2 gap-3 pt-4">
-                        <button
+                        <motion.button
                             onClick={handleClearClick}
                             disabled={isClearDisabled}
-                            className="h-12 px-3 rounded-xl text-sm font-semibold transition hover:brightness-110 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 flex items-center justify-center text-center focus-visible:outline-2 focus-visible:outline-offset-2"
+                            className="h-12 px-3 rounded-xl text-sm font-semibold transition-[filter,opacity] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-center focus-visible:outline-2 focus-visible:outline-offset-2"
                             style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                            whileTap={isClearDisabled ? undefined : m.pressable.whileTap}
                         >
                             <span className="truncate">
                                 {hasPreviewCache
                                     ? (config.language === "th" ? "ล้างรีวิวตัวอย่าง" : "Clear Preview")
                                     : (config.language === "th" ? "ล้างสกิน" : "Clear")}
                             </span>
-                        </button>
+                        </motion.button>
 
-                        <button
+                        <motion.button
                             onClick={onApplySkin}
                             disabled={isApplying || !selectedSkinDataUrl}
-                            className="h-12 px-3 rounded-xl text-sm font-bold transition hover:brightness-105 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 flex items-center justify-center gap-2 text-center cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2"
+                            className="h-12 px-3 rounded-xl text-sm font-bold transition-[filter,opacity] hover:brightness-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-center cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2"
                             style={{ backgroundColor: colors.secondary, color: "#111" }}
+                            whileTap={isApplying || !selectedSkinDataUrl ? undefined : m.pressable.whileTap}
                         >
                             {isApplying && <Icons.Spinner className="w-4 h-4 animate-spin" />}
                             <span className="truncate">
                                 {isApplying ? t("wardrobe_applying") : t("wardrobe_apply_skin")}
                             </span>
-                        </button>
+                        </motion.button>
                     </div>
-                </div>
+                </motion.div>
             </div>
 
+            <AnimatePresence>
             {showClearModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
-                    <div className="w-[380px] p-6 rounded-2xl space-y-5 shadow-2xl" style={{ backgroundColor: colors.surfaceContainer }}>
+                <motion.div
+                    key="wardrobe-clear-modal"
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+                    variants={m.modal.backdrop}
+                    {...m.states}
+                >
+                    <motion.div
+                        role="dialog"
+                        aria-modal="true"
+                        className="w-95 p-6 rounded-2xl space-y-5 shadow-2xl"
+                        style={{ backgroundColor: colors.surfaceContainer }}
+                        variants={m.modal.panel}
+                    >
                         <div className="text-center">
                             <h3 className="text-lg font-bold" style={{ color: colors.onSurface }}>
                                 {config.language === "th" ? "ล้างข้อมูล CatSkin" : "Clear CatSkin Assets"}
@@ -1225,9 +1262,10 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
                                 {t("cancel")}
                             </button>
                         </div>
-                    </div>
-                </div>
+                    </motion.div>
+                </motion.div>
             )}
-        </div>
+            </AnimatePresence>
+        </motion.div>
     );
 };

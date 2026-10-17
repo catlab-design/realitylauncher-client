@@ -1,6 +1,8 @@
 import React from "react";
+import { motion } from "framer-motion";
 import { Icons } from "../ui/Icons";
 import { playClick } from "../../lib/sounds";
+import { useMotionPreset } from "../../lib/motion";
 import { useTranslation } from "../../hooks/useTranslation";
 import { useConfigStore } from "../../store/configStore";
 import { useUiStore } from "../../store/uiStore";
@@ -25,16 +27,17 @@ export function Sidebar({ colors, onTabSelect }: SidebarProps) {
     const { t } = useTranslation(config.language);
     const { activeTab, setActiveTab } = useUiStore();
     const { session } = useAuthStore();
+    const m = useMotionPreset();
 
     const isAdmin = session?.isAdmin || false;
 
     const playItems: NavItem[] = [
         { id: "home", icon: Icons.Home, label: t("home") },
         { id: "servers", icon: Icons.Dns, label: t("servers") },
-        { id: "modpack", icon: Icons.Modpack, label: t("modpacks") },
+        { id: "modpack", icon: Icons.Modpack, label: t("library") },
     ];
     const discoverItems: NavItem[] = [
-        { id: "explore", icon: Icons.Search, label: t("explore") },
+        { id: "explore", icon: Icons.Search, label: t("install_tab") },
         { id: "wardrobe", icon: Icons.Hanger, label: t("wardrobe") },
     ];
     const bottomItems: NavItem[] = [
@@ -62,7 +65,14 @@ export function Sidebar({ colors, onTabSelect }: SidebarProps) {
                 style={{ color: active ? "#ffffff" : "rgba(255,255,255,0.6)" }}
             >
                 {label}
-                {active && <span className="absolute left-3 right-3 bottom-0 h-0.5 rounded-full" style={{ backgroundColor: colors.secondary }} />}
+                {active && (
+                    <motion.span
+                        layoutId="titlebar-nav-underline"
+                        transition={m.tabIndicator}
+                        className="absolute left-3 right-3 bottom-0 h-0.5 rounded-full"
+                        style={{ backgroundColor: colors.secondary }}
+                    />
+                )}
             </button>
         );
     };
@@ -77,7 +87,7 @@ export function Sidebar({ colors, onTabSelect }: SidebarProps) {
                 draggable={false}
                 aria-label={label}
                 title={label}
-                className="no-drag w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-white/10"
+                className="no-drag w-8 h-8 rounded-lg flex items-center justify-center pressable hover:bg-white/10"
                 style={{ color: active ? colors.secondary : "rgba(255,255,255,0.65)" }}
             >
                 <Icon className="w-4.5 h-4.5 pointer-events-none" />

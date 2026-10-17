@@ -8,6 +8,7 @@ import { CONTENT_SOURCES, type ContentSource, type ProjectType } from "./types";
 import { PROJECT_TABS } from "./constants";
 import { playClick } from "../../../lib/sounds";
 import { FilterMenu } from "./FilterMenu";
+import { useMotionPreset } from "../../../lib/motion";
 
 const SOURCES: { id: ContentSource; label: string; icon: string; color: string }[] = [
     { id: CONTENT_SOURCES.MODRINTH, label: "Modrinth", icon: modrinthIcon, color: "#1bd96a" },
@@ -52,6 +53,15 @@ interface ExploreToolbarProps {
     hideFilterMenu?: boolean;
     layout?: "grid" | "list";
     onLayoutChange?: (layout: "grid" | "list") => void;
+    /** Replaces the page title on the left of row 1 (e.g. back button + instance name). */
+    leading?: React.ReactNode;
+    /** Limit the type tabs to these ids (default: all). */
+    projectTypes?: ProjectType[];
+    showLoaderFilter?: boolean;
+    showVersionFilter?: boolean;
+    searchPlaceholder?: string;
+    /** framer-motion layoutId for the active type tab underline (keep unique per mounted toolbar). */
+    tabIndicatorLayoutId?: string;
 }
 
 export function ExploreToolbar({
@@ -83,8 +93,15 @@ export function ExploreToolbar({
     hideFilterMenu = false,
     layout = "grid",
     onLayoutChange,
+    leading,
+    projectTypes,
+    showLoaderFilter = true,
+    showVersionFilter = true,
+    searchPlaceholder,
+    tabIndicatorLayoutId = "explore-type-tab-underline",
 }: ExploreToolbarProps) {
     const { t } = useTranslation();
+    const m = useMotionPreset();
     const currentTab = PROJECT_TABS.find((p) => p.id === projectType);
     const projectTypeLabel = currentTab ? t(currentTab.labelKey as TranslationKey) : (projectType === "mod" ? t('mods' as TranslationKey) : projectType);
     const hasActiveFilter = !!(mcVersionFilters.length || loaderFilters.length || categoryFilters.length || environmentFilters.length);
@@ -108,12 +125,14 @@ export function ExploreToolbar({
         <div className="space-y-4">
             {/* Row 1: title, search, filter, source */}
             <div className="flex flex-col md:flex-row md:items-center gap-3">
-                <h1 className="font-display text-2xl shrink-0 md:mr-3" style={{ color: colors.onSurface }}>{t('explore')}</h1>
+                {leading ?? (
+                    <h1 className="font-display text-2xl shrink-0 md:mr-3" style={{ color: colors.onSurface }}>{t('install_tab')}</h1>
+                )}
                 <div className="flex-1 relative min-w-[220px]">
                     <i className="fa-solid fa-magnifying-glass text-sm absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: colors.onSurfaceVariant }}></i>
                     <input
                         type="text"
-                        placeholder={t('search_placeholder').replace('{type}', projectTypeLabel)}
+                        placeholder={searchPlaceholder ?? t('search_placeholder').replace('{type}', projectTypeLabel)}
                         value={searchQuery}
                         onChange={(e) => onSearchChange(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && onSearchSubmit()}
@@ -138,6 +157,8 @@ export function ExploreToolbar({
                             onEnvironmentFiltersChange={onEnvironmentFiltersChange}
                             showCategoryFilter={showCategoryFilter}
                             showEnvironmentFilter={showEnvironmentFilter}
+                            showLoaderFilter={showLoaderFilter}
+                            showVersionFilter={showVersionFilter}
                         />
                     )}
 
@@ -155,16 +176,15 @@ export function ExploreToolbar({
                                 <BrandMark src={currentSource.icon} color={currentSource.color} />
                                 {currentSource.label}
                             </span>
-                            <i className={`fa-solid fa-chevron-down text-xs transition-transform ${sourceOpen ? "rotate-180" : ""}`} style={{ color: colors.onSurfaceVariant }} />
+                            <i className={`fa-solid fa-chevron-down text-xs transition-transform duration-200 ${sourceOpen ? "rotate-180" : ""}`} style={{ color: colors.onSurfaceVariant }} />
                         </button>
                         <AnimatePresence>
                             {sourceOpen && (
                                 <motion.div
+                                    key="source-menu"
                                     role="listbox"
-                                    initial={{ opacity: 0, y: -4 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, y: -4 }}
-                                    transition={{ duration: 0.12 }}
+                                    variants={m.popover("bottom-end")}
+                                    {...m.states}
                                     className="absolute right-0 top-full mt-2 z-50 w-full min-w-52 p-1.5 rounded-xl shadow-[0_16px_40px_-12px_rgba(0,0,0,0.4)]"
                                     style={{ backgroundColor: colors.surfaceContainerHigh }}
                                 >
@@ -197,7 +217,7 @@ export function ExploreToolbar({
             <div className="flex flex-col lg:flex-row lg:items-end gap-3 border-b" style={{ borderColor: colors.outlineVariant }}>
                 <div className="overflow-x-auto no-scrollbar">
                     <div role="tablist" className="flex items-end gap-6 min-w-max">
-                        {PROJECT_TABS.map((tab) => {
+                        {PROJECT_TABS.filter((tab) => !projectTypes || projectTypes.includes(tab.id)).map((tab) => {
                             const active = projectType === tab.id;
                             const TabIcon = tab.icon;
                             return (
@@ -211,7 +231,14 @@ export function ExploreToolbar({
                                 >
                                     <TabIcon className="w-4.5 h-4.5" />
                                     <span>{t(tab.labelKey as TranslationKey)}</span>
-                                    {active && <span className="absolute left-0 right-0 -bottom-px h-0.5 rounded-full" style={{ backgroundColor: colors.secondary }} />}
+                                    {active && (
+                                        <motion.span
+                                            layoutId={tabIndicatorLayoutId}
+                                            transition={m.tabIndicator}
+                                            className="absolute left-0 right-0 -bottom-px h-0.5 rounded-full"
+                                            style={{ backgroundColor: colors.secondary }}
+                                        />
+                                    )}
                                 </button>
                             );
                         })}
@@ -221,15 +248,20 @@ export function ExploreToolbar({
                 <div className="hidden lg:block flex-1" />
 
                 <div className="flex items-center justify-between lg:justify-end gap-2 flex-wrap pb-2.5">
+                    <AnimatePresence initial={false}>
                     {hasActiveFilter && (
-                        <span
+                        <motion.span
+                            key="active-filter-chip"
+                            variants={m.scaleIn}
+                            {...m.states}
                             className="h-8 px-3 rounded-lg text-[13px] font-semibold flex items-center gap-1.5"
                             style={{ backgroundColor: colors.secondary, color: "#111" }}
                         >
                             <i className="fa-solid fa-filter text-xs" />
                             {t("filters" as TranslationKey)}
-                        </span>
+                        </motion.span>
                     )}
+                    </AnimatePresence>
 
                     {onLayoutChange && (
                         <div className="h-10 p-1 rounded-xl flex items-center gap-0.5" style={{ backgroundColor: colors.surfaceContainerHighest }}>
@@ -244,11 +276,20 @@ export function ExploreToolbar({
                                     title={opt.label}
                                     aria-label={opt.label}
                                     aria-pressed={layout === opt.id}
-                                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
-                                    style={layout === opt.id
-                                        ? { backgroundColor: colors.surface, color: colors.onSurface, boxShadow: "0 1px 3px rgba(0,0,0,0.12)" }
-                                        : { color: colors.onSurfaceVariant }}
+                                    className="relative isolate w-8 h-8 rounded-lg flex items-center justify-center pressable"
+                                    style={{ color: layout === opt.id ? colors.onSurface : colors.onSurfaceVariant }}
                                 >
+                                    {layout === opt.id && (
+                                        // No shared layoutId: it was measured mid page-transition and settled off the track.
+                                        <motion.span
+                                            key="explore-layout-toggle-pill"
+                                            initial={m.reduced ? { opacity: 0 } : { opacity: 0, scale: 0.9 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            transition={m.tabIndicator}
+                                            className="absolute inset-0 -z-10 rounded-lg"
+                                            style={{ backgroundColor: colors.surface, boxShadow: "0 1px 3px rgba(0,0,0,0.12)" }}
+                                        />
+                                    )}
                                     <i className={`fa-solid ${opt.icon} text-sm`} />
                                 </button>
                             ))}
@@ -279,7 +320,7 @@ export function ExploreToolbar({
                                 title="Previous page"
                                 onClick={() => { playClick(); onPageChange(Math.max(1, page - 1)); }}
                                 disabled={page === 1}
-                                className="w-8 h-8 rounded-lg flex items-center justify-center disabled:opacity-35 transition-colors hover:bg-black/5"
+                                className="w-8 h-8 rounded-lg flex items-center justify-center disabled:opacity-35 pressable hover:bg-black/5"
                                 style={{ color: colors.onSurface }}
                             >
                                 <i className="fa-solid fa-chevron-left text-xs"></i>
@@ -293,7 +334,7 @@ export function ExploreToolbar({
                                 title="Next page"
                                 onClick={() => { playClick(); onPageChange(Math.min(totalPages, page + 1)); }}
                                 disabled={page >= totalPages}
-                                className="w-8 h-8 rounded-lg flex items-center justify-center disabled:opacity-35 transition-colors hover:bg-black/5"
+                                className="w-8 h-8 rounded-lg flex items-center justify-center disabled:opacity-35 pressable hover:bg-black/5"
                                 style={{ color: colors.onSurface }}
                             >
                                 <i className="fa-solid fa-chevron-right text-xs"></i>

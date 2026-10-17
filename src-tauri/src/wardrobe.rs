@@ -13,6 +13,79 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const CATSKINC_DEFAULT_HOST: &str = "storage-skin.catlabdesign.space";
 const CATSKINC_DEFAULT_URL: &str = "https://storage-skin.catlabdesign.space";
+/// Published default server list; `globalIp` overrides the built-in host when the
+/// player has not set their own `catskinCloudIp`.
+const CATSKINC_SERVERS_URL: &str =
+    "https://raw.githubusercontent.com/catlab-design/CatSkinC-Data/main/servers.json";
+const CATSKINC_SERVERS_TTL: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+
+static CATSKINC_REMOTE_HOST: std::sync::Mutex<Option<(String, std::time::Instant)>> =
+    std::sync::Mutex::new(None);
+
+/** Default host: the published `globalIp` once fetched, else the built-in one. */
+fn default_catskinc_host() -> String {
+    CATSKINC_REMOTE_HOST
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().map(|(h, _)| h.clone()))
+        .unwrap_or_else(|| CATSKINC_DEFAULT_HOST.to_string())
+}
+
+fn default_catskinc_url() -> String {
+    let host = default_catskinc_host();
+    if host == CATSKINC_DEFAULT_HOST {
+        return CATSKINC_DEFAULT_URL.to_string();
+    }
+    let url = if host.starts_with("http://") || host.starts_with("https://") {
+        host
+    } else {
+        format!("https://{host}")
+    };
+    let url = url.trim_end_matches('/').to_string();
+    if reqwest::Url::parse(&url).is_ok() { url } else { CATSKINC_DEFAULT_URL.to_string() }
+}
+
+/// Refreshes the published default (at most hourly). Failures keep the last known value
+/// (or the built-in host), so an offline launcher keeps working.
+async fn refresh_default_catskinc_host() {
+    let fresh = CATSKINC_REMOTE_HOST
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().map(|(_, at)| at.elapsed() < CATSKINC_SERVERS_TTL))
+        .unwrap_or(false);
+    if fresh {
+        return;
+    }
+    let fetched = async {
+        let resp = crate::http_client::HTTP_CLIENT
+            .get(CATSKINC_SERVERS_URL)
+            .timeout(std::time::Duration::from_secs(5))
+            .send()
+            .await
+            .ok()?;
+        if !resp.status().is_success() {
+            return None;
+        }
+        let body: serde_json::Value = resp.json().await.ok()?;
+        let ip = body.get("globalIp")?.as_str()?.trim().to_string();
+        // host[:port] or a URL; reject anything with spaces or obviously bogus content
+        let valid = !ip.is_empty()
+            && ip.len() <= 255
+            && ip.chars().all(|c| c.is_ascii_alphanumeric() || ".-:/_[]".contains(c));
+        valid.then_some(ip)
+    }
+    .await;
+    if let Ok(mut guard) = CATSKINC_REMOTE_HOST.lock() {
+        match fetched {
+            Some(ip) => *guard = Some((ip, std::time::Instant::now())),
+            // keep the old value; retry after the TTL from now
+            None => {
+                let keep = guard.as_ref().map(|(h, _)| h.clone()).unwrap_or_else(default_catskinc_host);
+                *guard = Some((keep, std::time::Instant::now()));
+            }
+        }
+    }
+}
 const CATSKINC_PROTOCOL_VERSION: &str = "2";
 const CATSKINC_USER_AGENT: &str = "catskinc/ServerApiClient";
 const CATSKINC_EMPTY_SHA256: &str =
@@ -132,10 +205,48 @@ fn read_catskinc_config(game_directory: Option<String>) -> Option<serde_json::Va
     serde_json::from_str::<serde_json::Value>(&content).ok()
 }
 
+/// Hosts of the old CatSkinC backend (no longer reachable). A saved `catskinCloudIp`
+/// pointing at one of these is treated as unset.
+fn is_retired_catskinc_host(raw: &str) -> bool {
+    let ip = raw.trim().to_ascii_lowercase();
+    let host = ip
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .split(['/', ':'])
+        .next()
+        .unwrap_or("");
+    host == "catskin.space" || host.ends_with(".catskin.space")
+}
+
+/// Rewrites a retired `catskinCloudIp` in the instance's catskinc.json to the current default,
+/// so both the launcher and the in-game mod stop calling the dead host.
+fn migrate_retired_catskinc_ip(game_directory: Option<String>) {
+    let path = catskinc_config_path(game_directory);
+    let Some(mut config) = fs::read_to_string(&path)
+        .ok()
+        .and_then(|c| serde_json::from_str::<serde_json::Value>(&c).ok())
+    else {
+        return;
+    };
+    let retired = config
+        .get("catskinCloudIp")
+        .and_then(|v| v.as_str())
+        .is_some_and(is_retired_catskinc_host);
+    if !retired {
+        return;
+    }
+    if let Some(obj) = config.as_object_mut() {
+        obj.insert("catskinCloudIp".to_string(), json!(default_catskinc_host()));
+        if let Ok(content) = serde_json::to_string_pretty(&config) {
+            let _ = fs::write(&path, content);
+        }
+    }
+}
+
 fn normalize_catskinc_base_url(raw: &str) -> String {
     let ip = raw.trim();
-    if ip.is_empty() {
-        return CATSKINC_DEFAULT_URL.to_string();
+    if ip.is_empty() || is_retired_catskinc_host(ip) {
+        return default_catskinc_url();
     }
     let url = if ip.starts_with("http://") || ip.starts_with("https://") {
         ip.to_string()
@@ -146,7 +257,7 @@ fn normalize_catskinc_base_url(raw: &str) -> String {
     };
     let url = url.trim_end_matches('/').to_string();
     if reqwest::Url::parse(&url).is_err() {
-        return CATSKINC_DEFAULT_URL.to_string();
+        return default_catskinc_url();
     }
     url
 }
@@ -158,13 +269,14 @@ fn non_blank(value: Option<&str>) -> Option<String> {
 }
 
 fn catskinc_runtime(game_directory: Option<String>) -> CatskincRuntime {
+    migrate_retired_catskinc_ip(game_directory.clone());
     let config = read_catskinc_config(game_directory);
     let base_url = config
         .as_ref()
         .and_then(|c| c.get("catskinCloudIp"))
         .and_then(|v| v.as_str())
         .map(normalize_catskinc_base_url)
-        .unwrap_or_else(|| CATSKINC_DEFAULT_URL.to_string());
+        .unwrap_or_else(default_catskinc_url);
     let signing_key = non_blank(std::env::var("CATSKINC_REQUEST_SIGNING_KEY").ok().as_deref())
         .or_else(|| {
             non_blank(
@@ -801,6 +913,8 @@ fn map_profile(profile_data: &serde_json::Value) -> serde_json::Value {
 pub async fn catskinc_get_config(
     game_directory: Option<String>,
 ) -> Result<serde_json::Value, String> {
+    refresh_default_catskinc_host().await;
+    migrate_retired_catskinc_ip(game_directory.clone());
     let config_path = catskinc_config_path(game_directory);
 
     if config_path.exists() {
@@ -808,17 +922,17 @@ pub async fn catskinc_get_config(
             Ok(content) => {
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&content) {
                     let ip = non_blank(parsed.get("catskinCloudIp").and_then(|v| v.as_str()))
-                        .unwrap_or_else(|| CATSKINC_DEFAULT_HOST.to_string());
+                        .unwrap_or_else(default_catskinc_host);
                     return Ok(json!({ "ok": true, "configured": true, "ip": ip }));
                 }
-                Ok(json!({ "ok": true, "configured": false, "ip": CATSKINC_DEFAULT_HOST }))
+                Ok(json!({ "ok": true, "configured": false, "ip": default_catskinc_host() }))
             }
             Err(_) => {
-                Ok(json!({ "ok": false, "configured": false, "ip": CATSKINC_DEFAULT_HOST }))
+                Ok(json!({ "ok": false, "configured": false, "ip": default_catskinc_host() }))
             }
         }
     } else {
-        Ok(json!({ "ok": true, "configured": false, "ip": CATSKINC_DEFAULT_HOST }))
+        Ok(json!({ "ok": true, "configured": false, "ip": default_catskinc_host() }))
     }
 }
 
@@ -858,6 +972,7 @@ pub async fn catskinc_save_config(
 pub async fn catskinc_get_selected_skin(
     game_directory: Option<String>,
 ) -> Result<serde_json::Value, String> {
+    refresh_default_catskinc_host().await;
     let session = get_session()
         .account
         .ok_or_else(|| "Not logged in".to_string())?;
@@ -930,6 +1045,7 @@ pub async fn catskinc_upload_skin(
     mouth_open_data_url: Option<String>,
     game_directory: Option<String>,
 ) -> Result<crate::cloud::SimpleResult, String> {
+    refresh_default_catskinc_host().await;
     let session = get_session()
         .account
         .ok_or_else(|| "Not logged in".to_string())?;
@@ -1071,6 +1187,7 @@ pub async fn catskinc_clear_assets(
     mode: String,
     game_directory: Option<String>,
 ) -> Result<crate::cloud::SimpleResult, String> {
+    refresh_default_catskinc_host().await;
     let session = get_session()
         .account
         .ok_or_else(|| "Not logged in".to_string())?;

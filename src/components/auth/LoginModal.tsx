@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Icons } from "../ui/Icons";
 import { useTranslation } from "../../hooks/useTranslation";
 import { playClick } from "../../lib/sounds";
+import { useMotionPreset } from "../../lib/motion";
 
 interface LoginModalProps {
     isOpen: boolean;
@@ -20,6 +21,7 @@ export function LoginModal({
     colors
 }: LoginModalProps) {
     const { t } = useTranslation();
+    const m = useMotionPreset();
 
     const handleClose = () => {
         playClick();
@@ -32,10 +34,8 @@ export function LoginModal({
                 <motion.div
                     className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5"
                     onClick={handleClose}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0, transition: { duration: 0.18, ease: "easeInOut" } }}
-                    transition={{ duration: 0.24, ease: "easeOut" }}
+                    variants={m.modal.backdrop}
+                    {...m.states}
                 >
                     <motion.div
                         role="dialog"
@@ -44,10 +44,7 @@ export function LoginModal({
                         className="flex w-full max-w-[520px] flex-col overflow-hidden rounded-3xl shadow-2xl"
                         style={{ backgroundColor: colors.surface }}
                         onClick={(e) => e.stopPropagation()}
-                        initial={{ opacity: 0, y: 28, scale: 0.975 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 18, scale: 0.985 }}
-                        transition={{ type: "spring", stiffness: 260, damping: 28, mass: 0.9 }}
+                        variants={m.modal.panel}
                     >
                         <div className="flex items-start justify-between gap-4 px-8 pt-8 pb-2">
                             <div>

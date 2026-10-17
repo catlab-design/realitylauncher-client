@@ -25,7 +25,7 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
     };
 
     return (
-        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <div>
         <SettingsPage title={t('appearance_and_themes')} colors={colors}>
             {}
             <SettingsSection title={t('theme_mode')} colors={colors}>
@@ -41,7 +41,7 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
                             <button
                                 key={item.id}
                                 onClick={() => handleUpdate({ theme: item.id as any })}
-                                className="group flex flex-col rounded-xl overflow-hidden text-left cursor-pointer w-full transition-all duration-200 hover:brightness-105"
+                                className="group flex flex-col rounded-xl overflow-hidden text-left cursor-pointer w-full hover-lift hover:brightness-105"
                                 style={{
                                     backgroundColor: colors.surfaceContainer,
                                     border: `2px solid ${isActive ? colors.secondary : colors.outlineVariant}`
@@ -139,14 +139,14 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
                     <div className="relative">
                         {config.rainbowMode && (
                             <div className="absolute inset-0 z-20 flex items-center justify-center">
-                                <div className="px-4 py-2 rounded-lg bg-black/70 border border-white/10 flex items-center gap-3 animate-in zoom-in fade-in duration-300">
+                                <div className="px-4 py-2 rounded-lg bg-black/70 border border-white/10 flex items-center gap-3 animate-in zoom-in-95 fade-in duration-200">
                                     <i className="fa-solid fa-lock text-white text-sm"></i>
                                     <span className="text-sm font-semibold text-white">{t('rainbow_mode_active')}</span>
                                 </div>
                             </div>
                         )}
 
-                        <div className={`flex flex-wrap gap-3 transition-all duration-300 ${config.rainbowMode ? 'opacity-20 blur-[1px] pointer-events-none' : ''}`}>
+                        <div className={`flex flex-wrap gap-3 transition-[opacity,filter] duration-300 ${config.rainbowMode ? 'opacity-20 blur-[1px] pointer-events-none' : ''}`}>
                             {(Object.keys(COLOR_THEMES) as ColorTheme[]).map((theme) => {
                                 const isSelected = config.colorTheme === theme && !config.customColor && !config.rainbowMode;
                                 const themeColor = COLOR_THEMES[theme].primary;
@@ -159,7 +159,7 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
                                             handleUpdate({ colorTheme: theme, customColor: undefined, rainbowMode: false });
                                             setPendingColor(null);
                                         }}
-                                        className="group relative w-12 h-12 rounded-xl transition-all duration-200 flex items-center justify-center hover:scale-105"
+                                        className="group relative w-12 h-12 rounded-xl transition-[scale,box-shadow] duration-200 flex items-center justify-center hover:scale-105 active:scale-95"
                                         style={{
                                             backgroundColor: themeColor,
                                             boxShadow: isSelected ? `0 0 0 2px ${colors.surfaceContainer}, 0 0 0 4px ${colors.onSurface}` : 'none'
@@ -193,7 +193,7 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
                                     const contrastColor = getContrastColor(activeColor);
                                     return (
                                         <div
-                                            className="absolute inset-0 rounded-xl transition-all duration-200 flex items-center justify-center z-10"
+                                            className="absolute inset-0 rounded-xl transition-[background-color,box-shadow,border-color] duration-200 flex items-center justify-center z-10"
                                             style={{
                                                 backgroundColor: activeColor,
                                                 border: isCustomSelected ? 'none' : `2px dashed ${colors.outline}`,

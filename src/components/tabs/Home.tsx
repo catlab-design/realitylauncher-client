@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import appBanner from "../../assets/banner.png";
+import { useMotionPreset } from "../../lib/motion";
+import { useConfigStore } from "../../store/configStore";
 import { type AuthSession, type NewsItem, type Server, type GameInstance } from "../../types/launcher";
 import { Icons } from "../ui/Icons";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -36,6 +39,28 @@ let _joinedServersCache: Server[] | null = null;
 const INSTANCES_CACHE_KEY = "launcher-home-instances-v2";
 const NEWSLETTER_CACHE_KEY = "launcher-newsletters-v1";
 const NEWSLETTER_CACHE_TTL_MS = 5 * 60 * 1000;
+
+/** Last saved news list (any age) so the hero paints instantly; refreshed in the background when stale. */
+function readNewsCache(): { timestamp: number; newsletters: Newsletter[] } | null {
+    try {
+        const cached = JSON.parse(localStorage.getItem(NEWSLETTER_CACHE_KEY) || "null");
+        return cached?.timestamp && Array.isArray(cached.newsletters) ? cached : null;
+    } catch {
+        return null;
+    }
+}
+
+const preloadedNewsImages = new Set<string>();
+function preloadNewsImages(list: Newsletter[]) {
+    for (const n of list.slice(0, NEWS_COUNT)) {
+        const url = n.imageUrl;
+        if (!url || preloadedNewsImages.has(url)) continue;
+        preloadedNewsImages.add(url);
+        const img = new Image();
+        img.decoding = "async";
+        img.src = url;
+    }
+}
 const JUMP_IN_COUNT = 4;
 const NEWS_COUNT = 5;
 const NEWS_AUTOPLAY_MS = 6000;
@@ -170,7 +195,9 @@ function PackCard({ banner, icon, name, meta, colors, onOpen, dimArt, actions }:
 }
 
 /** Compact shelf card: banner art, logo + name over a fade, one action button. */
-function ShelfCard({ banner, icon, name, meta, dimArt, onOpen, actionLabel, actionIcon, onAction, colors }: {
+function ShelfCard({ index = 0, banner, icon, name, meta, dimArt, onOpen, actionLabel, actionIcon, onAction, colors }: {
+    /** Position in the grid; drives the (capped) entrance stagger. */
+    index?: number;
     banner: string;
     icon?: string | null;
     name: string;
@@ -182,11 +209,16 @@ function ShelfCard({ banner, icon, name, meta, dimArt, onOpen, actionLabel, acti
     onAction: () => void;
     colors: any;
 }) {
+    const m = useMotionPreset();
     return (
-        <div
+        <motion.div
             onClick={onOpen}
-            className={`group relative w-full h-56 rounded-2xl overflow-hidden transition hover:-translate-y-0.5 ${onOpen ? "cursor-pointer" : ""}`}
+            className={`group relative w-full h-56 rounded-2xl overflow-hidden ${onOpen ? "cursor-pointer" : ""}`}
             style={{ backgroundColor: colors.surfaceContainerHighest }}
+            variants={m.showcaseItem}
+            custom={index}
+            initial="hidden" animate="show"
+            whileHover={m.hoverLift.whileHover}
         >
             <img
                 src={banner}
@@ -214,12 +246,13 @@ function ShelfCard({ banner, icon, name, meta, dimArt, onOpen, actionLabel, acti
                     {actionIcon}
                 </button>
             </div>
-        </div>
+        </motion.div>
     );
 }
 
 export function Home({ session, servers, setSelectedServer, setSelectedInstance, colors, setActiveTab, language }: HomeProps) {
     const { t } = useTranslation(language as any);
+    const m = useMotionPreset();
     const setPendingLaunchId = useUiStore((state) => state.setPendingLaunchId);
     const setImmersive = useUiStore((state) => state.setImmersive);
     const setFullBleed = useUiStore((state) => state.setFullBleed);
@@ -244,10 +277,20 @@ export function Home({ session, servers, setSelectedServer, setSelectedInstance,
     const openModal = useUiStore((state) => state.openModal);
     const locale = language === "th" ? "th-TH" : "en-US";
 
-    const [newsletters, setNewsletters] = useState<Newsletter[]>([]);
-    const [newsletterLoading, setNewsletterLoading] = useState(true);
+    const [newsletters, setNewsletters] = useState<Newsletter[]>(() => readNewsCache()?.newsletters ?? []);
+    const [newsletterLoading, setNewsletterLoading] = useState(() => !readNewsCache());
     const [selectedNews, setSelectedNews] = useState<Newsletter | null>(null);
     const [newsIndex, setNewsIndex] = useState(0);
+    // With a custom app background the page body stays see-through so the image shows.
+    const hasAppBackground = useConfigStore((s) => !!s.backgroundImage);
+    // Slide direction for the hero text: 1 = forward (next / auto-advance), -1 = back.
+    const prevNewsIndexRef = React.useRef(0);
+    const prevNewsIndex = prevNewsIndexRef.current;
+    const newsSlideCount = Math.min(newsletters.length, NEWS_COUNT);
+    // Wrapping last → first (auto-advance) still reads as forward.
+    const newsWrapped = newsIndex === 0 && prevNewsIndex === newsSlideCount - 1 && newsSlideCount > 2;
+    const newsDirection = newsWrapped || newsIndex >= prevNewsIndex ? 1 : -1;
+    useEffect(() => { prevNewsIndexRef.current = newsIndex; }, [newsIndex]);
     const [newsPaused, setNewsPaused] = useState(false);
     const [jumpOpen, setJumpOpen] = useState(true);
     const [loader, setLoader] = useState<string>("all");
@@ -264,23 +307,23 @@ export function Home({ session, servers, setSelectedServer, setSelectedInstance,
     const [instancesLoaded, setInstancesLoaded] = useState(instances.length > 0);
 
     const fetchNewsletters = useCallback(async (force = false) => {
-        if (!force) {
-            try {
-                const cached = JSON.parse(localStorage.getItem(NEWSLETTER_CACHE_KEY) || "null");
-                if (cached?.timestamp && Date.now() - cached.timestamp < NEWSLETTER_CACHE_TTL_MS && Array.isArray(cached.newsletters)) {
-                    setNewsletters(cached.newsletters);
-                    setNewsletterLoading(false);
-                    return;
-                }
-            } catch {
-            }
+        const cached = readNewsCache();
+        if (cached) {
+            // Show the saved list right away (no skeleton); only refetch when it's stale.
+            setNewsletters(cached.newsletters);
+            setNewsletterLoading(false);
+            preloadNewsImages(cached.newsletters);
+            if (!force && Date.now() - cached.timestamp < NEWSLETTER_CACHE_TTL_MS) return;
         }
         try {
             const res = await fetch("https://api.reality.catlabdesign.space/newsletter/list");
             if (res.ok) {
                 const list = (await res.json()).newsletters || [];
+                preloadNewsImages(list);
                 setNewsletters(list);
-                localStorage.setItem(NEWSLETTER_CACHE_KEY, JSON.stringify({ timestamp: Date.now(), newsletters: list }));
+                try {
+                    localStorage.setItem(NEWSLETTER_CACHE_KEY, JSON.stringify({ timestamp: Date.now(), newsletters: list }));
+                } catch { /* storage full: the in-memory list still works */ }
             }
         } catch {
         } finally {
@@ -489,6 +532,7 @@ export function Home({ session, servers, setSelectedServer, setSelectedInstance,
                         onMouseEnter={() => setNewsPaused(true)}
                         onMouseLeave={() => setNewsPaused(false)}
                     >
+                        <motion.div className="absolute inset-0" variants={m.showcaseArt} initial="hidden" animate="show">
                         {featuredNews.map((n, i) => (
                             n.imageUrl ? (
                                 <img
@@ -501,50 +545,99 @@ export function Home({ session, servers, setSelectedServer, setSelectedInstance,
                                 />
                             ) : null
                         ))}
-                        {!featuredNews.some((n) => n.imageUrl) && (
+                        {!featuredNews.some((n) => n.imageUrl) && !newsletterLoading && (
                             <img src={lastPlayed?.banner || appBanner} alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover" />
                         )}
+                        {newsletterLoading && featuredNews.length === 0 && (
+                            <div className="absolute inset-0 bg-[#1a1b20] animate-skeleton-wave" />
+                        )}
+                        </motion.div>
                         {/* Text side shade only; the rest of the art stays clean. */}
                         <div className="absolute inset-0 bg-linear-to-r from-black/80 via-black/35 to-transparent" />
                         <div className="absolute inset-x-0 bottom-0 h-1/2 bg-linear-to-t from-black/50 to-transparent" />
 
+                        <AnimatePresence initial={false} custom={newsDirection}>
                         {currentNews ? (
-                            <div key={currentNews.id} className="absolute left-0 bottom-0 px-8 pb-48 lg:pb-32 max-w-xl xl:max-w-2xl animate-fade-in">
-                                <div className="flex items-center gap-2 text-sm text-white/80">
+                            // Re-keyed per slide: the art crossfades; the old text slides out while the new
+                            // text slides in from the direction of travel, then its pieces stagger up.
+                            <motion.div
+                                key={currentNews.id}
+                                className="absolute left-0 bottom-0 px-8 pb-48 lg:pb-32 max-w-xl xl:max-w-2xl"
+                                custom={newsDirection}
+                                variants={{
+                                    hidden: (dir: number) => ({ opacity: 0, x: m.reduced ? 0 : dir * 48 }),
+                                    show: {
+                                        opacity: 1,
+                                        x: 0,
+                                        transition: { duration: 0.55, ease: [0.2, 0, 0, 1], staggerChildren: m.reduced ? 0 : 0.09, delayChildren: m.reduced ? 0 : 0.1 },
+                                    },
+                                    exit: (dir: number) => ({
+                                        opacity: 0,
+                                        x: m.reduced ? 0 : dir * -48,
+                                        transition: { duration: 0.25, ease: [0.4, 0, 1, 1] },
+                                    }),
+                                }}
+                                initial="hidden" animate="show" exit="exit"
+                            >
+                                <motion.div variants={m.showcaseUp} className="flex items-center gap-2 text-sm text-white/80">
                                     {currentNews.tag && (
                                         <span className="h-7 px-3 rounded-full flex items-center font-semibold bg-white/15 backdrop-blur-md text-white">{currentNews.tag}</span>
                                     )}
                                     <span>{newsDate(currentNews)}</span>
-                                </div>
-                                <h2 className="font-display text-white text-3xl xl:text-5xl leading-[1.1] line-clamp-2 mt-3">{stripMarkdown(currentNews.subject)}</h2>
-                                <p className="text-base xl:text-lg text-white/80 leading-relaxed line-clamp-2 mt-3">{stripMarkdown(currentNews.content).slice(0, 200)}</p>
-                                <button
+                                </motion.div>
+                                <motion.h2 variants={m.showcaseUp} className="font-display text-white text-3xl xl:text-5xl leading-[1.1] line-clamp-2 mt-3">{stripMarkdown(currentNews.subject)}</motion.h2>
+                                <motion.p variants={m.showcaseUp} className="text-base xl:text-lg text-white/80 leading-relaxed line-clamp-2 mt-3">{stripMarkdown(currentNews.content).slice(0, 200)}</motion.p>
+                                <motion.button
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); setSelectedNews(currentNews); }}
-                                    className="mt-5 h-11 px-6 rounded-full text-[15px] font-bold inline-flex items-center gap-2 transition hover:brightness-105 active:scale-[0.98]"
+                                    className="mt-5 h-11 px-6 rounded-full text-[15px] font-bold inline-flex items-center gap-2 transition-[filter] hover:brightness-105"
                                     style={{ backgroundColor: colors.secondary, color: "#111" }}
+                                    variants={m.showcaseUp}
+                                    {...m.pressable}
                                 >
                                     {t("read_more")}
                                     <Icons.ChevronRight className="w-4 h-4" />
-                                </button>
-                            </div>
-                        ) : newsletterLoading ? null : (
-                            <div className="absolute left-0 bottom-0 px-8 pb-48 lg:pb-32">
+                                </motion.button>
+                            </motion.div>
+                        ) : newsletterLoading ? (
+                            // Skeleton in the shape of the news text block (tag + date, title, excerpt, button).
+                            <motion.div
+                                key="news-skeleton"
+                                className="absolute left-0 bottom-0 px-8 pb-48 lg:pb-32 w-full max-w-xl xl:max-w-2xl"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0, transition: { duration: 0.15 } }}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <div className="h-7 w-20 rounded-full bg-white/12 animate-skeleton-wave" />
+                                    <div className="h-4 w-24 rounded-md bg-white/10 animate-skeleton-wave" />
+                                </div>
+                                <div className="mt-4 h-9 xl:h-12 w-3/4 rounded-lg bg-white/14 animate-skeleton-wave" />
+                                <div className="mt-4 h-4 w-full rounded-md bg-white/10 animate-skeleton-wave" />
+                                <div className="mt-2 h-4 w-2/3 rounded-md bg-white/10 animate-skeleton-wave" />
+                                <div className="mt-6 h-11 w-36 rounded-full bg-white/14 animate-skeleton-wave" />
+                            </motion.div>
+                        ) : (
+                            <div key="no-news" className="absolute left-0 bottom-0 px-8 pb-48 lg:pb-32">
                                 <p className="font-display text-white text-3xl">{t("no_news_yet")}</p>
                             </div>
                         )}
+                        </AnimatePresence>
 
                         {/* Slide controls: dots bottom-right. */}
                         {featuredNews.length > 1 && (
                             <>
                                 <div className="absolute right-8 bottom-50 lg:bottom-34 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                                     {featuredNews.map((n, i) => (
-                                        <button
+                                        // Width snaps; `layout` turns the resize/shift into a transform animation.
+                                        <motion.button
                                             key={n.id}
+                                            layout
+                                            transition={m.tabIndicator}
                                             onClick={() => setNewsIndex(i)}
                                             aria-label={`${i + 1}`}
-                                            className="h-2 rounded-full transition-all duration-300"
-                                            style={{ width: i === newsIndex ? 24 : 8, backgroundColor: i === newsIndex ? "#fff" : "rgba(255,255,255,0.4)" }}
+                                            className="h-2 transition-colors duration-300"
+                                            style={{ width: i === newsIndex ? 24 : 8, borderRadius: 9999, backgroundColor: i === newsIndex ? "#fff" : "rgba(255,255,255,0.4)" }}
                                         />
                                     ))}
                                 </div>
@@ -552,27 +645,31 @@ export function Home({ session, servers, setSelectedServer, setSelectedInstance,
                         )}
 
                         {/* Quick links: glass tiles along the bottom of the hero. */}
-                        <nav
+                        <motion.nav
                             className="absolute inset-x-8 bottom-6 z-10 grid grid-cols-2 lg:grid-cols-4 gap-3"
                             onClick={(e) => e.stopPropagation()}
                             onMouseEnter={() => setNewsPaused(true)}
+                            variants={m.showcaseStagger(0.08, 0.35)}
+                            initial="hidden" animate="show"
                         >
                             {([
                                 { id: "servers", icon: Icons.Dns, label: t("servers"), count: joinedServers.length },
-                                { id: "modpack", icon: Icons.Modpack, label: t("modpacks"), count: instances.length },
-                                { id: "explore", icon: Icons.Compass, label: t("explore"), count: null },
+                                { id: "modpack", icon: Icons.Modpack, label: t("library"), count: instances.length },
+                                { id: "explore", icon: Icons.Compass, label: t("install_tab"), count: null },
                                 { id: "wardrobe", icon: Icons.Hanger, label: t("wardrobe"), count: null },
                             ] as const).map(({ id, icon: NavIcon, label, count }) => (
-                                <button
+                                <motion.button
                                     key={id}
                                     type="button"
                                     onClick={() => setActiveTab?.(id)}
-                                    className="group/nav flex h-16 items-center gap-3.5 rounded-2xl px-4 text-left shadow-[0_10px_30px_-12px_rgba(0,0,0,0.7)] transition active:scale-[0.98] bg-(--nav-bg) hover:bg-(--nav-hover) text-(--nav-fg)"
+                                    className="group/nav flex h-16 items-center gap-3.5 rounded-2xl px-4 text-left shadow-[0_10px_30px_-12px_rgba(0,0,0,0.7)] transition-colors bg-(--nav-bg) hover:bg-(--nav-hover) text-(--nav-fg)"
                                     style={{
                                         "--nav-bg": colors.surfaceContainerHigh,
                                         "--nav-hover": colors.surfaceContainerHighest,
                                         "--nav-fg": colors.onSurface,
                                     } as React.CSSProperties}
+                                    variants={m.showcaseUp}
+                                    {...m.hoverLift}
                                 >
                                     <NavIcon className="w-7 h-7 shrink-0" />
                                     <span className="flex-1 min-w-0">
@@ -582,9 +679,9 @@ export function Home({ session, servers, setSelectedServer, setSelectedInstance,
                                         )}
                                     </span>
                                     <Icons.ChevronRight className="w-5 h-5 shrink-0 transition-transform group-hover/nav:translate-x-1" style={{ color: colors.onSurfaceVariant }} />
-                                </button>
+                                </motion.button>
                             ))}
-                        </nav>
+                        </motion.nav>
 
                         {!session && (
                             <button
@@ -600,25 +697,38 @@ export function Home({ session, servers, setSelectedServer, setSelectedInstance,
             </section>
 
             {/* Library: own packs + server packs in a wrapping grid (no sideways scrolling). */}
-            <div className="relative z-10 pt-6 pb-6 px-0" style={{ backgroundColor: colors.surface }}>
+            <div className="relative z-10 pt-6 pb-6 px-0" style={{ backgroundColor: hasAppBackground ? "transparent" : colors.surface }}>
                 <div className="flex items-center gap-3 px-8 mb-3">
                     <h2 className="font-display text-xl" style={{ color: colors.onSurface }}>{t("library")}</h2>
                     {loaders.length > 1 && ["all", ...loaders].map((key) => (
-                        <button
+                        // The active fill is one shared pill that slides between filters (z-1 over the
+                        // inactive fills, under every label at z-2).
+                        <motion.button
                             key={key}
                             onClick={() => setLoader(key)}
-                            className="h-8 px-3 rounded-full text-sm font-semibold transition-colors hover:brightness-110" style={loader === key ? { backgroundColor: colors.secondary, color: "#111" } : { backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                            className={`relative h-8 px-3 rounded-full text-sm font-semibold transition-colors ${loader === key ? "" : "hover:brightness-110"}`}
+                            style={loader === key ? { color: "#111" } : { backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                            {...m.pressable}
                         >
-                            {key === "all" ? t("all") : getLoaderLabel(key as GameInstance["loader"])}
-                        </button>
+                            {loader === key && (
+                                <motion.span
+                                    layoutId="home-library-filter-pill"
+                                    transition={m.tabIndicator}
+                                    className="absolute inset-0 z-1 rounded-full"
+                                    style={{ backgroundColor: colors.secondary }}
+                                />
+                            )}
+                            <span className="relative z-2">{key === "all" ? t("all") : getLoaderLabel(key as GameInstance["loader"])}</span>
+                        </motion.button>
                     ))}
                 </div>
 
                 {library.length > 0 || serverPacks.length > 0 ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4 px-8 pt-1 pb-3">
-                        {library.map((instance) => (
+                        {library.map((instance, i) => (
                             <ShelfCard
                                 key={instance.id}
+                                index={i}
                                 banner={instance.banner || appBanner}
                                 icon={instance.icon}
                                 name={instance.name}
@@ -630,9 +740,10 @@ export function Home({ session, servers, setSelectedServer, setSelectedInstance,
                                 colors={colors}
                             />
                         ))}
-                        {serverPacks.map(({ server, installed }) => installed ? (
+                        {serverPacks.map(({ server, installed }, i) => installed ? (
                             <ShelfCard
                                 key={server.id}
+                                index={library.length + i}
                                 banner={installed.banner || server.bannerUrl || appBanner}
                                 icon={installed.icon || server.iconUrl}
                                 name={installed.name || server.name}
@@ -646,6 +757,7 @@ export function Home({ session, servers, setSelectedServer, setSelectedInstance,
                         ) : (
                             <ShelfCard
                                 key={server.id}
+                                index={library.length + i}
                                 banner={server.bannerUrl || appBanner}
                                 icon={server.iconUrl}
                                 name={server.name}
@@ -668,13 +780,23 @@ export function Home({ session, servers, setSelectedServer, setSelectedInstance,
                 )}
             </div>
 
+            <AnimatePresence>
             {selectedNews && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setSelectedNews(null)}>
+                <motion.div
+                    key="home-news-reader"
+                    className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8 bg-black/70 backdrop-blur-sm"
+                    onClick={() => setSelectedNews(null)}
+                    variants={m.modal.backdrop}
+                    {...m.states}
+                >
                     {/* Landscape reader: art on the left, article on the right. */}
-                    <div
-                        className="relative w-full max-w-7xl h-[min(86vh,860px)] flex flex-col md:flex-row overflow-hidden rounded-3xl shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+                    <motion.div
+                        role="dialog"
+                        aria-modal="true"
+                        className="relative w-full max-w-7xl h-[min(86vh,860px)] flex flex-col md:flex-row overflow-hidden rounded-3xl shadow-2xl"
                         style={{ backgroundColor: colors.surface }}
                         onClick={(e) => e.stopPropagation()}
+                        variants={m.modal.panel}
                     >
                         {selectedNews.imageUrl && (
                             <div className="relative md:w-[55%] h-56 md:h-auto shrink-0 bg-black overflow-hidden">
@@ -688,7 +810,7 @@ export function Home({ session, servers, setSelectedServer, setSelectedInstance,
                                 <button
                                     onClick={() => stepNews(-1)}
                                     aria-label={t("back")}
-                                    className="w-11 h-11 rounded-full flex items-center justify-center bg-black/55 text-white backdrop-blur-md transition hover:bg-black/75"
+                                    className="w-11 h-11 rounded-full flex items-center justify-center bg-black/55 text-white backdrop-blur-md pressable hover:bg-black/75"
                                 >
                                     <Icons.ChevronLeft className="w-5 h-5" />
                                 </button>
@@ -698,7 +820,7 @@ export function Home({ session, servers, setSelectedServer, setSelectedInstance,
                                 <button
                                     onClick={() => stepNews(1)}
                                     aria-label={t("next")}
-                                    className="w-11 h-11 rounded-full flex items-center justify-center bg-black/55 text-white backdrop-blur-md transition hover:bg-black/75"
+                                    className="w-11 h-11 rounded-full flex items-center justify-center bg-black/55 text-white backdrop-blur-md pressable hover:bg-black/75"
                                 >
                                     <Icons.ChevronRight className="w-5 h-5" />
                                 </button>
@@ -731,9 +853,10 @@ export function Home({ session, servers, setSelectedServer, setSelectedInstance,
                                 <SimpleMarkdown content={selectedNews.content} className="text-base leading-relaxed" />
                             </div>
                         </div>
-                    </div>
-                </div>
+                    </motion.div>
+                </motion.div>
             )}
+            </AnimatePresence>
         </div>
     );
 }

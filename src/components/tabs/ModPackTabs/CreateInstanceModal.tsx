@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import toast from "react-hot-toast";
 import { Icons } from "../../ui/Icons";
 import minecraftIcon from "../../../assets/minecraft.svg";
@@ -12,6 +12,7 @@ import { playClick } from "../../../lib/sounds";
 import { useTranslation } from "../../../hooks/useTranslation";
 import type { LauncherConfig } from "../../../types/launcher";
 import { Portal } from "../../ui/Portal";
+import { useMotionPreset } from "../../../lib/motion";
 
 export interface CreateInstanceModalProps {
     colors: any;
@@ -31,6 +32,7 @@ interface ScrollableSelectProps {
 }
 
 function ScrollableSelect({ value, onChange, options, disabled, colors, placeholder }: ScrollableSelectProps) {
+    const m = useMotionPreset();
     const [open, setOpen] = useState(false);
     const [dropUp, setDropUp] = useState(false);
     const triggerRef = useRef<HTMLButtonElement>(null);
@@ -79,12 +81,13 @@ function ScrollableSelect({ value, onChange, options, disabled, colors, placehol
                 style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
             >
                 <span className="truncate">{selected?.label ?? placeholder ?? ""}</span>
-                <svg className={`w-4 h-4 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="currentColor">
+                <svg className={`w-4 h-4 shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="currentColor">
                     <path d="M7 10l5 5 5-5z" />
                 </svg>
             </button>
+            <AnimatePresence>
             {open && (
-                <Portal>
+                <Portal key="select-list">
                     {(() => {
                         const rect = triggerRef.current?.getBoundingClientRect();
                         if (!rect) return null;
@@ -100,8 +103,10 @@ function ScrollableSelect({ value, onChange, options, disabled, colors, placehol
                                 : { top: rect.bottom + 4, maxHeight: Math.min(window.innerHeight - rect.bottom - 16, 240) }),
                         };
                         return (
-                            <div
+                            <motion.div
                                 ref={listRef}
+                                variants={m.popover(dropUp ? "top" : "bottom")}
+                                {...m.states}
                                 className="rounded-xl overflow-y-auto"
                                 style={style}
                             >
@@ -119,11 +124,12 @@ function ScrollableSelect({ value, onChange, options, disabled, colors, placehol
                                         {opt.label}
                                     </button>
                                 ))}
-                            </div>
+                            </motion.div>
                         );
                     })()}
                 </Portal>
             )}
+            </AnimatePresence>
         </div>
     );
 }
@@ -132,6 +138,7 @@ function ScrollableSelect({ value, onChange, options, disabled, colors, placehol
 
 export function CreateInstanceModal({ colors, config, onClose, onCreated, language }: CreateInstanceModalProps) {
     const { t } = useTranslation(language);
+    const m = useMotionPreset();
     const [name, setName] = useState("");
     const [minecraftVersion, setMinecraftVersion] = useState("");
     const [loader, setLoader] = useState<"vanilla" | "fabric" | "forge" | "neoforge" | "quilt">("vanilla");
@@ -270,9 +277,8 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
             <motion.div
                 className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5"
                 onClick={handleClose}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.24, ease: "easeOut" }}
+                variants={m.modal.backdrop}
+                {...m.states}
             >
                 <motion.div
                     role="dialog"
@@ -281,9 +287,7 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
                     className="flex w-full max-w-6xl h-[min(44rem,calc(100vh-2rem))] overflow-hidden rounded-2xl shadow-2xl"
                     style={{ backgroundColor: colors.surface }}
                     onClick={stopPropagation}
-                    initial={{ opacity: 0, y: 28, scale: 0.975 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    transition={{ type: "spring", stiffness: 260, damping: 28, mass: 0.9 }}
+                    variants={m.modal.panel}
                 >
                     {/* Left: pick the loader. */}
                     <aside className="w-88 shrink-0 flex flex-col p-6 overflow-y-auto custom-scrollbar" style={{ backgroundColor: colors.surfaceContainer }}>
@@ -294,16 +298,24 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
                                 const info = LOADER_INFO[l.id];
                                 const isSelected = loader === l.id;
                                 return (
-                                    <button
+                                    <motion.button
                                         key={l.id}
                                         type="button"
+                                        {...m.pressable}
                                         onClick={() => { handleSound(); setLoader(l.id as any); }}
-                                        className="w-full flex items-center gap-3.5 p-4 rounded-xl text-left transition-colors"
+                                        className="relative isolate w-full flex items-center gap-3.5 p-4 rounded-xl text-left transition-colors"
                                         style={{
-                                            backgroundColor: isSelected ? colors.secondary : "transparent",
                                             color: isSelected ? "#111" : colors.onSurface,
                                         }}
                                     >
+                                        {isSelected && (
+                                            <motion.span
+                                                layoutId="create-instance-loader-pill"
+                                                transition={m.tabIndicator}
+                                                className="absolute inset-0 -z-10 rounded-xl"
+                                                style={{ backgroundColor: colors.secondary }}
+                                            />
+                                        )}
                                         <span className="w-9 h-9 flex items-center justify-center shrink-0">{l.icon}</span>
                                         <span className="min-w-0">
                                             <span className="block text-[15px] font-bold leading-tight">{info.name}</span>
@@ -314,7 +326,7 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
                                                 {info.description}
                                             </span>
                                         </span>
-                                    </button>
+                                    </motion.button>
                                 );
                             })}
                         </div>
@@ -340,7 +352,7 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
                             <button
                                 type="button"
                                 onClick={handleClose}
-                                className="flex h-10 w-10 items-center justify-center rounded-full transition-all hover:brightness-110 shrink-0"
+                                className="flex h-10 w-10 items-center justify-center rounded-full transition-all hover:brightness-110 active:scale-95 shrink-0"
                                 style={{ color: colors.onSurface, backgroundColor: colors.surfaceContainerHighest }}
                                 aria-label={t('close')}
                             >
@@ -420,7 +432,7 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
                                 <button
                                     type="button"
                                     onClick={handleClose}
-                                    className="h-12 px-6 rounded-xl text-[15px] font-semibold transition hover:brightness-110"
+                                    className="h-12 px-6 rounded-xl text-[15px] font-semibold transition hover:brightness-110 active:scale-[0.97]"
                                     style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
                                 >
                                     {t('cancel')}
@@ -428,7 +440,7 @@ export function CreateInstanceModal({ colors, config, onClose, onCreated, langua
                                 <button
                                     onClick={() => { handleSound(); handleCreate(); }}
                                     disabled={!canCreate}
-                                    className="h-12 px-7 rounded-xl font-bold text-[15px] transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                                    className="h-12 px-7 rounded-xl font-bold text-[15px] transition-all hover:brightness-105 active:scale-95 disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2"
                                     style={{ backgroundColor: colors.secondary, color: "#111" }}
                                 >
                                     {isLoading ? (

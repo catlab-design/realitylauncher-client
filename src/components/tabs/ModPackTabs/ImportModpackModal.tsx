@@ -5,6 +5,7 @@ import { useTranslation } from "../../../hooks/useTranslation";
 import modrinthIcon from "../../../assets/modrinth.svg";
 import curseforgeIcon from "../../../assets/curseforge.svg";
 import { Portal } from "../../ui/Portal";
+import { SPRING, useMotionPreset } from "../../../lib/motion";
 
 export interface ImportModpackModalProps {
     colors: any;
@@ -39,6 +40,7 @@ export function ImportModpackModal({
     language,
 }: ImportModpackModalProps) {
     const { t } = useTranslation(language);
+    const m = useMotionPreset();
 
     const handleClose = () => {
         onClose();
@@ -53,9 +55,8 @@ export function ImportModpackModal({
             <motion.div
                 className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 backdrop-blur-md sm:p-5"
                 onClick={handleClose}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.24, ease: "easeOut" }}
+                variants={m.modal.backdrop}
+                {...m.states}
             >
                 <motion.div
                     role="dialog"
@@ -64,9 +65,7 @@ export function ImportModpackModal({
                     className="flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl shadow-2xl"
                     style={{ backgroundColor: colors.surface }}
                     onClick={stopPropagation}
-                    initial={{ opacity: 0, y: 28, scale: 0.975 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    transition={{ type: "spring", stiffness: 260, damping: 28, mass: 0.9 }}
+                    variants={m.modal.panel}
                 >
                     <div
                         className="flex items-center justify-between border-b px-6 py-4 sm:px-7 shrink-0"
@@ -106,7 +105,7 @@ export function ImportModpackModal({
                         <button
                             type="button"
                             onClick={handleClose}
-                            className="flex h-10 w-10 items-center justify-center rounded-full transition-all hover:brightness-110 shrink-0"
+                            className="flex h-10 w-10 items-center justify-center rounded-full transition-all hover:brightness-110 active:scale-95 shrink-0"
                             style={{
                                 color: colors.onSurface,
                                 backgroundColor: colors.surfaceContainerHighest,
@@ -119,8 +118,10 @@ export function ImportModpackModal({
 
                     <div className="flex-1 overflow-y-auto px-6 pb-6 pt-5 sm:px-7 sm:pb-7 sm:pt-6 custom-scrollbar">
                         
-                        <div
-                            className={`rounded-2xl p-10 text-center border-2 border-dashed mb-5 cursor-pointer transition-all duration-300 ${isDragging ? 'scale-[1.02] border-solid' : 'hover:bg-black/5'}`}
+                        <motion.div
+                            animate={{ scale: isDragging && !m.reduced ? 1.02 : 1 }}
+                            transition={SPRING.snappy}
+                            className={`rounded-2xl p-10 text-center border-2 border-dashed mb-5 cursor-pointer transition-[background-color,border-color,box-shadow] duration-300 ${isDragging ? 'border-solid' : 'hover:bg-black/5'}`}
                             style={{
                                 borderColor: isDragging ? colors.secondary : colors.outline,
                                 backgroundColor: isDragging ? `${colors.secondary}15` : colors.surfaceContainer,
@@ -131,9 +132,13 @@ export function ImportModpackModal({
                             onDragLeave={onDragLeave}
                             onDrop={onDrop}
                         >
-                            <div className={`w-16 h-16 mx-auto mb-3 flex items-center justify-center transition-transform duration-300 ${isDragging ? 'rotate-12 scale-110' : ''}`}>
-                                <Icons.Box className="w-11 h-11" style={{ color: isDragging ? colors.secondary : colors.onSurfaceVariant }} />
-                            </div>
+                            <motion.div
+                                animate={isDragging && !m.reduced ? { rotate: 12, scale: 1.1, y: -2 } : { rotate: 0, scale: 1, y: 0 }}
+                                transition={SPRING.snappy}
+                                className="w-16 h-16 mx-auto mb-3 flex items-center justify-center"
+                            >
+                                <Icons.Box className="w-11 h-11 transition-colors" style={{ color: isDragging ? colors.secondary : colors.onSurfaceVariant }} />
+                            </motion.div>
                             <p className="text-lg font-bold mb-1" style={{ color: isDragging ? colors.secondary : colors.onSurface }}>
                                 {isDragging ? t('drop_now_to_import') : t('drag_file_here')}
                             </p>
@@ -156,7 +161,7 @@ export function ImportModpackModal({
                                 )}
                                 {isInstalling ? t('installing') : t('select_file')}
                             </button>
-                        </div>
+                        </motion.div>
 
                         <div className="grid grid-cols-2 gap-4">
                             <div

@@ -2,6 +2,8 @@ import React from "react";
 import { createPortal } from "react-dom";
 import type { ModrinthProject } from "./types";
 import { useTranslation } from "../../../hooks/useTranslation";
+import { motion } from "framer-motion";
+import { useMotionPreset } from "../../../lib/motion";
 
 interface ConfirmInstallDialogProps {
     colors: any;
@@ -13,9 +15,10 @@ interface ConfirmInstallDialogProps {
 
 export function ConfirmInstallDialog({ colors, project, duplicate, onCancel, onConfirm }: ConfirmInstallDialogProps) {
     const { t } = useTranslation();
+    const m = useMotionPreset();
     return createPortal(
-        <div className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50 p-4" onClick={onCancel}>
-            <div className="w-full max-w-md rounded-2xl p-6" style={{ backgroundColor: colors.surface }} onClick={(e) => e.stopPropagation()}>
+        <motion.div variants={m.modal.backdrop} {...m.states} className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50 p-4" onClick={onCancel}>
+            <motion.div variants={m.modal.panel} role="dialog" aria-modal="true" className="w-full max-w-md rounded-2xl p-6" style={{ backgroundColor: colors.surface }} onClick={(e) => e.stopPropagation()}>
                 <h3 className="text-lg font-semibold mb-2" style={{ color: colors.onSurface }}>
                     {t("confirm_install_modpack_title")}
                 </h3>
@@ -26,7 +29,7 @@ export function ConfirmInstallDialog({ colors, project, duplicate, onCancel, onC
                     <button
                         type="button"
                         onClick={onCancel}
-                        className="px-4 py-2 rounded-xl text-sm font-semibold"
+                        className="px-4 py-2 rounded-xl text-sm font-semibold pressable hover:brightness-110"
                         style={{ backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
                     >
                         {t("cancel")}
@@ -34,14 +37,14 @@ export function ConfirmInstallDialog({ colors, project, duplicate, onCancel, onC
                     <button
                         type="button"
                         onClick={onConfirm}
-                        className="px-4 py-2 rounded-xl text-sm font-bold"
+                        className="px-4 py-2 rounded-xl text-sm font-bold pressable hover:brightness-110"
                         style={{ backgroundColor: colors.secondary, color: "#000" }}
                     >
                         {t("install")}
                     </button>
                 </div>
-            </div>
-        </div>,
+            </motion.div>
+        </motion.div>,
         document.body
     );
 }

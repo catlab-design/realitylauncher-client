@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "../../../hooks/useTranslation";
+import { motion } from "framer-motion";
+import { useMotionPreset } from "../../../lib/motion";
 import { Icons } from "../../ui/Icons";
 import type { GameInstance, InstanceCompatibility } from "./types";
 
@@ -26,6 +28,7 @@ export function InstanceSelectModal({
     onSelectInstance,
 }: InstanceSelectModalProps) {
     const { t } = useTranslation();
+    const m = useMotionPreset();
     const [filter, setFilter] = useState("");
 
     
@@ -41,8 +44,8 @@ export function InstanceSelectModal({
     }, [instanceCompatibility, filter]);
 
     return createPortal(
-        <div className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50" onClick={onClose}>
-            <div className="w-full max-w-2xl rounded-2xl p-8 relative" style={{ backgroundColor: colors.surface }} onClick={(e) => e.stopPropagation()}>
+        <motion.div variants={m.modal.backdrop} {...m.states} className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50" onClick={onClose}>
+            <motion.div variants={m.modal.panel} role="dialog" aria-modal="true" className="w-full max-w-2xl rounded-2xl p-8 relative" style={{ backgroundColor: colors.surface }} onClick={(e) => e.stopPropagation()}>
                 <button
                     type="button"
                     onClick={onClose}
@@ -96,14 +99,14 @@ export function InstanceSelectModal({
                         <p style={{ color: colors.onSurfaceVariant }}>{t("no_results")}</p>
                     </div>
                 ) : (
-                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                    <motion.div variants={m.fadeIn} initial="hidden" animate="show" className="space-y-2 max-h-96 overflow-y-auto">
                         {filtered.map(({ instance, compatible, reason, bestVersion }) => (
                             <button
                                 key={instance.id}
                                 type="button"
                                 onClick={() => compatible && onSelectInstance(instance)}
                                 disabled={isDownloading || !compatible}
-                                className={`w-full p-3 rounded-xl text-left transition-all ${compatible ? "hover:scale-[1.01]" : "opacity-60 cursor-not-allowed"}`}
+                                className={`w-full p-3 rounded-xl text-left pressable ${compatible ? "hover:brightness-110" : "opacity-60 cursor-not-allowed"}`}
                                 style={{
                                     backgroundColor: colors.surfaceContainer,
                                 }}
@@ -135,7 +138,7 @@ export function InstanceSelectModal({
                                 </div>
                             </button>
                         ))}
-                    </div>
+                    </motion.div>
                 )}
 
                 {isDownloading && (
@@ -143,8 +146,8 @@ export function InstanceSelectModal({
                         {t("downloading")}
                     </div>
                 )}
-            </div>
-        </div>,
+            </motion.div>
+        </motion.div>,
         document.body
     );
 }

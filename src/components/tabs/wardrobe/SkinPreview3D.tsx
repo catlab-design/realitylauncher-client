@@ -10,6 +10,8 @@ interface SkinPreview3DProps {
     onResetRotation?: (resetFn: () => void) => void;
     onSkinLoadStateChange?: (loading: boolean) => void;
     animationType?: SkinAnimationType;
+    /** Build a 3D room around the player (theme-aware). */
+    room?: { dark: boolean; accent: string } | null;
 }
 
 export type SkinAnimationType =
@@ -111,6 +113,8 @@ function getFallbackSkinDataUrl(): string | null {
     return fallbackSkinDataUrl;
 }
 
+import { addPreviewRoom, PREVIEW_ROOM_LIMITS } from "./previewRoom";
+
 export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({ 
     skinUrl, 
     variant, 
@@ -119,7 +123,8 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
     height = "100%",
     onResetRotation,
     onSkinLoadStateChange,
-    animationType = "idle"
+    animationType = "idle",
+    room = null,
 }) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -203,6 +208,26 @@ export const SkinPreview3D: React.FC<SkinPreview3DProps> = ({
             viewer?.dispose?.();
         };
     }, [backgroundColor, onSkinLoadStateChange]);
+
+    // 3D room around the player; rebuilt when the theme changes.
+    const roomDark = room?.dark;
+    const roomAccent = room?.accent;
+    useEffect(() => {
+        const viewer = viewerRef.current;
+        if (!viewer || !viewerReady || roomDark === undefined || !roomAccent) return;
+        const disposeRoom = addPreviewRoom(viewer.scene, { dark: roomDark, accent: roomAccent });
+        const controls = viewer.controls;
+        const prev = { max: controls.maxDistance, min: controls.minDistance, polar: controls.maxPolarAngle };
+        controls.maxDistance = PREVIEW_ROOM_LIMITS.maxDistance;
+        controls.minDistance = PREVIEW_ROOM_LIMITS.minDistance;
+        controls.maxPolarAngle = PREVIEW_ROOM_LIMITS.maxPolarAngle;
+        return () => {
+            disposeRoom();
+            controls.maxDistance = prev.max;
+            controls.minDistance = prev.min;
+            controls.maxPolarAngle = prev.polar;
+        };
+    }, [viewerReady, roomDark, roomAccent]);
 
     
     useEffect(() => {

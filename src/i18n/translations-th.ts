@@ -5,6 +5,7 @@ export const thTranslations = {
     modpacks: "มอดแพ็ก",
     modpacks_subtitle: "จัดการและเปิดเล่น Mod Pack ของคุณ",
     explore: "สำรวจ",
+    install_tab: "ติดตั้ง",
     settings: "ตั้งค่า",
     about: "เกี่ยวกับ",
     admin: "ผู้ดูแล",
@@ -101,7 +102,7 @@ export const thTranslations = {
     read_more: "อ่านเพิ่มเติม",
     news_feed: "ประชาสัมพันธ์",
     jump_back_in: "เล่นต่อจากครั้งก่อน",
-    library: "คลังเกม",
+    library: "ไลบรารี",
     playing_as: "กำลังเล่นเป็น",
     continue_playing: "เล่นต่อ",
     home_ready: "พร้อมเล่น",
@@ -413,7 +414,10 @@ export const thTranslations = {
     auto_update_desc: "โหลดอัปเดตอัตโนมัติ และติดตั้งตอนเปิดแอปครั้งถัดไป",
     auto_update_on: "เปิดอัปเดตอัตโนมัติ",
     auto_update_off: "ปิดอัปเดตอัตโนมัติ",
-    update_ready_next_restart: "อัปเดต v{version} จะติดตั้งตอนเปิดแอปครั้งหน้า",
+    update_ready_next_restart: "อัปเดต v{version} จะติดตั้งเมื่อปิด Launcher",
+    update_auto_restart_in: "อัปเดต v{version} พร้อมแล้ว · รีสตาร์ทใน {seconds} วิ",
+    update_restart_now: "รีสตาร์ทเลย",
+    update_later: "ภายหลัง",
     update_available_toast: "มีเวอร์ชันใหม่ v{version} พร้อมดาวน์โหลด",
     check_for_updates: "ตรวจสอบอัปเดต",
     check_for_updates_desc: "ค้นหาเวอร์ชันใหม่ด้วยตนเอง",
@@ -1149,4 +1153,23 @@ export const thTranslations = {
 
     
     open_filters: "ตัวกรอง",
+
+    // Servers: live status cards
+    server_status_title: "สถานะเซิร์ฟเวอร์",
+    server_address_copied: "คัดลอกที่อยู่เซิร์ฟเวอร์แล้ว",
+    server_unreachable: "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ในขณะนี้",
+
+    // Servers: gallery
+    server_gallery_view: "ดูรูปภาพ",
+
+    // Servers: verification badge (aria-label only)
+    verified_official: "เซิร์ฟเวอร์ทางการ",
+    verified_partner: "เซิร์ฟเวอร์พาร์ทเนอร์",
+
+    // Library: continue-playing hero
+    library_continue_playing: "เล่นต่อ",
+    library_stat_packs: "{count} Mod Pack",
+    library_stat_server_packs: "{count} แพ็กเซิร์ฟเวอร์",
+    // Instance content browser
+    install_to_instance_name: "ติดตั้งลง {name}",
 };
