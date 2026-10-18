@@ -2,7 +2,7 @@ import { perfProbe } from "./perfProbe";
 import { useUiStore } from "../store/uiStore";
 import { useProgressStore } from "../store/progressStore";
 
-type BenchTab = "home" | "servers" | "modpack" | "explore" | "wardrobe";
+type BenchTab = "home" | "servers" | "modpack" | "explore" | "wardrobe" | "about" | "settings";
 
 const TAB_CYCLE: BenchTab[] = ["home", "servers", "modpack", "explore", "wardrobe", "home"];
 const TAB_DWELL_MS = 600;
@@ -56,6 +56,41 @@ async function checkInstallToastLive(): Promise<boolean> {
   return sawFirst && sawSecond;
 }
 
+// Hidden kept-alive tabs must not leave shell layout flags set, and must not remount on return.
+async function checkKeepAlive(): Promise<Record<string, boolean>> {
+  const shell = () => {
+    const { fullBleed, immersive } = useUiStore.getState();
+    return { fullBleed, immersive };
+  };
+  const goto = async (tab: BenchTab) => {
+    setTab(tab);
+    await wait(TAB_DWELL_MS);
+  };
+
+  await goto("modpack");
+  const modpackMounts = perfProbe.mountCount("modpack");
+  await goto("about");
+  const aboutAfterModpack = shell();
+  await goto("explore");
+  await goto("about");
+  const aboutAfterExplore = shell();
+  await goto("modpack");
+  const modpackRemounted = perfProbe.mountCount("modpack") !== modpackMounts;
+  const modpackOwnLayout = shell();
+  await goto("settings");
+  setTab(useUiStore.getState().lastContentTab);
+  await wait(TAB_DWELL_MS);
+  const afterSettings = shell();
+  await goto("home");
+
+  return {
+    hiddenModpackClearsLayout: !aboutAfterModpack.fullBleed && !aboutAfterModpack.immersive,
+    hiddenExploreClearsLayout: !aboutAfterExplore.fullBleed && !aboutAfterExplore.immersive,
+    modpackNotRemounted: !modpackRemounted,
+    settingsRoundTripKeepsLayout: afterSettings.fullBleed === modpackOwnLayout.fullBleed,
+  };
+}
+
 async function runBench() {
   await perfProbe.runPhase("tab-cycle", async () => {
     for (let round = 0; round < 3; round++) {
@@ -80,7 +115,7 @@ async function runBench() {
     setInstallProgress(null);
   });
 
-  const checks = { installToastLive: await checkInstallToastLive() };
+  const checks = { installToastLive: await checkInstallToastLive(), ...(await checkKeepAlive()) };
   await window.api?.devPerfReport({ ...perfProbe.report(), checks });
   if (import.meta.env.VITE_PERF_BENCH_EXIT === "1") await window.api?.windowClose();
 }

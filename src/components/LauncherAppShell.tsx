@@ -11,6 +11,7 @@ import { Sidebar } from "./layout/Sidebar";
 import { ErrorBoundary as UIErrorBoundary } from "./ui/ErrorBoundary";
 import { LauncherAppTitleBar } from "./LauncherAppTitleBar";
 import { PerfTab } from "./PerfTab";
+import { TabActiveContext, isKeepAliveTab, nextMountedTabs } from "../lib/tabKeepAlive";
 
 const Home = React.memo(HomeTab);
 import { Home as HomeTab } from "./tabs/Home";
@@ -405,6 +406,35 @@ function LauncherAppShellImpl({
   const [shouldRenderSettingsDialog, setShouldRenderSettingsDialog] = React.useState(false);
   const [hoveredToastId, setHoveredToastId] = React.useState<string | null>(null);
   const fullBleed = useUiStore((state) => state.fullBleed);
+
+  // ModPack/Explore stay mounted after the first visit and are only hidden on leave.
+  // Coming from a normal tab, a kept-alive tab is shown once that tab's exit animation ends.
+  const [mountedKeepAlive, setMountedKeepAlive] = React.useState<string[]>(() => nextMountedTabs([], contentTab));
+  const [prevContentTab, setPrevContentTab] = React.useState(contentTab);
+  const [presenceSettled, setPresenceSettled] = React.useState(true);
+  if (prevContentTab !== contentTab) {
+    setPrevContentTab(contentTab);
+    setPresenceSettled(isKeepAliveTab(prevContentTab) || !isKeepAliveTab(contentTab));
+    setMountedKeepAlive((mounted) => nextMountedTabs(mounted, contentTab));
+  }
+  const shownKeepAlive = isKeepAliveTab(contentTab) && presenceSettled ? contentTab : null;
+
+  React.useEffect(() => {
+    if (presenceSettled) return;
+    const fallback = setTimeout(() => setPresenceSettled(true), 400);
+    return () => clearTimeout(fallback);
+  }, [presenceSettled]);
+
+  const prevContentTabRef = React.useRef(contentTab);
+  React.useLayoutEffect(() => {
+    if (isKeepAliveTab(contentTab) && isKeepAliveTab(prevContentTabRef.current)) mainRef.current?.scrollTo({ top: 0 });
+    prevContentTabRef.current = contentTab;
+  }, [contentTab]);
+
+  const handlePresenceExitComplete = React.useCallback(() => {
+    mainRef.current?.scrollTo({ top: 0 });
+    setPresenceSettled(true);
+  }, []);
   
   React.useEffect(() => {
     preloadTabs();
@@ -633,19 +663,17 @@ function LauncherAppShellImpl({
                   mode="wait" is required: the outgoing page must unmount (running its
                   fullBleed/immersive cleanup) before the incoming page mounts and sets its own.
                   The shared <main> scroller is reset in between so a page never opens mid-scroll. */}
-              <AnimatePresence mode="wait" onExitComplete={() => mainRef.current?.scrollTo({ top: 0 })}>
+              <AnimatePresence mode="wait" onExitComplete={handlePresenceExitComplete}>
                 <motion.div
-                  key={contentTab}
+                  key={isKeepAliveTab(contentTab) ? "keep-alive" : contentTab}
                   variants={m.page}
                   {...m.states}
-                  className="h-full"
+                  className={isKeepAliveTab(contentTab) ? undefined : "h-full"}
                 >
-                  <PerfTab id={contentTab}>
+                  <PerfTab id={isKeepAliveTab(contentTab) ? "keep-alive-placeholder" : contentTab}>
                   <React.Suspense fallback={<TabLoadingFallback colors={colors} />}>
                     {contentTab === "home" && <Home session={session} news={news} servers={servers} selectedServer={selectedServer} setSelectedServer={setSelectedServer} setSelectedInstance={setSelectedInstance} colors={colors} setActiveTab={setActiveTab} language={config.language} />}
                     {contentTab === "servers" && <ServerMenu colors={colors} servers={servers} selectedServer={selectedServer} setSelectedServer={setSelectedServer} session={session} setActiveTab={setActiveTab} refreshTrigger={serverRefreshTrigger} language={config.language} config={config} updateConfig={updateConfig} setSettingsTab={setSettingsTab} />}
-                    {contentTab === "modpack" && <ModPack colors={colors} config={config} setImportModpackOpen={setImportModpackOpen} setActiveTab={setActiveTab} setSettingsTab={setSettingsTab} onShowConfirm={handleShowConfirm} isActive={true} selectedInstance={selectedInstance} setSelectedInstance={setSelectedInstance} selectedServer={selectedServer} session={session} updateConfig={updateConfig} language={config.language} handleRepair={handleRepair} />}
-                    {contentTab === "explore" && <UIErrorBoundary><Explore colors={colors} config={config} /></UIErrorBoundary>}
                     {contentTab === "admin" && isAdmin && adminToken && <AdminPanel colors={colors} adminToken={adminToken} language={config.language} />}
                     {contentTab === "about" && <About colors={colors} config={config} />}
                     {contentTab === "wardrobe" && (
@@ -660,6 +688,26 @@ function LauncherAppShellImpl({
                   </PerfTab>
                 </motion.div>
               </AnimatePresence>
+              <React.Suspense fallback={shownKeepAlive ? <TabLoadingFallback colors={colors} /> : null}>
+                {mountedKeepAlive.map((id) => {
+                  const active = shownKeepAlive === id;
+                  return (
+                    <div key={id} hidden={!active} className="h-full">
+                      <TabActiveContext.Provider value={active}>
+                        <motion.div variants={m.page} initial="hidden" animate={active ? "show" : "hidden"} className="h-full">
+                          <PerfTab id={id}>
+                            {id === "modpack" ? (
+                              <ModPack colors={colors} config={config} setImportModpackOpen={setImportModpackOpen} setActiveTab={setActiveTab} setSettingsTab={setSettingsTab} onShowConfirm={handleShowConfirm} isActive={shownKeepAlive === "modpack"} selectedInstance={selectedInstance} setSelectedInstance={setSelectedInstance} selectedServer={selectedServer} session={session} updateConfig={updateConfig} language={config.language} handleRepair={handleRepair} />
+                            ) : (
+                              <UIErrorBoundary><Explore colors={colors} config={config} /></UIErrorBoundary>
+                            )}
+                          </PerfTab>
+                        </motion.div>
+                      </TabActiveContext.Provider>
+                    </div>
+                  );
+                })}
+              </React.Suspense>
             </div>
           </main>
         </div>

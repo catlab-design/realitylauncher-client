@@ -103,7 +103,7 @@ export function ModPack({
     setActiveTab,
     setSettingsTab,
     onShowConfirm,
-    isActive,
+    isActive = true,
     selectedInstance = null,
     setSelectedInstance = () => {},
     session,
@@ -810,12 +810,12 @@ export function ModPack({
     const listRootRef = useRef<HTMLDivElement>(null);
     const heroRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
-        if (!isListView) return;
+        if (!isListView || !isActive) return;
         setFullBleed(true);
         return () => setFullBleed(false);
-    }, [isListView, setFullBleed]);
+    }, [isListView, isActive, setFullBleed]);
     useEffect(() => {
-        if (!isListView) return;
+        if (!isListView || !isActive) return;
         const scroller = listRootRef.current?.closest("main") ?? null;
         const update = () => {
             const hero = heroRef.current;
@@ -827,7 +827,7 @@ export function ModPack({
             scroller?.removeEventListener("scroll", update);
             setImmersive(false);
         };
-    }, [isListView, heroArea, setImmersive]);
+    }, [isListView, isActive, heroArea, setImmersive]);
 
     // Round dark-glass buttons beside the hero's Play pill.
     const heroGlassButton = "flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white shadow-xl backdrop-blur-xl transition-colors hover:bg-black/70";

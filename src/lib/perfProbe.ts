@@ -22,13 +22,15 @@ const supportsLongTask =
   (PerformanceObserver.supportedEntryTypes ?? []).includes("longtask");
 
 const phases: Record<string, PhaseState> = {};
+const mounts: Record<string, number> = {};
 let current = IDLE;
 
 function phaseState(name: string): PhaseState {
   return (phases[name] ??= { renders: {}, frameDeltas: [], observedLongTasks: [] });
 }
 
-function onRender(id: string, _phase: string, actualDuration: number): void {
+function onRender(id: string, phase: string, actualDuration: number): void {
+  if (phase === "mount") mounts[id] = (mounts[id] ?? 0) + 1;
   const bucket = (phaseState(current).renders[id] ??= { count: 0, ms: 0 });
   bucket.count += 1;
   bucket.ms += actualDuration;
@@ -88,4 +90,8 @@ function report(): PerfReport {
   return out;
 }
 
-export const perfProbe = { onRender, runPhase, report };
+function mountCount(id: string): number {
+  return mounts[id] ?? 0;
+}
+
+export const perfProbe = { onRender, runPhase, report, mountCount };
