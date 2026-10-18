@@ -242,13 +242,27 @@ export function AppearanceTab({ config, updateConfig, colors }: SettingsTabProps
                             <span className="text-xs px-2 py-0.5 rounded-full font-bold uppercase tracking-wide" style={{ backgroundColor: colors.secondary, color: "#111" }}>{t('beta')}</span>
                         </span>
                     }
-                    description={t('rainbow_mode_desc')}
+                    description={config.performanceMode && config.rainbowMode ? t('rainbow_paused_performance') : t('rainbow_mode_desc')}
                 >
                     <Toggle
                         checked={!!config.rainbowMode}
                         label={t('rainbow_mode')}
                         colors={colors}
                         onChange={() => handleUpdate({ rainbowMode: !config.rainbowMode })}
+                    />
+                </SettingsRow>
+
+                <SettingsRow
+                    colors={colors}
+                    icon={<i className="fa-solid fa-gauge-high text-base" style={{ color: config.performanceMode ? colors.secondary : colors.onSurface }}></i>}
+                    title={t('performance_mode')}
+                    description={t('performance_mode_desc')}
+                >
+                    <Toggle
+                        checked={!!config.performanceMode}
+                        label={t('performance_mode')}
+                        colors={colors}
+                        onChange={() => handleUpdate({ performanceMode: !config.performanceMode })}
                     />
                 </SettingsRow>
             </SettingsSection>

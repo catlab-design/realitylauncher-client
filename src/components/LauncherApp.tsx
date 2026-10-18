@@ -22,6 +22,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useStableCallback } from "../hooks/useStableCallback";
 import { isPageHidden } from "../lib/pageVisibility";
 import { apiUrl } from "../lib/apiBase";
+import { effectiveVisuals } from "../lib/performanceMode";
 import {
   FIRST_RUN_LOGIN_PROMPT_KEY,
   hasSeenFirstRunLoginPrompt,
@@ -39,6 +40,7 @@ function LauncherAppContent() {
   const autoInstallVersionRef = useRef<string | null>(null);
 
   const config = useConfigStore(useShallow((s) => s));
+  const visuals = useMemo(() => effectiveVisuals(config), [config]);
   const {
     isInstalling, setInstalling,
     setInstallProgress,
@@ -214,8 +216,8 @@ function LauncherAppContent() {
   const [isRegistering, setIsRegistering] = useState(false);
 
   const colors = useMemo(
-    () => getColors(config.colorTheme, config.theme, config.customColor, config.rainbowMode),
-    [config.colorTheme, config.theme, config.customColor, config.rainbowMode]
+    () => getColors(config.colorTheme, config.theme, config.customColor, visuals.rainbow),
+    [config.colorTheme, config.theme, config.customColor, visuals.rainbow]
   );
 
   const effectiveThemeMode = useMemo(() => {
@@ -1276,7 +1278,7 @@ function LauncherAppContent() {
   };
 
   useEffect(() => {
-    if (!config.rainbowMode) {
+    if (!visuals.rainbow) {
       document.documentElement.style.removeProperty('--secondary-color');
       return;
     }
@@ -1292,7 +1294,12 @@ function LauncherAppContent() {
       clearInterval(interval);
       document.documentElement.style.removeProperty('--secondary-color');
     };
-  }, [config.rainbowMode]);
+  }, [visuals.rainbow]);
+
+  useEffect(() => {
+    document.documentElement.toggleAttribute('data-perf-lite', visuals.lite);
+    return () => document.documentElement.removeAttribute('data-perf-lite');
+  }, [visuals.lite]);
 
   const stable = {
     setLoginDialogOpen: useStableCallback(setLoginDialogOpen),
@@ -1446,11 +1453,12 @@ function LauncherAppContent() {
 }
 
 export default function LauncherApp() {
+  const reducedMotion = useConfigStore((s) => effectiveVisuals(s).reducedMotion);
   return (
     <UIErrorBoundary>
       {/* "user": honour the OS reduce-motion setting app-wide (transforms/layout become
           instant, opacity fades stay). useMotionPreset() reads this same config. */}
-      <MotionConfig reducedMotion="user">
+      <MotionConfig reducedMotion={reducedMotion}>
         <PerfTab id="app">
           <LauncherAppContent />
         </PerfTab>

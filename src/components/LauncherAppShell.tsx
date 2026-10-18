@@ -12,6 +12,7 @@ import { ErrorBoundary as UIErrorBoundary } from "./ui/ErrorBoundary";
 import { LauncherAppTitleBar } from "./LauncherAppTitleBar";
 import { PerfTab } from "./PerfTab";
 import { TabActiveContext, isKeepAliveTab, nextMountedTabs } from "../lib/tabKeepAlive";
+import { effectiveVisuals } from "../lib/performanceMode";
 
 const Home = React.memo(HomeTab);
 import { Home as HomeTab } from "./tabs/Home";
@@ -645,7 +646,7 @@ function LauncherAppShellImpl({
       document.body
       )}
 
-      <div className={`flex-1 flex flex-col overflow-hidden ml-app-shell ${config.rainbowMode ? "rainbow-mode" : ""}`}>
+      <div className={`flex-1 flex flex-col overflow-hidden ml-app-shell ${effectiveVisuals(config).rainbow ? "rainbow-mode" : ""}`}>
         <div className="relative z-30">
         <LauncherAppTitleBar
           colors={colors} titleBarColors={titleBarColors} config={config} session={session} accounts={accounts} selectedInstance={selectedInstance} inboxOpen={inboxOpen} setInboxOpen={setInboxOpen} announcements={announcements} userNotifications={userNotifications} unreadCount={unreadCount} setInvitations={setInvitations} setServerRefreshTrigger={setServerRefreshTrigger} setNotificationRefreshTrigger={setNotificationRefreshTrigger} accountDropdownOpen={accountDropdownOpen} setAccountDropdownOpen={setAccountDropdownOpen} t={t} selectAccount={selectAccount} removeAccountFromList={removeAccountFromList} setLoginDialogOpen={setLoginDialogOpen} setLinkCatIDOpen={setLinkCatIDOpen} handleLinkMicrosoft={handleLinkMicrosoft} handleLogout={handleLogout} updateConfig={updateConfig}

@@ -110,6 +110,7 @@ src/
 │   ├── installLock.ts
 │   ├── launchPolicy.ts
 │   ├── microsoftLoginFlow.ts         # MS device code flow
+│   ├── performanceMode.ts            # effectiveVisuals(config): Performance mode → lite CSS, reduced motion, rainbow suspended (+ test)
 │   ├── pageVisibility.ts             # data-hidden on <html> while the window is hidden; isPageHidden() (+ test)
 │   ├── perfStats.ts                  # Pure frame/long-task summaries (+ perfStats.test.ts)
 │   ├── perfProbe.ts                  # Dev-only render/frame/long-task collector

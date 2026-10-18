@@ -101,6 +101,7 @@ declare global {
     readonly VITE_PERF_BENCH?: string;
     readonly VITE_PERF_BENCH_EXIT?: string;
     readonly VITE_PERF_EXPERIMENT?: string;
+    readonly VITE_PERF_LITE?: string;
   }
 
   interface Window {

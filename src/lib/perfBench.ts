@@ -194,7 +194,24 @@ async function checkPublicServers(): Promise<Record<string, boolean | number>> {
   }
 }
 
-async function runBench() {
+// VITE_PERF_LITE=1 measures with Performance mode on (in memory; the saved value is restored).
+async function withPerformanceMode(fn: () => Promise<BenchResult>): Promise<BenchResult> {
+  const { performanceMode, setConfig } = useConfigStore.getState();
+  setConfig({ performanceMode: true });
+  await wait(300);
+  const liteApplied = document.documentElement.hasAttribute("data-perf-lite");
+  try {
+    const result = await fn();
+    return { ...result, checks: { ...result.checks, liteApplied } };
+  } finally {
+    setConfig({ performanceMode });
+    await wait(300);
+  }
+}
+
+type BenchResult = ReturnType<typeof perfProbe.report> & { checks: Record<string, boolean | number> };
+
+async function runBench(): Promise<BenchResult> {
   await perfProbe.runPhase("tab-cycle", async () => {
     for (let round = 0; round < 3; round++) {
       for (const tab of TAB_CYCLE) {
@@ -219,8 +236,7 @@ async function runBench() {
   });
 
   const checks = { installToastLive: await checkInstallToastLive(), ...(await checkKeepAlive()), ...(await checkRainbow()), ...(await checkReloadOnReturn()), ...(await checkPublicServers()) };
-  await window.api?.devPerfReport({ ...perfProbe.report(), checks });
-  if (import.meta.env.VITE_PERF_BENCH_EXIT === "1") await window.api?.windowClose();
+  return { ...perfProbe.report(), checks };
 }
 
 // Attribution runs: strip one class of paint cost app-wide to see what it was worth.
@@ -244,6 +260,10 @@ export function scheduleBench(): void {
   void (async () => {
     await waitForMain();
     await wait(3000);
-    await runBench();
+    const lite = import.meta.env.VITE_PERF_LITE === "1";
+    const result = lite ? await withPerformanceMode(runBench) : await runBench();
+    const restored = !lite || !document.documentElement.hasAttribute("data-perf-lite");
+    await window.api?.devPerfReport({ ...result, checks: { ...result.checks, ...(lite ? { liteRestored: restored } : {}) } });
+    if (import.meta.env.VITE_PERF_BENCH_EXIT === "1") await window.api?.windowClose();
   })();
 }

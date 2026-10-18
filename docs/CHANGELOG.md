@@ -23,6 +23,10 @@
 - Library and Install, which now stay mounted, reload their instance lists every time you return to them, so instances created or installed elsewhere show up right away.
 
 ### Added
+- **Performance mode** (Settings › Appearance, off by default) for slower PCs:
+  - turns off backdrop blur, page/tab transitions and hover motion (`MotionConfig reducedMotion="always"`), and decorative looping animations;
+  - suspends Rainbow Mode while on, without changing the saved choice;
+  - loading spinners and skeletons keep running (`src/lib/performanceMode.ts`, `:root[data-perf-lite]`).
 - Dev-only performance bench:
   - Run `VITE_PERF_BENCH=1 VITE_PERF_BENCH_EXIT=1 bun run tauri dev`.
   - It cycles tabs, scrolls Install/Servers, fakes a progress burst and runs behavior checks.
