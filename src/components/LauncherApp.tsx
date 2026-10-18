@@ -17,6 +17,7 @@ import { useAuthStore } from "../store/authStore";
 import { useGameEvents } from "../hooks/useGameEvents";
 import { useUiStore } from "../store/uiStore";
 import { useProgressStore } from "../store/progressStore";
+import { PerfTab } from "./PerfTab";
 import {
   FIRST_RUN_LOGIN_PROMPT_KEY,
   hasSeenFirstRunLoginPrompt,
@@ -1401,7 +1402,9 @@ export default function LauncherApp() {
       {/* "user": honour the OS reduce-motion setting app-wide (transforms/layout become
           instant, opacity fades stay). useMotionPreset() reads this same config. */}
       <MotionConfig reducedMotion="user">
-        <LauncherAppContent />
+        <PerfTab id="app">
+          <LauncherAppContent />
+        </PerfTab>
       </MotionConfig>
     </UIErrorBoundary>
   );

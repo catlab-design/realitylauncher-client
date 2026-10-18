@@ -8,6 +8,7 @@ import { useMotionPreset } from "../lib/motion";
 import { Sidebar } from "./layout/Sidebar";
 import { ErrorBoundary as UIErrorBoundary } from "./ui/ErrorBoundary";
 import { LauncherAppTitleBar } from "./LauncherAppTitleBar";
+import { PerfTab } from "./PerfTab";
 import { Home } from "./tabs/Home";
 import { About, AdminPanel, Explore, ModPack, ServerMenu, SettingsDialog, TabLoadingFallback, Wardrobe, preloadTabs } from "./LauncherAppLazyTabs";
 import type { AuthSession, GameInstance, LauncherConfig, NewsItem, Server } from "../types/launcher";
@@ -630,6 +631,7 @@ export function LauncherAppShell({
                   {...m.states}
                   className="h-full"
                 >
+                  <PerfTab id={contentTab}>
                   <React.Suspense fallback={<TabLoadingFallback colors={colors} />}>
                     {contentTab === "home" && <Home session={session} news={news} servers={servers} selectedServer={selectedServer} setSelectedServer={setSelectedServer} setSelectedInstance={setSelectedInstance} colors={colors} setActiveTab={setActiveTab} language={config.language} />}
                     {contentTab === "servers" && <ServerMenu colors={colors} servers={servers} selectedServer={selectedServer} setSelectedServer={setSelectedServer} session={session} setActiveTab={setActiveTab} refreshTrigger={serverRefreshTrigger} language={config.language} config={config} updateConfig={updateConfig} setSettingsTab={setSettingsTab} />}
@@ -646,6 +648,7 @@ export function LauncherAppShell({
                       />
                     )}
                   </React.Suspense>
+                  </PerfTab>
                 </motion.div>
               </AnimatePresence>
             </div>

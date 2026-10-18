@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 
 type ColorTheme =
   | "yellow"
@@ -96,6 +97,11 @@ interface UpdateInstanceOptions {
 }
 
 declare global {
+  interface ImportMetaEnv {
+    readonly VITE_PERF_BENCH?: string;
+    readonly VITE_PERF_BENCH_EXIT?: string;
+  }
+
   interface Window {
     api?: {
       
@@ -465,6 +471,7 @@ declare global {
       windowMinimize: () => Promise<void>;
       windowMaximize: () => Promise<void>;
       windowClose: () => Promise<void>;
+      devPerfReport: (report: unknown) => Promise<void>;
       windowIsMaximized: () => Promise<boolean>;
       windowSetMainMode: () => Promise<void>;
       

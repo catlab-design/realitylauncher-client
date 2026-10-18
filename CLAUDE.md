@@ -48,6 +48,7 @@ src/
 │   ├── LauncherAppOverlays.tsx        # All modal dialogs
 │   ├── LauncherAppShell.tsx           # Shell (titlebar + sidebar + content)
 │   ├── LauncherAppTitleBar.tsx        # Custom title bar
+│   ├── PerfTab.tsx                    # React.Profiler wrapper (dev only)
 │   ├── SettingsDialog.tsx             # Settings overlay
 │   ├── launcherTheme.ts               # Theme color generation
 │   ├── auth/                         # Auth modals
@@ -107,6 +108,9 @@ src/
 │   ├── installLock.ts
 │   ├── launchPolicy.ts
 │   ├── microsoftLoginFlow.ts         # MS device code flow
+│   ├── perfStats.ts                  # Pure frame/long-task summaries (+ perfStats.test.ts)
+│   ├── perfProbe.ts                  # Dev-only render/frame/long-task collector
+│   ├── perfBench.ts                  # Dev-only scripted bench (VITE_PERF_BENCH=1)
 │   ├── sounds.ts                     # Sound effects manager
 │   └── utils.ts                      # cn(), getContrastColor()
 ├── store/
@@ -268,7 +272,7 @@ ConfigStore migration (v0→v1): `closeOnLaunch` changed from `boolean` to `'kee
 | **cloud** | joined servers, join/leave, cloud install/sync, invitations, notifications |
 | **discord** | `discord_rpc_set_enabled`, `discord_rpc_update`, `discord_rpc_is_connected` |
 | **social** | `server_ping` |
-| **telemetry** | `telemetry_log_event` |
+| **telemetry** | `telemetry_log_event`, `dev_perf_report` (debug builds print `PERF_REPORT <json>` to stdout; no-op in release) |
 | **wardrobe** | catskinc config/skin, minecraft profile/skin, auth_update_avatar_source |
 
 ### 4.3 Known Gaps (Unported Methods)
@@ -314,7 +318,7 @@ const KNOWN_UNPORTED = new Set(['fetchInstanceAgendas', 'fetchAllAgendas']);
 ## 6. Testing
 
 - **Framework**: `bun:test`
-- **Test file**: `src/api.test.ts` (120 lines)
+- **Test files**: `src/api.test.ts` (120 lines), `src/lib/perfStats.test.ts`
 - **Run tests**: `bun test` or `bun test src/api.test.ts`
 - **Bridge parity validation**:
   1. Every `invoke('command_name')` in api.ts must exist as a `#[tauri::command] fn` in Rust
@@ -335,6 +339,7 @@ const KNOWN_UNPORTED = new Set(['fetchInstanceAgendas', 'fetchAllAgendas']);
 | `bun run tauri build` | Build production Tauri native app |
 | `bun test` | Run all tests |
 | `bun run check:bridge` | Typecheck bridge files |
+| `VITE_PERF_BENCH=1 VITE_PERF_BENCH_EXIT=1 bun run tauri dev 2>&1 \| grep PERF_REPORT` | Dev-only perf bench: cycles tabs, scrolls Explore/Servers, fakes a progress burst, prints JSON, closes the window. Reads local data only. |
 
 ---
 
