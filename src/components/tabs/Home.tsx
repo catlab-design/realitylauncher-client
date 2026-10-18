@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { isPageHidden } from "../../lib/pageVisibility";
 import { motion, AnimatePresence } from "framer-motion";
 import appBanner from "../../assets/banner.png";
 import { useMotionPreset } from "../../lib/motion";
@@ -468,7 +469,10 @@ export function Home({ session, servers, setSelectedServer, setSelectedInstance,
 
     useEffect(() => {
         if (newsPaused || featuredNews.length < 2) return;
-        const id = setInterval(() => setNewsIndex((i) => (i + 1) % featuredNews.length), NEWS_AUTOPLAY_MS);
+        const id = setInterval(() => {
+            if (isPageHidden()) return;
+            setNewsIndex((i) => (i + 1) % featuredNews.length);
+        }, NEWS_AUTOPLAY_MS);
         return () => clearInterval(id);
     }, [newsPaused, featuredNews.length, newsIndex]);
 

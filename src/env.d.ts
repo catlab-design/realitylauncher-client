@@ -100,6 +100,7 @@ declare global {
   interface ImportMetaEnv {
     readonly VITE_PERF_BENCH?: string;
     readonly VITE_PERF_BENCH_EXIT?: string;
+    readonly VITE_PERF_EXPERIMENT?: string;
   }
 
   interface Window {

@@ -1275,19 +1275,8 @@ function LauncherAppContent() {
   };
 
   useEffect(() => {
-    if (!config.rainbowMode) {
-      document.documentElement.style.removeProperty('--secondary-color');
-      return;
-    }
-    let hue = 0;
-    const interval = setInterval(() => {
-      hue = (hue + 2) % 360;
-      document.documentElement.style.setProperty('--secondary-color', `hsl(${hue}, 90%, 65%)`);
-    }, 100);
-    return () => {
-      clearInterval(interval);
-      document.documentElement.style.removeProperty('--secondary-color');
-    };
+    document.documentElement.toggleAttribute('data-rainbow', !!config.rainbowMode);
+    return () => document.documentElement.removeAttribute('data-rainbow');
   }, [config.rainbowMode]);
 
   const stable = {

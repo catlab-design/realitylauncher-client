@@ -14,7 +14,7 @@ const PROGRESS_TICKS = 25;
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
-function setTab(tab: BenchTab) {
+function setTab(tab: string) {
   useUiStore.getState().setActiveTab(tab);
 }
 
@@ -91,6 +91,32 @@ async function checkKeepAlive(): Promise<Record<string, boolean>> {
   };
 }
 
+// Rainbow accent must cycle from CSS alone, and freeze while the page is marked hidden.
+async function checkRainbowCss(): Promise<Record<string, boolean>> {
+  const root = document.documentElement;
+  const accent = () => getComputedStyle(root).getPropertyValue("--secondary-color").trim();
+  const wasRainbow = root.hasAttribute("data-rainbow");
+  const before = accent();
+  root.toggleAttribute("data-rainbow", true);
+  await wait(50);
+  const a = accent();
+  await wait(400);
+  const b = accent();
+  root.toggleAttribute("data-hidden", true);
+  await wait(50);
+  const c = accent();
+  await wait(400);
+  const d = accent();
+  root.toggleAttribute("data-hidden", document.hidden);
+  root.toggleAttribute("data-rainbow", wasRainbow);
+  await wait(50);
+  return {
+    rainbowCycles: a !== b,
+    rainbowPausesWhenHidden: c === d,
+    rainbowOffRestoresAccent: accent() === before,
+  };
+}
+
 async function runBench() {
   await perfProbe.runPhase("tab-cycle", async () => {
     for (let round = 0; round < 3; round++) {
@@ -115,12 +141,29 @@ async function runBench() {
     setInstallProgress(null);
   });
 
-  const checks = { installToastLive: await checkInstallToastLive(), ...(await checkKeepAlive()) };
+  const checks = { installToastLive: await checkInstallToastLive(), ...(await checkKeepAlive()), ...(await checkRainbowCss()) };
   await window.api?.devPerfReport({ ...perfProbe.report(), checks });
   if (import.meta.env.VITE_PERF_BENCH_EXIT === "1") await window.api?.windowClose();
 }
 
+// Attribution runs: strip one class of paint cost app-wide to see what it was worth.
+const EXPERIMENT_CSS: Record<string, string> = {
+  noblur: "*, *::before, *::after { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; filter: none !important; }",
+  notitleblur: "header[data-tauri-drag-region] { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }",
+  titleblurmd: "header[data-tauri-drag-region] { backdrop-filter: blur(12px) !important; -webkit-backdrop-filter: blur(12px) !important; }",
+  noanim: "*, *::before, *::after { animation-play-state: paused !important; animation: none !important; }",
+};
+
+function applyExperiment() {
+  const css = EXPERIMENT_CSS[import.meta.env.VITE_PERF_EXPERIMENT ?? ""];
+  if (!css) return;
+  const style = document.createElement("style");
+  style.textContent = css;
+  document.head.appendChild(style);
+}
+
 export function scheduleBench(): void {
+  applyExperiment();
   void (async () => {
     await waitForMain();
     await wait(3000);

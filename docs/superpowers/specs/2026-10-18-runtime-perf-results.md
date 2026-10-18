@@ -20,87 +20,103 @@ Spec: `2026-10-18-runtime-perf-design.md`
 
 #### tab-cycle
 
-| Metric | baseline (n=3) | t3 (n=3) | t4b (n=3) |
-|---|---|---|---|
-| frames | 163 | 156 | 165 |
-| slow frames (>20ms) | 121 | 119 | 117 |
-| p95 frame ms | 204 | 234 | 249 |
-| long tasks | 82 | 79 | 72 |
-| long-task total ms | 10153 | 11039 | 10499 |
-| renders `app` | 80 | 71 | 60 |
-| render ms `app` | 1399 | 1426 | 1563 |
-| renders `explore` | 16 | 11 | 23 |
-| render ms `explore` | 214 | 248 | 189 |
-| renders `home` | 17 | 12 | 12 |
-| render ms `home` | 334 | 352 | 383 |
-| renders `keep-alive-placeholder` | 0 | 0 | 9 |
-| render ms `keep-alive-placeholder` | 0 | 0 | 0 |
-| renders `modpack` | 19 | 11 | 24 |
-| render ms `modpack` | 167 | 176 | 154 |
-| renders `servers` | 13 | 13 | 13 |
-| render ms `servers` | 367 | 381 | 475 |
-| renders `wardrobe` | 13 | 10 | 11 |
-| render ms `wardrobe` | 90 | 98 | 134 |
+| Metric | baseline (n=3) | t3 (n=3) | t4b (n=3) | t5 (n=3) |
+|---|---|---|---|---|
+| frames | 163 | 156 | 165 | 174 |
+| slow frames (>20ms) | 121 | 119 | 117 | 120 |
+| p95 frame ms | 204 | 234 | 249 | 230 |
+| long tasks | 82 | 79 | 72 | 73 |
+| long-task total ms | 10153 | 11039 | 10499 | 10332 |
+| renders `app` | 80 | 71 | 60 | 66 |
+| render ms `app` | 1399 | 1426 | 1563 | 1263 |
+| renders `explore` | 16 | 11 | 23 | 24 |
+| render ms `explore` | 214 | 248 | 189 | 134 |
+| renders `home` | 17 | 12 | 12 | 13 |
+| render ms `home` | 334 | 352 | 383 | 329 |
+| renders `keep-alive-placeholder` | 0 | 0 | 9 | 9 |
+| render ms `keep-alive-placeholder` | 0 | 0 | 0 | 0 |
+| renders `modpack` | 19 | 11 | 24 | 26 |
+| render ms `modpack` | 167 | 176 | 154 | 144 |
+| renders `servers` | 13 | 13 | 13 | 13 |
+| render ms `servers` | 367 | 381 | 475 | 405 |
+| renders `wardrobe` | 13 | 10 | 11 | 12 |
+| render ms `wardrobe` | 90 | 98 | 134 | 112 |
 
 #### scroll-explore
 
-| Metric | baseline (n=3) | t3 (n=3) | t4b (n=3) |
-|---|---|---|---|
-| frames | 100 | 96 | 146 |
-| slow frames (>20ms) | 100 | 96 | 87 |
-| p95 frame ms | 98 | 108 | 43 |
-| long tasks | 14 | 14 | 5 |
-| long-task total ms | 1327 | 1464 | 818 |
-| renders `app` | 5 | 5 | 4 |
-| render ms `app` | 88 | 101 | 20 |
-| renders `explore` | 3 | 3 | 3 |
-| render ms `explore` | 76 | 86 | 0 |
-| renders `home` | 2 | 1 | 1 |
-| render ms `home` | 3 | 7 | 7 |
-| renders `keep-alive-placeholder` | 0 | 0 | 2 |
-| render ms `keep-alive-placeholder` | 0 | 0 | 0 |
-| renders `modpack` | 0 | 0 | 3 |
-| render ms `modpack` | 0 | 0 | 0 |
+| Metric | baseline (n=3) | t3 (n=3) | t4b (n=3) | t5 (n=3) |
+|---|---|---|---|---|
+| frames | 100 | 96 | 146 | 142 |
+| slow frames (>20ms) | 100 | 96 | 87 | 89 |
+| p95 frame ms | 98 | 108 | 43 | 36 |
+| long tasks | 14 | 14 | 5 | 5 |
+| long-task total ms | 1327 | 1464 | 818 | 564 |
+| renders `app` | 5 | 5 | 4 | 4 |
+| render ms `app` | 88 | 101 | 20 | 16 |
+| renders `explore` | 3 | 3 | 3 | 3 |
+| render ms `explore` | 76 | 86 | 0 | 0 |
+| renders `home` | 2 | 1 | 1 | 1 |
+| render ms `home` | 3 | 7 | 7 | 5 |
+| renders `keep-alive-placeholder` | 0 | 0 | 2 | 2 |
+| render ms `keep-alive-placeholder` | 0 | 0 | 0 | 0 |
+| renders `modpack` | 0 | 0 | 3 | 3 |
+| render ms `modpack` | 0 | 0 | 0 | 0 |
 
 #### scroll-servers
 
-| Metric | baseline (n=3) | t3 (n=3) | t4b (n=3) |
-|---|---|---|---|
-| frames | 96 | 95 | 93 |
-| slow frames (>20ms) | 95 | 95 | 93 |
-| p95 frame ms | 138 | 133 | 162 |
-| long tasks | 89 | 89 | 89 |
-| long-task total ms | 8965 | 7202 | 7660 |
-| renders `app` | 125 | 11 | 12 |
-| render ms `app` | 1595 | 245 | 296 |
-| renders `explore` | 2 | 1 | 2 |
-| render ms `explore` | 9 | 4 | 0 |
-| renders `modpack` | 0 | 0 | 2 |
-| render ms `modpack` | 0 | 0 | 0 |
-| renders `servers` | 123 | 9 | 10 |
-| render ms `servers` | 1353 | 222 | 283 |
+| Metric | baseline (n=3) | t3 (n=3) | t4b (n=3) | t5 (n=3) |
+|---|---|---|---|---|
+| frames | 96 | 95 | 93 | 97 |
+| slow frames (>20ms) | 95 | 95 | 93 | 94 |
+| p95 frame ms | 138 | 133 | 162 | 121 |
+| long tasks | 89 | 89 | 89 | 91 |
+| long-task total ms | 8965 | 7202 | 7660 | 7033 |
+| renders `app` | 125 | 11 | 12 | 12 |
+| render ms `app` | 1595 | 245 | 296 | 214 |
+| renders `explore` | 2 | 1 | 2 | 2 |
+| render ms `explore` | 9 | 4 | 0 | 0 |
+| renders `modpack` | 0 | 0 | 2 | 2 |
+| render ms `modpack` | 0 | 0 | 0 | 0 |
+| renders `servers` | 123 | 9 | 10 | 10 |
+| render ms `servers` | 1353 | 222 | 283 | 203 |
 
 #### progress-burst
 
-| Metric | baseline (n=3) | t3 (n=3) | t4b (n=3) |
-|---|---|---|---|
-| frames | 150 | 150 | 151 |
-| slow frames (>20ms) | 15 | 7 | 8 |
-| p95 frame ms | 27 | 19 | 21 |
-| long tasks | 6 | 6 | 7 |
-| long-task total ms | 1152 | 1641 | 1813 |
-| renders `app` | 26 | 3 | 3 |
-| render ms `app` | 214 | 16 | 22 |
-| renders `explore` | 0 | 0 | 1 |
-| render ms `explore` | 0 | 0 | 0 |
-| renders `home` | 26 | 2 | 3 |
-| render ms `home` | 139 | 13 | 16 |
-| renders `modpack` | 0 | 0 | 1 |
-| render ms `modpack` | 0 | 0 | 0 |
+| Metric | baseline (n=3) | t3 (n=3) | t4b (n=3) | t5 (n=3) |
+|---|---|---|---|---|
+| frames | 150 | 150 | 151 | 152 |
+| slow frames (>20ms) | 15 | 7 | 8 | 8 |
+| p95 frame ms | 27 | 19 | 21 | 25 |
+| long tasks | 6 | 6 | 7 | 7 |
+| long-task total ms | 1152 | 1641 | 1813 | 2090 |
+| renders `app` | 26 | 3 | 3 | 3 |
+| render ms `app` | 214 | 16 | 22 | 21 |
+| renders `explore` | 0 | 0 | 1 | 1 |
+| render ms `explore` | 0 | 0 | 0 | 0 |
+| renders `home` | 26 | 2 | 3 | 3 |
+| render ms `home` | 139 | 13 | 16 | 15 |
+| renders `modpack` | 0 | 0 | 1 | 1 |
+| render ms `modpack` | 0 | 0 | 0 | 0 |
+
+### Paint attribution (dev-only `VITE_PERF_EXPERIMENT`, n=2 each, on top of Task 4)
+
+| Experiment | scroll-servers long-task ms | tab-cycle long-task ms |
+|---|---|---|
+| none (t4b, n=3) | 7660 | 10499 |
+| all `backdrop-filter`/`filter` off | 5680 (−26%) | 10372 (~0) |
+| title-bar blur off | 7790 (~0) | 10012 (~0) |
+| title-bar blur 24px → 12px | 6994 (−9%, noise range) | 10338 (~0) |
+| all CSS animations off | 7142 (~0) | 10204 (~0) |
+
+Run-to-run noise is ±10–15%.
+
+- Neither blur nor looping animations dominates. While scrolling, nearly every frame is ≥ 50ms even with no blur, but a static page renders fast frames (progress-burst: 8 slow out of 150).
+- This is consistent with the WebKitGTK non-DMABuf rendering path repainting the whole view each frame. This machine requires `WEBKIT_DISABLE_DMABUF_RENDERER`, so that path is a fixed constraint.
 
 ### Notes
 - **After Task 3:** `installToastLive` = true in 3/3 runs. The progress toast updates while the shell does not re-render.
 - **After Task 4:** in 3/3 runs, `modpackNotRemounted`, `hiddenModpackClearsLayout`, `hiddenExploreClearsLayout` and `settingsRoundTripKeepsLayout` are all true.
   - With `KEEP_ALIVE_TABS` emptied (negative control run), `modpackNotRemounted` = false, so the check detects remounts.
   - `modpack`/`explore` render counts rise because hidden-but-mounted tabs re-render on activation toggles; their render ms fall.
+- **After Task 5:** in 3/3 runs, `rainbowCycles`, `rainbowPausesWhenHidden` and `rainbowOffRestoresAccent` are all true. Scroll/tab metrics are unchanged within noise, as expected: Task 5 removes idle/background work (a 10 Hz JS timer, animations and news autoplay while hidden), which this bench does not exercise.
 - React render time is ~15% of tab-cycle long-task time. The remainder is style/layout/paint in WebKitGTK.
