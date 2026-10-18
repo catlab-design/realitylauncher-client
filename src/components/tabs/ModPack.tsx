@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef, type Dispatch, type SetStateAction } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { AnimatePresence, motion } from "framer-motion";
 import appBanner from "../../assets/banner.png";
 import toast from "react-hot-toast";
@@ -102,7 +103,7 @@ export function ModPack({
     setActiveTab,
     setSettingsTab,
     onShowConfirm,
-    isActive,
+    isActive = true,
     selectedInstance = null,
     setSelectedInstance = () => {},
     session,
@@ -115,7 +116,7 @@ export function ModPack({
     // Press feedback for buttons that sit on a card: the press stays on the
     // button instead of also pressing the card underneath.
     const cornerTap = { ...m.pressable, propagate: { tap: false } };
-    const { accounts, setSession: setAuthSession, updateAccount } = useAuthStore();
+    const { accounts, setSession: setAuthSession, updateAccount } = useAuthStore(useShallow((s) => ({ accounts: s.accounts, setSession: s.setSession, updateAccount: s.updateAccount })));
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
     // launchingId อยู่ใน global store เพื่อให้สถานะ "กำลังเปิด" รอดการสลับแท็บ
@@ -166,11 +167,20 @@ export function ModPack({
 
     const {
         isInstalling, setInstalling,
-        installProgress: _installProgress, setInstallProgress,
-        isInstallMinimized: _isInstallMinimized, setInstallMinimized,
+        setInstallProgress,
+        setInstallMinimized,
         operationType, setOperationType,
         installingInstanceId, setInstallingInstanceId,
-    } = useProgressStore();
+    } = useProgressStore(useShallow((s) => ({
+        isInstalling: s.isInstalling,
+        setInstalling: s.setInstalling,
+        setInstallProgress: s.setInstallProgress,
+        setInstallMinimized: s.setInstallMinimized,
+        operationType: s.operationType,
+        setOperationType: s.setOperationType,
+        installingInstanceId: s.installingInstanceId,
+        setInstallingInstanceId: s.setInstallingInstanceId,
+    })));
 
     const installLockState = { isInstalling, operationType, installingInstanceId };
 
@@ -800,12 +810,12 @@ export function ModPack({
     const listRootRef = useRef<HTMLDivElement>(null);
     const heroRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
-        if (!isListView) return;
+        if (!isListView || !isActive) return;
         setFullBleed(true);
         return () => setFullBleed(false);
-    }, [isListView, setFullBleed]);
+    }, [isListView, isActive, setFullBleed]);
     useEffect(() => {
-        if (!isListView) return;
+        if (!isListView || !isActive) return;
         const scroller = listRootRef.current?.closest("main") ?? null;
         const update = () => {
             const hero = heroRef.current;
@@ -817,7 +827,7 @@ export function ModPack({
             scroller?.removeEventListener("scroll", update);
             setImmersive(false);
         };
-    }, [isListView, heroArea, setImmersive]);
+    }, [isListView, isActive, heroArea, setImmersive]);
 
     // Round dark-glass buttons beside the hero's Play pill.
     const heroGlassButton = "flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white shadow-xl backdrop-blur-xl transition-colors hover:bg-black/70";

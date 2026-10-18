@@ -40,7 +40,7 @@ export function AccountTab({
     setLinkCatIDOpen,
     onLinkMicrosoft,
 }: AccountTabProps) {
-    const { updateAccount } = useAuthStore();
+    const updateAccount = useAuthStore((s) => s.updateAccount);
     const [isUpdatingAvatarSource, setIsUpdatingAvatarSource] = useState(false);
 
     const handleAvatarSourceChange = async (source: "catid_avatar" | "minecraft_skin") => {

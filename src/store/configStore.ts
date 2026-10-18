@@ -25,6 +25,7 @@ const defaultConfig: LauncherConfig = {
     clickSoundEnabled: true,
     notificationSoundEnabled: true,
     rainbowMode: false,
+    performanceMode: false,
     backgroundImage: "",
     backgroundImageOpacity: 0.15,
     fullscreen: false,

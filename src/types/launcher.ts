@@ -112,6 +112,7 @@ export interface LauncherConfig {
   clickSoundEnabled: boolean;
   notificationSoundEnabled: boolean;
   rainbowMode: boolean;
+  performanceMode?: boolean;
   backgroundImage?: string;
   backgroundImageOpacity?: number;
 }

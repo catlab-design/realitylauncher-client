@@ -370,6 +370,7 @@ export const api = {
     getAnnouncements: () => invoke<any[]>('notifications_fetch_announcements'),
     getNotifications: () => invoke<any[]>('notifications_fetch_user'),
     telemetryLogEvent: (eventType: string, data?: any) => invoke<void>('telemetry_log_event', { eventType, data }),
+    devPerfReport: (report: unknown) => invoke<void>('dev_perf_report', { report }),
     serverPing: (host: string, port?: number) => invoke<any>('server_ping', { host, port }),
     instanceSavedServers: (instanceId: string) =>
         invoke<{ name: string; ip: string; icon: string | null }[]>('instance_saved_servers', { instanceId }),

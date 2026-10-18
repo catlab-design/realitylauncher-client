@@ -1,5 +1,7 @@
 import React, { type Dispatch, type SetStateAction } from "react";
 import { useUiStore } from "../store/uiStore";
+import { useProgressStore } from "../store/progressStore";
+import { useShallow } from "zustand/react/shallow";
 import { createPortal } from "react-dom";
 import toast, { Toaster } from "react-hot-toast";
 import { AnimatePresence, motion } from "framer-motion";
@@ -8,9 +10,14 @@ import { useMotionPreset } from "../lib/motion";
 import { Sidebar } from "./layout/Sidebar";
 import { ErrorBoundary as UIErrorBoundary } from "./ui/ErrorBoundary";
 import { LauncherAppTitleBar } from "./LauncherAppTitleBar";
-import { Home } from "./tabs/Home";
+import { PerfTab } from "./PerfTab";
+import { TabActiveContext, isKeepAliveTab, nextMountedTabs } from "../lib/tabKeepAlive";
+import { effectiveVisuals } from "../lib/performanceMode";
+
+const Home = React.memo(HomeTab);
+import { Home as HomeTab } from "./tabs/Home";
 import { About, AdminPanel, Explore, ModPack, ServerMenu, SettingsDialog, TabLoadingFallback, Wardrobe, preloadTabs } from "./LauncherAppLazyTabs";
-import type { AuthSession, GameInstance, LauncherConfig, NewsItem, Server } from "../types/launcher";
+import type { AuthSession, GameInstance, InstallProgress, LauncherConfig, NewsItem, Server } from "../types/launcher";
 import type { TranslationKey } from "../i18n/translations";
 
 type TranslationFn = (key: TranslationKey, params?: Record<string, any>) => string;
@@ -323,6 +330,27 @@ function ProgressToastCard({
   );
 }
 
+interface InstallProgressSnapshot {
+  isInstalling: boolean;
+  installProgress: InstallProgress | null;
+  operationType: string | null;
+}
+
+interface ProgressRenderers {
+  install: (visible: boolean, progress: InstallProgressSnapshot) => React.ReactElement | null;
+  export: (visible: boolean) => React.ReactElement | null;
+}
+
+// Subscribes to progress itself so ticks re-render only the toast, not the shell.
+function LiveInstallToast({ visible, renderers }: { visible: boolean; renderers: React.RefObject<ProgressRenderers> }) {
+  const progress = useProgressStore(useShallow((s) => ({
+    isInstalling: s.isInstalling,
+    installProgress: s.installProgress,
+    operationType: s.operationType,
+  })));
+  return renderers.current.install(visible, progress);
+}
+
 interface LauncherAppShellProps {
   colors: any;
   titleBarColors: any;
@@ -367,31 +395,47 @@ interface LauncherAppShellProps {
   handleUnlink: (provider: "catid" | "microsoft") => void | Promise<void>;
   isAdmin: boolean;
   adminToken: string | null;
-  isInstalling: boolean;
-  installProgress: any;
-  operationType: string | null;
   handleCancelInstall: () => void | Promise<void>;
   handleRepair: (instanceId: string) => void | Promise<void>;
 }
 
-export function LauncherAppShell({
-  colors, titleBarColors, config, session, accounts, selectedInstance, inboxOpen, setInboxOpen, announcements, userNotifications, unreadCount, setInvitations, setServerRefreshTrigger, setNotificationRefreshTrigger, accountDropdownOpen, setAccountDropdownOpen, t, selectAccount, removeAccountFromList, setLoginDialogOpen, setLinkCatIDOpen, handleLinkMicrosoft, handleLogout, updateConfig, contentTab, settingsDialogOpen, onCloseSettingsDialog, news, servers, selectedServer, setSelectedServer, setSelectedInstance, setActiveTab, serverRefreshTrigger, settingsTab, setSettingsTab, setImportModpackOpen, handleShowConfirm, handleBrowseJava, handleBrowseMinecraftDir, handleUnlink, isAdmin, adminToken, isInstalling, installProgress, operationType, handleCancelInstall, handleRepair,
+function LauncherAppShellImpl({
+  colors, titleBarColors, config, session, accounts, selectedInstance, inboxOpen, setInboxOpen, announcements, userNotifications, unreadCount, setInvitations, setServerRefreshTrigger, setNotificationRefreshTrigger, accountDropdownOpen, setAccountDropdownOpen, t, selectAccount, removeAccountFromList, setLoginDialogOpen, setLinkCatIDOpen, handleLinkMicrosoft, handleLogout, updateConfig, contentTab, settingsDialogOpen, onCloseSettingsDialog, news, servers, selectedServer, setSelectedServer, setSelectedInstance, setActiveTab, serverRefreshTrigger, settingsTab, setSettingsTab, setImportModpackOpen, handleShowConfirm, handleBrowseJava, handleBrowseMinecraftDir, handleUnlink, isAdmin, adminToken, handleCancelInstall, handleRepair,
 }: LauncherAppShellProps) {
   const m = useMotionPreset();
   const mainRef = React.useRef<HTMLElement>(null);
   const [shouldRenderSettingsDialog, setShouldRenderSettingsDialog] = React.useState(false);
   const [hoveredToastId, setHoveredToastId] = React.useState<string | null>(null);
-  const immersive = useUiStore((state) => state.immersive);
   const fullBleed = useUiStore((state) => state.fullBleed);
-  const transparentTitleBarColors = React.useMemo(() => ({ ...titleBarColors, background: "transparent" }), [titleBarColors]);
-  const immersiveTitleBarColors = React.useMemo(() => ({
-    ...titleBarColors,
-    background: "transparent",
-    text: "#ffffff",
-    muted: "rgba(255,255,255,0.8)",
-    hover: "rgba(255,255,255,0.14)",
-    active: "rgba(255,255,255,0.2)",
-  }), [titleBarColors]);
+
+  // ModPack/Explore stay mounted after the first visit and are only hidden on leave.
+  // Coming from a normal tab, a kept-alive tab is shown once that tab's exit animation ends.
+  const [mountedKeepAlive, setMountedKeepAlive] = React.useState<string[]>(() => nextMountedTabs([], contentTab));
+  const [prevContentTab, setPrevContentTab] = React.useState(contentTab);
+  const [presenceSettled, setPresenceSettled] = React.useState(true);
+  if (prevContentTab !== contentTab) {
+    setPrevContentTab(contentTab);
+    setPresenceSettled(isKeepAliveTab(prevContentTab) || !isKeepAliveTab(contentTab));
+    setMountedKeepAlive((mounted) => nextMountedTabs(mounted, contentTab));
+  }
+  const shownKeepAlive = isKeepAliveTab(contentTab) && presenceSettled ? contentTab : null;
+
+  React.useEffect(() => {
+    if (presenceSettled) return;
+    const fallback = setTimeout(() => setPresenceSettled(true), 400);
+    return () => clearTimeout(fallback);
+  }, [presenceSettled]);
+
+  const prevContentTabRef = React.useRef(contentTab);
+  React.useLayoutEffect(() => {
+    if (isKeepAliveTab(contentTab) && isKeepAliveTab(prevContentTabRef.current)) mainRef.current?.scrollTo({ top: 0 });
+    prevContentTabRef.current = contentTab;
+  }, [contentTab]);
+
+  const handlePresenceExitComplete = React.useCallback(() => {
+    mainRef.current?.scrollTo({ top: 0 });
+    setPresenceSettled(true);
+  }, []);
   
   React.useEffect(() => {
     preloadTabs();
@@ -413,12 +457,9 @@ export function LauncherAppShell({
   // function-message that reads live values off a ref (updated every render),
   // and toggle the slot on the boolean transition only so the enter animation
   // isn't reset ~60×/install.
-  const progressRenderRef = React.useRef<{
-    install: (visible: boolean) => React.ReactElement | null;
-    export: (visible: boolean) => React.ReactElement | null;
-  }>({ install: () => null, export: () => null });
+  const progressRenderRef = React.useRef<ProgressRenderers>({ install: () => null, export: () => null });
 
-  progressRenderRef.current.install = (visible: boolean) => {
+  progressRenderRef.current.install = (visible, { isInstalling, installProgress, operationType }) => {
     if (!(isInstalling && installProgress)) return null;
     const title =
       operationType === "repair"
@@ -458,11 +499,11 @@ export function LauncherAppShell({
     );
   };
 
-  const installToastActive = isInstalling && !!installProgress;
+  const installToastActive = useProgressStore((s) => s.isInstalling && !!s.installProgress);
   React.useEffect(() => {
     const id = "install-progress-toast";
     if (installToastActive) {
-      toast.custom((tItem) => progressRenderRef.current.install(tItem.visible), {
+      toast.custom((tItem) => <LiveInstallToast visible={tItem.visible} renderers={progressRenderRef} />, {
         id,
         duration: Infinity,
       });
@@ -605,7 +646,7 @@ export function LauncherAppShell({
       document.body
       )}
 
-      <div className={`flex-1 flex flex-col overflow-hidden ml-app-shell ${config.rainbowMode ? "rainbow-mode" : ""}`}>
+      <div className={`flex-1 flex flex-col overflow-hidden ml-app-shell ${effectiveVisuals(config).rainbow ? "rainbow-mode" : ""}`}>
         <div className="relative z-30">
         <LauncherAppTitleBar
           colors={colors} titleBarColors={titleBarColors} config={config} session={session} accounts={accounts} selectedInstance={selectedInstance} inboxOpen={inboxOpen} setInboxOpen={setInboxOpen} announcements={announcements} userNotifications={userNotifications} unreadCount={unreadCount} setInvitations={setInvitations} setServerRefreshTrigger={setServerRefreshTrigger} setNotificationRefreshTrigger={setNotificationRefreshTrigger} accountDropdownOpen={accountDropdownOpen} setAccountDropdownOpen={setAccountDropdownOpen} t={t} selectAccount={selectAccount} removeAccountFromList={removeAccountFromList} setLoginDialogOpen={setLoginDialogOpen} setLinkCatIDOpen={setLinkCatIDOpen} handleLinkMicrosoft={handleLinkMicrosoft} handleLogout={handleLogout} updateConfig={updateConfig}
@@ -623,18 +664,17 @@ export function LauncherAppShell({
                   mode="wait" is required: the outgoing page must unmount (running its
                   fullBleed/immersive cleanup) before the incoming page mounts and sets its own.
                   The shared <main> scroller is reset in between so a page never opens mid-scroll. */}
-              <AnimatePresence mode="wait" onExitComplete={() => mainRef.current?.scrollTo({ top: 0 })}>
+              <AnimatePresence mode="wait" onExitComplete={handlePresenceExitComplete}>
                 <motion.div
-                  key={contentTab}
+                  key={isKeepAliveTab(contentTab) ? "keep-alive" : contentTab}
                   variants={m.page}
                   {...m.states}
-                  className="h-full"
+                  className={isKeepAliveTab(contentTab) ? undefined : "h-full"}
                 >
+                  <PerfTab id={isKeepAliveTab(contentTab) ? "keep-alive-placeholder" : contentTab}>
                   <React.Suspense fallback={<TabLoadingFallback colors={colors} />}>
                     {contentTab === "home" && <Home session={session} news={news} servers={servers} selectedServer={selectedServer} setSelectedServer={setSelectedServer} setSelectedInstance={setSelectedInstance} colors={colors} setActiveTab={setActiveTab} language={config.language} />}
                     {contentTab === "servers" && <ServerMenu colors={colors} servers={servers} selectedServer={selectedServer} setSelectedServer={setSelectedServer} session={session} setActiveTab={setActiveTab} refreshTrigger={serverRefreshTrigger} language={config.language} config={config} updateConfig={updateConfig} setSettingsTab={setSettingsTab} />}
-                    {contentTab === "modpack" && <ModPack colors={colors} config={config} setImportModpackOpen={setImportModpackOpen} setActiveTab={setActiveTab} setSettingsTab={setSettingsTab} onShowConfirm={handleShowConfirm} isActive={true} selectedInstance={selectedInstance} setSelectedInstance={setSelectedInstance} selectedServer={selectedServer} session={session} updateConfig={updateConfig} language={config.language} handleRepair={handleRepair} />}
-                    {contentTab === "explore" && <UIErrorBoundary><Explore colors={colors} config={config} /></UIErrorBoundary>}
                     {contentTab === "admin" && isAdmin && adminToken && <AdminPanel colors={colors} adminToken={adminToken} language={config.language} />}
                     {contentTab === "about" && <About colors={colors} config={config} />}
                     {contentTab === "wardrobe" && (
@@ -646,8 +686,29 @@ export function LauncherAppShell({
                       />
                     )}
                   </React.Suspense>
+                  </PerfTab>
                 </motion.div>
               </AnimatePresence>
+              <React.Suspense fallback={shownKeepAlive ? <TabLoadingFallback colors={colors} /> : null}>
+                {mountedKeepAlive.map((id) => {
+                  const active = shownKeepAlive === id;
+                  return (
+                    <div key={id} hidden={!active} className="h-full">
+                      <TabActiveContext.Provider value={active}>
+                        <motion.div variants={m.page} initial="hidden" animate={active ? "show" : "hidden"} className="h-full">
+                          <PerfTab id={id}>
+                            {id === "modpack" ? (
+                              <ModPack colors={colors} config={config} setImportModpackOpen={setImportModpackOpen} setActiveTab={setActiveTab} setSettingsTab={setSettingsTab} onShowConfirm={handleShowConfirm} isActive={shownKeepAlive === "modpack"} selectedInstance={selectedInstance} setSelectedInstance={setSelectedInstance} selectedServer={selectedServer} session={session} updateConfig={updateConfig} language={config.language} handleRepair={handleRepair} />
+                            ) : (
+                              <UIErrorBoundary><Explore colors={colors} config={config} /></UIErrorBoundary>
+                            )}
+                          </PerfTab>
+                        </motion.div>
+                      </TabActiveContext.Provider>
+                    </div>
+                  );
+                })}
+              </React.Suspense>
             </div>
           </main>
         </div>
@@ -681,3 +742,5 @@ export function LauncherAppShell({
     </>
   );
 }
+
+export const LauncherAppShell = React.memo(LauncherAppShellImpl);

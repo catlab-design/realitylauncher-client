@@ -5,7 +5,7 @@
 | Property | Value |
 |---|---|
 | **Name** | Reality Launcher (package: `ml-tauri-poc`) |
-| **Version** | 4.0.2 |
+| **Version** | 5.0.1 |
 | **License** | GPL-3.0-only |
 | **Description** | ML-Launcher POC with Tauri + Rust — Minecraft launcher |
 | **Copyright** | 2026 CatLab Design <hi@catlabdesign.space> |
@@ -44,10 +44,11 @@ src/
 ├── env.d.ts                          # Global type declarations
 ├── components/
 │   ├── LauncherApp.tsx               # Root component
-│   ├── LauncherAppLazyTabs.tsx       # Lazy-loaded tab re-exports
+│   ├── LauncherAppLazyTabs.tsx       # React.lazy tab chunks (memoized) + idle preloadTabs()
 │   ├── LauncherAppOverlays.tsx        # All modal dialogs
 │   ├── LauncherAppShell.tsx           # Shell (titlebar + sidebar + content)
 │   ├── LauncherAppTitleBar.tsx        # Custom title bar
+│   ├── PerfTab.tsx                    # React.Profiler wrapper (dev only)
 │   ├── SettingsDialog.tsx             # Settings overlay
 │   ├── launcherTheme.ts               # Theme color generation
 │   ├── auth/                         # Auth modals
@@ -95,19 +96,27 @@ src/
 ├── hooks/
 │   ├── useGameEvents.ts              # Game lifecycle event hook
 │   ├── useInstances.ts               # Instance fetching/mutation
+│   ├── useStableCallback.ts          # Stable-identity callback that always calls the latest closure
 │   └── useTranslation.ts             # i18n hook
 ├── i18n/
 │   ├── translations.ts               # Barrel export
 │   ├── translations-en.ts            # English (1111 keys)
 │   └── translations-th.ts            # Thai (732+ keys, default fallback)
 ├── lib/
+│   ├── apiBase.ts                    # API_BASE_URL + apiUrl(path, params) for frontend fetches (+ test)
 │   ├── bulkDelete.ts
 │   ├── constants.ts                  # COLOR_THEMES map
 │   ├── firstRunOnboarding.ts
 │   ├── installLock.ts
 │   ├── launchPolicy.ts
 │   ├── microsoftLoginFlow.ts         # MS device code flow
+│   ├── performanceMode.ts            # effectiveVisuals(config): Performance mode → lite CSS, reduced motion, rainbow suspended (+ test)
+│   ├── pageVisibility.ts             # data-hidden on <html> while the window is hidden; isPageHidden() (+ test)
+│   ├── perfStats.ts                  # Pure frame/long-task summaries (+ perfStats.test.ts)
+│   ├── perfProbe.ts                  # Dev-only render/frame/long-task collector
+│   ├── perfBench.ts                  # Dev-only scripted bench (VITE_PERF_BENCH=1)
 │   ├── sounds.ts                     # Sound effects manager
+│   ├── tabKeepAlive.ts               # KEEP_ALIVE_TABS, nextMountedTabs, TabActiveContext/useTabActive (+ test)
 │   └── utils.ts                      # cn(), getContrastColor()
 ├── store/
 │   ├── authStore.ts                  # Auth state (persisted)
@@ -268,7 +277,7 @@ ConfigStore migration (v0→v1): `closeOnLaunch` changed from `boolean` to `'kee
 | **cloud** | joined servers, join/leave, cloud install/sync, invitations, notifications |
 | **discord** | `discord_rpc_set_enabled`, `discord_rpc_update`, `discord_rpc_is_connected` |
 | **social** | `server_ping` |
-| **telemetry** | `telemetry_log_event` |
+| **telemetry** | `telemetry_log_event`, `dev_perf_report` (debug builds print `PERF_REPORT <json>` to stdout; no-op in release) |
 | **wardrobe** | catskinc config/skin, minecraft profile/skin, auth_update_avatar_source |
 
 ### 4.3 Known Gaps (Unported Methods)
@@ -314,7 +323,8 @@ const KNOWN_UNPORTED = new Set(['fetchInstanceAgendas', 'fetchAllAgendas']);
 ## 6. Testing
 
 - **Framework**: `bun:test`
-- **Test file**: `src/api.test.ts` (120 lines)
+- **Test files**: `src/api.test.ts` (120 lines), `src/lib/apiBase.test.ts`, `src/lib/perfStats.test.ts`, `src/lib/tabKeepAlive.test.ts`, `src/lib/pageVisibility.test.ts`
+- **Perf bench** (dev only, real app): see §7; besides metrics it reports `checks` (install toast live, keep-alive layout/remount, rainbow CSS) — all must be `true`
 - **Run tests**: `bun test` or `bun test src/api.test.ts`
 - **Bridge parity validation**:
   1. Every `invoke('command_name')` in api.ts must exist as a `#[tauri::command] fn` in Rust
@@ -335,6 +345,7 @@ const KNOWN_UNPORTED = new Set(['fetchInstanceAgendas', 'fetchAllAgendas']);
 | `bun run tauri build` | Build production Tauri native app |
 | `bun test` | Run all tests |
 | `bun run check:bridge` | Typecheck bridge files |
+| `VITE_PERF_BENCH=1 VITE_PERF_BENCH_EXIT=1 bun run tauri dev 2>&1 \| grep PERF_REPORT` | Dev-only perf bench: cycles tabs, scrolls Explore/Servers, fakes a progress burst, prints JSON, closes the window. Reads local data only. |
 
 ---
 
@@ -368,6 +379,12 @@ const KNOWN_UNPORTED = new Set(['fetchInstanceAgendas', 'fetchAllAgendas']);
 7. **No `public/` directory** — all assets are in `src/assets/` and imported directly
 8. **No Docker** — CI lives in `.gitlab-ci.yml`: `check` job on MRs/main pushes; `v*` tags or a manual run with `PIPELINE_TYPE=release` build Linux/Windows/macOS installers and publish to R2 + a GitLab Release (assets in the generic package registry); the opt-in `mirror:github` job (`MIRROR_GITHUB_RELEASE=true` + `GITHUB_TOKEN`) copies each release to GitHub Releases
 9. **`src-tauri/src/download.rs`** — shared concurrent download engine using `tokio::sync::Semaphore` (default 8 concurrency). Accepts a progress callback, supports retry with backoff, SHA1/SHA256/SHA512 hash verification, atomic writes (temp + rename), JAR/ZIP validation, and per-error `missing_on_server` vs `failed` classification. Replaces old sequential loops in CurseForge modpack install (`install_cf_modpack`) and cloud sync (`sync_managed_mods`, `sync_server_mods` queue).
+
+11. **Store subscriptions** — always select fields (`useStore((s) => s.x)` or `useStore(useShallow((s) => ({ ... })))`); a bare `useXStore()` re-renders on every `set`, e.g. every install-progress tick or `setImmersive` on scroll. Handlers passed to the memoized shell/overlays/tabs go through `useStableCallback`
+12. **Library (ModPack) and Install (Explore) are kept mounted** after the first visit (`src/lib/tabKeepAlive.ts`). Effects that touch shared shell state (`setFullBleed`, `setImmersive`, listeners on the shared `<main>` scroller) must be gated on ModPack's `isActive` prop or `useTabActive()`, or they leak into other tabs
+13. **Rust release profile** is thin LTO (`codegen-units = 16`, `strip`, `opt-level = 3`); full LTO took ~16 min cold on 4 cores and was rejected for build time
+14. **`WEBKIT_DISABLE_DMABUF_RENDERER` is required** on the maintainer's Linux machine — never remove it as a perf fix; WebKitGTK's non-DMABuf path makes scroll repaint the main remaining cost
+15. **`src/components/ui/CalendarWidget.tsx` is dead and does not parse** (not imported anywhere). Plain `tsc -p tsconfig.json` only reports its syntax errors and hides every type error; exclude it to typecheck the app
 
 ---
 

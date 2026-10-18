@@ -17,6 +17,12 @@ import { useAuthStore } from "../store/authStore";
 import { useGameEvents } from "../hooks/useGameEvents";
 import { useUiStore } from "../store/uiStore";
 import { useProgressStore } from "../store/progressStore";
+import { PerfTab } from "./PerfTab";
+import { useShallow } from "zustand/react/shallow";
+import { useStableCallback } from "../hooks/useStableCallback";
+import { isPageHidden } from "../lib/pageVisibility";
+import { apiUrl } from "../lib/apiBase";
+import { effectiveVisuals } from "../lib/performanceMode";
 import {
   FIRST_RUN_LOGIN_PROMPT_KEY,
   hasSeenFirstRunLoginPrompt,
@@ -33,17 +39,44 @@ function LauncherAppContent() {
   const autoUpdateVersionRef = useRef<string | null>(null);
   const autoInstallVersionRef = useRef<string | null>(null);
 
-  const config = useConfigStore();
+  const config = useConfigStore(useShallow((s) => s));
+  const visuals = useMemo(() => effectiveVisuals(config), [config]);
   const {
     isInstalling, setInstalling,
-    installProgress, setInstallProgress,
+    setInstallProgress,
     setInstallMinimized,
     operationType, setOperationType,
     installingInstanceId, setInstallingInstanceId
-  } = useProgressStore();
+  } = useProgressStore(useShallow((s) => ({
+    isInstalling: s.isInstalling,
+    setInstalling: s.setInstalling,
+    setInstallProgress: s.setInstallProgress,
+    setInstallMinimized: s.setInstallMinimized,
+    operationType: s.operationType,
+    setOperationType: s.setOperationType,
+    installingInstanceId: s.installingInstanceId,
+    setInstallingInstanceId: s.setInstallingInstanceId,
+  })));
 
-  const { session, accounts, setSession, addAccount, updateAccount, removeAccount: removeAccountAction } = useAuthStore();
-  const { activeTab, setActiveTab, settingsTab, setSettingsTab, modals, openModal, closeModal, lastContentTab, setLastContentTab } = useUiStore();
+  const { session, accounts, setSession, addAccount, updateAccount, removeAccount: removeAccountAction } = useAuthStore(useShallow((s) => ({
+    session: s.session,
+    accounts: s.accounts,
+    setSession: s.setSession,
+    addAccount: s.addAccount,
+    updateAccount: s.updateAccount,
+    removeAccount: s.removeAccount,
+  })));
+  const { activeTab, setActiveTab, settingsTab, setSettingsTab, modals, openModal, closeModal, lastContentTab, setLastContentTab } = useUiStore(useShallow((s) => ({
+    activeTab: s.activeTab,
+    setActiveTab: s.setActiveTab,
+    settingsTab: s.settingsTab,
+    setSettingsTab: s.setSettingsTab,
+    modals: s.modals,
+    openModal: s.openModal,
+    closeModal: s.closeModal,
+    lastContentTab: s.lastContentTab,
+    setLastContentTab: s.setLastContentTab,
+  })));
 
   const [isLoading, setIsLoading] = useState(true);
   const [authBootstrapComplete, setAuthBootstrapComplete] = useState(false);
@@ -183,8 +216,8 @@ function LauncherAppContent() {
   const [isRegistering, setIsRegistering] = useState(false);
 
   const colors = useMemo(
-    () => getColors(config.colorTheme, config.theme, config.customColor, config.rainbowMode),
-    [config.colorTheme, config.theme, config.customColor, config.rainbowMode]
+    () => getColors(config.colorTheme, config.theme, config.customColor, visuals.rainbow),
+    [config.colorTheme, config.theme, config.customColor, visuals.rainbow]
   );
 
   const effectiveThemeMode = useMemo(() => {
@@ -711,9 +744,8 @@ function LauncherAppContent() {
       }
 
       if (notifiedVersion && notifiedVersion !== currentVersion) {
-        const API_URL = (window as any).API_URL;
         try {
-          let response = await fetch(`${API_URL}/launcher/latest`);
+          let response = await fetch(apiUrl("/launcher/latest"));
           if (!response.ok) {
             const cdnFallback = "https://cdn.reality.catlabdesign.space/client/latest.json";
             response = await fetch(cdnFallback);
@@ -1246,12 +1278,15 @@ function LauncherAppContent() {
   };
 
   useEffect(() => {
-    if (!config.rainbowMode) {
+    if (!visuals.rainbow) {
       document.documentElement.style.removeProperty('--secondary-color');
       return;
     }
+    // JS on purpose: a CSS animation of this inherited root property restyles the
+    // whole document every frame in WebKit; this timer restyles 10x/s and idles when hidden.
     let hue = 0;
     const interval = setInterval(() => {
+      if (isPageHidden()) return;
       hue = (hue + 2) % 360;
       document.documentElement.style.setProperty('--secondary-color', `hsl(${hue}, 90%, 65%)`);
     }, 100);
@@ -1259,7 +1294,32 @@ function LauncherAppContent() {
       clearInterval(interval);
       document.documentElement.style.removeProperty('--secondary-color');
     };
-  }, [config.rainbowMode]);
+  }, [visuals.rainbow]);
+
+  useEffect(() => {
+    document.documentElement.toggleAttribute('data-perf-lite', visuals.lite);
+    return () => document.documentElement.removeAttribute('data-perf-lite');
+  }, [visuals.lite]);
+
+  const stable = {
+    setLoginDialogOpen: useStableCallback(setLoginDialogOpen),
+    setAccountManagerOpen: useStableCallback(setAccountManagerOpen),
+    setImportModpackOpen: useStableCallback(setImportModpackOpen),
+    selectAccount: useStableCallback(selectAccount),
+    removeAccountFromList: useStableCallback(removeAccountFromList),
+    handleLinkMicrosoft: useStableCallback(handleLinkMicrosoft),
+    handleLogout: useStableCallback(handleLogout),
+    updateConfig: useStableCallback(updateConfig),
+    handleBrowseJava: useStableCallback(handleBrowseJava),
+    handleBrowseMinecraftDir: useStableCallback(handleBrowseMinecraftDir),
+    handleUnlink: useStableCallback(handleUnlink),
+    handleCancelInstall: useStableCallback(handleCancelInstall),
+    handleRepair: useStableCallback(handleRepair),
+    handleCatIDLogin: useStableCallback(handleCatIDLogin),
+    handleCatIDRegister: useStableCallback(handleCatIDRegister),
+    handleManualVerificationCheck: useStableCallback(handleManualVerificationCheck),
+    handleLinkCatID: useStableCallback(handleLinkCatID),
+  };
 
   if (isLoading) {
     return <LoadingScreen onComplete={() => {
@@ -1288,7 +1348,7 @@ function LauncherAppContent() {
         confirmDialog={confirmDialog}
         setConfirmDialog={setConfirmDialog}
         loginDialogOpen={loginDialogOpen}
-        setLoginDialogOpen={setLoginDialogOpen}
+        setLoginDialogOpen={stable.setLoginDialogOpen}
         catIDLoginOpen={catIDLoginOpen}
         setCatIDLoginOpen={setCatIDLoginOpen}
         deviceCodeModalOpen={deviceCodeModalOpen}
@@ -1298,17 +1358,17 @@ function LauncherAppContent() {
         setDeviceCodeError={setDeviceCodeError}
         setDeviceCodePolling={setDeviceCodePolling}
         setIsLinkingMicrosoft={setIsLinkingMicrosoft}
-        handleCatIDLogin={handleCatIDLogin}
+        handleCatIDLogin={stable.handleCatIDLogin}
         catIDRegisterOpen={catIDRegisterOpen}
         setCatIDRegisterOpen={setCatIDRegisterOpen}
         catIDRegisterData={catIDRegisterData}
         setCatIDRegisterData={setCatIDRegisterData}
         isRegistering={isRegistering}
-        handleCatIDRegister={handleCatIDRegister}
+        handleCatIDRegister={stable.handleCatIDRegister}
         verificationWaiting={verificationWaiting}
         setVerificationWaiting={setVerificationWaiting}
         verificationEmail={verificationEmail}
-        handleManualVerificationCheck={handleManualVerificationCheck}
+        handleManualVerificationCheck={stable.handleManualVerificationCheck}
         setVerificationToken={setVerificationToken}
         forgotPasswordOpen={forgotPasswordOpen}
         setForgotPasswordOpen={setForgotPasswordOpen}
@@ -1328,15 +1388,15 @@ function LauncherAppContent() {
         setLinkCatIDOpen={setLinkCatIDOpen}
         showLinkPassword={showLinkPassword}
         setShowLinkPassword={setShowLinkPassword}
-        handleLinkCatID={handleLinkCatID}
+        handleLinkCatID={stable.handleLinkCatID}
         accountManagerOpen={accountManagerOpen}
-        setAccountManagerOpen={setAccountManagerOpen}
+        setAccountManagerOpen={stable.setAccountManagerOpen}
         accounts={accounts}
         session={session}
-        selectAccount={selectAccount}
-        removeAccountFromList={removeAccountFromList}
+        selectAccount={stable.selectAccount}
+        removeAccountFromList={stable.removeAccountFromList}
         importModpackOpen={importModpackOpen}
-        setImportModpackOpen={setImportModpackOpen}
+        setImportModpackOpen={stable.setImportModpackOpen}
         isDragging={isDragging}
         setIsDragging={setIsDragging}
       />
@@ -1359,13 +1419,13 @@ function LauncherAppContent() {
         accountDropdownOpen={accountDropdownOpen}
         setAccountDropdownOpen={setAccountDropdownOpen}
         t={t}
-        selectAccount={selectAccount}
-        removeAccountFromList={removeAccountFromList}
-        setLoginDialogOpen={setLoginDialogOpen}
+        selectAccount={stable.selectAccount}
+        removeAccountFromList={stable.removeAccountFromList}
+        setLoginDialogOpen={stable.setLoginDialogOpen}
         setLinkCatIDOpen={setLinkCatIDOpen}
-        handleLinkMicrosoft={handleLinkMicrosoft}
-        handleLogout={handleLogout}
-        updateConfig={updateConfig}
+        handleLinkMicrosoft={stable.handleLinkMicrosoft}
+        handleLogout={stable.handleLogout}
+        updateConfig={stable.updateConfig}
         contentTab={contentTab}
         settingsDialogOpen={settingsDialogOpen}
         onCloseSettingsDialog={handleCloseSettingsDialog}
@@ -1378,30 +1438,30 @@ function LauncherAppContent() {
         serverRefreshTrigger={serverRefreshTrigger}
         settingsTab={settingsTab}
         setSettingsTab={setSettingsTab}
-        setImportModpackOpen={setImportModpackOpen}
+        setImportModpackOpen={stable.setImportModpackOpen}
         handleShowConfirm={handleShowConfirm}
-        handleBrowseJava={handleBrowseJava}
-        handleBrowseMinecraftDir={handleBrowseMinecraftDir}
-        handleUnlink={handleUnlink}
+        handleBrowseJava={stable.handleBrowseJava}
+        handleBrowseMinecraftDir={stable.handleBrowseMinecraftDir}
+        handleUnlink={stable.handleUnlink}
         isAdmin={isAdmin}
         adminToken={adminToken}
-        isInstalling={isInstalling}
-        installProgress={installProgress}
-        operationType={operationType}
-        handleCancelInstall={handleCancelInstall}
-        handleRepair={handleRepair}
+        handleCancelInstall={stable.handleCancelInstall}
+        handleRepair={stable.handleRepair}
       />
     </div>
   );
 }
 
 export default function LauncherApp() {
+  const reducedMotion = useConfigStore((s) => effectiveVisuals(s).reducedMotion);
   return (
     <UIErrorBoundary>
       {/* "user": honour the OS reduce-motion setting app-wide (transforms/layout become
           instant, opacity fades stay). useMotionPreset() reads this same config. */}
-      <MotionConfig reducedMotion="user">
-        <LauncherAppContent />
+      <MotionConfig reducedMotion={reducedMotion}>
+        <PerfTab id="app">
+          <LauncherAppContent />
+        </PerfTab>
       </MotionConfig>
     </UIErrorBoundary>
   );
