@@ -1,5 +1,24 @@
 # Runtime Perf — Results
 
+## Summary vs spec §1 success criteria
+
+| Criterion | Target | Result | |
+|---|---|---|---|
+| Active-tab renders during a 3s install-progress burst | ≥ 80% fewer | `home` 26 → 2 (−92%); whole app 26 → 3 (−88%) | ✅ met |
+| Long-task total over the tab-switch cycle | lower than baseline | 10,153 → 9,154 ms (−10%, near noise) | ⚠️ met, small |
+| Slow frames (>20ms) scrolling Install / Servers | lower than baseline | Install 100 → 88; Servers 95 → 95. Servers long-task ms 8,965 → 7,000 (−22%) | ⚠️ partly met |
+| Initial JS | 2.0 MB → < 700 KB | entry 1,998 → 321 KB; all JS loaded at startup 1,998 → 696 KB | ✅ met |
+| Checks | all green | `cargo check --lib`, `bun test` (16 tests), `bun run check:bridge` green; full `tsc` has no new errors (88 pre-existing, all unused-var) | ✅ met |
+
+### Why scrolling and tab switching improved less
+- **React work:** it was cut sharply — Servers scroll renders 125 → 11, progress renders 26 → 3.
+- **Where the remaining time goes:** React render time is now ~15% of the blocked time. The rest is WebKitGTK style/layout/paint.
+- **Attribution runs (below):**
+  - neither the title-bar blur nor looping animations is the bottleneck;
+  - removing *all* blur app-wide would recover ~26% of the Servers scroll cost;
+  - that is a visible redesign, so it is offered rather than applied.
+- **Fixed constraint:** this machine requires `WEBKIT_DISABLE_DMABUF_RENDERER`, so its slower non-DMABuf repaint path cannot change. Windows (WebView2) is expected to fare better but was not measured.
+
 Spec: `2026-10-18-runtime-perf-design.md`
 
 - **Machine:** Linux 7.2.9 (CachyOS), WebKitGTK 2.54.1 (Tauri dev build, React StrictMode on).
@@ -25,85 +44,87 @@ Spec: `2026-10-18-runtime-perf-design.md`
 
 ## Runtime
 
+Columns are the state after each task: `t4b` = Task 4 (with the Profiler-id fix), `t6` = final.
+
 #### tab-cycle
 
-| Metric | baseline (n=3) | t3 (n=3) | t4b (n=3) | t5 (n=3) |
-|---|---|---|---|---|
-| frames | 163 | 156 | 165 | 174 |
-| slow frames (>20ms) | 121 | 119 | 117 | 120 |
-| p95 frame ms | 204 | 234 | 249 | 230 |
-| long tasks | 82 | 79 | 72 | 73 |
-| long-task total ms | 10153 | 11039 | 10499 | 10332 |
-| renders `app` | 80 | 71 | 60 | 66 |
-| render ms `app` | 1399 | 1426 | 1563 | 1263 |
-| renders `explore` | 16 | 11 | 23 | 24 |
-| render ms `explore` | 214 | 248 | 189 | 134 |
-| renders `home` | 17 | 12 | 12 | 13 |
-| render ms `home` | 334 | 352 | 383 | 329 |
-| renders `keep-alive-placeholder` | 0 | 0 | 9 | 9 |
-| render ms `keep-alive-placeholder` | 0 | 0 | 0 | 0 |
-| renders `modpack` | 19 | 11 | 24 | 26 |
-| render ms `modpack` | 167 | 176 | 154 | 144 |
-| renders `servers` | 13 | 13 | 13 | 13 |
-| render ms `servers` | 367 | 381 | 475 | 405 |
-| renders `wardrobe` | 13 | 10 | 11 | 12 |
-| render ms `wardrobe` | 90 | 98 | 134 | 112 |
+| Metric | baseline (n=3) | t3 (n=3) | t4b (n=3) | t5 (n=3) | t6 (n=3) |
+|---|---|---|---|---|---|
+| frames | 163 | 156 | 165 | 174 | 186 |
+| slow frames (>20ms) | 121 | 119 | 117 | 120 | 130 |
+| p95 frame ms | 204 | 234 | 249 | 230 | 192 |
+| long tasks | 82 | 79 | 72 | 73 | 78 |
+| long-task total ms | 10153 | 11039 | 10499 | 10332 | 9154 |
+| renders `app` | 80 | 71 | 60 | 66 | 69 |
+| render ms `app` | 1399 | 1426 | 1563 | 1263 | 1215 |
+| renders `explore` | 16 | 11 | 23 | 24 | 24 |
+| render ms `explore` | 214 | 248 | 189 | 134 | 143 |
+| renders `home` | 17 | 12 | 12 | 13 | 13 |
+| render ms `home` | 334 | 352 | 383 | 329 | 302 |
+| renders `keep-alive-placeholder` | 0 | 0 | 9 | 9 | 9 |
+| render ms `keep-alive-placeholder` | 0 | 0 | 0 | 0 | 0 |
+| renders `modpack` | 19 | 11 | 24 | 26 | 26 |
+| render ms `modpack` | 167 | 176 | 154 | 144 | 133 |
+| renders `servers` | 13 | 13 | 13 | 13 | 15 |
+| render ms `servers` | 367 | 381 | 475 | 405 | 386 |
+| renders `wardrobe` | 13 | 10 | 11 | 12 | 11 |
+| render ms `wardrobe` | 90 | 98 | 134 | 112 | 103 |
 
 #### scroll-explore
 
-| Metric | baseline (n=3) | t3 (n=3) | t4b (n=3) | t5 (n=3) |
-|---|---|---|---|---|
-| frames | 100 | 96 | 146 | 142 |
-| slow frames (>20ms) | 100 | 96 | 87 | 89 |
-| p95 frame ms | 98 | 108 | 43 | 36 |
-| long tasks | 14 | 14 | 5 | 5 |
-| long-task total ms | 1327 | 1464 | 818 | 564 |
-| renders `app` | 5 | 5 | 4 | 4 |
-| render ms `app` | 88 | 101 | 20 | 16 |
-| renders `explore` | 3 | 3 | 3 | 3 |
-| render ms `explore` | 76 | 86 | 0 | 0 |
-| renders `home` | 2 | 1 | 1 | 1 |
-| render ms `home` | 3 | 7 | 7 | 5 |
-| renders `keep-alive-placeholder` | 0 | 0 | 2 | 2 |
-| render ms `keep-alive-placeholder` | 0 | 0 | 0 | 0 |
-| renders `modpack` | 0 | 0 | 3 | 3 |
-| render ms `modpack` | 0 | 0 | 0 | 0 |
+| Metric | baseline (n=3) | t3 (n=3) | t4b (n=3) | t5 (n=3) | t6 (n=3) |
+|---|---|---|---|---|---|
+| frames | 100 | 96 | 146 | 142 | 144 |
+| slow frames (>20ms) | 100 | 96 | 87 | 89 | 88 |
+| p95 frame ms | 98 | 108 | 43 | 36 | 36 |
+| long tasks | 14 | 14 | 5 | 5 | 5 |
+| long-task total ms | 1327 | 1464 | 818 | 564 | 498 |
+| renders `app` | 5 | 5 | 4 | 4 | 4 |
+| render ms `app` | 88 | 101 | 20 | 16 | 17 |
+| renders `explore` | 3 | 3 | 3 | 3 | 3 |
+| render ms `explore` | 76 | 86 | 0 | 0 | 0 |
+| renders `home` | 2 | 1 | 1 | 1 | 1 |
+| render ms `home` | 3 | 7 | 7 | 5 | 5 |
+| renders `keep-alive-placeholder` | 0 | 0 | 2 | 2 | 2 |
+| render ms `keep-alive-placeholder` | 0 | 0 | 0 | 0 | 0 |
+| renders `modpack` | 0 | 0 | 3 | 3 | 3 |
+| render ms `modpack` | 0 | 0 | 0 | 0 | 0 |
 
 #### scroll-servers
 
-| Metric | baseline (n=3) | t3 (n=3) | t4b (n=3) | t5 (n=3) |
-|---|---|---|---|---|
-| frames | 96 | 95 | 93 | 97 |
-| slow frames (>20ms) | 95 | 95 | 93 | 94 |
-| p95 frame ms | 138 | 133 | 162 | 121 |
-| long tasks | 89 | 89 | 89 | 91 |
-| long-task total ms | 8965 | 7202 | 7660 | 7033 |
-| renders `app` | 125 | 11 | 12 | 12 |
-| render ms `app` | 1595 | 245 | 296 | 214 |
-| renders `explore` | 2 | 1 | 2 | 2 |
-| render ms `explore` | 9 | 4 | 0 | 0 |
-| renders `modpack` | 0 | 0 | 2 | 2 |
-| render ms `modpack` | 0 | 0 | 0 | 0 |
-| renders `servers` | 123 | 9 | 10 | 10 |
-| render ms `servers` | 1353 | 222 | 283 | 203 |
+| Metric | baseline (n=3) | t3 (n=3) | t4b (n=3) | t5 (n=3) | t6 (n=3) |
+|---|---|---|---|---|---|
+| frames | 96 | 95 | 93 | 97 | 97 |
+| slow frames (>20ms) | 95 | 95 | 93 | 94 | 95 |
+| p95 frame ms | 138 | 133 | 162 | 121 | 111 |
+| long tasks | 89 | 89 | 89 | 91 | 92 |
+| long-task total ms | 8965 | 7202 | 7660 | 7033 | 7000 |
+| renders `app` | 125 | 11 | 12 | 12 | 12 |
+| render ms `app` | 1595 | 245 | 296 | 214 | 189 |
+| renders `explore` | 2 | 1 | 2 | 2 | 2 |
+| render ms `explore` | 9 | 4 | 0 | 0 | 1 |
+| renders `modpack` | 0 | 0 | 2 | 2 | 2 |
+| render ms `modpack` | 0 | 0 | 0 | 0 | 0 |
+| renders `servers` | 123 | 9 | 10 | 10 | 10 |
+| render ms `servers` | 1353 | 222 | 283 | 203 | 178 |
 
 #### progress-burst
 
-| Metric | baseline (n=3) | t3 (n=3) | t4b (n=3) | t5 (n=3) |
-|---|---|---|---|---|
-| frames | 150 | 150 | 151 | 152 |
-| slow frames (>20ms) | 15 | 7 | 8 | 8 |
-| p95 frame ms | 27 | 19 | 21 | 25 |
-| long tasks | 6 | 6 | 7 | 7 |
-| long-task total ms | 1152 | 1641 | 1813 | 2090 |
-| renders `app` | 26 | 3 | 3 | 3 |
-| render ms `app` | 214 | 16 | 22 | 21 |
-| renders `explore` | 0 | 0 | 1 | 1 |
-| render ms `explore` | 0 | 0 | 0 | 0 |
-| renders `home` | 26 | 2 | 3 | 3 |
-| render ms `home` | 139 | 13 | 16 | 15 |
-| renders `modpack` | 0 | 0 | 1 | 1 |
-| render ms `modpack` | 0 | 0 | 0 | 0 |
+| Metric | baseline (n=3) | t3 (n=3) | t4b (n=3) | t5 (n=3) | t6 (n=3) |
+|---|---|---|---|---|---|
+| frames | 150 | 150 | 151 | 152 | 145 |
+| slow frames (>20ms) | 15 | 7 | 8 | 8 | 8 |
+| p95 frame ms | 27 | 19 | 21 | 25 | 29 |
+| long tasks | 6 | 6 | 7 | 7 | 7 |
+| long-task total ms | 1152 | 1641 | 1813 | 2090 | 2124 |
+| renders `app` | 26 | 3 | 3 | 3 | 3 |
+| render ms `app` | 214 | 16 | 22 | 21 | 17 |
+| renders `explore` | 0 | 0 | 1 | 1 | 1 |
+| render ms `explore` | 0 | 0 | 0 | 0 | 0 |
+| renders `home` | 26 | 2 | 3 | 3 | 2 |
+| render ms `home` | 139 | 13 | 16 | 15 | 9 |
+| renders `modpack` | 0 | 0 | 1 | 1 | 1 |
+| render ms `modpack` | 0 | 0 | 0 | 0 | 0 |
 
 ### Paint attribution (dev-only `VITE_PERF_EXPERIMENT`, n=2 each, on top of Task 4)
 
