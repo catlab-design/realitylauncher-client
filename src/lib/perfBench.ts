@@ -157,6 +157,43 @@ async function checkRainbow(): Promise<Record<string, boolean | number>> {
   };
 }
 
+// Servers › Explore must load the public server list (read-only GET) and render it.
+async function checkPublicServers(): Promise<Record<string, boolean | number>> {
+  const originalFetch = window.fetch;
+  let requested = false;
+  let returnedNames: string[] = [];
+  window.fetch = async (...args: Parameters<typeof fetch>) => {
+    const res = await originalFetch(...args);
+    const target = String(args[0] instanceof Request ? args[0].url : args[0]);
+    if (target.includes("/instances/public")) {
+      requested = true;
+      const data = await res.clone().json().catch(() => null);
+      const items: Array<{ name?: string }> = Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : [];
+      returnedNames = items.map((i) => i.name ?? "").filter(Boolean);
+    }
+    return res;
+  };
+  try {
+    setTab("servers");
+    await wait(1500);
+    const tabs = document.querySelectorAll<HTMLButtonElement>('main [role="tablist"] [role="tab"]');
+    tabs[1]?.click();
+    await wait(3000);
+    const text = document.body.innerText;
+    tabs[0]?.click();
+    await wait(TAB_DWELL_MS);
+    setTab("home");
+    await wait(TAB_DWELL_MS);
+    return {
+      publicServersRequested: requested,
+      publicServersShown: returnedNames.some((name) => text.includes(name)),
+      publicServersReturned: returnedNames.length,
+    };
+  } finally {
+    window.fetch = originalFetch;
+  }
+}
+
 async function runBench() {
   await perfProbe.runPhase("tab-cycle", async () => {
     for (let round = 0; round < 3; round++) {
@@ -181,7 +218,7 @@ async function runBench() {
     setInstallProgress(null);
   });
 
-  const checks = { installToastLive: await checkInstallToastLive(), ...(await checkKeepAlive()), ...(await checkRainbow()), ...(await checkReloadOnReturn()) };
+  const checks = { installToastLive: await checkInstallToastLive(), ...(await checkKeepAlive()), ...(await checkRainbow()), ...(await checkReloadOnReturn()), ...(await checkPublicServers()) };
   await window.api?.devPerfReport({ ...perfProbe.report(), checks });
   if (import.meta.env.VITE_PERF_BENCH_EXIT === "1") await window.api?.windowClose();
 }

@@ -21,6 +21,7 @@ import { PerfTab } from "./PerfTab";
 import { useShallow } from "zustand/react/shallow";
 import { useStableCallback } from "../hooks/useStableCallback";
 import { isPageHidden } from "../lib/pageVisibility";
+import { apiUrl } from "../lib/apiBase";
 import {
   FIRST_RUN_LOGIN_PROMPT_KEY,
   hasSeenFirstRunLoginPrompt,
@@ -741,9 +742,8 @@ function LauncherAppContent() {
       }
 
       if (notifiedVersion && notifiedVersion !== currentVersion) {
-        const API_URL = (window as any).API_URL;
         try {
-          let response = await fetch(`${API_URL}/launcher/latest`);
+          let response = await fetch(apiUrl("/launcher/latest"));
           if (!response.ok) {
             const cdnFallback = "https://cdn.reality.catlabdesign.space/client/latest.json";
             response = await fetch(cdnFallback);

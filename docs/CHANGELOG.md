@@ -19,6 +19,7 @@
 - **Rust release profile:** thin LTO, `codegen-units = 16`, stripped symbols, `opt-level = 3`.
 
 ### Fixed
+- Servers › Explore was always empty: the public server list built its request from `window.API_URL`, an Electron-era global that nothing sets under Tauri, so the URL threw and the error was swallowed. The list and the post-update "What's new" changelog now use a shared API base (`src/lib/apiBase.ts`).
 - Library and Install, which now stay mounted, reload their instance lists every time you return to them, so instances created or installed elsewhere show up right away.
 
 ### Added

@@ -103,6 +103,7 @@ src/
 │   ├── translations-en.ts            # English (1111 keys)
 │   └── translations-th.ts            # Thai (732+ keys, default fallback)
 ├── lib/
+│   ├── apiBase.ts                    # API_BASE_URL + apiUrl(path, params) for frontend fetches (+ test)
 │   ├── bulkDelete.ts
 │   ├── constants.ts                  # COLOR_THEMES map
 │   ├── firstRunOnboarding.ts
@@ -321,7 +322,7 @@ const KNOWN_UNPORTED = new Set(['fetchInstanceAgendas', 'fetchAllAgendas']);
 ## 6. Testing
 
 - **Framework**: `bun:test`
-- **Test files**: `src/api.test.ts` (120 lines), `src/lib/perfStats.test.ts`, `src/lib/tabKeepAlive.test.ts`, `src/lib/pageVisibility.test.ts`
+- **Test files**: `src/api.test.ts` (120 lines), `src/lib/apiBase.test.ts`, `src/lib/perfStats.test.ts`, `src/lib/tabKeepAlive.test.ts`, `src/lib/pageVisibility.test.ts`
 - **Perf bench** (dev only, real app): see §7; besides metrics it reports `checks` (install toast live, keep-alive layout/remount, rainbow CSS) — all must be `true`
 - **Run tests**: `bun test` or `bun test src/api.test.ts`
 - **Bridge parity validation**:

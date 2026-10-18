@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { apiUrl } from "../../lib/apiBase";
 import { useShallow } from "zustand/react/shallow";
 import { motion } from "framer-motion";
 import { useMotionPreset } from "../../lib/motion";
@@ -510,11 +511,9 @@ export function ServerMenu({
     const fetchPublicInstances = async (query: string = "") => {
         setIsSearching(true);
         try {
-            const apiUrl = (window as any).API_URL;
-            const url = new URL(`${apiUrl}/instances/public`);
-            if (query) url.searchParams.append("q", query);
+            const url = apiUrl("/instances/public", { q: query });
             const token = session?.authType === "catid" ? (session.apiToken || session.accessToken) : session?.apiToken;
-            const res = await fetch(url.toString(), { headers: token ? { Authorization: `Bearer ${token}` } : undefined });
+            const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : undefined });
             if (res.ok) {
                 const data = await res.json();
                 setPublicInstances(Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : []);
