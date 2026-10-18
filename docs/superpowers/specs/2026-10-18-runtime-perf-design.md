@@ -127,12 +127,15 @@ VITE_PERF_BENCH=1 VITE_PERF_BENCH_EXIT=1 bun run tauri dev | grep PERF_REPORT
   overlays keep blur.
 - Rainbow mode: replace the JS interval with a CSS `@keyframes` animating the
   already-registered `@property --secondary-color`, toggled by a
-  `data-rainbow` attribute on `<html>`.
+  `data-rainbow` attribute on `<html>`. It uses `steps(180)` over 18s, which
+  keeps today's 10 updates/s and speed. A smooth per-frame animation of an
+  inherited root property would recalc styles ~60×/s, which is worse.
 - Global `visibilitychange` → `data-hidden` on `<html>`. Infinite CSS animations
   get `animation-play-state: paused` under `[data-hidden]`. The Home news
   autoplay and `CalendarWidget` timers skip ticks while `document.hidden`.
-- `CalendarWidget`: tick once per minute, aligned to the minute boundary,
-  unless seconds are displayed.
+- `CalendarWidget` displays seconds, so the 1s tick moves into a small
+  `LiveClock` component. The widget itself updates once per minute, aligned to
+  the minute boundary.
 - List rows in Explore results and `InstanceContentBrowser` get
   `content-visibility: auto` with `contain-intrinsic-size` matching the row
   height.
