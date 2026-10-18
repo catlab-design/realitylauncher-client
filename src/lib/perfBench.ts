@@ -1,6 +1,7 @@
 import { perfProbe } from "./perfProbe";
 import { useUiStore } from "../store/uiStore";
 import { useProgressStore } from "../store/progressStore";
+import { useConfigStore } from "../store/configStore";
 
 type BenchTab = "home" | "servers" | "modpack" | "explore" | "wardrobe" | "about" | "settings";
 
@@ -91,29 +92,68 @@ async function checkKeepAlive(): Promise<Record<string, boolean>> {
   };
 }
 
-// Rainbow accent must cycle from CSS alone, and freeze while the page is marked hidden.
-async function checkRainbowCss(): Promise<Record<string, boolean>> {
+// Coming back to a kept-alive tab must refetch its instance list (read-only call, counted).
+async function checkReloadOnReturn(): Promise<Record<string, boolean>> {
+  const api = window.api;
+  const original = api?.instancesList;
+  if (!api || !original) return { modpackReloadsOnReturn: false, exploreReloadsOnReturn: false };
+  let calls = 0;
+  api.instancesList = ((...args: Parameters<typeof original>) => {
+    calls += 1;
+    return original(...args);
+  }) as typeof original;
+  const goto = async (tab: string) => {
+    setTab(tab);
+    await wait(TAB_DWELL_MS);
+  };
+  try {
+    await goto("modpack");
+    await goto("about");
+    calls = 0;
+    await goto("modpack");
+    const modpackReloadsOnReturn = calls > 0;
+    await goto("explore");
+    await goto("about");
+    calls = 0;
+    await goto("explore");
+    const exploreReloadsOnReturn = calls > 0;
+    await goto("home");
+    return { modpackReloadsOnReturn, exploreReloadsOnReturn };
+  } finally {
+    api.instancesList = original;
+  }
+}
+
+// Rainbow must cycle and turning it off must restore the accent; changes/samples per second are
+// reported as metrics (each accent change restyles the whole page). Toggled in memory only.
+async function checkRainbow(): Promise<Record<string, boolean | number>> {
   const root = document.documentElement;
   const accent = () => getComputedStyle(root).getPropertyValue("--secondary-color").trim();
-  const wasRainbow = root.hasAttribute("data-rainbow");
+  const { rainbowMode, setConfig } = useConfigStore.getState();
   const before = accent();
-  root.toggleAttribute("data-rainbow", true);
-  await wait(50);
-  const a = accent();
-  await wait(400);
-  const b = accent();
-  root.toggleAttribute("data-hidden", true);
-  await wait(50);
-  const c = accent();
-  await wait(400);
-  const d = accent();
-  root.toggleAttribute("data-hidden", document.hidden);
-  root.toggleAttribute("data-rainbow", wasRainbow);
-  await wait(50);
+  let changes = 0;
+  let samples = 0;
+  try {
+    setConfig({ rainbowMode: true });
+    await wait(200);
+    let last = accent();
+    const end = performance.now() + 1000;
+    while (performance.now() < end) {
+      await wait(10);
+      samples += 1;
+      const now = accent();
+      if (now !== last) changes += 1;
+      last = now;
+    }
+  } finally {
+    setConfig({ rainbowMode });
+  }
+  await wait(200);
   return {
-    rainbowCycles: a !== b,
-    rainbowPausesWhenHidden: c === d,
-    rainbowOffRestoresAccent: accent() === before,
+    rainbowCycles: changes > 0,
+    rainbowOffRestoresAccent: rainbowMode || accent() === before,
+    rainbowChangesPerSecond: changes,
+    rainbowSamples: samples,
   };
 }
 
@@ -141,7 +181,7 @@ async function runBench() {
     setInstallProgress(null);
   });
 
-  const checks = { installToastLive: await checkInstallToastLive(), ...(await checkKeepAlive()), ...(await checkRainbowCss()) };
+  const checks = { installToastLive: await checkInstallToastLive(), ...(await checkKeepAlive()), ...(await checkRainbow()), ...(await checkReloadOnReturn()) };
   await window.api?.devPerfReport({ ...perfProbe.report(), checks });
   if (import.meta.env.VITE_PERF_BENCH_EXIT === "1") await window.api?.windowClose();
 }

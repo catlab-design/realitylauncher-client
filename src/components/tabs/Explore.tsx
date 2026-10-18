@@ -1,4 +1,5 @@
 ﻿import React, { useEffect, useState, useRef, useCallback } from "react";
+import { useTabActive } from "../../lib/tabKeepAlive";
 import toast from "react-hot-toast";
 import { AnimatePresence } from "framer-motion";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -157,9 +158,11 @@ export function Explore({ colors, config }: ExploreProps) {
         }
     }, [t]);
 
+    // Explore stays mounted while hidden; refetch on every return so new instances show up.
+    const tabActive = useTabActive();
     useEffect(() => {
-        loadInstances();
-    }, [loadInstances]);
+        if (tabActive) loadInstances();
+    }, [tabActive, loadInstances]);
 
     useEffect(() => {
         const cleanup = window.api?.onModpackInstallProgress?.((progress) => {

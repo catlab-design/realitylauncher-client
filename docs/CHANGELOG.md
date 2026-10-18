@@ -8,9 +8,7 @@
   - Result: progress ticks no longer re-render the whole app (app renders during a 3s progress burst: 26 → 3).
 - **Smoother scrolling on Servers:** scrolling no longer re-renders the app on every scroll event (renders 125 → 11 per scroll pass).
 - **Faster tab switching for Library and Install:** they stay mounted after the first visit and are hidden instead of torn down, so going back keeps their view and data without rebuilding. Their full-bleed/immersive layout and scroll effects pause while hidden (`src/lib/tabKeepAlive.ts`).
-- **Less work while idle or hidden:**
-  - Rainbow mode cycles the accent from CSS (same 18s pace) instead of a 10 Hz JS timer.
-  - Looping animations and the Home news autoplay pause while the window is hidden (`src/lib/pageVisibility.ts`).
+- **Less work while the window is hidden:** looping animations, the rainbow-mode timer and the Home news autoplay pause (`src/lib/pageVisibility.ts`).
 - **Faster startup:** startup loads 696 KB of JS instead of 1,998 KB (−65%):
   - tabs other than Home load on demand (`React.lazy`) and are prefetched once the app is idle;
   - vendor code is split into `vendor-react` / `motion` / `gsap` / `markdown` / `skinview3d` chunks;
@@ -19,6 +17,9 @@
   - The datapack badge icon shrank from a 1.47 MB PNG to a 1 KB WebP.
   - The unused Prompt 300 font weight was dropped.
 - **Rust release profile:** thin LTO, `codegen-units = 16`, stripped symbols, `opt-level = 3`.
+
+### Fixed
+- Library and Install, which now stay mounted, reload their instance lists every time you return to them, so instances created or installed elsewhere show up right away.
 
 ### Added
 - Dev-only performance bench:

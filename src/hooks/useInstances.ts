@@ -142,15 +142,15 @@ export function useInstances({ session, t, isActive, selectedInstance, setSelect
         return () => cleanup?.();
     }, [session, loadJoinedServers, loadInstances]);
 
+    // ModPack stays mounted while hidden, so refresh on every return (as the old remount did).
+    // hasLoadedRef keeps these background reloads from showing the loading state.
     useEffect(() => {
         if (isActive && !wasActiveRef.current) {
-            if (!selectedInstance && !hasLoadedRef.current) {
-                loadInstances();
-                loadJoinedServers();
-            }
+            loadInstances();
+            loadJoinedServers();
         }
         wasActiveRef.current = isActive;
-    }, [isActive, selectedInstance, loadInstances, loadJoinedServers]);
+    }, [isActive, loadInstances, loadJoinedServers]);
 
     useEffect(() => {
         if (selectedInstance && setSelectedInstance && instances.length > 0) {

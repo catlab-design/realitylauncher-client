@@ -146,5 +146,8 @@ Run-to-run noise is ±10–15%.
 - **After Task 4:** in 3/3 runs, `modpackNotRemounted`, `hiddenModpackClearsLayout`, `hiddenExploreClearsLayout` and `settingsRoundTripKeepsLayout` are all true.
   - With `KEEP_ALIVE_TABS` emptied (negative control run), `modpackNotRemounted` = false, so the check detects remounts.
   - `modpack`/`explore` render counts rise because hidden-but-mounted tabs re-render on activation toggles; their render ms fall.
-- **After Task 5:** in 3/3 runs, `rainbowCycles`, `rainbowPausesWhenHidden` and `rainbowOffRestoresAccent` are all true. Scroll/tab metrics are unchanged within noise, as expected: Task 5 removes idle/background work (a 10 Hz JS timer, animations and news autoplay while hidden), which this bench does not exercise.
+- **After Task 5:** in 3/3 runs, `rainbowCycles`, `rainbowPausesWhenHidden` and `rainbowOffRestoresAccent` are all true.
+  - **Superseded by the final review:** the CSS rainbow animation restyled the page per frame, which starved the main thread. Rainbow mode is back on the original 10 Hz JS timer, now skipped while hidden. Scroll/tab metrics are unchanged within noise, as expected: Task 5 removes idle/background work (a 10 Hz JS timer, animations and news autoplay while hidden), which this bench does not exercise.
 - React render time is ~15% of tab-cycle long-task time. The remainder is style/layout/paint in WebKitGTK.
+- **Final review fixes** (`fixgreen`, 3 clean runs; all boolean checks true, including the new `modpackReloadsOnReturn` / `exploreReloadsOnReturn`, which were false before the fix):
+  - With rainbow mode on, the main thread manages only 4–5 timer samples per second. This happens with the original JS timer too, so it is the same cost as on `main`: each accent change restyles every element that uses `--secondary-color`. This is a pre-existing cost and is not addressed here.

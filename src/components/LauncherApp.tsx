@@ -20,6 +20,7 @@ import { useProgressStore } from "../store/progressStore";
 import { PerfTab } from "./PerfTab";
 import { useShallow } from "zustand/react/shallow";
 import { useStableCallback } from "../hooks/useStableCallback";
+import { isPageHidden } from "../lib/pageVisibility";
 import {
   FIRST_RUN_LOGIN_PROMPT_KEY,
   hasSeenFirstRunLoginPrompt,
@@ -1275,8 +1276,22 @@ function LauncherAppContent() {
   };
 
   useEffect(() => {
-    document.documentElement.toggleAttribute('data-rainbow', !!config.rainbowMode);
-    return () => document.documentElement.removeAttribute('data-rainbow');
+    if (!config.rainbowMode) {
+      document.documentElement.style.removeProperty('--secondary-color');
+      return;
+    }
+    // JS on purpose: a CSS animation of this inherited root property restyles the
+    // whole document every frame in WebKit; this timer restyles 10x/s and idles when hidden.
+    let hue = 0;
+    const interval = setInterval(() => {
+      if (isPageHidden()) return;
+      hue = (hue + 2) % 360;
+      document.documentElement.style.setProperty('--secondary-color', `hsl(${hue}, 90%, 65%)`);
+    }, 100);
+    return () => {
+      clearInterval(interval);
+      document.documentElement.style.removeProperty('--secondary-color');
+    };
   }, [config.rainbowMode]);
 
   const stable = {
