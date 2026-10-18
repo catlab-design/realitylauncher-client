@@ -1,4 +1,5 @@
 import React from "react";
+import { useShallow } from "zustand/react/shallow";
 import { motion } from "framer-motion";
 import { Icons } from "../ui/Icons";
 import { playClick } from "../../lib/sounds";
@@ -23,10 +24,11 @@ const INK = "#1a1a1a";
  * white with a yellow underline), utilities (admin / settings / about) as small icons after them.
  */
 export function Sidebar({ colors, onTabSelect }: SidebarProps) {
-    const config = useConfigStore();
+    const config = useConfigStore(useShallow((s) => s));
     const { t } = useTranslation(config.language);
-    const { activeTab, setActiveTab } = useUiStore();
-    const { session } = useAuthStore();
+    const activeTab = useUiStore((s) => s.activeTab);
+    const setActiveTab = useUiStore((s) => s.setActiveTab);
+    const session = useAuthStore((s) => s.session);
     const m = useMotionPreset();
 
     const isAdmin = session?.isAdmin || false;

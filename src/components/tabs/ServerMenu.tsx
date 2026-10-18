@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { motion } from "framer-motion";
 import { useMotionPreset } from "../../lib/motion";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -126,14 +127,20 @@ export function ServerMenu({
     setSettingsTab,
 }: ServerMenuProps) {
     const { t } = useTranslation(language);
-    const { accounts, setSession: setAuthSession, updateAccount } = useAuthStore();
+    const { accounts, setSession: setAuthSession, updateAccount } = useAuthStore(useShallow((s) => ({ accounts: s.accounts, setSession: s.setSession, updateAccount: s.updateAccount })));
     const {
         setInstalling,
         setInstallProgress,
         setInstallMinimized,
         setOperationType,
         setInstallingInstanceId,
-    } = useProgressStore();
+    } = useProgressStore(useShallow((s) => ({
+        setInstalling: s.setInstalling,
+        setInstallProgress: s.setInstallProgress,
+        setInstallMinimized: s.setInstallMinimized,
+        setOperationType: s.setOperationType,
+        setInstallingInstanceId: s.setInstallingInstanceId,
+    })));
 
     // With a custom app background the page body stays see-through so the image shows.
     const hasAppBackground = useConfigStore((s) => !!s.backgroundImage);

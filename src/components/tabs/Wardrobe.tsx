@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { toast } from "react-hot-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -167,8 +168,8 @@ export const Wardrobe: React.FC<WardrobeProps> = ({
     onLinkMicrosoft,
     setLoginDialogOpen,
 }) => {
-    const config = useConfigStore();
-    const { session } = useAuthStore();
+    const config = useConfigStore(useShallow((s) => s));
+    const session = useAuthStore((s) => s.session);
     const { t } = useTranslation(config.language);
     const m = useMotionPreset();
 

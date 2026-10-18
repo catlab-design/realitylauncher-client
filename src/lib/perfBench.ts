@@ -41,6 +41,21 @@ async function scrollThrough(tab: BenchTab) {
   }
 }
 
+// The progress toast must keep showing fresh values without its parent re-rendering.
+async function checkInstallToastLive(): Promise<boolean> {
+  const { setInstalling, setInstallProgress } = useProgressStore.getState();
+  setInstalling(true);
+  setInstallProgress({ percent: 10, message: "bench-toast-a" });
+  await wait(500);
+  const sawFirst = document.body.innerText.includes("bench-toast-a");
+  setInstallProgress({ percent: 60, message: "bench-toast-b" });
+  await wait(500);
+  const sawSecond = document.body.innerText.includes("bench-toast-b");
+  setInstallProgress(null);
+  setInstalling(false);
+  return sawFirst && sawSecond;
+}
+
 async function runBench() {
   await perfProbe.runPhase("tab-cycle", async () => {
     for (let round = 0; round < 3; round++) {
@@ -65,7 +80,8 @@ async function runBench() {
     setInstallProgress(null);
   });
 
-  await window.api?.devPerfReport(perfProbe.report());
+  const checks = { installToastLive: await checkInstallToastLive() };
+  await window.api?.devPerfReport({ ...perfProbe.report(), checks });
   if (import.meta.env.VITE_PERF_BENCH_EXIT === "1") await window.api?.windowClose();
 }
 

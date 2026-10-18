@@ -1,5 +1,7 @@
 import React, { type Dispatch, type SetStateAction } from "react";
 import { useUiStore } from "../store/uiStore";
+import { useProgressStore } from "../store/progressStore";
+import { useShallow } from "zustand/react/shallow";
 import { createPortal } from "react-dom";
 import toast, { Toaster } from "react-hot-toast";
 import { AnimatePresence, motion } from "framer-motion";
@@ -9,9 +11,11 @@ import { Sidebar } from "./layout/Sidebar";
 import { ErrorBoundary as UIErrorBoundary } from "./ui/ErrorBoundary";
 import { LauncherAppTitleBar } from "./LauncherAppTitleBar";
 import { PerfTab } from "./PerfTab";
-import { Home } from "./tabs/Home";
+
+const Home = React.memo(HomeTab);
+import { Home as HomeTab } from "./tabs/Home";
 import { About, AdminPanel, Explore, ModPack, ServerMenu, SettingsDialog, TabLoadingFallback, Wardrobe, preloadTabs } from "./LauncherAppLazyTabs";
-import type { AuthSession, GameInstance, LauncherConfig, NewsItem, Server } from "../types/launcher";
+import type { AuthSession, GameInstance, InstallProgress, LauncherConfig, NewsItem, Server } from "../types/launcher";
 import type { TranslationKey } from "../i18n/translations";
 
 type TranslationFn = (key: TranslationKey, params?: Record<string, any>) => string;
@@ -324,6 +328,27 @@ function ProgressToastCard({
   );
 }
 
+interface InstallProgressSnapshot {
+  isInstalling: boolean;
+  installProgress: InstallProgress | null;
+  operationType: string | null;
+}
+
+interface ProgressRenderers {
+  install: (visible: boolean, progress: InstallProgressSnapshot) => React.ReactElement | null;
+  export: (visible: boolean) => React.ReactElement | null;
+}
+
+// Subscribes to progress itself so ticks re-render only the toast, not the shell.
+function LiveInstallToast({ visible, renderers }: { visible: boolean; renderers: React.RefObject<ProgressRenderers> }) {
+  const progress = useProgressStore(useShallow((s) => ({
+    isInstalling: s.isInstalling,
+    installProgress: s.installProgress,
+    operationType: s.operationType,
+  })));
+  return renderers.current.install(visible, progress);
+}
+
 interface LauncherAppShellProps {
   colors: any;
   titleBarColors: any;
@@ -368,31 +393,18 @@ interface LauncherAppShellProps {
   handleUnlink: (provider: "catid" | "microsoft") => void | Promise<void>;
   isAdmin: boolean;
   adminToken: string | null;
-  isInstalling: boolean;
-  installProgress: any;
-  operationType: string | null;
   handleCancelInstall: () => void | Promise<void>;
   handleRepair: (instanceId: string) => void | Promise<void>;
 }
 
-export function LauncherAppShell({
-  colors, titleBarColors, config, session, accounts, selectedInstance, inboxOpen, setInboxOpen, announcements, userNotifications, unreadCount, setInvitations, setServerRefreshTrigger, setNotificationRefreshTrigger, accountDropdownOpen, setAccountDropdownOpen, t, selectAccount, removeAccountFromList, setLoginDialogOpen, setLinkCatIDOpen, handleLinkMicrosoft, handleLogout, updateConfig, contentTab, settingsDialogOpen, onCloseSettingsDialog, news, servers, selectedServer, setSelectedServer, setSelectedInstance, setActiveTab, serverRefreshTrigger, settingsTab, setSettingsTab, setImportModpackOpen, handleShowConfirm, handleBrowseJava, handleBrowseMinecraftDir, handleUnlink, isAdmin, adminToken, isInstalling, installProgress, operationType, handleCancelInstall, handleRepair,
+function LauncherAppShellImpl({
+  colors, titleBarColors, config, session, accounts, selectedInstance, inboxOpen, setInboxOpen, announcements, userNotifications, unreadCount, setInvitations, setServerRefreshTrigger, setNotificationRefreshTrigger, accountDropdownOpen, setAccountDropdownOpen, t, selectAccount, removeAccountFromList, setLoginDialogOpen, setLinkCatIDOpen, handleLinkMicrosoft, handleLogout, updateConfig, contentTab, settingsDialogOpen, onCloseSettingsDialog, news, servers, selectedServer, setSelectedServer, setSelectedInstance, setActiveTab, serverRefreshTrigger, settingsTab, setSettingsTab, setImportModpackOpen, handleShowConfirm, handleBrowseJava, handleBrowseMinecraftDir, handleUnlink, isAdmin, adminToken, handleCancelInstall, handleRepair,
 }: LauncherAppShellProps) {
   const m = useMotionPreset();
   const mainRef = React.useRef<HTMLElement>(null);
   const [shouldRenderSettingsDialog, setShouldRenderSettingsDialog] = React.useState(false);
   const [hoveredToastId, setHoveredToastId] = React.useState<string | null>(null);
-  const immersive = useUiStore((state) => state.immersive);
   const fullBleed = useUiStore((state) => state.fullBleed);
-  const transparentTitleBarColors = React.useMemo(() => ({ ...titleBarColors, background: "transparent" }), [titleBarColors]);
-  const immersiveTitleBarColors = React.useMemo(() => ({
-    ...titleBarColors,
-    background: "transparent",
-    text: "#ffffff",
-    muted: "rgba(255,255,255,0.8)",
-    hover: "rgba(255,255,255,0.14)",
-    active: "rgba(255,255,255,0.2)",
-  }), [titleBarColors]);
   
   React.useEffect(() => {
     preloadTabs();
@@ -414,12 +426,9 @@ export function LauncherAppShell({
   // function-message that reads live values off a ref (updated every render),
   // and toggle the slot on the boolean transition only so the enter animation
   // isn't reset ~60×/install.
-  const progressRenderRef = React.useRef<{
-    install: (visible: boolean) => React.ReactElement | null;
-    export: (visible: boolean) => React.ReactElement | null;
-  }>({ install: () => null, export: () => null });
+  const progressRenderRef = React.useRef<ProgressRenderers>({ install: () => null, export: () => null });
 
-  progressRenderRef.current.install = (visible: boolean) => {
+  progressRenderRef.current.install = (visible, { isInstalling, installProgress, operationType }) => {
     if (!(isInstalling && installProgress)) return null;
     const title =
       operationType === "repair"
@@ -459,11 +468,11 @@ export function LauncherAppShell({
     );
   };
 
-  const installToastActive = isInstalling && !!installProgress;
+  const installToastActive = useProgressStore((s) => s.isInstalling && !!s.installProgress);
   React.useEffect(() => {
     const id = "install-progress-toast";
     if (installToastActive) {
-      toast.custom((tItem) => progressRenderRef.current.install(tItem.visible), {
+      toast.custom((tItem) => <LiveInstallToast visible={tItem.visible} renderers={progressRenderRef} />, {
         id,
         duration: Infinity,
       });
@@ -684,3 +693,5 @@ export function LauncherAppShell({
     </>
   );
 }
+
+export const LauncherAppShell = React.memo(LauncherAppShellImpl);

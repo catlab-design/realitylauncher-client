@@ -7,13 +7,13 @@ import { Wardrobe as WardrobeComp } from "./tabs/Wardrobe";
 import { SettingsDialog as SettingsDialogComp } from "./SettingsDialog";
 import AdminPanelComp from "./tabs/AdminPanel";
 
-export const ServerMenu = ServerMenuComp;
-export const ModPack = ModPackComp;
-export const Explore = ExploreComp;
-export const About = AboutComp;
-export const Wardrobe = WardrobeComp;
+export const ServerMenu = React.memo(ServerMenuComp);
+export const ModPack = React.memo(ModPackComp);
+export const Explore = React.memo(ExploreComp);
+export const About = React.memo(AboutComp);
+export const Wardrobe = React.memo(WardrobeComp);
 export const SettingsDialog = SettingsDialogComp;
-export const AdminPanel = AdminPanelComp;
+export const AdminPanel = React.memo(AdminPanelComp);
 
 export function TabLoadingFallback({ colors }: { colors: any }) {
   return (

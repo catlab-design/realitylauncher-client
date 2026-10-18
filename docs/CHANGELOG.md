@@ -35,6 +35,9 @@
 - Tab indicator pills could land misaligned during page transitions
 - The update toast claimed the update "will install on next launch" although nothing installed it
 
+### Perf
+- Components subscribe to only the store fields they use, the install-progress toast subscribes to progress itself, and the shell, overlays and tabs are memoized with stable callbacks (`useStableCallback`). Install-progress ticks no longer re-render the whole app (app renders during a 3s burst: 26 → 3), and scrolling Servers no longer re-renders the tree on every scroll event (125 → 11)
+
 ## [4.2.1] — 2026-08-23
 
 ### Security

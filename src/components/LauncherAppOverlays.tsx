@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from "react";
+import { memo, type Dispatch, type SetStateAction } from "react";
 
 import { toast } from "react-hot-toast";
 import { AnimatePresence, motion } from "framer-motion";
@@ -124,7 +124,7 @@ interface LauncherAppOverlaysProps {
   setIsDragging: Dispatch<SetStateAction<boolean>>;
 }
 
-export function LauncherAppOverlays({
+function LauncherAppOverlaysImpl({
   colors,
   t,
   changelogModalOpen,
@@ -1271,3 +1271,5 @@ export function LauncherAppOverlays({
     </>
   );
 }
+
+export const LauncherAppOverlays = memo(LauncherAppOverlaysImpl);

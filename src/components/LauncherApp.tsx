@@ -18,6 +18,8 @@ import { useGameEvents } from "../hooks/useGameEvents";
 import { useUiStore } from "../store/uiStore";
 import { useProgressStore } from "../store/progressStore";
 import { PerfTab } from "./PerfTab";
+import { useShallow } from "zustand/react/shallow";
+import { useStableCallback } from "../hooks/useStableCallback";
 import {
   FIRST_RUN_LOGIN_PROMPT_KEY,
   hasSeenFirstRunLoginPrompt,
@@ -34,17 +36,43 @@ function LauncherAppContent() {
   const autoUpdateVersionRef = useRef<string | null>(null);
   const autoInstallVersionRef = useRef<string | null>(null);
 
-  const config = useConfigStore();
+  const config = useConfigStore(useShallow((s) => s));
   const {
     isInstalling, setInstalling,
-    installProgress, setInstallProgress,
+    setInstallProgress,
     setInstallMinimized,
     operationType, setOperationType,
     installingInstanceId, setInstallingInstanceId
-  } = useProgressStore();
+  } = useProgressStore(useShallow((s) => ({
+    isInstalling: s.isInstalling,
+    setInstalling: s.setInstalling,
+    setInstallProgress: s.setInstallProgress,
+    setInstallMinimized: s.setInstallMinimized,
+    operationType: s.operationType,
+    setOperationType: s.setOperationType,
+    installingInstanceId: s.installingInstanceId,
+    setInstallingInstanceId: s.setInstallingInstanceId,
+  })));
 
-  const { session, accounts, setSession, addAccount, updateAccount, removeAccount: removeAccountAction } = useAuthStore();
-  const { activeTab, setActiveTab, settingsTab, setSettingsTab, modals, openModal, closeModal, lastContentTab, setLastContentTab } = useUiStore();
+  const { session, accounts, setSession, addAccount, updateAccount, removeAccount: removeAccountAction } = useAuthStore(useShallow((s) => ({
+    session: s.session,
+    accounts: s.accounts,
+    setSession: s.setSession,
+    addAccount: s.addAccount,
+    updateAccount: s.updateAccount,
+    removeAccount: s.removeAccount,
+  })));
+  const { activeTab, setActiveTab, settingsTab, setSettingsTab, modals, openModal, closeModal, lastContentTab, setLastContentTab } = useUiStore(useShallow((s) => ({
+    activeTab: s.activeTab,
+    setActiveTab: s.setActiveTab,
+    settingsTab: s.settingsTab,
+    setSettingsTab: s.setSettingsTab,
+    modals: s.modals,
+    openModal: s.openModal,
+    closeModal: s.closeModal,
+    lastContentTab: s.lastContentTab,
+    setLastContentTab: s.setLastContentTab,
+  })));
 
   const [isLoading, setIsLoading] = useState(true);
   const [authBootstrapComplete, setAuthBootstrapComplete] = useState(false);
@@ -1262,6 +1290,26 @@ function LauncherAppContent() {
     };
   }, [config.rainbowMode]);
 
+  const stable = {
+    setLoginDialogOpen: useStableCallback(setLoginDialogOpen),
+    setAccountManagerOpen: useStableCallback(setAccountManagerOpen),
+    setImportModpackOpen: useStableCallback(setImportModpackOpen),
+    selectAccount: useStableCallback(selectAccount),
+    removeAccountFromList: useStableCallback(removeAccountFromList),
+    handleLinkMicrosoft: useStableCallback(handleLinkMicrosoft),
+    handleLogout: useStableCallback(handleLogout),
+    updateConfig: useStableCallback(updateConfig),
+    handleBrowseJava: useStableCallback(handleBrowseJava),
+    handleBrowseMinecraftDir: useStableCallback(handleBrowseMinecraftDir),
+    handleUnlink: useStableCallback(handleUnlink),
+    handleCancelInstall: useStableCallback(handleCancelInstall),
+    handleRepair: useStableCallback(handleRepair),
+    handleCatIDLogin: useStableCallback(handleCatIDLogin),
+    handleCatIDRegister: useStableCallback(handleCatIDRegister),
+    handleManualVerificationCheck: useStableCallback(handleManualVerificationCheck),
+    handleLinkCatID: useStableCallback(handleLinkCatID),
+  };
+
   if (isLoading) {
     return <LoadingScreen onComplete={() => {
         setIsLoading(false);
@@ -1289,7 +1337,7 @@ function LauncherAppContent() {
         confirmDialog={confirmDialog}
         setConfirmDialog={setConfirmDialog}
         loginDialogOpen={loginDialogOpen}
-        setLoginDialogOpen={setLoginDialogOpen}
+        setLoginDialogOpen={stable.setLoginDialogOpen}
         catIDLoginOpen={catIDLoginOpen}
         setCatIDLoginOpen={setCatIDLoginOpen}
         deviceCodeModalOpen={deviceCodeModalOpen}
@@ -1299,17 +1347,17 @@ function LauncherAppContent() {
         setDeviceCodeError={setDeviceCodeError}
         setDeviceCodePolling={setDeviceCodePolling}
         setIsLinkingMicrosoft={setIsLinkingMicrosoft}
-        handleCatIDLogin={handleCatIDLogin}
+        handleCatIDLogin={stable.handleCatIDLogin}
         catIDRegisterOpen={catIDRegisterOpen}
         setCatIDRegisterOpen={setCatIDRegisterOpen}
         catIDRegisterData={catIDRegisterData}
         setCatIDRegisterData={setCatIDRegisterData}
         isRegistering={isRegistering}
-        handleCatIDRegister={handleCatIDRegister}
+        handleCatIDRegister={stable.handleCatIDRegister}
         verificationWaiting={verificationWaiting}
         setVerificationWaiting={setVerificationWaiting}
         verificationEmail={verificationEmail}
-        handleManualVerificationCheck={handleManualVerificationCheck}
+        handleManualVerificationCheck={stable.handleManualVerificationCheck}
         setVerificationToken={setVerificationToken}
         forgotPasswordOpen={forgotPasswordOpen}
         setForgotPasswordOpen={setForgotPasswordOpen}
@@ -1329,15 +1377,15 @@ function LauncherAppContent() {
         setLinkCatIDOpen={setLinkCatIDOpen}
         showLinkPassword={showLinkPassword}
         setShowLinkPassword={setShowLinkPassword}
-        handleLinkCatID={handleLinkCatID}
+        handleLinkCatID={stable.handleLinkCatID}
         accountManagerOpen={accountManagerOpen}
-        setAccountManagerOpen={setAccountManagerOpen}
+        setAccountManagerOpen={stable.setAccountManagerOpen}
         accounts={accounts}
         session={session}
-        selectAccount={selectAccount}
-        removeAccountFromList={removeAccountFromList}
+        selectAccount={stable.selectAccount}
+        removeAccountFromList={stable.removeAccountFromList}
         importModpackOpen={importModpackOpen}
-        setImportModpackOpen={setImportModpackOpen}
+        setImportModpackOpen={stable.setImportModpackOpen}
         isDragging={isDragging}
         setIsDragging={setIsDragging}
       />
@@ -1360,13 +1408,13 @@ function LauncherAppContent() {
         accountDropdownOpen={accountDropdownOpen}
         setAccountDropdownOpen={setAccountDropdownOpen}
         t={t}
-        selectAccount={selectAccount}
-        removeAccountFromList={removeAccountFromList}
-        setLoginDialogOpen={setLoginDialogOpen}
+        selectAccount={stable.selectAccount}
+        removeAccountFromList={stable.removeAccountFromList}
+        setLoginDialogOpen={stable.setLoginDialogOpen}
         setLinkCatIDOpen={setLinkCatIDOpen}
-        handleLinkMicrosoft={handleLinkMicrosoft}
-        handleLogout={handleLogout}
-        updateConfig={updateConfig}
+        handleLinkMicrosoft={stable.handleLinkMicrosoft}
+        handleLogout={stable.handleLogout}
+        updateConfig={stable.updateConfig}
         contentTab={contentTab}
         settingsDialogOpen={settingsDialogOpen}
         onCloseSettingsDialog={handleCloseSettingsDialog}
@@ -1379,18 +1427,15 @@ function LauncherAppContent() {
         serverRefreshTrigger={serverRefreshTrigger}
         settingsTab={settingsTab}
         setSettingsTab={setSettingsTab}
-        setImportModpackOpen={setImportModpackOpen}
+        setImportModpackOpen={stable.setImportModpackOpen}
         handleShowConfirm={handleShowConfirm}
-        handleBrowseJava={handleBrowseJava}
-        handleBrowseMinecraftDir={handleBrowseMinecraftDir}
-        handleUnlink={handleUnlink}
+        handleBrowseJava={stable.handleBrowseJava}
+        handleBrowseMinecraftDir={stable.handleBrowseMinecraftDir}
+        handleUnlink={stable.handleUnlink}
         isAdmin={isAdmin}
         adminToken={adminToken}
-        isInstalling={isInstalling}
-        installProgress={installProgress}
-        operationType={operationType}
-        handleCancelInstall={handleCancelInstall}
-        handleRepair={handleRepair}
+        handleCancelInstall={stable.handleCancelInstall}
+        handleRepair={stable.handleRepair}
       />
     </div>
   );
