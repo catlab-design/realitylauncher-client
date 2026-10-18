@@ -1,6 +1,6 @@
 [package]
 name = "ml-tauri-poc"
-version = "5.0.0"
+version = "5.0.1"
 description = "ML-Launcher POC with Tauri + Rust"
 edition = "2021"
 
@@ -50,3 +50,9 @@ fs4 = "0.13"
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+lto = "thin"
+codegen-units = 16
+strip = true
+opt-level = 3

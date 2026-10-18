@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTabActive } from "../../../lib/tabKeepAlive";
 import { AnimatePresence, motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
@@ -21,7 +22,7 @@ import neoforgeIcon from "../../../assets/neoforge.svg";
 import quiltIcon from "../../../assets/quilt.svg";
 import modrinthIcon from "../../../assets/modrinth.svg";
 import curseforgeIcon from "../../../assets/curseforge.svg";
-import datapackIcon from "../../../assets/modpack_icon.png";
+import datapackIcon from "../../../assets/modpack_icon.webp";
 
 interface ProjectDetailPageProps {
     colors: any;
@@ -109,10 +110,12 @@ export function ProjectDetailPage({
 
     // Full-bleed page: the hero runs up under the see-through title bar.
     const setFullBleed = useUiStore((state) => state.setFullBleed);
+    const tabActive = useTabActive();
     useEffect(() => {
+        if (!tabActive) return;
         setFullBleed(true);
         return () => setFullBleed(false);
-    }, [setFullBleed]);
+    }, [tabActive, setFullBleed]);
     const [versions, setVersions] = useState<ProjectVersion[]>([]);
     const [versionsLoading, setVersionsLoading] = useState(false);
     const [versionsPage, setVersionsPage] = useState(1);

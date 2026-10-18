@@ -196,6 +196,7 @@ fn main() {
             social::instance_saved_servers,
             
             telemetry::telemetry_log_event,
+            telemetry::dev_perf_report,
             
             wardrobe::catskinc_get_config,
             wardrobe::catskinc_save_config,

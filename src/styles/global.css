@@ -16,7 +16,6 @@
 /* Self-hosted fonts — bundled into the app so Thai always renders even with no
    network / blocked Google Fonts / a Linux system that ships no Thai font.
    Prompt covers Thai; Inter (Latin) is used for titles. */
-@import "@fontsource/prompt/300.css";
 @import "@fontsource/prompt/400.css";
 @import "@fontsource/prompt/500.css";
 @import "@fontsource/prompt/600.css";
@@ -69,6 +68,33 @@
   100% {
     --secondary-color: #ff0000;
   }
+}
+
+/* Performance mode (Settings > Appearance): drop the effects that cost the most frame time on
+   low-end machines. Blur is the measured big one; motion is handled by MotionConfig. Loading
+   indicators (spin, pulse, skeleton) keep running. */
+:root[data-perf-lite] *,
+:root[data-perf-lite] *::before,
+:root[data-perf-lite] *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+:root[data-perf-lite] :is(.animate-pulse-glow, .animate-float, .animate-content-shimmer, .animate-comet, .animate-leaf, .animate-status-breath, .rainbow-text),
+:root[data-perf-lite] div[role="status"] > div {
+  animation: none !important;
+}
+
+:root[data-perf-lite] {
+  scroll-behavior: auto !important;
+}
+
+/* Nothing loops while the window is hidden. */
+:root[data-hidden],
+:root[data-hidden] *,
+:root[data-hidden] *::before,
+:root[data-hidden] *::after {
+  animation-play-state: paused !important;
 }
 
 @property --secondary-color {

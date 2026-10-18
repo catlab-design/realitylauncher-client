@@ -1,4 +1,39 @@
-## [5.0.0] — Unreleased
+## [5.0.1] — 2026-10-18
+
+### Perf
+- **Snappier while installing or syncing:**
+  - Components subscribe to only the store fields they use, instead of whole stores.
+  - The install-progress toast subscribes to progress on its own.
+  - The shell, overlays and tabs are memoized, with stable callbacks (`useStableCallback`).
+  - Result: progress ticks no longer re-render the whole app (app renders during a 3s progress burst: 26 → 3).
+- **Smoother scrolling on Servers:** scrolling no longer re-renders the app on every scroll event (renders 125 → 11 per scroll pass).
+- **Faster tab switching for Library and Install:** they stay mounted after the first visit and are hidden instead of torn down, so going back keeps their view and data without rebuilding. Their full-bleed/immersive layout and scroll effects pause while hidden (`src/lib/tabKeepAlive.ts`).
+- **Less work while the window is hidden:** looping animations, the rainbow-mode timer and the Home news autoplay pause (`src/lib/pageVisibility.ts`).
+- **Faster startup:** startup loads 696 KB of JS instead of 1,998 KB (−65%):
+  - tabs other than Home load on demand (`React.lazy`) and are prefetched once the app is idle;
+  - vendor code is split into `vendor-react` / `motion` / `gsap` / `markdown` / `skinview3d` chunks;
+  - the changelog modal and its markdown stack load on first open.
+- **Smaller assets:**
+  - The datapack badge icon shrank from a 1.47 MB PNG to a 1 KB WebP.
+  - The unused Prompt 300 font weight was dropped.
+- **Rust release profile:** thin LTO, `codegen-units = 16`, stripped symbols, `opt-level = 3`.
+
+### Fixed
+- Servers › Explore was always empty: the public server list built its request from `window.API_URL`, an Electron-era global that nothing sets under Tauri, so the URL threw and the error was swallowed. The list and the post-update "What's new" changelog now use a shared API base (`src/lib/apiBase.ts`).
+- Library and Install, which now stay mounted, reload their instance lists every time you return to them, so instances created or installed elsewhere show up right away.
+
+### Added
+- **Performance mode** (Settings › Appearance, off by default) for slower PCs:
+  - turns off backdrop blur, page/tab transitions and hover motion (`MotionConfig reducedMotion="always"`), and decorative looping animations;
+  - suspends Rainbow Mode while on, without changing the saved choice;
+  - loading spinners and skeletons keep running (`src/lib/performanceMode.ts`, `:root[data-perf-lite]`).
+- Dev-only performance bench:
+  - Run `VITE_PERF_BENCH=1 VITE_PERF_BENCH_EXIT=1 bun run tauri dev`.
+  - It cycles tabs, scrolls Install/Servers, fakes a progress burst and runs behavior checks.
+  - It prints `PERF_REPORT <json>` via the debug-only `dev_perf_report` command.
+  - It is not included in production builds.
+
+## [5.0.0] — 2026-10-18
 
 ### Added
 - Mirror GitLab releases to GitHub Releases (`mirror:github`, opt-in via `MIRROR_GITHUB_RELEASE`)
