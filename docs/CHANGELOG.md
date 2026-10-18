@@ -1,4 +1,33 @@
-## [5.0.0] — Unreleased
+## [5.0.1] — 2026-10-18
+
+### Perf
+- **Snappier while installing or syncing:**
+  - Components subscribe to only the store fields they use, instead of whole stores.
+  - The install-progress toast subscribes to progress on its own.
+  - The shell, overlays and tabs are memoized, with stable callbacks (`useStableCallback`).
+  - Result: progress ticks no longer re-render the whole app (app renders during a 3s progress burst: 26 → 3).
+- **Smoother scrolling on Servers:** scrolling no longer re-renders the app on every scroll event (renders 125 → 11 per scroll pass).
+- **Faster tab switching for Library and Install:** they stay mounted after the first visit and are hidden instead of torn down, so going back keeps their view and data without rebuilding. Their full-bleed/immersive layout and scroll effects pause while hidden (`src/lib/tabKeepAlive.ts`).
+- **Less work while idle or hidden:**
+  - Rainbow mode cycles the accent from CSS (same 18s pace) instead of a 10 Hz JS timer.
+  - Looping animations and the Home news autoplay pause while the window is hidden (`src/lib/pageVisibility.ts`).
+- **Faster startup:** startup loads 696 KB of JS instead of 1,998 KB (−65%):
+  - tabs other than Home load on demand (`React.lazy`) and are prefetched once the app is idle;
+  - vendor code is split into `vendor-react` / `motion` / `gsap` / `markdown` / `skinview3d` chunks;
+  - the changelog modal and its markdown stack load on first open.
+- **Smaller assets:**
+  - The datapack badge icon shrank from a 1.47 MB PNG to a 1 KB WebP.
+  - The unused Prompt 300 font weight was dropped.
+- **Rust release profile:** thin LTO, `codegen-units = 16`, stripped symbols, `opt-level = 3`.
+
+### Added
+- Dev-only performance bench:
+  - Run `VITE_PERF_BENCH=1 VITE_PERF_BENCH_EXIT=1 bun run tauri dev`.
+  - It cycles tabs, scrolls Install/Servers, fakes a progress burst and runs behavior checks.
+  - It prints `PERF_REPORT <json>` via the debug-only `dev_perf_report` command.
+  - It is not included in production builds.
+
+## [5.0.0] — 2026-10-18
 
 ### Added
 - Mirror GitLab releases to GitHub Releases (`mirror:github`, opt-in via `MIRROR_GITHUB_RELEASE`)
@@ -34,11 +63,6 @@
 - Opening an instance from the Library kept the Library's scroll position instead of starting at the top
 - Tab indicator pills could land misaligned during page transitions
 - The update toast claimed the update "will install on next launch" although nothing installed it
-
-### Perf
-- Rainbow mode cycles the accent from CSS (`:root[data-rainbow]`, same 18s pace) instead of a 10 Hz JS timer; looping CSS animations and the Home news autoplay pause while the window is hidden (`src/lib/pageVisibility.ts`)
-- Library (ModPack) and Install (Explore) stay mounted after the first visit and are hidden instead of unmounted on tab switch, so returning keeps their view and data without rebuilding; their full-bleed/immersive and scroll effects pause while hidden (`useTabActive`, `src/lib/tabKeepAlive.ts`)
-- Components subscribe to only the store fields they use, the install-progress toast subscribes to progress itself, and the shell, overlays and tabs are memoized with stable callbacks (`useStableCallback`). Install-progress ticks no longer re-render the whole app (app renders during a 3s burst: 26 → 3), and scrolling Servers no longer re-renders the tree on every scroll event (125 → 11)
 
 ## [4.2.1] — 2026-08-23
 

@@ -10,11 +10,18 @@ Spec: `2026-10-18-runtime-perf-design.md`
 
 ## Bundle (`bun run build`)
 
-| Asset | Baseline |
-|---|---|
-| Entry JS `index-*.js` | 1,998 KB (563 KB gzip) |
-| CSS | 137 KB (20.8 KB gzip) |
-| `modpack_icon.png` | 1,475 KB |
+| Asset | Baseline | After Task 6 |
+|---|---|---|
+| Entry JS `index-*.js` | 1,998 KB (563 KB gzip) | 321 KB (90 KB gzip) |
+| JS loaded at startup (entry + `index.html` preloads) | 1,998 KB | 696 KB (entry, `vendor-react`, `motion`, `gsap`) |
+| `markdown` chunk | in entry | 335 KB, lazy: loads with the first changelog / project page / server story |
+| `skinview3d` chunk | 66 KB (separate) | 516 KB (separate; now includes `three`), Wardrobe only |
+| CSS | 137 KB (20.8 KB gzip) | 137 KB |
+| Datapack icon | `modpack_icon.png` 1,475 KB (1024²) | `modpack_icon.webp` 1 KB (64², shown at 14–16px) |
+
+### Rust release binary
+- **Full LTO** (`lto = true`, `codegen-units = 1`): builds cleanly; `target/release/ml-tauri-poc` is 17.8 MB stripped; a cold build took 16m 12s on 4 cores.
+- **Shipped profile:** switched to thin LTO + `codegen-units = 16` at the user's choice, to keep release/CI build times close to today's. Its size and build time are not measured here, and the no-profile comparison build was stopped.
 
 ## Runtime
 

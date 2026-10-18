@@ -16,7 +16,6 @@
 /* Self-hosted fonts — bundled into the app so Thai always renders even with no
    network / blocked Google Fonts / a Linux system that ships no Thai font.
    Prompt covers Thai; Inter (Latin) is used for titles. */
-@import "@fontsource/prompt/300.css";
 @import "@fontsource/prompt/400.css";
 @import "@fontsource/prompt/500.css";
 @import "@fontsource/prompt/600.css";

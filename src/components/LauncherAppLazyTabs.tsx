@@ -1,19 +1,22 @@
 import React from "react";
-import { ServerMenu as ServerMenuComp } from "./tabs/ServerMenu";
-import { ModPack as ModPackComp } from "./tabs/ModPack";
-import { Explore as ExploreComp } from "./tabs/Explore";
-import { About as AboutComp } from "./tabs/About";
-import { Wardrobe as WardrobeComp } from "./tabs/Wardrobe";
-import { SettingsDialog as SettingsDialogComp } from "./SettingsDialog";
-import AdminPanelComp from "./tabs/AdminPanel";
 
-export const ServerMenu = React.memo(ServerMenuComp);
-export const ModPack = React.memo(ModPackComp);
-export const Explore = React.memo(ExploreComp);
-export const About = React.memo(AboutComp);
-export const Wardrobe = React.memo(WardrobeComp);
-export const SettingsDialog = SettingsDialogComp;
-export const AdminPanel = React.memo(AdminPanelComp);
+const loadServerMenu = () => import("./tabs/ServerMenu");
+const loadModPack = () => import("./tabs/ModPack");
+const loadExplore = () => import("./tabs/Explore");
+const loadAbout = () => import("./tabs/About");
+const loadWardrobe = () => import("./tabs/Wardrobe");
+const loadSettingsDialog = () => import("./SettingsDialog");
+const loadAdminPanel = () => import("./tabs/AdminPanel");
+
+const loaders = [loadServerMenu, loadModPack, loadExplore, loadAbout, loadWardrobe, loadSettingsDialog, loadAdminPanel];
+
+export const ServerMenu = React.memo(React.lazy(() => loadServerMenu().then((m) => ({ default: m.ServerMenu }))));
+export const ModPack = React.memo(React.lazy(() => loadModPack().then((m) => ({ default: m.ModPack }))));
+export const Explore = React.memo(React.lazy(() => loadExplore().then((m) => ({ default: m.Explore }))));
+export const About = React.memo(React.lazy(() => loadAbout().then((m) => ({ default: m.About }))));
+export const Wardrobe = React.memo(React.lazy(() => loadWardrobe().then((m) => ({ default: m.Wardrobe }))));
+export const SettingsDialog = React.lazy(() => loadSettingsDialog().then((m) => ({ default: m.SettingsDialog })));
+export const AdminPanel = React.memo(React.lazy(loadAdminPanel));
 
 export function TabLoadingFallback({ colors }: { colors: any }) {
   return (
@@ -26,5 +29,9 @@ export function TabLoadingFallback({ colors }: { colors: any }) {
   );
 }
 
+// Fetch every tab chunk once the app is idle so a first visit rarely shows the fallback.
 export function preloadTabs() {
+  const run = () => loaders.forEach((load) => void load());
+  if ("requestIdleCallback" in window) window.requestIdleCallback(run, { timeout: 3000 });
+  else setTimeout(run, 1500);
 }

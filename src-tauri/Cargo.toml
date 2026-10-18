@@ -50,3 +50,9 @@ fs4 = "0.13"
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+lto = "thin"
+codegen-units = 16
+strip = true
+opt-level = 3

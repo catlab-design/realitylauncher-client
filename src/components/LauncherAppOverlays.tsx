@@ -1,9 +1,8 @@
-import { memo, type Dispatch, type SetStateAction } from "react";
+import { lazy, memo, Suspense, useEffect, useState, type Dispatch, type SetStateAction } from "react";
 
 import { toast } from "react-hot-toast";
 import { AnimatePresence, motion } from "framer-motion";
 
-import { ChangelogModal } from "./ui/ChangelogModal";
 import { ConfirmDialog } from "./ui/ConfirmDialog";
 import { LoginModal } from "./auth/LoginModal";
 import { CatIDLoginModal } from "./auth/CatIDLoginModal";
@@ -15,6 +14,9 @@ import type { AuthSession } from "../types/launcher";
 import type { TranslationKey } from "../i18n/translations";
 import { playClick } from "../lib/sounds";
 import { startMicrosoftLoginFlow } from "../lib/microsoftLoginFlow";
+
+// Markdown stack (~330 KB) loads only once a changelog is first shown.
+const ChangelogModal = lazy(() => import("./ui/ChangelogModal").then((m) => ({ default: m.ChangelogModal })));
 
 interface LauncherPalette {
   primary: string;
@@ -185,17 +187,26 @@ function LauncherAppOverlaysImpl({
   isDragging,
   setIsDragging,
 }: LauncherAppOverlaysProps) {
+  // Stays mounted after the first open so the close animation still plays.
+  const [changelogMounted, setChangelogMounted] = useState(changelogModalOpen);
+  useEffect(() => {
+    if (changelogModalOpen) setChangelogMounted(true);
+  }, [changelogModalOpen]);
   const m = useMotionPreset();
 
   return (
     <>
-      <ChangelogModal
-        isOpen={changelogModalOpen}
-        onClose={() => setChangelogModalOpen(false)}
-        version={changelogData?.version || ""}
-        changelog={changelogData?.changelog || ""}
-        colors={colors}
-      />
+      {changelogMounted && (
+        <Suspense fallback={null}>
+          <ChangelogModal
+            isOpen={changelogModalOpen}
+            onClose={() => setChangelogModalOpen(false)}
+            version={changelogData?.version || ""}
+            changelog={changelogData?.changelog || ""}
+            colors={colors}
+          />
+        </Suspense>
+      )}
 
       <ConfirmDialog
         isOpen={confirmDialog.open}

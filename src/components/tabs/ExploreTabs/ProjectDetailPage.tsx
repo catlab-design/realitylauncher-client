@@ -22,7 +22,7 @@ import neoforgeIcon from "../../../assets/neoforge.svg";
 import quiltIcon from "../../../assets/quilt.svg";
 import modrinthIcon from "../../../assets/modrinth.svg";
 import curseforgeIcon from "../../../assets/curseforge.svg";
-import datapackIcon from "../../../assets/modpack_icon.png";
+import datapackIcon from "../../../assets/modpack_icon.webp";
 
 interface ProjectDetailPageProps {
     colors: any;
