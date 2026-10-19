@@ -5,7 +5,7 @@
 | Property | Value |
 |---|---|
 | **Name** | Reality Launcher (package: `ml-tauri-poc`) |
-| **Version** | 5.0.1 |
+| **Version** | 5.0.2 |
 | **License** | GPL-3.0-only |
 | **Description** | ML-Launcher POC with Tauri + Rust — Minecraft launcher |
 | **Copyright** | 2026 CatLab Design <hi@catlabdesign.space> |
