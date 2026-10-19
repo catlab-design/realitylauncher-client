@@ -1858,7 +1858,11 @@ async fn download_files(
                 .await
                 .map_err(|e| format!("Download failed: {url} - {e}"))?;
 
-            let tmp_path = dest.with_extension("tmp");
+            static TMP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let seq = TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let mut tmp_name = dest.file_name().unwrap_or_default().to_os_string();
+            tmp_name.push(format!(".{}-{seq}.tmp", std::process::id()));
+            let tmp_path = dest.with_file_name(tmp_name);
             let mut file = std::fs::File::create(&tmp_path)
                 .map_err(|e| format!("Create error: {}", e))?;
             let mut stream = resp.bytes_stream();
@@ -1888,8 +1892,13 @@ async fn download_files(
             if dest.exists() {
                 let _ = std::fs::remove_file(&dest);
             }
-            std::fs::rename(&tmp_path, &dest)
-                .map_err(|e| format!("Rename error: {} - {e}", dest.display()))?;
+            if let Err(e) = std::fs::rename(&tmp_path, &dest) {
+                let _ = std::fs::remove_file(&tmp_path);
+                // Another writer (concurrent launch/preinstall) may have just put the same file in place.
+                if !dest.exists() {
+                    return Err(format!("Rename error: {} - {e}", dest.display()));
+                }
+            }
             Ok::<_, String>(())
         }));
     }
@@ -2050,10 +2059,12 @@ async fn check_and_download_assets(
     let objects_dir = assets_dir.join("objects");
     let client = crate::http_client::HTTP_CLIENT.clone();
     let mut downloads = Vec::new();
+    // Many asset names share one hash; queueing a hash twice races two writers on the same object.
+    let mut seen = std::collections::HashSet::new();
 
     for (_path_str, info) in objects {
         let hash = info.get("hash").and_then(|h| h.as_str()).unwrap_or("");
-        if hash.is_empty() {
+        if hash.is_empty() || !seen.insert(hash) {
             continue;
         }
 
