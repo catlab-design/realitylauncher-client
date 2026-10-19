@@ -1,4 +1,4 @@
-## [Unreleased] — 2026-10-20
+## [5.0.2] — 2026-10-20
 
 ### Fixed
 - Game install/launch could fail with `Rename error: …\assets\objects\xx\<hash> - The system cannot find the file specified (os error 2)`. Asset names that share a hash were downloaded twice at once into the same temp file; assets are now de-duplicated and each download uses its own temp file.
