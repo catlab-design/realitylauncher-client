@@ -15,6 +15,13 @@ use crate::mappings::TabScheme;
 
 const API_URL: &str = "https://api.reality.catlabdesign.space";
 const BADGE_GLYPH: char = '\u{E2A0}';
+/// Space glyphs (font provider type "space", Minecraft 1.19.3+) used to draw
+/// the badge left of the player head: back up over the moved head, draw the
+/// badge, then skip forward past the head again.
+const BACK_SPACE: char = '\u{E2A1}';
+const FORWARD_SPACE: char = '\u{E2A2}';
+/// Badge advance (8 px glyph + 1) = how far the agent moves the head right.
+const HEAD_SHIFT: i32 = 9;
 const BADGE_PNG: &[u8] = include_bytes!("../resources/badge.png");
 const PACK_FILE: &str = "reality-badge.zip";
 const SESSION_FILE: &str = "session.properties";
@@ -48,6 +55,12 @@ fn pack_format(mc_version: &str) -> u32 {
     }
 }
 
+/// "space" font providers arrived with pack format 12 (1.19.3); older versions
+/// keep the badge after the head.
+fn supports_head_left(mc_version: &str) -> bool {
+    pack_format(mc_version) >= 12
+}
+
 fn pack_zip(mc_version: &str) -> Result<Vec<u8>, String> {
     let format = pack_format(mc_version);
     let mcmeta = serde_json::json!({
@@ -59,15 +72,20 @@ fn pack_zip(mc_version: &str) -> Result<Vec<u8>, String> {
             "max_format": 1000,
         }
     });
-    let font = serde_json::json!({
-        "providers": [{
-            "type": "bitmap",
-            "file": "reality:font/badge.png",
-            "ascent": 7,
-            "height": 8,
-            "chars": [BADGE_GLYPH.to_string()],
-        }]
-    });
+    let mut providers = vec![serde_json::json!({
+        "type": "bitmap",
+        "file": "reality:font/badge.png",
+        "ascent": 7,
+        "height": 8,
+        "chars": [BADGE_GLYPH.to_string()],
+    })];
+    if supports_head_left(mc_version) {
+        let mut advances = serde_json::Map::new();
+        advances.insert(BACK_SPACE.to_string(), (-HEAD_SHIFT).into());
+        advances.insert(FORWARD_SPACE.to_string(), HEAD_SHIFT.into());
+        providers.push(serde_json::json!({ "type": "space", "advances": advances }));
+    }
+    let font = serde_json::json!({ "providers": providers });
 
     let mut buf = std::io::Cursor::new(Vec::new());
     {
@@ -189,13 +207,24 @@ fn normalize_uuid(raw: &str) -> Option<String> {
 
 /// `self.uuids` are this player's own UUIDs: the agent always badges them
 /// (the API leaves the caller's own session out of lookups).
-fn session_properties(schemes: &[TabScheme], self_uuids: &[String], lookup_token: Option<&str>) -> String {
+/// `badge` prefixes the name when the server shows no heads; `badge.head` is
+/// used for rows whose head the agent moved right by `badge.head.shift`.
+fn session_properties(
+    schemes: &[TabScheme],
+    self_uuids: &[String],
+    head_left: bool,
+    lookup_token: Option<&str>,
+) -> String {
     let mut entries: Vec<(String, String)> = vec![
         ("api.url".into(), API_URL.into()),
         ("badge".into(), format!("{BADGE_GLYPH} ")),
         ("self.uuids".into(), self_uuids.join(",")),
         ("scheme.count".into(), schemes.len().to_string()),
     ];
+    if head_left {
+        entries.push(("badge.head".into(), format!("{BACK_SPACE}{BADGE_GLYPH}{FORWARD_SPACE}")));
+        entries.push(("badge.head.shift".into(), HEAD_SHIFT.to_string()));
+    }
     if let Some(token) = lookup_token {
         entries.push(("lookup.token".into(), token.to_string()));
     }
@@ -228,6 +257,7 @@ pub struct BadgeSetup {
     session_path: PathBuf,
     schemes: Vec<TabScheme>,
     self_uuids: Vec<String>,
+    head_left: bool,
 }
 
 impl BadgeSetup {
@@ -256,8 +286,9 @@ pub fn prepare(
         write_atomic(&instance_dir.join("resourcepacks").join(PACK_FILE), &pack)?;
         enable_pack(instance_dir)?;
         let session_path = minecraft_dir.join("agent").join(SESSION_FILE);
-        write_atomic(&session_path, session_properties(&schemes, &self_uuids, None).as_bytes())?;
-        Ok(BadgeSetup { session_path, schemes, self_uuids: self_uuids.clone() })
+        let head_left = supports_head_left(mc_version);
+        write_atomic(&session_path, session_properties(&schemes, &self_uuids, head_left, None).as_bytes())?;
+        Ok(BadgeSetup { session_path, schemes, self_uuids: self_uuids.clone(), head_left })
     })();
     match result {
         Ok(setup) => Some(setup),
@@ -340,8 +371,12 @@ pub fn spawn_presence(setup: BadgeSetup, api_token: String, instance_id: String)
                 if !alive {
                     match start_session(&api_token, &instance_id, &setup.self_uuids).await {
                         Ok(started) => {
-                            let props =
-                                session_properties(&setup.schemes, &setup.self_uuids, Some(&started.lookup_token));
+                            let props = session_properties(
+                                &setup.schemes,
+                                &setup.self_uuids,
+                                setup.head_left,
+                                Some(&started.lookup_token),
+                            );
                             if let Err(e) = write_atomic(&setup.session_path, props.as_bytes()) {
                                 log::warn!("[TabBadge] Could not write session file: {e}");
                             }
@@ -421,6 +456,20 @@ mod tests {
         let mut meta = String::new();
         std::io::Read::read_to_string(&mut zip.by_name("pack.mcmeta").unwrap(), &mut meta).unwrap();
         assert!(meta.contains("\"pack_format\": 15"));
+        assert!(font.contains("\"space\""));
+        assert!(font.contains("-9"));
+    }
+
+    #[test]
+    fn no_space_provider_before_1_19_3() {
+        let bytes = pack_zip("1.19.2").unwrap();
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let mut font = String::new();
+        std::io::Read::read_to_string(&mut zip.by_name("assets/minecraft/font/default.json").unwrap(), &mut font)
+            .unwrap();
+        assert!(!font.contains("\"space\""));
+        assert!(supports_head_left("1.19.3"));
+        assert!(!supports_head_left("1.19.2"));
     }
 
     #[test]
@@ -448,12 +497,20 @@ mod tests {
 
     #[test]
     fn session_properties_escape_for_java() {
-        let props = session_properties(&[scheme()], &["11111111-2222-3333-4444-555555555555".into()], Some("tok_-123"));
+        let props = session_properties(
+            &[scheme()],
+            &["11111111-2222-3333-4444-555555555555".into()],
+            true,
+            Some("tok_-123"),
+        );
         assert!(props.contains("badge=\\uE2A0 \n"));
         assert!(props.contains("api.url=https\\://api.reality.catlabdesign.space\n"));
         assert!(props.contains("lookup.token=tok_-123\n"));
         assert!(props.contains("scheme.count=1\n"));
         assert!(props.contains("self.uuids=11111111-2222-3333-4444-555555555555\n"));
+        assert!(props.contains("badge.head=\\uE2A1\\uE2A0\\uE2A2\n"));
+        assert!(props.contains("badge.head.shift=9\n"));
+        assert!(!session_properties(&[scheme()], &[], false, None).contains("badge.head"));
         assert!(props.contains("scheme.0.overlay.desc=(Lnet/minecraft/class_640;)Lnet/minecraft/class_2561;\n"));
     }
 }
