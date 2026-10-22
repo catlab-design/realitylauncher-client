@@ -1,3 +1,9 @@
+## [Unreleased] — 2026-10-22
+
+### Fixed
+- Forge/NeoForge install failed on Linux distros that ship zlib-ng (Arch, CachyOS, Fedora 40+) with `Processor failed, invalid outputs` / checksum mismatches. The bundled Corretto JDK compresses through the system zlib-ng, which produces different jar bytes than Forge expects. The loader installer now runs with an installed JDK that bundles its own zlib (same or newer major) when one is available; otherwise the error explains the cause.
+- Loader installer failures no longer dump the installer's entire output (~20k lines) into the error; only the last 40 lines are kept.
+
 ## [5.0.2] — 2026-10-20
 
 ### Fixed
