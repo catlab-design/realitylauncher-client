@@ -750,6 +750,7 @@ declare global {
         error?: string;
       }>;
       isDevMode: () => Promise<boolean>;
+      linuxPerfTools: () => Promise<{ linux: boolean; mangohud: boolean; gamemode: boolean }>;
       checkForUpdates: () => Promise<void>;
       downloadUpdate: () => Promise<void>;
       installUpdate: (auto?: boolean) => Promise<void>;

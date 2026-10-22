@@ -156,6 +156,7 @@ src-tauri/
     ├── config.rs                     # (335 lines) Config + RAM detection + folder migration (cancel/progress/rollback)
     ├── instances.rs                  # Instance CRUD + copy_dir_recursive_with_progress
     ├── op_guard.rs                   # Exclusive/shared operation guard (migration vs install/sync/launch)
+    ├── perf_tools.rs                 # Linux game wrappers: mangohud --dlsym / gamemoderun (+ linux_perf_tools command)
     ├── java.rs                       # Java detection/installation
     ├── modrinth.rs                   # Modrinth API
     ├── curseforge.rs                 # CurseForge API
@@ -270,6 +271,7 @@ ConfigStore migration (v0→v1): `closeOnLaunch` changed from `boolean` to `'kee
 | **config** | `config_get`, `config_set`, `config_get_minecraft_dir`, `config_migrate_minecraft_dir` (emits `migrate-progress`/`migrate-cancelled`/`instances-updated`), `cancel_migrate`, `reset_config` (preserves `minecraft_dir`), `get_system_ram`, `get_max_ram` |
 | **instances** | `instances_list`, `instances_get`, `instances_create`, `instances_update`, `instances_delete`, `instances_duplicate`, `instances_set_icon` |
 | **download** | `download_batch()`, `download_file()`, `DownloadItem`, `DownloadConfig`, `BatchResult` — shared concurrent engine used by modpack and cloud |
+| **perf_tools** | `linux_perf_tools` (Linux: which of mangohud/gamemoderun are on PATH) |
 | **launcher** | `is_game_running`, `kill_game` (emits `game-stopped`), `instances_launch`, `get_playing_instance_id`, `instance_read_latest_log`, `instance_tail_log`, `get_app_version`, `is_dev_mode`, `browse_java`, `instances_preinstall` |
 | **java** | `install_java`, `detect_java_installations`, `delete_java`, `test_java_execution`, `auto_detect_java` |
 | **admin** | `check_status`, `get_settings`, `save_setting`, `get_users`, `ban_user`, `unban_user`, `toggle_user_admin`, `create_user`, `get_user_details`, `get_system_info` |

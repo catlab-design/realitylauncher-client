@@ -24,6 +24,7 @@ mod mod_meta;
 mod modpack;
 mod modrinth;
 mod op_guard;
+mod perf_tools;
 mod social;
 mod tab_badge;
 mod telemetry;
@@ -90,6 +91,7 @@ fn main() {
             launcher::instance_tail_log,
             launcher::get_app_version,
             launcher::is_dev_mode,
+            perf_tools::linux_perf_tools,
             launcher::browse_java,
             launcher::instances_preinstall,
             

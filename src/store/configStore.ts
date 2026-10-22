@@ -31,6 +31,8 @@ const defaultConfig: LauncherConfig = {
     fullscreen: false,
     javaArguments: "",
     maxConcurrentDownloads: 8,
+    enableMangoHud: false,
+    enableGameMode: false,
     telemetryEnabled: true,
     autoUpdateEnabled: true,
 };

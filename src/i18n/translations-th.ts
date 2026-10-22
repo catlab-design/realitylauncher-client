@@ -372,6 +372,12 @@ export const thTranslations = {
     java_args: "Java Arguments",
     java_args_desc: "เพิ่ม JVM arguments สำหรับ Minecraft (เช่น -XX:+UseG1GC)",
     java_args_placeholder: "เพิ่ม Java arguments...",
+    linux_performance: "ประสิทธิภาพบน Linux",
+    mangohud: "MangoHud overlay",
+    mangohud_desc: "แสดง FPS, frame time และการใช้งาน CPU/GPU ในเกม",
+    gamemode: "Feral GameMode",
+    gamemode_desc: "ให้ระบบเร่ง CPU/GPU เต็มประสิทธิภาพระหว่างเล่นเกม",
+    tool_not_installed: "ยังไม่ได้ติดตั้ง {tool} ติดตั้งผ่าน package manager ก่อนจึงจะใช้ได้",
 
     
     java_install_path: "ตำแหน่งติดตั้ง Java {version}",
