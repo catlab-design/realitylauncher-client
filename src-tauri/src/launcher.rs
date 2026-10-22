@@ -294,45 +294,46 @@ pub async fn instances_launch(
 
 
 
-#[tauri::command]
-pub fn instance_read_latest_log(instance_id: String) -> serde_json::Value {
-    let log_path = crate::instances::get_instance_dir(&instance_id)
+fn latest_log_path(instance_id: &str) -> PathBuf {
+    crate::instances::get_instance_dir(instance_id)
         .join("logs")
-        .join("latest.log");
-    match fs::read_to_string(&log_path) {
-        Ok(content) => {
-            let len = content.len();
-            serde_json::json!({ "ok": true, "content": content, "size": len })
-        }
-        Err(_) => serde_json::json!({ "ok": false, "content": "", "size": 0 }),
-    }
+        .join("latest.log")
 }
 
-
-
-
-#[tauri::command]
-pub fn instance_tail_log(instance_id: String, from: u64) -> serde_json::Value {
+/// Reads complete lines from `from` onward. A trailing line still being
+/// written is left for the next poll, and `size` is the offset just past the
+/// last newline, so lines are never split across polls. Bytes are decoded
+/// lossily: a strict UTF-8 read drops the whole chunk on one bad byte.
+fn read_log_lines(path: &Path, from: u64) -> serde_json::Value {
     use std::io::{Read, Seek, SeekFrom};
 
-    let log_path = crate::instances::get_instance_dir(&instance_id)
-        .join("logs")
-        .join("latest.log");
-
-    let Ok(mut file) = fs::File::open(&log_path) else {
+    let Ok(mut file) = fs::File::open(path) else {
         return serde_json::json!({ "ok": false, "content": "", "size": from });
     };
     let size = file.metadata().map(|m| m.len()).unwrap_or(0);
-
-    
+    // A smaller file means latest.log was rotated by a new game session.
     let start = if from > size { 0 } else { from };
     if file.seek(SeekFrom::Start(start)).is_err() {
-        return serde_json::json!({ "ok": false, "content": "", "size": size });
+        return serde_json::json!({ "ok": false, "content": "", "size": start });
     }
 
-    let mut buf = String::new();
-    let _ = file.read_to_string(&mut buf);
-    serde_json::json!({ "ok": true, "content": buf, "size": size })
+    let mut bytes = Vec::new();
+    if file.read_to_end(&mut bytes).is_err() {
+        return serde_json::json!({ "ok": false, "content": "", "size": start });
+    }
+    let complete = bytes.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
+    let content = String::from_utf8_lossy(&bytes[..complete]);
+    serde_json::json!({ "ok": true, "content": content, "size": start + complete as u64 })
+}
+
+#[tauri::command]
+pub fn instance_read_latest_log(instance_id: String) -> serde_json::Value {
+    read_log_lines(&latest_log_path(&instance_id), 0)
+}
+
+#[tauri::command]
+pub fn instance_tail_log(instance_id: String, from: u64) -> serde_json::Value {
+    read_log_lines(&latest_log_path(&instance_id), from)
 }
 
 #[tauri::command]
@@ -2427,6 +2428,31 @@ mod tests {
     fn tail_lines_keeps_last_n() {
         assert_eq!(tail_lines("a\nb\nc\nd\n", 2), "c\nd");
         assert_eq!(tail_lines("a\nb", 10), "a\nb");
+    }
+
+    #[test]
+    fn read_log_lines_holds_back_partial_line_and_decodes_lossily() {
+        let dir = std::env::temp_dir().join(format!("rl-log-test-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("latest.log");
+
+        fs::write(&path, b"one\ntw\xffo\nthr").unwrap();
+        let res = read_log_lines(&path, 0);
+        assert_eq!(res["content"], "one\ntw\u{fffd}o\n");
+        assert_eq!(res["size"], 9);
+
+        fs::write(&path, b"one\ntw\xffo\nthree\n").unwrap();
+        let res = read_log_lines(&path, 9);
+        assert_eq!(res["content"], "three\n");
+        assert_eq!(res["size"], 15);
+
+        fs::write(&path, b"new\n").unwrap();
+        let res = read_log_lines(&path, 15);
+        assert_eq!(res["content"], "new\n");
+        assert_eq!(res["size"], 4);
+
+        fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(read_log_lines(&path, 4)["ok"], false);
     }
 
     #[test]
