@@ -670,7 +670,7 @@ export function ServerMenu({
 
     const handleViewLogs = (e: React.MouseEvent, instance: any) => {
         e.stopPropagation();
-        setLogViewerInstanceId(instance.id);
+        setLogViewerInstanceId(resolveLocalId(instance));
     };
 
     const handleInstanceClick = (instance: any) => {

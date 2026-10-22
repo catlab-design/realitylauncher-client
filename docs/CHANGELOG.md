@@ -5,6 +5,7 @@
 - Reality badge in the multiplayer tab list (1.19–1.21.x, all loaders): players currently playing through Reality Launcher (including yourself) get a small Reality logo in front of their head (1.19.3+; before the name on servers without heads and on 1.19–1.19.2). Works on any server, visible to Reality users. The launcher registers the running game with the API (`/presence/*`, needs the matching backend), installs a tiny badge resource pack, and the agent patches the tab list using names resolved from Mojang/Fabric/Forge mappings.
 
 ### Fixed
+- Game Logs opened from the Servers tab showed no logs for server instances: it was given the server's cloud id instead of the local instance folder, so it read a `latest.log` that doesn't exist. It now uses the same local-id lookup as Play.
 - Forge/NeoForge install failed on Linux distros that ship zlib-ng (Arch, CachyOS, Fedora 40+) with `Processor failed, invalid outputs` / checksum mismatches. The bundled Corretto JDK compresses through the system zlib-ng, which produces different jar bytes than Forge expects. The loader installer now runs with an installed JDK that bundles its own zlib (same or newer major) when one is available; otherwise the error explains the cause.
 - Game Logs: lines were split into two entries when a poll landed mid-line; only complete lines are read now.
 - Game Logs: a non-UTF-8 byte or a read starting mid-character dropped a whole chunk of log silently; logs are now decoded lossily.
