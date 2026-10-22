@@ -409,7 +409,11 @@ pub async fn sync(
             .filter(|w| w.layer.as_deref() == Some(layer.id.as_str()) && w.entry.is_some())
             .cloned()
             .collect();
-        let zip_path = temp_dir.join(format!("layer-{}.zip", layer.id));
+        // Unique per sync: two syncs of the same pack at once (two launcher
+        // windows, install while a launch syncs) must not share one archive.
+        static LAYER_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let seq = LAYER_SEQ.fetch_add(1, Ordering::Relaxed);
+        let zip_path = temp_dir.join(format!("layer-{}-{}-{seq}.zip", layer.id, std::process::id()));
         let downloaded = download_layer(app, layer.url.as_deref().unwrap_or_default(), layer.size, &zip_path, cancel).await;
         match downloaded {
             Err(e) if e == CANCELLED_SENTINEL => {
@@ -417,6 +421,7 @@ pub async fn sync(
                 return Err(e);
             }
             Err(e) => {
+                log::warn!("[Pack v2] layer {} download failed ({e}); fetching its files one by one", layer.id);
                 for w in &from_layer {
                     errors.insert(w.path.clone(), e.clone());
                 }
@@ -440,10 +445,23 @@ pub async fn sync(
         return Err(CANCELLED_SENTINEL.to_string());
     }
 
+    // A layer that didn't download or unpack doesn't fail its files: each one
+    // also has its own entry URL, so they go to the one-by-one pass instead.
+    let retry: HashSet<String> = needed
+        .iter()
+        .filter(|w| w.layer.as_deref().is_some_and(|l| bulk_ids.contains(l)) && w.entry.is_some())
+        .filter_map(|w| errors.remove(&w.path).map(|_| w.path.clone()))
+        .collect();
+    if !retry.is_empty() {
+        log::warn!("[Pack v2] retrying {} pack files one by one", retry.len());
+    }
+
     // 2. Everything else one by one: mods from their CDNs, stray pack files.
     let singles: Vec<&Want> = needed
         .iter()
-        .filter(|w| !w.layer.as_deref().is_some_and(|l| bulk_ids.contains(l)) || w.entry.is_none())
+        .filter(|w| {
+            !w.layer.as_deref().is_some_and(|l| bulk_ids.contains(l)) || w.entry.is_none() || retry.contains(&w.path)
+        })
         .collect();
     if !singles.is_empty() {
         let items: Vec<crate::download::DownloadItem> = singles
@@ -521,6 +539,9 @@ pub async fn sync(
         log::warn!("[Pack v2] could not save pack state: {e}");
     }
 
+    for (path, reason) in errors.iter().take(5) {
+        log::warn!("[Pack v2] {path}: {reason}");
+    }
     failed.extend(errors);
     emit_sync_progress(app, "sync-complete", "Sync complete", None, None, Some(100), None);
     Ok(Outcome::Synced(failed))
