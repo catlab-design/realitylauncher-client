@@ -110,6 +110,8 @@ export interface LauncherConfig {
   enableMangoHud?: boolean;
   /** Linux only: run the game under `gamemoderun`. */
   enableGameMode?: boolean;
+  /** Linux Wayland sessions: run natively instead of through XWayland (launcher restart applies it to the launcher). */
+  nativeWayland?: boolean;
   telemetryEnabled: boolean;
   autoUpdateEnabled: boolean;
   lastSeenVersion?: string;

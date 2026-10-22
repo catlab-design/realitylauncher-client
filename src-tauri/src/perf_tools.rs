@@ -31,6 +31,8 @@ pub struct PerfTools {
     pub linux: bool,
     pub mangohud: bool,
     pub gamemode: bool,
+    /// A Wayland session, where the native-Wayland option applies.
+    pub wayland: bool,
 }
 
 /// What the settings page can offer: the section only shows on Linux, and
@@ -42,6 +44,7 @@ pub fn linux_perf_tools() -> PerfTools {
         linux,
         mangohud: linux && find_in_path("mangohud").is_some(),
         gamemode: linux && find_in_path("gamemoderun").is_some(),
+        wayland: crate::wayland::session().wayland,
     }
 }
 

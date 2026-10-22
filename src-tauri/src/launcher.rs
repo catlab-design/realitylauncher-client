@@ -19,6 +19,25 @@ static PLAYING_INSTANCE_ID: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::ne
 /// this prevents a stale launch whose sync phase outlived a kill/relaunch
 /// from registering an orphaned, unstoppable game.
 static LAUNCH_GENERATION: Lazy<Mutex<u64>> = Lazy::new(|| Mutex::new(0));
+/// Current launch stage and when it began, for the per-stage timing log.
+static STAGE_CLOCK: Lazy<Mutex<Option<(std::time::Instant, String)>>> = Lazy::new(|| Mutex::new(None));
+
+/// Logs how long the previous launch stage took and starts timing `stage`.
+/// Stages of a second or more also get a line in the instance's launch log.
+fn mark_stage(stage: &str) {
+    let now = std::time::Instant::now();
+    let mut clock = STAGE_CLOCK.lock().unwrap();
+    if let Some((started, prev)) = clock.take() {
+        let elapsed = now.duration_since(started);
+        println!("[Launcher] Stage {prev}: {} ms", elapsed.as_millis());
+        if elapsed.as_secs() >= 1 {
+            crate::launch_log::info(format!("Step \"{prev}\" took {}", crate::launch_log::took(elapsed)));
+        }
+    }
+    if stage != "running" {
+        *clock = Some((now, stage.to_string()));
+    }
+}
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ProgressPayload {
@@ -117,6 +136,9 @@ pub fn is_game_running(instance_id: Option<String>) -> bool {
 #[tauri::command]
 pub fn kill_game(app: tauri::AppHandle) -> Result<(), String> {
     *LAUNCH_GENERATION.lock().unwrap() += 1;
+    if *LAUNCHING.lock().unwrap() {
+        crate::launch_log::warn("Launch stopped by the player");
+    }
     let mut process = GAME_PROCESS.lock().map_err(|e| e.to_string())?;
     let killed_instance_id = PLAYING_INSTANCE_ID.lock().unwrap().clone();
     if let Some(ref mut child) = *process {
@@ -168,6 +190,7 @@ pub fn cancel_launch() -> bool {
     *LAUNCHING.lock().unwrap() = false;
     *PLAYING_INSTANCE_ID.lock().unwrap() = None;
     println!("[Launcher] Launch abandoned: no progress");
+    crate::launch_log::warn("Launch cancelled: no progress for 5 minutes");
     true
 }
 
@@ -239,6 +262,17 @@ pub async fn instances_launch(
         "[Launcher] Launching instance: {} ({})",
         instance.name, instance.id
     );
+    *STAGE_CLOCK.lock().unwrap() = Some((std::time::Instant::now(), "start".to_string()));
+    crate::launch_log::start(Path::new(&instance.game_directory));
+    crate::launch_log::info(format!(
+        "Play pressed: {} (Minecraft {}, {:?} {}) - Reality Launcher {}",
+        instance.name,
+        instance.minecraft_version,
+        instance.loader,
+        instance.loader_version.as_deref().unwrap_or(""),
+        env!("CARGO_PKG_VERSION")
+    ));
+    log_session_check();
 
     let _ = crate::discord::discord_rpc_update(
         "launching".to_string(),
@@ -254,7 +288,21 @@ pub async fn instances_launch(
         
         
         emit_progress(&app_handle, "sync", "Syncing server mods...", 0.02);
-        match crate::cloud::sync_instance_for_launch(&app_handle, &instance).await {
+        let sync_started = std::time::Instant::now();
+        let synced = crate::cloud::sync_instance_for_launch(&app_handle, &instance).await;
+        match &synced {
+            Ok(failed) if failed.is_empty() => crate::launch_log::info(format!(
+                "Server files up to date (checked in {})",
+                crate::launch_log::took(sync_started.elapsed())
+            )),
+            Ok(failed) => {
+                for (file, reason) in failed {
+                    crate::launch_log::error(format!("Could not sync {file}: {reason}"));
+                }
+            }
+            Err(e) => crate::launch_log::error(format!("Server sync failed: {e}")),
+        }
+        match synced {
             Ok(failed) if !failed.is_empty() => {
                 *LAUNCHING.lock().unwrap() = false;
                 *PLAYING_INSTANCE_ID.lock().unwrap() = None;
@@ -296,6 +344,7 @@ pub async fn instances_launch(
         },
         Err(e) => {
             log::error!("[Launcher] Launch failed: {e}");
+            crate::launch_log::error(format!("Launch failed: {e}"));
             *LAUNCHING.lock().unwrap() = false;
             *PLAYING_INSTANCE_ID.lock().unwrap() = None;
             let _ = app_handle.emit("launch-error", serde_json::json!({ "error": e.clone() }));
@@ -339,8 +388,22 @@ fn read_log_lines(path: &Path, from: u64) -> serde_json::Value {
         return serde_json::json!({ "ok": false, "content": "", "size": start });
     }
     let complete = bytes.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
-    let content = String::from_utf8_lossy(&bytes[..complete]);
-    serde_json::json!({ "ok": true, "content": content, "size": start + complete as u64 })
+    let content = crate::launch_log::redact(&String::from_utf8_lossy(&bytes[..complete]));
+    let meta = file.metadata().ok();
+    let epoch_ms = |t: std::io::Result<std::time::SystemTime>| {
+        t.ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map_or(0, |d| d.as_millis() as u64)
+    };
+    let modified = meta.as_ref().map_or(0, |m| epoch_ms(m.modified()));
+    let created = meta.as_ref().map_or(0, |m| epoch_ms(m.created()));
+    serde_json::json!({
+        "ok": true,
+        "content": content,
+        "size": start + complete as u64,
+        "modified": modified,
+        "created": created,
+    })
 }
 
 #[tauri::command]
@@ -351,6 +414,15 @@ pub fn instance_read_latest_log(instance_id: String) -> serde_json::Value {
 #[tauri::command]
 pub fn instance_tail_log(instance_id: String, from: u64) -> serde_json::Value {
     read_log_lines(&latest_log_path(&instance_id), from)
+}
+
+/// The launcher's own log of the last launch of this instance (`launch_log`).
+#[tauri::command]
+pub fn instance_tail_launch_log(instance_id: String, from: u64) -> serde_json::Value {
+    read_log_lines(
+        &crate::launch_log::path_for(&crate::instances::get_instance_dir(&instance_id)),
+        from,
+    )
 }
 
 #[tauri::command]
@@ -498,6 +570,7 @@ async fn launch_game(
             return Err("Not logged in".to_string());
         }
     };
+    log_session(&session);
 
     emit_progress(&app, "version", "Fetching version manifest...", 0.05);
     let version_json = get_version_json(&instance.minecraft_version, &minecraft_dir_val).await?;
@@ -525,6 +598,11 @@ async fn launch_game(
     emit_progress(&app, "java", "Resolving Java...", 0.70);
     let java_path =
         crate::java::ensure_compatible_java(&app, &instance, &config_val, required_java).await?;
+    crate::launch_log::info(format!(
+        "Java: {} (Java {} or newer needed)",
+        crate::launch_log::display_path(&java_path),
+        required_java
+    ));
 
     
     let effective_version_json = if instance.loader != LoaderType::Vanilla {
@@ -544,6 +622,9 @@ async fn launch_game(
     };
 
     
+    if let Some(id) = effective_version_json.get("id").and_then(|v| v.as_str()) {
+        crate::launch_log::info(format!("Game version ready: {id}"));
+    }
     emit_progress(&app, "classpath", "Building classpath...", 0.85);
     let classpath = build_classpath(
         &effective_version_json,
@@ -562,6 +643,7 @@ async fn launch_game(
         &instance,
         &config_val,
     )?;
+    mark_stage("branding");
     jvm_args.extend(branding_jvm_args(
         &minecraft_dir_val,
         &instance_dir,
@@ -569,6 +651,7 @@ async fn launch_game(
         &instance,
         &effective_version_json,
     ));
+    mark_stage("tab-badges");
     let badge_setup = prepare_tab_badges(
         &minecraft_dir_val,
         &libraries_dir,
@@ -580,6 +663,9 @@ async fn launch_game(
     .await;
     if let Some(ref setup) = badge_setup {
         jvm_args.push(setup.jvm_arg());
+        crate::launch_log::info("Tab-list badges: on");
+    } else {
+        crate::launch_log::info("Tab-list badges: off for this launch");
     }
 
     
@@ -607,6 +693,10 @@ async fn launch_game(
     let wrapper = crate::perf_tools::game_wrapper(config_val.enable_mango_hud, config_val.enable_game_mode);
     if !wrapper.is_empty() {
         println!("[Launcher] Wrapper: {}", wrapper.join(" "));
+        crate::launch_log::info(format!("Running through: {}", wrapper.join(" ")));
+    }
+    if let Some(xmx) = all_args.iter().find_map(|a| a.strip_prefix("-Xmx")) {
+        crate::launch_log::info(format!("Memory: up to {xmx}B for the game"));
     }
     let mut cmd = match wrapper.split_first() {
         Some((program, rest)) => {
@@ -620,6 +710,13 @@ async fn launch_game(
         .current_dir(&instance_dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    if let Some((remove, set)) = crate::wayland::game_env(config_val.native_wayland) {
+        for key in remove {
+            cmd.env_remove(key);
+        }
+        cmd.envs(set);
+        crate::launch_log::info("Wayland session: running Minecraft through XWayland");
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -627,6 +724,7 @@ async fn launch_game(
     }
     let mut child = cmd.spawn()
         .map_err(|e| format!("Failed to spawn Java: {e}"))?;
+    let spawned_at = std::time::SystemTime::now();
 
     let pid = child.id();
     let child_stdout = child.stdout.take();
@@ -654,6 +752,12 @@ async fn launch_game(
     crate::instances::mark_played(&instance.id);
 
     println!("[Launcher] Game started (pid={pid})");
+    mark_stage("after-spawn");
+    crate::launch_log::info(format!(
+        "Minecraft started (Java process {pid}). Its own log follows; the game window can take a minute or two with many mods."
+    ));
+    let launch_log_path = crate::launch_log::path_for(&instance_dir);
+    let latest_log = instance_dir.join("logs").join("latest.log");
     let _ = crate::discord::discord_rpc_update(
         "playing".to_string(),
         Some(instance.name.clone()),
@@ -716,10 +820,23 @@ async fn launch_game(
 
     if let Some(stderr) = child_stderr {
         let app_err = app.clone();
+        let launch_log_path = launch_log_path.clone();
         std::thread::spawn(move || {
             let reader = std::io::BufReader::new(stderr);
+            // Until the game's logger writes latest.log, stderr is the only
+            // place errors show up (bad JVM flags, too little memory, crashes
+            // during startup); copy those lines into the launch log.
+            let mut game_logging = false;
             for line in reader.lines().flatten() {
                 println!("[Game stderr] {line}");
+                if !game_logging {
+                    game_logging = fs::metadata(&latest_log)
+                        .and_then(|m| m.modified())
+                        .is_ok_and(|t| t >= spawned_at);
+                    if !game_logging {
+                        crate::launch_log::append(&launch_log_path, "Game stderr", "WARN", &line);
+                    }
+                }
                 let _ = app_err.emit(
                     "game-log",
                     LogPayload {
@@ -771,6 +888,15 @@ async fn launch_game(
                 PollResult::Running => {}
                 PollResult::Stopped(exit_code) => {
                     println!("[Launcher] Game stopped (exit={:?})", exit_code);
+                    let (level, message) = match exit_code {
+                        Some(0) => ("INFO", "Minecraft closed normally (exit code 0)".to_string()),
+                        Some(code) => (
+                            "ERROR",
+                            format!("Minecraft closed with exit code {code}. Look above and in crash-reports/ for the cause."),
+                        ),
+                        None => ("WARN", "Minecraft was stopped".to_string()),
+                    };
+                    crate::launch_log::append(&launch_log_path, "Launcher", level, &message);
                     if let Some(ref presence) = presence {
                         presence.stop();
                     }
@@ -810,6 +936,10 @@ async fn launch_game(
 }
 
 fn emit_progress(app: &tauri::AppHandle, stage: &str, message: &str, progress: f64) {
+    mark_stage(stage);
+    if stage != "running" {
+        crate::launch_log::info(message);
+    }
     let _ = app.emit(
         "launch-progress",
         ProgressPayload {
@@ -1583,6 +1713,51 @@ async fn prepare_tab_badges(
     crate::tab_badge::prepare(minecraft_dir, instance_dir, &instance.minecraft_version, schemes, self_uuids)
 }
 
+/// Reports the sign-in check the frontend ran right before calling launch.
+fn log_session_check() {
+    let last = crate::auth::LAST_REFRESH.lock().unwrap();
+    match last.as_ref().filter(|r| r.at.elapsed().as_secs() < 120) {
+        Some(r) => match &r.error {
+            None => crate::launch_log::info(format!("Sign-in checked ({})", crate::launch_log::took(r.took))),
+            Some(e) => crate::launch_log::warn(format!("Sign-in check failed after {}: {e}", crate::launch_log::took(r.took))),
+        },
+        None => crate::launch_log::info("Sign-in: not re-checked for this launch"),
+    }
+}
+
+/// Shows the player name with most letters hidden, so shared logs don't name the account.
+fn masked_name(name: &str) -> String {
+    let chars: Vec<char> = name.chars().collect();
+    match chars.len() {
+        0..=2 => "*".repeat(chars.len()),
+        n => format!("{}{}{}", chars[0], "*".repeat(n - 2), chars[n - 1]),
+    }
+}
+
+fn log_session(session: &Session) {
+    let kind = if session.auth_type == "microsoft" { "Microsoft" } else { "CatID" };
+    let validity = match session.expires_at {
+        Some(exp) => {
+            let mins = (exp - chrono::Utc::now().timestamp_millis()) / 60_000;
+            if mins > 0 {
+                format!("session valid for {}h {}m", mins / 60, mins % 60)
+            } else {
+                "session expired".to_string()
+            }
+        }
+        None => "no expiry recorded".to_string(),
+    };
+    let token = if session.access_token.as_deref().is_some_and(|t| !t.is_empty() && t != "0") {
+        "game token present"
+    } else {
+        "no game token (offline)"
+    };
+    crate::launch_log::info(format!(
+        "Session: {kind} account {}, {validity}, {token}",
+        masked_name(&session.username)
+    ));
+}
+
 /// UUIDs this player can appear as in a tab list: the account UUID on
 /// online-mode servers, the name-derived offline UUID on offline-mode servers.
 fn presence_uuids(session: &Session) -> Vec<String> {
@@ -2021,9 +2196,30 @@ async fn download_client_jar(
 
     let jar_path = versions_dir.join(format!("{version_id}.jar"));
 
+    // Hashing the ~25 MB jar on every launch is slow; once it has been
+    // verified, its size and mtime vouch for it until the file changes.
+    let marker = versions_dir.join(format!(".{version_id}.jar.verified"));
+    let stamp = |sha1: &str| {
+        let meta = fs::metadata(&jar_path).ok()?;
+        let mtime = meta.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?;
+        Some(format!("{sha1}:{}:{}", meta.len(), mtime.as_millis()))
+    };
     if jar_path.exists() {
         let valid = match expected_sha1 {
-            Some(sha1) => sha1_file(&jar_path).ok().as_deref() == Some(sha1),
+            Some(sha1) => {
+                let current = stamp(sha1);
+                if current.is_some() && fs::read_to_string(&marker).ok() == current {
+                    true
+                } else if sha1_file(&jar_path).ok().as_deref() == Some(sha1) {
+                    crate::launch_log::info(format!("Client jar {version_id} verified"));
+                    if let Some(current) = current {
+                        let _ = fs::write(&marker, current);
+                    }
+                    true
+                } else {
+                    false
+                }
+            }
             None => true,
         };
         if valid {
@@ -2032,6 +2228,7 @@ async fn download_client_jar(
     }
 
     fs::create_dir_all(versions_dir).map_err(|e| e.to_string())?;
+    crate::launch_log::info(format!("Downloading client jar {version_id}"));
 
     use sha1::Digest as Sha1Digest;
     use std::io::Write;
@@ -2064,6 +2261,9 @@ async fn download_client_jar(
     }
 
     std::fs::rename(&tmp_path, &jar_path).map_err(|e| e.to_string())?;
+    if let Some(current) = expected_sha1.and_then(stamp) {
+        let _ = fs::write(&marker, current);
+    }
     Ok(jar_path)
 }
 
@@ -2231,6 +2431,7 @@ async fn ensure_libraries(
     }
 
     if !downloads.is_empty() {
+        crate::launch_log::info(format!("Downloading {} missing libraries", downloads.len()));
         download_files(&client, &downloads).await?;
     }
 
@@ -2282,6 +2483,7 @@ async fn check_and_download_assets(
     let index_sha1 = sha1_file(&index_path).ok().unwrap_or_default();
     let verified_marker = indexes_dir.join(format!(".{index_id}.{index_sha1}.verified"));
     if verified_marker.exists() && index_path.exists() {
+        crate::launch_log::info(format!("Assets: index {index_id} already verified"));
         return Ok(());
     }
 
@@ -2320,7 +2522,14 @@ async fn check_and_download_assets(
         downloads.push((url, obj_path, Some(hash.to_string())));
     }
 
-    if !downloads.is_empty() {
+    if downloads.is_empty() {
+        crate::launch_log::info(format!("Assets: all {} objects of index {index_id} present", seen.len()));
+    } else {
+        crate::launch_log::info(format!(
+            "Assets: downloading {} of {} objects (index {index_id})",
+            downloads.len(),
+            seen.len()
+        ));
         download_files(&client, &downloads).await?;
     }
 

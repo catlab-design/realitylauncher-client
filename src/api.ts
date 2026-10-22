@@ -2,6 +2,9 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type { GameInstance, LauncherConfig } from './types/launcher';
 
+/** A read of an instance log; text is already censored by the backend. Times are epoch ms (0 = unknown). */
+type LogChunk = { ok: boolean; content: string; size: number; modified?: number; created?: number };
+
 interface AuthAccount {
     uuid: string;
     username: string;
@@ -137,9 +140,11 @@ export const api = {
     killGame: (_instanceId?: string) => invoke<void>('kill_game').then(() => true),
     cancelLaunch: () => invoke<boolean>('cancel_launch'),
     instanceReadLatestLog: (instanceId: string) =>
-        invoke<{ ok: boolean; content: string; size: number }>('instance_read_latest_log', { instanceId }),
+        invoke<LogChunk>('instance_read_latest_log', { instanceId }),
     instanceTailLog: (instanceId: string, from: number) =>
-        invoke<{ ok: boolean; content: string; size: number }>('instance_tail_log', { instanceId, from }),
+        invoke<LogChunk>('instance_tail_log', { instanceId, from }),
+    instanceTailLaunchLog: (instanceId: string, from: number) =>
+        invoke<LogChunk>('instance_tail_launch_log', { instanceId, from }),
 
     getConfig: () => invoke<LauncherConfig>('config_get'),
     setConfig: async (partial: Partial<LauncherConfig>) => {
@@ -314,7 +319,7 @@ export const api = {
     checkLatestVersion: () => invoke<any>('check_latest_version'),
     getAppVersion: () => invoke<string>('get_app_version'),
     isDevMode: () => invoke<boolean>('is_dev_mode'),
-    linuxPerfTools: () => invoke<{ linux: boolean; mangohud: boolean; gamemode: boolean }>('linux_perf_tools'),
+    linuxPerfTools: () => invoke<{ linux: boolean; mangohud: boolean; gamemode: boolean; wayland: boolean }>('linux_perf_tools'),
     downloadUpdate: () => invoke<any>('download_update'),
     installUpdate: (auto?: boolean) => invoke<any>('install_update', { auto }),
     setInstallUpdateOnExit: (enabled: boolean) => invoke<void>('set_install_update_on_exit', { enabled }),

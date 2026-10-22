@@ -1269,8 +1269,24 @@ pub async fn auth_refresh() -> AuthCommandResult {
         Some(e) => println!("[Auth] Refresh failed after {:.1?}: {e}", started.elapsed()),
         None => println!("[Auth] Refresh ok in {:.1?}", started.elapsed()),
     }
+    *LAST_REFRESH.lock().unwrap() = Some(RefreshRecord {
+        at: std::time::Instant::now(),
+        took: started.elapsed(),
+        error: result.error.clone(),
+    });
     result
 }
+
+/// The last `auth_refresh`, which the frontend runs right before every launch;
+/// the launch log reports it as the session check.
+pub struct RefreshRecord {
+    pub at: std::time::Instant,
+    pub took: std::time::Duration,
+    pub error: Option<String>,
+}
+
+pub static LAST_REFRESH: once_cell::sync::Lazy<std::sync::Mutex<Option<RefreshRecord>>> =
+    once_cell::sync::Lazy::new(|| std::sync::Mutex::new(None));
 
 /// Best-effort token refresh for internal callers (cloud 401 retry path).
 /// Forces the Microsoft refresh chain even when the MC token is not yet near

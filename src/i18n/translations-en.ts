@@ -370,6 +370,8 @@ export const enTranslations = {
     gamemode: "Feral GameMode",
     gamemode_desc: "Ask the system for maximum CPU/GPU performance while the game runs.",
     tool_not_installed: "{tool} is not installed. Install it with your package manager to use this.",
+    native_wayland: "Native Wayland",
+    native_wayland_desc: "Off (recommended): the launcher and Minecraft run through XWayland, which avoids blank or crashing windows and window placement problems. On: sharper on HiDPI screens, but window icons and some window features may not work. Restart the launcher to apply it to the launcher window.",
 
     
     java_install_path: "Java {version} Install Path",

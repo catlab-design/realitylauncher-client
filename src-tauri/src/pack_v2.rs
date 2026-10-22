@@ -389,6 +389,12 @@ pub async fn sync(
         .map_err(|e| e.to_string())?
     };
     log::info!("[Pack v2] v{}: {} of {} files need updating", manifest.version, needed.len(), wants.len());
+    crate::launch_log::info(format!(
+        "Server pack v{}: {} of {} files need updating",
+        manifest.version,
+        needed.len(),
+        wants.len()
+    ));
 
     let mut errors: HashMap<String, String> = HashMap::new();
 

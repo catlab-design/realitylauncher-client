@@ -18,7 +18,7 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
 
 
     const [resolvedDir, setResolvedDir] = useState("");
-    const [perfTools, setPerfTools] = useState<{ linux: boolean; mangohud: boolean; gamemode: boolean } | null>(null);
+    const [perfTools, setPerfTools] = useState<{ linux: boolean; mangohud: boolean; gamemode: boolean; wayland: boolean } | null>(null);
     const { t } = useTranslation(config.language);
 
     useEffect(() => {
@@ -164,6 +164,21 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
                             onChange={() => updateConfig({ enableGameMode: !config.enableGameMode })}
                         />
                     </SettingsRow>
+                    {perfTools.wayland && (
+                        <SettingsRow
+                            colors={colors}
+                            icon={<i className="fa-solid fa-display text-base"></i>}
+                            title={t('native_wayland')}
+                            description={t('native_wayland_desc')}
+                        >
+                            <Toggle
+                                checked={!!config.nativeWayland}
+                                label={t('native_wayland')}
+                                colors={colors}
+                                onChange={() => updateConfig({ nativeWayland: !config.nativeWayland })}
+                            />
+                        </SettingsRow>
+                    )}
                 </SettingsSection>
             )}
         </SettingsPage>

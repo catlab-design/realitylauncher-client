@@ -9,7 +9,7 @@
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha1::Digest;
 
 use crate::instances::LoaderType;
@@ -20,7 +20,7 @@ const COMPONENT: &str = "net.minecraft.network.chat.Component";
 const MUTABLE: &str = "net.minecraft.network.chat.MutableComponent";
 const GAME_PROFILE_DESC: &str = "Lcom/mojang/authlib/GameProfile;";
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TabScheme {
     pub name: String,
@@ -528,6 +528,36 @@ async fn intermediary_names(
 /// `client_mappings`. Returns `Ok(vec![])` for unsupported versions or when names
 /// can't be found; `Err` only for I/O / network failures. For Forge/NeoForge a
 /// failure resolving `srg` is logged and only `official` is returned.
+#[derive(Serialize, Deserialize)]
+struct SchemesCache {
+    key: String,
+    schemes: Vec<TabScheme>,
+}
+
+/// What the resolved names depend on. The launcher version is part of it so a
+/// release that changes the resolution never reads an older result.
+fn schemes_cache_key(
+    minecraft_dir: &Path,
+    libraries_dir: &Path,
+    mc_version: &str,
+    loader: &LoaderType,
+    version_json: &serde_json::Value,
+) -> String {
+    let mappings_sha1 = client_mappings_info(minecraft_dir, version_json).and_then(|(_, s)| s);
+    let mcp = find_mcp_config(libraries_dir, mc_version).map(|p| {
+        let len = std::fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
+        format!("{}:{len}", p.display())
+    });
+    format!(
+        "{}|{mc_version}|{loader:?}|{}|{}",
+        env!("CARGO_PKG_VERSION"),
+        mappings_sha1.unwrap_or_default(),
+        mcp.unwrap_or_default()
+    )
+}
+
+/// Resolving hashes and parses ~10 MB of mappings for a dozen names that only
+/// change with the mapping files, so the result is kept next to them.
 pub async fn resolve_tab_schemes(
     minecraft_dir: &Path,
     libraries_dir: &Path,
@@ -538,6 +568,41 @@ pub async fn resolve_tab_schemes(
     if !is_supported_version(mc_version) {
         return Ok(vec![]);
     }
+    let key = schemes_cache_key(minecraft_dir, libraries_dir, mc_version, loader, version_json);
+    let cache_path = minecraft_dir
+        .join("mappings")
+        .join(mc_version)
+        .join(format!("tab-schemes-{loader:?}.json").to_lowercase());
+    let cached = std::fs::read(&cache_path)
+        .ok()
+        .and_then(|b| serde_json::from_slice::<SchemesCache>(&b).ok())
+        .filter(|c| c.key == key && !c.schemes.is_empty());
+    if let Some(cache) = cached {
+        return Ok(cache.schemes);
+    }
+
+    let schemes =
+        resolve_tab_schemes_uncached(minecraft_dir, libraries_dir, mc_version, loader, version_json)
+            .await?;
+    if !schemes.is_empty() {
+        let cache = SchemesCache { key, schemes: schemes.clone() };
+        if let (Some(parent), Ok(bytes)) = (cache_path.parent(), serde_json::to_vec(&cache)) {
+            let tmp = cache_path.with_extension(format!("{}.tmp", std::process::id()));
+            let _ = std::fs::create_dir_all(parent)
+                .and_then(|_| std::fs::write(&tmp, bytes))
+                .and_then(|_| std::fs::rename(&tmp, &cache_path));
+        }
+    }
+    Ok(schemes)
+}
+
+async fn resolve_tab_schemes_uncached(
+    minecraft_dir: &Path,
+    libraries_dir: &Path,
+    mc_version: &str,
+    loader: &LoaderType,
+    version_json: &serde_json::Value,
+) -> Result<Vec<TabScheme>, String> {
 
     match loader {
         LoaderType::Forge | LoaderType::Neoforge => {
