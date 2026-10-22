@@ -10,6 +10,7 @@ pub mod curseforge;
 pub mod discord;
 pub mod download;
 pub mod fs_utils;
+pub mod game_window;
 pub mod http_client;
 pub mod instances;
 pub mod java;

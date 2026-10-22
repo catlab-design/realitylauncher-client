@@ -1,7 +1,7 @@
 ## [Unreleased] — 2026-10-22
 
 ### Added
-- In-game branding: the game window title is now `Reality Launcher (<game version>-<launcher version>)`, and "Reality Launcher" shows on the title screen and the F3 debug screen. Done with a small bundled Java agent (`agent/`) that patches LWJGL's window title and Forge/NeoForge's title-screen branding; vanilla/Fabric/Quilt show it through `--versionType`.
+- In-game branding: the game window title is now `<instance name> | Reality Launcher (<game version>-<launcher version>)` and the window icon is the instance icon (the Reality logo when the instance has none). Only Minecraft's default title and icon are replaced, so modpacks/mods that set their own keep them. "Reality Launcher" also shows on the title screen and the F3 debug screen. Done with a small bundled Java agent (`agent/`) that patches LWJGL's window title and Forge/NeoForge's title-screen branding; vanilla/Fabric/Quilt show it through `--versionType`.
 - Reality badge in the multiplayer tab list (1.19–1.21.x, all loaders): players currently playing through Reality Launcher get a small Reality logo before their name. Works on any server, visible to Reality users. The launcher registers the running game with the API (`/presence/*`, needs the matching backend), installs a tiny badge resource pack, and the agent patches the tab list using names resolved from Mojang/Fabric/Forge mappings.
 
 ### Fixed

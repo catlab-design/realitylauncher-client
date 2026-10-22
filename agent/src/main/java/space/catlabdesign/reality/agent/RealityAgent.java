@@ -17,22 +17,28 @@ import org.objectweb.asm.Opcodes;
 
 /**
  * Brands the game for Reality Launcher. Only touches classes whose names are
- * never obfuscated (LWJGL, Forge/NeoForge BrandingControl), so one jar works
- * for every Minecraft version and loader.
+ * never obfuscated (LWJGL, Forge/NeoForge BrandingControl), plus the tab list
+ * through runtime names the launcher resolves, so one jar works for every
+ * Minecraft version and loader.
  *
- * Injected code references java.base only and has no branches: values are
- * baked in as constants at transform time, so no stack map frames need to be
- * recomputed and Forge's module layers never have to read this jar.
+ * Injected code has no branches (no stack map frames to recompute) and only
+ * references java.base: decisions live in {@link Hooks}, reached through a
+ * static field that the patched class fills by reflection, so Forge's module
+ * layers never have to read this jar.
  *
  * System properties set by the launcher:
- *   reality.title    full window title
- *   reality.brand    line added to the Forge/NeoForge title screen branding
- *   reality.session  properties file with the tab-badge lookup token and the
- *                    runtime names of the tab-list members (see TabScheme)
+ *   reality.title          window title replacing Minecraft's default one
+ *   reality.mcversion      game version, to recognise the default title
+ *   reality.icon           RLIC file with the window icon (see WindowHooks)
+ *   reality.vanillaIcons   CRC32s of Minecraft's default icon images
+ *   reality.brand          line added to the Forge/NeoForge title screen branding
+ *   reality.session        properties file with the tab-badge lookup token and the
+ *                          runtime names of the tab-list members (see TabScheme)
  */
 public final class RealityAgent implements ClassFileTransformer {
     private static final String LWJGL3_GLFW = "org/lwjgl/glfw/GLFW";
     private static final String LWJGL2_DISPLAY = "org/lwjgl/opengl/Display";
+    private static final String FUNCTION = "java/util/function/Function";
     private static final String[] BRANDING_CONTROLS = {
             "net/minecraftforge/internal/BrandingControl",
             "net/minecraftforge/fml/BrandingControl",
@@ -40,22 +46,46 @@ public final class RealityAgent implements ClassFileTransformer {
             "net/neoforged/fml/BrandingControl",
     };
 
-    private final String title;
+    private final boolean title;
+    private final boolean icon;
     private final String brand;
     private final List<TabScheme> tabSchemes;
 
-    private RealityAgent(String title, String brand, List<TabScheme> tabSchemes) {
+    private RealityAgent(boolean title, boolean icon, String brand, List<TabScheme> tabSchemes) {
         this.title = title;
+        this.icon = icon;
         this.brand = brand;
         this.tabSchemes = tabSchemes;
     }
 
     public static void premain(String args, Instrumentation inst) {
-        String title = System.getProperty("reality.title");
+        boolean title = installTitle();
+        boolean icon = installIcon();
         String brand = System.getProperty("reality.brand");
         List<TabScheme> tabSchemes = startTabBadges(System.getProperty("reality.session"));
-        if (isBlank(title) && isBlank(brand) && tabSchemes.isEmpty()) return;
-        inst.addTransformer(new RealityAgent(title, brand, tabSchemes));
+        if (!title && !icon && isBlank(brand) && tabSchemes.isEmpty()) return;
+        inst.addTransformer(new RealityAgent(title, icon, brand, tabSchemes));
+    }
+
+    private static boolean installTitle() {
+        String title = System.getProperty("reality.title");
+        if (isBlank(title)) return false;
+        Hooks.TITLE = WindowHooks.titleHook(title, System.getProperty("reality.mcversion"));
+        return true;
+    }
+
+    private static boolean installIcon() {
+        String path = System.getProperty("reality.icon");
+        if (isBlank(path)) return false;
+        try {
+            Hooks.ICON = WindowHooks.iconHook(
+                    WindowHooks.readIcons(new File(path)),
+                    WindowHooks.parseFingerprints(System.getProperty("reality.vanillaIcons")));
+            return true;
+        } catch (Throwable t) {
+            System.err.println("[RealityAgent] Window icon disabled: " + t);
+            return false;
+        }
     }
 
     private static List<TabScheme> startTabBadges(String sessionPath) {
@@ -69,7 +99,7 @@ public final class RealityAgent implements ClassFileTransformer {
             if (isBlank(badge) || schemes.isEmpty()) return Collections.emptyList();
             TabBadges badges = new TabBadges(file, props.getProperty("api.url"), badge);
             badges.start();
-            TabBadges.INSTANCE = badges;
+            Hooks.BADGE = badges;
             return schemes;
         } catch (Throwable t) {
             System.err.println("[RealityAgent] Tab badges disabled: " + t);
@@ -82,15 +112,18 @@ public final class RealityAgent implements ClassFileTransformer {
                             ProtectionDomain domain, byte[] bytes) {
         if (className == null) return null;
         try {
-            if (!isBlank(title) && (className.equals(LWJGL3_GLFW) || className.equals(LWJGL2_DISPLAY))) {
-                return rewrite(bytes, new TitleVisitor(className.equals(LWJGL3_GLFW)));
+            if (className.equals(LWJGL3_GLFW) && (title || icon)) {
+                return rewrite(bytes, new GlfwPatch(className, title, icon));
+            }
+            if (className.equals(LWJGL2_DISPLAY) && title) {
+                return rewrite(bytes, new DisplayPatch(className));
             }
             if (!isBlank(brand) && isBrandingControl(className)) {
-                return rewrite(bytes, new BrandingVisitor());
+                return rewrite(bytes, new BrandingPatch());
             }
             List<TabScheme> schemes = schemesFor(className);
             if (!schemes.isEmpty()) {
-                return rewrite(bytes, new TabVisitor(className, schemes));
+                return rewrite(bytes, new TabPatch(className, schemes));
             }
         } catch (Throwable t) {
             System.err.println("[RealityAgent] Skipping " + className + ": " + t);
@@ -130,16 +163,19 @@ public final class RealityAgent implements ClassFileTransformer {
     }
 
     /**
-     * LWJGL3 glfwSetWindowTitle(long, CharSequence) and glfwCreateWindow(int, int,
-     * CharSequence, long, long) / LWJGL2 Display.setTitle(String): overwrite the
-     * title argument on entry.
+     * Adds one static Function field per hook (reality$title, ...) and fills it
+     * at class init:
+     * reality$x = (Function) Class.forName(Hooks, true, systemLoader).getField("X").get(null)
+     * Subclasses patch methods in {@link #patchMethod}.
      */
-    private final class TitleVisitor implements Patch {
-        private final boolean lwjgl3;
-        private boolean applied;
+    private abstract static class HookFields implements Patch {
+        final String owner;
+        private final String[] hooks;
+        boolean applied;
 
-        TitleVisitor(boolean lwjgl3) {
-            this.lwjgl3 = lwjgl3;
+        HookFields(String owner, String... hooks) {
+            this.owner = owner;
+            this.hooks = hooks;
         }
 
         @Override
@@ -147,33 +183,203 @@ public final class RealityAgent implements ClassFileTransformer {
             return applied;
         }
 
+        abstract MethodVisitor patchMethod(int access, String name, String desc, MethodVisitor mv);
+
+        static String field(String hook) {
+            return "reality$" + hook.toLowerCase();
+        }
+
+        /** Pushes the hook's Function onto the stack. */
+        void loadHook(MethodVisitor mv, String hook) {
+            mv.visitFieldInsn(Opcodes.GETSTATIC, owner, field(hook), "L" + FUNCTION + ";");
+        }
+
         @Override
         public ClassVisitor wrap(ClassVisitor next) {
             return new ClassVisitor(Opcodes.ASM9, next) {
+                private boolean hasClinit;
+
                 @Override
                 public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
                     MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
-                    final int slot;
-                    if (lwjgl3 && name.equals("glfwSetWindowTitle") && desc.equals("(JLjava/lang/CharSequence;)V")) {
-                        slot = 2;
-                    } else if (lwjgl3 && name.equals("glfwCreateWindow") && desc.equals("(IILjava/lang/CharSequence;JJ)J")) {
-                        // Forge's early loading window passes its title here and never calls setTitle.
-                        slot = 2;
-                    } else if (!lwjgl3 && name.equals("setTitle") && desc.equals("(Ljava/lang/String;)V")) {
-                        slot = 0;
-                    } else {
-                        return mv;
+                    if (name.equals("<clinit>")) {
+                        hasClinit = true;
+                        return new MethodVisitor(Opcodes.ASM9, mv) {
+                            @Override
+                            public void visitCode() {
+                                super.visitCode();
+                                emitFieldInits(mv);
+                            }
+
+                            @Override
+                            public void visitMaxs(int maxStack, int maxLocals) {
+                                super.visitMaxs(Math.max(maxStack, 3), maxLocals);
+                            }
+                        };
                     }
-                    if ((access & Opcodes.ACC_STATIC) == 0) return mv;
-                    applied = true;
-                    return new MethodVisitor(Opcodes.ASM9, mv) {
-                        @Override
-                        public void visitCode() {
-                            super.visitCode();
-                            super.visitLdcInsn(title);
-                            super.visitVarInsn(Opcodes.ASTORE, slot);
+                    return patchMethod(access, name, desc, mv);
+                }
+
+                @Override
+                public void visitEnd() {
+                    if (applied) {
+                        for (String hook : hooks) {
+                            super.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC,
+                                    field(hook), "L" + FUNCTION + ";", null, null).visitEnd();
                         }
-                    };
+                        if (!hasClinit) {
+                            MethodVisitor mv = super.visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null);
+                            mv.visitCode();
+                            emitFieldInits(mv);
+                            mv.visitInsn(Opcodes.RETURN);
+                            mv.visitMaxs(3, 0);
+                            mv.visitEnd();
+                        }
+                    }
+                    super.visitEnd();
+                }
+            };
+        }
+
+        private void emitFieldInits(MethodVisitor mv) {
+            for (String hook : hooks) {
+                mv.visitLdcInsn(Hooks.class.getName());
+                mv.visitInsn(Opcodes.ICONST_1);
+                mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/ClassLoader", "getSystemClassLoader",
+                        "()Ljava/lang/ClassLoader;", false);
+                mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Class", "forName",
+                        "(Ljava/lang/String;ZLjava/lang/ClassLoader;)Ljava/lang/Class;", false);
+                mv.visitLdcInsn(hook);
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Class", "getField",
+                        "(Ljava/lang/String;)Ljava/lang/reflect/Field;", false);
+                mv.visitInsn(Opcodes.ACONST_NULL);
+                mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/reflect/Field", "get",
+                        "(Ljava/lang/Object;)Ljava/lang/Object;", false);
+                mv.visitTypeInsn(Opcodes.CHECKCAST, FUNCTION);
+                mv.visitFieldInsn(Opcodes.PUTSTATIC, owner, field(hook), "L" + FUNCTION + ";");
+            }
+        }
+
+        /** On entry: arg[slot] = (castType) hook.apply(arg[slot]). */
+        MethodVisitor filterArgOnEntry(MethodVisitor mv, String hook, int slot, String castType) {
+            return new MethodVisitor(Opcodes.ASM9, mv) {
+                @Override
+                public void visitCode() {
+                    super.visitCode();
+                    loadHook(mv, hook);
+                    super.visitVarInsn(Opcodes.ALOAD, slot);
+                    super.visitMethodInsn(Opcodes.INVOKEINTERFACE, FUNCTION, "apply",
+                            "(Ljava/lang/Object;)Ljava/lang/Object;", true);
+                    super.visitTypeInsn(Opcodes.CHECKCAST, castType);
+                    super.visitVarInsn(Opcodes.ASTORE, slot);
+                }
+
+                @Override
+                public void visitMaxs(int maxStack, int maxLocals) {
+                    super.visitMaxs(Math.max(maxStack, 2), maxLocals);
+                }
+            };
+        }
+    }
+
+    /**
+     * LWJGL3 GLFW: glfwCreateWindow / glfwSetWindowTitle titles go through
+     * Hooks.TITLE (Forge's early loading window only passes its title to
+     * glfwCreateWindow); glfwSetWindowIcon images go through Hooks.ICON.
+     */
+    private static final class GlfwPatch extends HookFields {
+        private final boolean title;
+        private final boolean icon;
+
+        GlfwPatch(String owner, boolean title, boolean icon) {
+            super(owner, "TITLE", "ICON");
+            this.title = title;
+            this.icon = icon;
+        }
+
+        @Override
+        MethodVisitor patchMethod(int access, String name, String desc, MethodVisitor mv) {
+            if ((access & Opcodes.ACC_STATIC) == 0) return mv;
+            if (title && name.equals("glfwSetWindowTitle") && desc.equals("(JLjava/lang/CharSequence;)V")) {
+                applied = true;
+                return filterArgOnEntry(mv, "TITLE", 2, "java/lang/CharSequence");
+            }
+            if (title && name.equals("glfwCreateWindow") && desc.equals("(IILjava/lang/CharSequence;JJ)J")) {
+                applied = true;
+                return filterArgOnEntry(mv, "TITLE", 2, "java/lang/CharSequence");
+            }
+            if (icon && name.equals("glfwSetWindowIcon") && desc.equals("(JLorg/lwjgl/glfw/GLFWImage$Buffer;)V")) {
+                applied = true;
+                return filterArgOnEntry(mv, "ICON", 2, "org/lwjgl/glfw/GLFWImage$Buffer");
+            }
+            return mv;
+        }
+    }
+
+    /** LWJGL2 Display.setTitle(String) (Minecraft before 1.13). */
+    private static final class DisplayPatch extends HookFields {
+        DisplayPatch(String owner) {
+            super(owner, "TITLE");
+        }
+
+        @Override
+        MethodVisitor patchMethod(int access, String name, String desc, MethodVisitor mv) {
+            if ((access & Opcodes.ACC_STATIC) == 0 || !name.equals("setTitle")
+                    || !desc.equals("(Ljava/lang/String;)V")) {
+                return mv;
+            }
+            applied = true;
+            return filterArgOnEntry(mv, "TITLE", 0, "java/lang/String");
+        }
+    }
+
+    /**
+     * PlayerTabOverlay.getNameForDisplay(PlayerInfo): prefix the returned name with
+     * Hooks.BADGE for Reality players. Several schemes can share the class name
+     * (Forge official vs SRG members); the one whose method matches wins.
+     */
+    private static final class TabPatch extends HookFields {
+        private final List<TabScheme> schemes;
+
+        TabPatch(String owner, List<TabScheme> schemes) {
+            super(owner, "BADGE");
+            this.schemes = schemes;
+        }
+
+        @Override
+        MethodVisitor patchMethod(int access, String name, String desc, MethodVisitor mv) {
+            if ((access & Opcodes.ACC_STATIC) != 0) return mv;
+            TabScheme scheme = null;
+            for (TabScheme s : schemes) {
+                if (s.overlayMethod.equals(name) && s.overlayDesc.equals(desc)) scheme = s;
+            }
+            if (scheme == null) return mv;
+            applied = true;
+            final TabScheme matched = scheme;
+            return new MethodVisitor(Opcodes.ASM9, mv) {
+                @Override
+                public void visitInsn(int opcode) {
+                    if (opcode == Opcodes.ARETURN) {
+                        // name -> literal(badge.apply(playerInfo.getProfile())).append(name)
+                        loadHook(mv, "BADGE");
+                        super.visitVarInsn(Opcodes.ALOAD, 1);
+                        super.visitMethodInsn(Opcodes.INVOKEVIRTUAL, matched.playerInfoClass,
+                                matched.getProfile, "()Lcom/mojang/authlib/GameProfile;", false);
+                        super.visitMethodInsn(Opcodes.INVOKEINTERFACE, FUNCTION, "apply",
+                                "(Ljava/lang/Object;)Ljava/lang/Object;", true);
+                        super.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/String");
+                        super.visitMethodInsn(Opcodes.INVOKESTATIC, matched.componentClass,
+                                matched.literal, matched.literalDesc, true);
+                        super.visitInsn(Opcodes.SWAP);
+                        super.visitMethodInsn(Opcodes.INVOKEVIRTUAL, matched.mutableClass,
+                                matched.append, matched.appendDesc, false);
+                    }
+                    super.visitInsn(opcode);
+                }
+
+                @Override
+                public void visitMaxs(int maxStack, int maxLocals) {
+                    super.visitMaxs(maxStack + 3, maxLocals);
                 }
             };
         }
@@ -185,7 +391,7 @@ public final class RealityAgent implements ClassFileTransformer {
      * bottom-up from index 0 when reversed, so the brand goes at index
      * reverse * size, computed without a branch.
      */
-    private final class BrandingVisitor implements Patch {
+    private final class BrandingPatch implements Patch {
         private boolean applied;
 
         @Override
@@ -234,127 +440,6 @@ public final class RealityAgent implements ClassFileTransformer {
                     };
                 }
             };
-        }
-    }
-
-    /**
-     * PlayerTabOverlay.getNameForDisplay(PlayerInfo): prefix the returned name with
-     * the badge for Reality players. The badge function lives in TabBadges (agent
-     * jar, system class loader); a static field added to the tab-list class holds
-     * it, filled in the static initializer by reflection, so the game's module
-     * layers never link against the agent. Several schemes can share the class
-     * name (Forge official vs SRG members); the one whose method matches wins.
-     */
-    private static final class TabVisitor implements Patch {
-        private static final String FIELD = "reality$badge";
-        private static final String FUNCTION = "java/util/function/Function";
-
-        private final String owner;
-        private final List<TabScheme> schemes;
-        private boolean applied;
-
-        TabVisitor(String owner, List<TabScheme> schemes) {
-            this.owner = owner;
-            this.schemes = schemes;
-        }
-
-        @Override
-        public boolean applied() {
-            return applied;
-        }
-
-        @Override
-        public ClassVisitor wrap(ClassVisitor next) {
-            return new ClassVisitor(Opcodes.ASM9, next) {
-                private boolean hasClinit;
-
-                @Override
-                public MethodVisitor visitMethod(int access, String name, String desc, String sig, String[] ex) {
-                    MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
-                    if (name.equals("<clinit>")) {
-                        hasClinit = true;
-                        return new MethodVisitor(Opcodes.ASM9, mv) {
-                            @Override
-                            public void visitCode() {
-                                super.visitCode();
-                                emitFieldInit(mv);
-                            }
-
-                            @Override
-                            public void visitMaxs(int maxStack, int maxLocals) {
-                                super.visitMaxs(Math.max(maxStack, 3), maxLocals);
-                            }
-                        };
-                    }
-                    if ((access & Opcodes.ACC_STATIC) != 0) return mv;
-                    TabScheme scheme = null;
-                    for (TabScheme s : schemes) {
-                        if (s.overlayMethod.equals(name) && s.overlayDesc.equals(desc)) scheme = s;
-                    }
-                    if (scheme == null) return mv;
-                    applied = true;
-                    final TabScheme matched = scheme;
-                    return new MethodVisitor(Opcodes.ASM9, mv) {
-                        @Override
-                        public void visitInsn(int opcode) {
-                            if (opcode == Opcodes.ARETURN) {
-                                // name -> literal(badge.apply(playerInfo.getProfile())).append(name)
-                                super.visitFieldInsn(Opcodes.GETSTATIC, owner, FIELD, "L" + FUNCTION + ";");
-                                super.visitVarInsn(Opcodes.ALOAD, 1);
-                                super.visitMethodInsn(Opcodes.INVOKEVIRTUAL, matched.playerInfoClass,
-                                        matched.getProfile, "()Lcom/mojang/authlib/GameProfile;", false);
-                                super.visitMethodInsn(Opcodes.INVOKEINTERFACE, FUNCTION, "apply",
-                                        "(Ljava/lang/Object;)Ljava/lang/Object;", true);
-                                super.visitTypeInsn(Opcodes.CHECKCAST, "java/lang/String");
-                                super.visitMethodInsn(Opcodes.INVOKESTATIC, matched.componentClass,
-                                        matched.literal, matched.literalDesc, true);
-                                super.visitInsn(Opcodes.SWAP);
-                                super.visitMethodInsn(Opcodes.INVOKEVIRTUAL, matched.mutableClass,
-                                        matched.append, matched.appendDesc, false);
-                            }
-                            super.visitInsn(opcode);
-                        }
-
-                        @Override
-                        public void visitMaxs(int maxStack, int maxLocals) {
-                            super.visitMaxs(maxStack + 3, maxLocals);
-                        }
-                    };
-                }
-
-                @Override
-                public void visitEnd() {
-                    super.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_SYNTHETIC,
-                            FIELD, "L" + FUNCTION + ";", null, null).visitEnd();
-                    if (!hasClinit) {
-                        MethodVisitor mv = super.visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null);
-                        mv.visitCode();
-                        emitFieldInit(mv);
-                        mv.visitInsn(Opcodes.RETURN);
-                        mv.visitMaxs(3, 0);
-                        mv.visitEnd();
-                    }
-                    super.visitEnd();
-                }
-            };
-        }
-
-        /** reality$badge = (Function) Class.forName(TabBadges, true, systemLoader).getField("INSTANCE").get(null) */
-        private void emitFieldInit(MethodVisitor mv) {
-            mv.visitLdcInsn(TabBadges.class.getName());
-            mv.visitInsn(Opcodes.ICONST_1);
-            mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/ClassLoader", "getSystemClassLoader",
-                    "()Ljava/lang/ClassLoader;", false);
-            mv.visitMethodInsn(Opcodes.INVOKESTATIC, "java/lang/Class", "forName",
-                    "(Ljava/lang/String;ZLjava/lang/ClassLoader;)Ljava/lang/Class;", false);
-            mv.visitLdcInsn("INSTANCE");
-            mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/Class", "getField",
-                    "(Ljava/lang/String;)Ljava/lang/reflect/Field;", false);
-            mv.visitInsn(Opcodes.ACONST_NULL);
-            mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, "java/lang/reflect/Field", "get",
-                    "(Ljava/lang/Object;)Ljava/lang/Object;", false);
-            mv.visitTypeInsn(Opcodes.CHECKCAST, FUNCTION);
-            mv.visitFieldInsn(Opcodes.PUTSTATIC, owner, FIELD, "L" + FUNCTION + ";");
         }
     }
 }

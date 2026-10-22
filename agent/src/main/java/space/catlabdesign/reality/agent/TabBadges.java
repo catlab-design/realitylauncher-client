@@ -26,10 +26,7 @@ import java.util.regex.Pattern;
  * GameProfile -> badge prefix ("" when unknown or not a Reality player).
  * Never blocks and never throws; lookups run on a daemon thread.
  */
-public final class TabBadges implements Function<Object, String> {
-    /** Read by the patched tab-list class; replaced in premain when badges are enabled. */
-    public static Function<Object, String> INSTANCE = profile -> "";
-
+public final class TabBadges implements Function<Object, Object> {
     static final int MAX_BATCH = 100;
     static final long CACHE_MS = 60_000;
     static final long POLL_MS = 2_000;
@@ -59,7 +56,7 @@ public final class TabBadges implements Function<Object, String> {
     }
 
     @Override
-    public String apply(Object profile) {
+    public Object apply(Object profile) {
         try {
             UUID id = profileId(profile);
             if (id == null) return "";

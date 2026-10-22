@@ -545,7 +545,13 @@ async fn launch_game(
         &instance,
         &config_val,
     )?;
-    jvm_args.extend(branding_jvm_args(&minecraft_dir_val, &instance.minecraft_version));
+    jvm_args.extend(branding_jvm_args(
+        &minecraft_dir_val,
+        &instance_dir,
+        &assets_dir,
+        &instance,
+        &effective_version_json,
+    ));
     let badge_setup =
         prepare_tab_badges(&minecraft_dir_val, &libraries_dir, &instance_dir, &instance, &effective_version_json)
             .await;
@@ -1553,25 +1559,51 @@ fn presence_uuids(session: &Session) -> Vec<String> {
     uuids
 }
 
-fn window_title(mc_version: &str) -> String {
-    format!("{BRAND_NAME} ({mc_version}-{})", env!("CARGO_PKG_VERSION"))
-}
-
 /// The agent fixes the window title and adds the Forge/NeoForge title-screen
 /// line; vanilla/Fabric/Quilt show the brand through `--versionType`. Branding
 /// is cosmetic, so a failure to write the agent never blocks the launch.
-fn branding_jvm_args(minecraft_dir: &Path, mc_version: &str) -> Vec<String> {
-    match ensure_agent_jar(minecraft_dir) {
-        Ok(agent) => vec![
-            format!("-javaagent:{}", agent.to_string_lossy()),
-            format!("-Dreality.title={}", window_title(mc_version)),
-            format!("-Dreality.brand={BRAND_NAME}"),
-        ],
+fn branding_jvm_args(
+    minecraft_dir: &Path,
+    instance_dir: &Path,
+    assets_dir: &Path,
+    instance: &GameInstance,
+    version_json: &serde_json::Value,
+) -> Vec<String> {
+    let agent = match ensure_agent_jar(minecraft_dir) {
+        Ok(agent) => agent,
         Err(e) => {
             log::warn!("[Launcher] Skipping in-game branding, could not write agent: {e}");
-            Vec::new()
+            return Vec::new();
+        }
+    };
+    let mut args = vec![
+        format!("-javaagent:{}", agent.to_string_lossy()),
+        format!(
+            "-Dreality.title={}",
+            crate::game_window::window_title(&instance.name, &instance.minecraft_version)
+        ),
+        format!("-Dreality.mcversion={}", instance.minecraft_version),
+        format!("-Dreality.brand={BRAND_NAME}"),
+    ];
+
+    let asset_index = version_json
+        .get("assetIndex")
+        .and_then(|i| i.get("id"))
+        .and_then(|i| i.as_str())
+        .unwrap_or("legacy");
+    let fingerprints = crate::game_window::vanilla_icon_fingerprints(assets_dir, asset_index);
+    if fingerprints.is_empty() {
+        log::warn!("[Launcher] No default icons found in asset index {asset_index}; keeping the game icon");
+    } else {
+        match crate::game_window::write_icon_file(minecraft_dir, instance_dir) {
+            Ok(icon) => {
+                args.push(format!("-Dreality.icon={}", icon.to_string_lossy()));
+                args.push(format!("-Dreality.vanillaIcons={}", fingerprints.join(",")));
+            }
+            Err(e) => log::warn!("[Launcher] Could not write window icon: {e}"),
         }
     }
+    args
 }
 
 fn build_jvm_args(
@@ -2557,14 +2589,6 @@ mod tests {
 
         fs::remove_dir_all(&dir).unwrap();
         assert_eq!(read_log_lines(&path, 4)["ok"], false);
-    }
-
-    #[test]
-    fn window_title_includes_game_and_launcher_version() {
-        assert_eq!(
-            window_title("1.20.1"),
-            format!("Reality Launcher (1.20.1-{})", env!("CARGO_PKG_VERSION"))
-        );
     }
 
     #[test]
