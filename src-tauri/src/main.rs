@@ -85,6 +85,7 @@ fn main() {
             
             launcher::is_game_running,
             launcher::kill_game,
+            launcher::cancel_launch,
             launcher::instances_launch,
             launcher::get_playing_instance_id,
             launcher::instance_read_latest_log,

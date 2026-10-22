@@ -110,6 +110,7 @@ src/
 │   ├── firstRunOnboarding.ts
 │   ├── installLock.ts
 │   ├── launchPolicy.ts
+│   ├── launchWatchdog.ts             # Play-button stall watchdog: trips after 5 min without launch/install progress (+ test)
 │   ├── microsoftLoginFlow.ts         # MS device code flow
 │   ├── performanceMode.ts            # effectiveVisuals(config): Performance mode → lite CSS, reduced motion, rainbow suspended (+ test)
 │   ├── pageVisibility.ts             # data-hidden on <html> while the window is hidden; isPageHidden() (+ test)
@@ -272,7 +273,7 @@ ConfigStore migration (v0→v1): `closeOnLaunch` changed from `boolean` to `'kee
 | **instances** | `instances_list`, `instances_get`, `instances_create`, `instances_update`, `instances_delete`, `instances_duplicate`, `instances_set_icon` |
 | **download** | `download_batch()`, `download_file()`, `DownloadItem`, `DownloadConfig`, `BatchResult` — shared concurrent engine used by modpack and cloud |
 | **perf_tools** | `linux_perf_tools` (Linux: which of mangohud/gamemoderun are on PATH) |
-| **launcher** | `is_game_running`, `kill_game` (emits `game-stopped`), `instances_launch`, `get_playing_instance_id`, `instance_read_latest_log`, `instance_tail_log`, `get_app_version`, `is_dev_mode`, `browse_java`, `instances_preinstall` |
+| **launcher** | `is_game_running`, `kill_game` (emits `game-stopped`), `cancel_launch` (abandons a launch whose game process isn't registered yet; never kills a running game), `instances_launch`, `get_playing_instance_id`, `instance_read_latest_log`, `instance_tail_log`, `get_app_version`, `is_dev_mode`, `browse_java`, `instances_preinstall` |
 | **java** | `install_java`, `detect_java_installations`, `delete_java`, `test_java_execution`, `auto_detect_java` |
 | **admin** | `check_status`, `get_settings`, `save_setting`, `get_users`, `ban_user`, `unban_user`, `toggle_user_admin`, `create_user`, `get_user_details`, `get_system_info` |
 | **content** | mod/resourcepack CRUD + toggle + delete + install + lock |
@@ -331,7 +332,7 @@ const KNOWN_UNPORTED = new Set(['fetchInstanceAgendas', 'fetchAllAgendas']);
 ## 6. Testing
 
 - **Framework**: `bun:test`
-- **Test files**: `src/api.test.ts` (120 lines), `src/lib/apiBase.test.ts`, `src/lib/perfStats.test.ts`, `src/lib/tabKeepAlive.test.ts`, `src/lib/pageVisibility.test.ts`
+- **Test files**: `src/api.test.ts` (120 lines), `src/lib/apiBase.test.ts`, `src/lib/launchWatchdog.test.ts`, `src/lib/perfStats.test.ts`, `src/lib/tabKeepAlive.test.ts`, `src/lib/pageVisibility.test.ts`
 - **Perf bench** (dev only, real app): see §7; besides metrics it reports `checks` (install toast live, keep-alive layout/remount, rainbow CSS) — all must be `true`
 - **Run tests**: `bun test` or `bun test src/api.test.ts`
 - **Bridge parity validation**:
@@ -397,6 +398,7 @@ const KNOWN_UNPORTED = new Set(['fetchInstanceAgendas', 'fetchAllAgendas']);
 16. **Loader installers and zlib-ng** — Forge/NeoForge processors verify output jar SHA1s computed with classic zlib. Corretto on Linux links the system `libz`, which is zlib-ng on Arch/CachyOS/Fedora 40+, so installs fail. `installer_java()` in `launcher.rs` swaps in a JDK whose `lib/libzip.so` does not link `libz.so.1`; only the installer run uses it, the game still runs on the resolved Java
 17. **In-game branding agent** — every launch adds `-javaagent:<mc dir>/agent/reality-agent.jar` plus `-Dreality.title` (`<instance> | Reality Launcher (<mc>-<launcher>)`), `-Dreality.mcversion`, `-Dreality.icon` (`<mc dir>/agent/window-icon.rlic`, RGBA at 16–256 px, instance `icon.png` — often WebP — or the Reality logo), `-Dreality.vanillaIcons` (CRC32 of the default `icons/*.png` RGBA from the asset index) and `-Dreality.brand`; `${version_type}` resolves to `Reality Launcher`. The agent only replaces Minecraft's *default* title (`Minecraft[*][ Forge| NeoForge] <ver>[ - …]` — Forge patches its name into `createTitle` — and `Minecraft: (Neo)Forge…`) and only icons whose every image matches a default fingerprint, so mod-set titles/icons win. Hooks: `GLFW.glfwCreateWindow`/`glfwSetWindowTitle`/`glfwSetWindowIcon`, LWJGL2 `Display.setTitle`, Forge/NeoForge `BrandingControl.getBrandings`. Injected code is branch-free and java.base-only: it calls `Hooks.*` through `reality$*` static fields filled by reflection in `<clinit>`, so Forge module layers need not read the jar. macOS ignores `glfwSetWindowIcon` (dock icon stays). CI has no Maven: after editing `agent/`, run `bun run build:agent` and commit the jar (the build is reproducible)
 18. **Tab-list badge** (`tab_badge.rs`, `mappings.rs`, agent `TabBadges`/`TabScheme`) — 1.19–1.21.x only. Launch resolves runtime names (cached in `<mc dir>/mappings/<ver>/`, 60 s cap), writes `reality-badge.zip` into the instance and adds it to `options.txt`, and passes `-Dreality.session=<mc dir>/agent/session.properties` (0600; `self.uuids` = own offline + account UUIDs, always badged because the API excludes the caller's session; lookup token added once `/presence/start` answers). The agent adds a `reality$badge` static field to the tab-list class (filled by reflection in `<clinit>`) and calls it from `getNameForDisplay`; Forge/NeoForge get both `official` and `srg` schemes and the matching one wins. Logo left of the head (1.19.3+): `HeadShiftPatch` (asm-tree) finds the head draw by shape — static void call with ≥3 int args followed by `iinc x 9`, after `info.getProfile()` — and reroutes it through `reality$drawHead`, which adds `Hooks.HEADSHIFT` (10 for Reality rows: 2 px gap after the badge) to the first int arg; the name then gets `badge.head` = back-space U+E2A1 (−9, one badge advance), glyph U+E2A0, forward-space U+E2A2 (+10) from the pack's `space` provider. Needs the `realitylauncher-api` `/presence` routes (migration `0028_game_presence.sql`)
+19. **Launch timeout** — Play (`ModPack.tsx`, `ServerMenu.tsx`) uses `createLaunchWatchdog` (`src/lib/launchWatchdog.ts`): every `launch-progress`/`install-progress` event restarts a 5 min timer, and on a stall the UI calls `cancel_launch`, which bumps `LAUNCH_GENERATION` under the `GAME_PROCESS` lock so `launch_game` drops its child, and refuses if a game is already registered. Each Play press is its own `{ cancelled, watchdog }` object so a stale launch can't reset a newer one. Don't reintroduce a fixed wall-clock cap: first launches (mod sync, downloads, Forge installer) legitimately take minutes. `auth_refresh` (run before every launch) is capped at 30 s
 
 ---
 

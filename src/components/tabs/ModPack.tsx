@@ -34,6 +34,7 @@ import {
 } from "../../lib/installLock";
 import { type AuthSession, type Server, type GameInstance, type LauncherConfig } from "../../types/launcher";
 import { useMotionPreset } from "../../lib/motion";
+import { createLaunchWatchdog, type LaunchWatchdog } from "../../lib/launchWatchdog";
 
 // App banner (src/assets) is the fallback for any card without its own art.
 const DEFAULT_MODPACK_BANNER = appBanner;
@@ -198,20 +199,44 @@ export function ModPack({
 
 
 
-    const launchCancelledRef = useRef(false);
-    const launchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // One object per Play press, so a stale launch that resolves late can't
+    // clear the state of a newer one.
+    const launchRef = useRef<{ cancelled: boolean; watchdog: LaunchWatchdog } | null>(null);
+
+    const handleLaunchStalled = async (launch: { cancelled: boolean }) => {
+        // cancel_launch refuses once the game process exists, so a game that
+        // started late is left running.
+        if (!(await window.api?.cancelLaunch?.())) return;
+        launch.cancelled = true;
+        if (launchRef.current === launch) {
+            launchRef.current = null;
+            setLaunchingId(null);
+            setInstallProgress(null);
+        }
+        toastError(t('launch_timeout'));
+    };
 
     const handlePlay = async (id: string) => {
-        if (launchingId !== null) return;
+        if (launchingId !== null) {
+            console.warn(`[ModPack] Play ignored: ${launchingId} is still launching`);
+            return;
+        }
 
         playClick();
-        launchCancelledRef.current = false;
+        const launch: { cancelled: boolean; watchdog: LaunchWatchdog } = {
+            cancelled: false,
+            watchdog: createLaunchWatchdog(() => void handleLaunchStalled(launch)),
+        };
+        launchRef.current = launch;
+        const isCurrent = () => launchRef.current === launch;
         setLaunchingId(id);
 
         // instances_launch resolves only once the JVM is spawned, so surface the
         // backend's prepare stages (download/extract) while we wait.
         const removeLaunchProgress = (window.api as any)?.onLaunchProgress?.(
             (progress: { stage?: string; message?: string; progress?: number }) => {
+                launch.watchdog.touch();
+                if (!isCurrent()) return;
                 if (progress?.stage === "running") {
                     setInstallProgress(null);
                     return;
@@ -228,7 +253,8 @@ export function ModPack({
         // install-progress channel, so mirror it into the same modal.
         const removeSyncProgress = (window.api as any)?.onInstallProgress?.(
             (p: { type?: string; task?: string; percent?: number; current?: number; total?: number }) => {
-                if (p?.type === "sync-complete") return;
+                launch.watchdog.touch();
+                if (!isCurrent() || p?.type === "sync-complete") return;
                 setInstallProgress({
                     stage: p?.type || "sync",
                     message: p?.task || t('syncing') || 'Syncing...',
@@ -236,12 +262,6 @@ export function ModPack({
                 });
             },
         );
-
-        launchTimeoutRef.current = setTimeout(() => {
-            console.warn(`[ModPack] Launch timeout for instance ${id}`);
-            setLaunchingId(null);
-            toastError(t('launch_timeout'));
-        }, 120000);
 
         try {
             const targetInstance = instances.find((item) => item.id === id);
@@ -280,11 +300,13 @@ export function ModPack({
                 return;
             }
 
+            if (launch.cancelled) return;
             const result = await window.api?.instancesLaunch?.(id, launchPolicy.launchOptions);
             console.log("[ModPack] instancesLaunch result:", result);
 
-            if (launchCancelledRef.current) {
-                await window.api?.killGame?.(id);
+            // Stop or the stall watchdog already moved the launch generation
+            // on, so the backend dropped this launch's game process itself.
+            if (launch.cancelled) {
                 removeFromPlaying(id);
                 return;
             }
@@ -359,13 +381,13 @@ export function ModPack({
             toastError(error?.message || t('error_occurred'));
             removeFromPlaying(id);
         } finally {
-            setLaunchingId(null);
+            launch.watchdog.stop();
             removeLaunchProgress?.();
             removeSyncProgress?.();
-            setInstallProgress(null);
-            if (launchTimeoutRef.current) {
-                clearTimeout(launchTimeoutRef.current);
-                launchTimeoutRef.current = null;
+            if (isCurrent()) {
+                launchRef.current = null;
+                setLaunchingId(null);
+                setInstallProgress(null);
             }
         }
     };
@@ -392,13 +414,12 @@ export function ModPack({
 
     const handleStop = async (id: string) => {
         const wasLaunching = launchingId === id;
-        if (wasLaunching) {
-            launchCancelledRef.current = true;
+        if (wasLaunching && launchRef.current) {
+            launchRef.current.cancelled = true;
+            launchRef.current.watchdog.stop();
+            launchRef.current = null;
             setLaunchingId(null);
-            if (launchTimeoutRef.current) {
-                clearTimeout(launchTimeoutRef.current);
-                launchTimeoutRef.current = null;
-            }
+            setInstallProgress(null);
         }
 
         try {

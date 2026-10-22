@@ -135,6 +135,7 @@ export const api = {
 
     isGameRunning: (instanceId?: string) => invoke<boolean>('is_game_running', { instanceId }),
     killGame: (_instanceId?: string) => invoke<void>('kill_game').then(() => true),
+    cancelLaunch: () => invoke<boolean>('cancel_launch'),
     instanceReadLatestLog: (instanceId: string) =>
         invoke<{ ok: boolean; content: string; size: number }>('instance_read_latest_log', { instanceId }),
     instanceTailLog: (instanceId: string, from: number) =>

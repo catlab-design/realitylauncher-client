@@ -723,7 +723,7 @@ export const thTranslations = {
     instance_delete_success: "ลบ Instance เรียบร้อย",
     instance_delete_failed: "ลบ Instance ไม่สำเร็จ",
     instance_created_success: "สร้าง instance เรียบร้อย",
-    launch_timeout: "การเปิดเกมใช้เวลานานเกินไป กรุณาลองใหม่",
+    launch_timeout: "การเปิดเกมไม่มีความคืบหน้านานเกินไป จึงยกเลิกให้แล้ว กรุณาลองใหม่",
     launch_failed: "เปิดเกมไม่สำเร็จ",
     java_not_found_prompt: "ไม่พบ Java ในเครื่องของคุณ",
     install_java_now_ask: "คุณต้องการติดตั้ง Java ทันทีหรือไม่?",

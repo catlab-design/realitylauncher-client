@@ -1249,9 +1249,27 @@ async fn auth_refresh_core(force: bool) -> AuthCommandResult {
     }
 }
 
+/// The frontend runs this before every launch. The Microsoft chain is up to
+/// eight requests with only a connect timeout each, so cap the whole refresh:
+/// a server that stalls after connecting would otherwise hang Play silently.
+const REFRESH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
 #[tauri::command]
 pub async fn auth_refresh() -> AuthCommandResult {
-    auth_refresh_core(false).await
+    let started = std::time::Instant::now();
+    let result = match tokio::time::timeout(REFRESH_TIMEOUT, auth_refresh_core(false)).await {
+        Ok(result) => result,
+        Err(_) => AuthCommandResult {
+            ok: false,
+            account: None,
+            error: Some("Refreshing your Microsoft sign-in timed out. Check your connection and try again.".into()),
+        },
+    };
+    match &result.error {
+        Some(e) => println!("[Auth] Refresh failed after {:.1?}: {e}", started.elapsed()),
+        None => println!("[Auth] Refresh ok in {:.1?}", started.elapsed()),
+    }
+    result
 }
 
 /// Best-effort token refresh for internal callers (cloud 401 retry path).

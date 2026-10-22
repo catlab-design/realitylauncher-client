@@ -619,6 +619,7 @@ declare global {
       
       isGameRunning: (instanceId?: string) => Promise<boolean>;
       killGame: (instanceId?: string) => Promise<boolean>;
+      cancelLaunch: () => Promise<boolean>;
       onGameStarted: (
         callback: (data: { instanceId: string; pid: number }) => void,
       ) => () => void;

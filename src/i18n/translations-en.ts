@@ -641,7 +641,7 @@ export const enTranslations = {
     instance_delete_success: "Instance deleted successfully",
     instance_delete_failed: "Failed to delete instance",
     instance_created_success: "Instance created successfully",
-    launch_timeout: "Game launch timed out. Please try again.",
+    launch_timeout: "The game launch stopped making progress, so it was cancelled. Please try again.",
     launch_failed: "Failed to launch game",
     java_not_found_prompt: "Java not found on your system",
     install_java_now_ask: "Would you like to install Java now?",

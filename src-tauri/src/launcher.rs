@@ -154,6 +154,23 @@ pub fn kill_game(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Abandons a launch that has not registered its game process yet; a running
+/// game is never touched. Holding GAME_PROCESS makes this atomic with the
+/// registration in `launch_game`, which sees the new generation and drops its
+/// child. Returns false when the game is already running.
+#[tauri::command]
+pub fn cancel_launch() -> bool {
+    let game = GAME_PROCESS.lock().unwrap();
+    if game.is_some() {
+        return false;
+    }
+    *LAUNCH_GENERATION.lock().unwrap() += 1;
+    *LAUNCHING.lock().unwrap() = false;
+    *PLAYING_INSTANCE_ID.lock().unwrap() = None;
+    println!("[Launcher] Launch abandoned: no progress");
+    true
+}
+
 #[tauri::command]
 pub async fn instances_launch(
     app_handle: tauri::AppHandle,

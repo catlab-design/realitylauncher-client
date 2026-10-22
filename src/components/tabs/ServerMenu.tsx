@@ -3,6 +3,7 @@ import { apiUrl } from "../../lib/apiBase";
 import { useShallow } from "zustand/react/shallow";
 import { motion } from "framer-motion";
 import { useMotionPreset } from "../../lib/motion";
+import { createLaunchWatchdog, type LaunchWatchdog } from "../../lib/launchWatchdog";
 import { useTranslation } from "../../hooks/useTranslation";
 import { playClick, toastSuccess, toastError } from "../../lib/sounds";
 import type { Server, LauncherConfig } from "../../types/launcher";
@@ -309,20 +310,37 @@ export function ServerMenu({
         }
     }, [instances, resolveLocalId]);
 
-    const launchCancelledRef = React.useRef(false);
-    const launchTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    // One object per Play press, so a stale launch that resolves late can't
+    // clear the state of a newer one.
+    const launchRef = React.useRef<{ cancelled: boolean; watchdog: LaunchWatchdog } | null>(null);
+
+    const handleLaunchStalled = async (launch: { cancelled: boolean }) => {
+        // cancel_launch refuses once the game process exists, so a game that
+        // started late is left running.
+        if (!(await window.api?.cancelLaunch?.())) return;
+        launch.cancelled = true;
+        if (launchRef.current === launch) {
+            launchRef.current = null;
+            setLaunchingId(null);
+        }
+        toast.error(t('launch_timeout'));
+    };
 
     const handlePlayServer = async (e: React.MouseEvent, instance: any) => {
         e.stopPropagation();
-        if (launchingId) return;
-        launchCancelledRef.current = false;
+        if (launchingId) {
+            console.warn(`[ServerMenu] Play ignored: ${launchingId} is still launching`);
+            return;
+        }
         const targetId = resolveLocalId(instance);
+        const launch: { cancelled: boolean; watchdog: LaunchWatchdog } = {
+            cancelled: false,
+            watchdog: createLaunchWatchdog(() => void handleLaunchStalled(launch)),
+        };
+        launchRef.current = launch;
         setLaunchingId(targetId);
-        launchTimeoutRef.current = setTimeout(() => {
-            launchCancelledRef.current = true;
-            setLaunchingId(null);
-            toast.error(t('launch_timeout'));
-        }, 120000);
+        const removeLaunchProgress = window.api?.onLaunchProgress?.(() => launch.watchdog.touch());
+        const removeSyncProgress = window.api?.onInstallProgress?.(() => launch.watchdog.touch());
         try {
             if (session?.authType === "catid" && session.minecraftUuid) {
                 const linkedMsAccount = accounts.find(a => a.authType === "microsoft" && a.uuid === session.minecraftUuid);
@@ -331,10 +349,6 @@ export function ServerMenu({
                     if (switchedSession) { setAuthSession(switchedSession as AuthSession); updateAccount(switchedSession as AuthSession); }
                 } else {
                     toast.error(t('session_expired_login_server'));
-                    if (launchTimeoutRef.current) {
-                        clearTimeout(launchTimeoutRef.current);
-                        launchTimeoutRef.current = null;
-                    }
                     return;
                 }
             }
@@ -342,15 +356,13 @@ export function ServerMenu({
             if (refreshResult && refreshResult.ok === false) {
                 const refreshErr = typeof refreshResult.error === "string" ? refreshResult.error : "";
                 toast.error(refreshErr || t('session_expired_login_server'));
-                if (launchTimeoutRef.current) {
-                    clearTimeout(launchTimeoutRef.current);
-                    launchTimeoutRef.current = null;
-                }
                 return;
             }
+            if (launch.cancelled) return;
             const res = await window.api?.instancesLaunch?.(targetId);
-            if (launchCancelledRef.current) {
-                await window.api?.killGame?.(targetId);
+            // Stop or the stall watchdog already moved the launch generation
+            // on, so the backend dropped this launch's game process itself.
+            if (launch.cancelled) {
                 setPlayingInstances(prev => { const s = new Set(prev); s.delete(targetId); return s; });
                 return;
             }
@@ -403,21 +415,23 @@ export function ServerMenu({
             toast.error(err.message || t('error_occurred'));
             setPlayingInstances(prev => { const s = new Set(prev); s.delete(targetId); return s; });
         } finally {
-            if (launchTimeoutRef.current) {
-                clearTimeout(launchTimeoutRef.current);
-                launchTimeoutRef.current = null;
+            launch.watchdog.stop();
+            removeLaunchProgress?.();
+            removeSyncProgress?.();
+            if (launchRef.current === launch) {
+                launchRef.current = null;
+                setLaunchingId(null);
             }
-            setLaunchingId(null);
         }
     };
 
     const handleStopServer = async (e: React.MouseEvent, instance: any) => {
         e.stopPropagation();
         const instanceId = resolveLocalId(instance);
-        if (launchingId === instanceId) launchCancelledRef.current = true;
-        if (launchTimeoutRef.current) {
-            clearTimeout(launchTimeoutRef.current);
-            launchTimeoutRef.current = null;
+        if (launchingId === instanceId && launchRef.current) {
+            launchRef.current.cancelled = true;
+            launchRef.current.watchdog.stop();
+            launchRef.current = null;
         }
         try {
             await (window.api as any)?.killGame?.(instanceId);
