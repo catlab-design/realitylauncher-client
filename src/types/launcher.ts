@@ -106,6 +106,10 @@ export interface LauncherConfig {
   fullscreen: boolean;
   javaArguments: string;
   maxConcurrentDownloads: number;
+  /** Linux only: run the game under `mangohud --dlsym`. */
+  enableMangoHud?: boolean;
+  /** Linux only: run the game under `gamemoderun`. */
+  enableGameMode?: boolean;
   telemetryEnabled: boolean;
   autoUpdateEnabled: boolean;
   lastSeenVersion?: string;

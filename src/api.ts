@@ -313,6 +313,7 @@ export const api = {
     checkLatestVersion: () => invoke<any>('check_latest_version'),
     getAppVersion: () => invoke<string>('get_app_version'),
     isDevMode: () => invoke<boolean>('is_dev_mode'),
+    linuxPerfTools: () => invoke<{ linux: boolean; mangohud: boolean; gamemode: boolean }>('linux_perf_tools'),
     downloadUpdate: () => invoke<any>('download_update'),
     installUpdate: (auto?: boolean) => invoke<any>('install_update', { auto }),
     setInstallUpdateOnExit: (enabled: boolean) => invoke<void>('set_install_update_on_exit', { enabled }),

@@ -587,7 +587,18 @@ async fn launch_game(
     println!("[Launcher] Args: {}", redact_args(&all_args, access_token));
 
 
-    let mut cmd = Command::new(&java_path);
+    let wrapper = crate::perf_tools::game_wrapper(config_val.enable_mango_hud, config_val.enable_game_mode);
+    if !wrapper.is_empty() {
+        println!("[Launcher] Wrapper: {}", wrapper.join(" "));
+    }
+    let mut cmd = match wrapper.split_first() {
+        Some((program, rest)) => {
+            let mut cmd = Command::new(program);
+            cmd.args(rest).arg(&java_path);
+            cmd
+        }
+        None => Command::new(&java_path),
+    };
     cmd.args(&all_args)
         .current_dir(&instance_dir)
         .stdout(Stdio::piped())
