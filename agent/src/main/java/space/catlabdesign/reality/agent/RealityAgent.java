@@ -97,7 +97,8 @@ public final class RealityAgent implements ClassFileTransformer {
             String badge = props.getProperty("badge");
             List<TabScheme> schemes = TabScheme.load(props);
             if (isBlank(badge) || schemes.isEmpty()) return Collections.emptyList();
-            TabBadges badges = new TabBadges(file, props.getProperty("api.url"), badge);
+            TabBadges badges = new TabBadges(file, props.getProperty("api.url"), badge,
+                    TabBadges.parseUuids(props.getProperty("self.uuids")));
             badges.start();
             Hooks.BADGE = badges;
             return schemes;

@@ -552,9 +552,15 @@ async fn launch_game(
         &instance,
         &effective_version_json,
     ));
-    let badge_setup =
-        prepare_tab_badges(&minecraft_dir_val, &libraries_dir, &instance_dir, &instance, &effective_version_json)
-            .await;
+    let badge_setup = prepare_tab_badges(
+        &minecraft_dir_val,
+        &libraries_dir,
+        &instance_dir,
+        &instance,
+        &effective_version_json,
+        &presence_uuids(&session),
+    )
+    .await;
     if let Some(ref setup) = badge_setup {
         jvm_args.push(setup.jvm_arg());
     }
@@ -649,7 +655,6 @@ async fn launch_game(
             setup,
             api_token,
             telemetry_instance_id.clone(),
-            presence_uuids(&session),
         )),
         _ => None,
     };
@@ -1527,6 +1532,7 @@ async fn prepare_tab_badges(
     instance_dir: &Path,
     instance: &GameInstance,
     version_json: &serde_json::Value,
+    self_uuids: &[String],
 ) -> Option<crate::tab_badge::BadgeSetup> {
     let resolve = crate::mappings::resolve_tab_schemes(
         minecraft_dir,
@@ -1546,7 +1552,7 @@ async fn prepare_tab_badges(
             return None;
         }
     };
-    crate::tab_badge::prepare(minecraft_dir, instance_dir, &instance.minecraft_version, schemes)
+    crate::tab_badge::prepare(minecraft_dir, instance_dir, &instance.minecraft_version, schemes, self_uuids)
 }
 
 /// UUIDs this player can appear as in a tab list: the account UUID on

@@ -178,10 +178,22 @@ fn escape_property(value: &str) -> String {
     out
 }
 
-fn session_properties(schemes: &[TabScheme], lookup_token: Option<&str>) -> String {
+/// Dashed lowercase, the form the agent and the API compare.
+fn normalize_uuid(raw: &str) -> Option<String> {
+    let hex: String = raw.chars().filter(|c| *c != '-').collect::<String>().to_lowercase();
+    if hex.len() != 32 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    Some(format!("{}-{}-{}-{}-{}", &hex[0..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..32]))
+}
+
+/// `self.uuids` are this player's own UUIDs: the agent always badges them
+/// (the API leaves the caller's own session out of lookups).
+fn session_properties(schemes: &[TabScheme], self_uuids: &[String], lookup_token: Option<&str>) -> String {
     let mut entries: Vec<(String, String)> = vec![
         ("api.url".into(), API_URL.into()),
         ("badge".into(), format!("{BADGE_GLYPH} ")),
+        ("self.uuids".into(), self_uuids.join(",")),
         ("scheme.count".into(), schemes.len().to_string()),
     ];
     if let Some(token) = lookup_token {
@@ -215,6 +227,7 @@ fn session_properties(schemes: &[TabScheme], lookup_token: Option<&str>) -> Stri
 pub struct BadgeSetup {
     session_path: PathBuf,
     schemes: Vec<TabScheme>,
+    self_uuids: Vec<String>,
 }
 
 impl BadgeSetup {
@@ -225,22 +238,26 @@ impl BadgeSetup {
 
 /// Writes the pack, enables it and writes the session file (without a token
 /// yet). None when there is nothing to hook for this version/loader.
+/// `self_uuids`: the UUIDs this player can appear as in a tab list.
 pub fn prepare(
     minecraft_dir: &Path,
     instance_dir: &Path,
     mc_version: &str,
     schemes: Vec<TabScheme>,
+    self_uuids: &[String],
 ) -> Option<BadgeSetup> {
     if schemes.is_empty() {
         return None;
     }
+    let mut self_uuids: Vec<String> = self_uuids.iter().filter_map(|u| normalize_uuid(u)).collect();
+    self_uuids.dedup();
     let result = (|| -> Result<BadgeSetup, String> {
         let pack = pack_zip(mc_version)?;
         write_atomic(&instance_dir.join("resourcepacks").join(PACK_FILE), &pack)?;
         enable_pack(instance_dir)?;
         let session_path = minecraft_dir.join("agent").join(SESSION_FILE);
-        write_atomic(&session_path, session_properties(&schemes, None).as_bytes())?;
-        Ok(BadgeSetup { session_path, schemes })
+        write_atomic(&session_path, session_properties(&schemes, &self_uuids, None).as_bytes())?;
+        Ok(BadgeSetup { session_path, schemes, self_uuids: self_uuids.clone() })
     })();
     match result {
         Ok(setup) => Some(setup),
@@ -299,12 +316,7 @@ async fn start_session(
 
 /// Registers the running game, hands the lookup token to the agent, heartbeats
 /// until stopped, then ends the session and removes the session file.
-pub fn spawn_presence(
-    setup: BadgeSetup,
-    api_token: String,
-    instance_id: String,
-    uuids: Vec<String>,
-) -> PresenceHandle {
+pub fn spawn_presence(setup: BadgeSetup, api_token: String, instance_id: String) -> PresenceHandle {
     let stopped = Arc::new(AtomicBool::new(false));
     let handle = PresenceHandle(stopped.clone());
     tauri::async_runtime::spawn(async move {
@@ -326,9 +338,10 @@ pub fn spawn_presence(
                     None => false,
                 };
                 if !alive {
-                    match start_session(&api_token, &instance_id, &uuids).await {
+                    match start_session(&api_token, &instance_id, &setup.self_uuids).await {
                         Ok(started) => {
-                            let props = session_properties(&setup.schemes, Some(&started.lookup_token));
+                            let props =
+                                session_properties(&setup.schemes, &setup.self_uuids, Some(&started.lookup_token));
                             if let Err(e) = write_atomic(&setup.session_path, props.as_bytes()) {
                                 log::warn!("[TabBadge] Could not write session file: {e}");
                             }
@@ -372,6 +385,19 @@ mod tests {
             append: "method_10852".into(),
             append_desc: "(Lnet/minecraft/class_2561;)Lnet/minecraft/class_5250;".into(),
         }
+    }
+
+    #[test]
+    fn normalizes_uuids() {
+        assert_eq!(
+            normalize_uuid("72398DCE78F647F0AFBC3C66E2E4F9D3").as_deref(),
+            Some("72398dce-78f6-47f0-afbc-3c66e2e4f9d3")
+        );
+        assert_eq!(
+            normalize_uuid("72398dce-78f6-47f0-afbc-3c66e2e4f9d3").as_deref(),
+            Some("72398dce-78f6-47f0-afbc-3c66e2e4f9d3")
+        );
+        assert_eq!(normalize_uuid("catid-123"), None);
     }
 
     #[test]
@@ -422,11 +448,12 @@ mod tests {
 
     #[test]
     fn session_properties_escape_for_java() {
-        let props = session_properties(&[scheme()], Some("tok_-123"));
+        let props = session_properties(&[scheme()], &["11111111-2222-3333-4444-555555555555".into()], Some("tok_-123"));
         assert!(props.contains("badge=\\uE2A0 \n"));
         assert!(props.contains("api.url=https\\://api.reality.catlabdesign.space\n"));
         assert!(props.contains("lookup.token=tok_-123\n"));
         assert!(props.contains("scheme.count=1\n"));
+        assert!(props.contains("self.uuids=11111111-2222-3333-4444-555555555555\n"));
         assert!(props.contains("scheme.0.overlay.desc=(Lnet/minecraft/class_640;)Lnet/minecraft/class_2561;\n"));
     }
 }

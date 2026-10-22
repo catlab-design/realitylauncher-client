@@ -35,6 +35,8 @@ public final class TabBadges implements Function<Object, Object> {
 
     private final File sessionFile;
     private final String badge;
+    /** This player's own UUIDs: always badged, the API leaves our own session out of lookups. */
+    private final Set<UUID> self;
     private final Map<UUID, Long> checkedAt = new ConcurrentHashMap<>();
     private final Set<UUID> reality = ConcurrentHashMap.newKeySet();
     private final Set<UUID> pending = ConcurrentHashMap.newKeySet();
@@ -43,10 +45,24 @@ public final class TabBadges implements Function<Object, Object> {
     private volatile String apiUrl;
     private volatile String token;
 
-    TabBadges(File sessionFile, String apiUrl, String badge) {
+    TabBadges(File sessionFile, String apiUrl, String badge, Set<UUID> self) {
         this.sessionFile = sessionFile;
         this.apiUrl = apiUrl;
         this.badge = badge;
+        this.self = self;
+    }
+
+    static Set<UUID> parseUuids(String list) {
+        Set<UUID> out = new HashSet<>();
+        if (list == null) return out;
+        for (String part : list.split(",")) {
+            try {
+                if (!part.trim().isEmpty()) out.add(UUID.fromString(part.trim()));
+            } catch (IllegalArgumentException ignored) {
+                // Skip malformed entries.
+            }
+        }
+        return out;
     }
 
     void start() {
@@ -60,6 +76,7 @@ public final class TabBadges implements Function<Object, Object> {
         try {
             UUID id = profileId(profile);
             if (id == null) return "";
+            if (self.contains(id)) return badge;
             Long at = checkedAt.get(id);
             if (at == null || System.currentTimeMillis() - at > CACHE_MS) pending.add(id);
             return reality.contains(id) ? badge : "";
