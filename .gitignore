@@ -17,3 +17,6 @@ src-tauri/gen/schemas/
 # Editor / OS
 .DS_Store
 *.local
+
+# Java agent build output (the shipped jar lives in src-tauri/resources/)
+agent/target/
