@@ -2,6 +2,11 @@
 
 ### Fixed
 - Forge/NeoForge install failed on Linux distros that ship zlib-ng (Arch, CachyOS, Fedora 40+) with `Processor failed, invalid outputs` / checksum mismatches. The bundled Corretto JDK compresses through the system zlib-ng, which produces different jar bytes than Forge expects. The loader installer now runs with an installed JDK that bundles its own zlib (same or newer major) when one is available; otherwise the error explains the cause.
+- Game Logs: lines were split into two entries when a poll landed mid-line; only complete lines are read now.
+- Game Logs: a non-UTF-8 byte or a read starting mid-character dropped a whole chunk of log silently; logs are now decoded lossily.
+- Game Logs: Forge logs (`[22Oct2026 13:50:53.856] …`) showed no timestamps.
+- Game Logs: stack-trace lines were labelled INFO and hidden by the ERROR/WARN filters; untimestamped lines now inherit the level of the line above.
+- Game Logs: Reload rendered the full log uncapped and kept tailing from the old offset (duplicate lines); it now restarts the tail.
 - Loader installer failures no longer dump the installer's entire output (~20k lines) into the error; only the last 40 lines are kept.
 
 ## [5.0.2] — 2026-10-20
