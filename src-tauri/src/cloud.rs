@@ -1000,9 +1000,10 @@ pub async fn instance_check_integrity(app_handle: tauri::AppHandle, id: String) 
                 SimpleResult {
                     ok: false,
                     error: Some(format!(
-                        "{} file(s) failed to download: {preview}{}",
+                        "{} file(s) failed to download: {preview}{} (first error: {})",
                         failed.len(),
-                        if failed.len() > 5 { ", …" } else { "" }
+                        if failed.len() > 5 { ", …" } else { "" },
+                        failed.first().map(|(_, reason)| reason.as_str()).unwrap_or("unknown")
                     )),
                     message: None,
                 }
@@ -1787,9 +1788,10 @@ pub async fn instances_cloud_install(app_handle: tauri::AppHandle, id: String) -
             SimpleResult {
                 ok: false,
                 error: Some(format!(
-                    "{} file(s) failed to download — the modpack is incomplete: {preview}{}",
+                    "{} file(s) failed to download — the modpack is incomplete: {preview}{} (first error: {})",
                     failed.len(),
-                    if failed.len() > 5 { ", …" } else { "" }
+                    if failed.len() > 5 { ", …" } else { "" },
+                    failed.first().map(|(_, reason)| reason.as_str()).unwrap_or("unknown")
                 )),
                 message: None,
             }
