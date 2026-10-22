@@ -89,8 +89,9 @@ public final class RealityAgent implements ClassFileTransformer {
     }
 
     /**
-     * LWJGL3 glfwSetWindowTitle(long, CharSequence) / LWJGL2 Display.setTitle(String):
-     * overwrite the title argument on entry.
+     * LWJGL3 glfwSetWindowTitle(long, CharSequence) and glfwCreateWindow(int, int,
+     * CharSequence, long, long) / LWJGL2 Display.setTitle(String): overwrite the
+     * title argument on entry.
      */
     private final class TitleVisitor implements Patch {
         private final boolean lwjgl3;
@@ -113,6 +114,9 @@ public final class RealityAgent implements ClassFileTransformer {
                     MethodVisitor mv = super.visitMethod(access, name, desc, sig, ex);
                     final int slot;
                     if (lwjgl3 && name.equals("glfwSetWindowTitle") && desc.equals("(JLjava/lang/CharSequence;)V")) {
+                        slot = 2;
+                    } else if (lwjgl3 && name.equals("glfwCreateWindow") && desc.equals("(IILjava/lang/CharSequence;JJ)J")) {
+                        // Forge's early loading window passes its title here and never calls setTitle.
                         slot = 2;
                     } else if (!lwjgl3 && name.equals("setTitle") && desc.equals("(Ljava/lang/String;)V")) {
                         slot = 0;
