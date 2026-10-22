@@ -385,6 +385,7 @@ const KNOWN_UNPORTED = new Set(['fetchInstanceAgendas', 'fetchAllAgendas']);
 13. **Rust release profile** is thin LTO (`codegen-units = 16`, `strip`, `opt-level = 3`); full LTO took ~16 min cold on 4 cores and was rejected for build time
 14. **`WEBKIT_DISABLE_DMABUF_RENDERER` is required** on the maintainer's Linux machine — never remove it as a perf fix; WebKitGTK's non-DMABuf path makes scroll repaint the main remaining cost
 15. **`src/components/ui/CalendarWidget.tsx` is dead and does not parse** (not imported anywhere). Plain `tsc -p tsconfig.json` only reports its syntax errors and hides every type error; exclude it to typecheck the app
+16. **Loader installers and zlib-ng** — Forge/NeoForge processors verify output jar SHA1s computed with classic zlib. Corretto on Linux links the system `libz`, which is zlib-ng on Arch/CachyOS/Fedora 40+, so installs fail. `installer_java()` in `launcher.rs` swaps in a JDK whose `lib/libzip.so` does not link `libz.so.1`; only the installer run uses it, the game still runs on the resolved Java
 
 ---
 
