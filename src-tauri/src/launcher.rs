@@ -537,7 +537,7 @@ async fn launch_game(
     )?;
 
     
-    let jvm_args = build_jvm_args(
+    let mut jvm_args = build_jvm_args(
         &effective_version_json,
         &classpath,
         &natives_dir,
@@ -545,6 +545,7 @@ async fn launch_game(
         &instance,
         &config_val,
     )?;
+    jvm_args.extend(branding_jvm_args(&minecraft_dir_val, &instance.minecraft_version));
 
     
     let (main_class, game_args) = build_game_args(
@@ -1472,6 +1473,48 @@ fn minecraft_dir() -> PathBuf {
 
 
 
+const BRAND_NAME: &str = "Reality Launcher";
+const REALITY_AGENT_JAR: &[u8] = include_bytes!("../resources/reality-agent.jar");
+
+/// Writes the bundled agent (source in `agent/`) next to the libraries,
+/// replacing it only when the bytes differ.
+fn ensure_agent_jar(minecraft_dir: &Path) -> Result<PathBuf, String> {
+    let agent_dir = minecraft_dir.join("agent");
+    let path = agent_dir.join("reality-agent.jar");
+    if fs::read(&path).is_ok_and(|bytes| bytes == REALITY_AGENT_JAR) {
+        return Ok(path);
+    }
+    fs::create_dir_all(&agent_dir).map_err(|e| e.to_string())?;
+    let tmp = agent_dir.join(format!("reality-agent.jar.{}.tmp", std::process::id()));
+    fs::write(&tmp, REALITY_AGENT_JAR).map_err(|e| e.to_string())?;
+    fs::rename(&tmp, &path).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        e.to_string()
+    })?;
+    Ok(path)
+}
+
+fn window_title(mc_version: &str) -> String {
+    format!("{BRAND_NAME} ({mc_version}-{})", env!("CARGO_PKG_VERSION"))
+}
+
+/// The agent fixes the window title and adds the Forge/NeoForge title-screen
+/// line; vanilla/Fabric/Quilt show the brand through `--versionType`. Branding
+/// is cosmetic, so a failure to write the agent never blocks the launch.
+fn branding_jvm_args(minecraft_dir: &Path, mc_version: &str) -> Vec<String> {
+    match ensure_agent_jar(minecraft_dir) {
+        Ok(agent) => vec![
+            format!("-javaagent:{}", agent.to_string_lossy()),
+            format!("-Dreality.title={}", window_title(mc_version)),
+            format!("-Dreality.brand={BRAND_NAME}"),
+        ],
+        Err(e) => {
+            log::warn!("[Launcher] Skipping in-game branding, could not write agent: {e}");
+            Vec::new()
+        }
+    }
+}
+
 fn build_jvm_args(
     version_json: &serde_json::Value,
     classpath: &str,
@@ -1585,7 +1628,7 @@ fn build_game_args(
             .replace("${auth_access_token}", access_token)
             .replace("${auth_session}", access_token)
             .replace("${version_name}", version_name)
-            .replace("${version_type}", "release")
+            .replace("${version_type}", BRAND_NAME)
             .replace("${assets_root}", &assets_dir.to_string_lossy())
             .replace("${assets_index_name}", asset_index)
             .replace("${game_directory}", &instance_dir.to_string_lossy())
@@ -1656,6 +1699,8 @@ fn build_game_args(
             user_properties.to_string(),
             "--userType".to_string(),
             user_type.to_string(),
+            "--versionType".to_string(),
+            BRAND_NAME.to_string(),
         ]
     };
 
@@ -2453,6 +2498,35 @@ mod tests {
 
         fs::remove_dir_all(&dir).unwrap();
         assert_eq!(read_log_lines(&path, 4)["ok"], false);
+    }
+
+    #[test]
+    fn window_title_includes_game_and_launcher_version() {
+        assert_eq!(
+            window_title("1.20.1"),
+            format!("Reality Launcher (1.20.1-{})", env!("CARGO_PKG_VERSION"))
+        );
+    }
+
+    #[test]
+    fn bundled_agent_declares_premain() {
+        assert_eq!(&REALITY_AGENT_JAR[..2], b"PK");
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(REALITY_AGENT_JAR)).unwrap();
+        let mut manifest = String::new();
+        std::io::Read::read_to_string(&mut zip.by_name("META-INF/MANIFEST.MF").unwrap(), &mut manifest)
+            .unwrap();
+        assert!(manifest.contains("Premain-Class: space.catlabdesign.reality.agent.RealityAgent"));
+    }
+
+    #[test]
+    fn ensure_agent_jar_writes_and_refreshes() {
+        let dir = std::env::temp_dir().join(format!("rl-agent-test-{}", std::process::id()));
+        let path = ensure_agent_jar(&dir).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), REALITY_AGENT_JAR);
+        fs::write(&path, b"stale").unwrap();
+        ensure_agent_jar(&dir).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), REALITY_AGENT_JAR);
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

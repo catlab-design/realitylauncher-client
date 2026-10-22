@@ -1,5 +1,8 @@
 ## [Unreleased] — 2026-10-22
 
+### Added
+- In-game branding: the game window title is now `Reality Launcher (<game version>-<launcher version>)`, and "Reality Launcher" shows on the title screen and the F3 debug screen. Done with a small bundled Java agent (`agent/`) that patches LWJGL's window title and Forge/NeoForge's title-screen branding; vanilla/Fabric/Quilt show it through `--versionType`.
+
 ### Fixed
 - Forge/NeoForge install failed on Linux distros that ship zlib-ng (Arch, CachyOS, Fedora 40+) with `Processor failed, invalid outputs` / checksum mismatches. The bundled Corretto JDK compresses through the system zlib-ng, which produces different jar bytes than Forge expects. The loader installer now runs with an installed JDK that bundles its own zlib (same or newer major) when one is available; otherwise the error explains the cause.
 - Game Logs: lines were split into two entries when a poll landed mid-line; only complete lines are read now.

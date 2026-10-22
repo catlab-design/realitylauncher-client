@@ -22,6 +22,7 @@
 ├── docs/
 │   ├── gap-analysis-2026-06-30.md
 │   └── plans/2026-06-29-electron-to-tauri-migration.md
+├── agent/                             # Java agent for in-game branding (Maven; built jar is committed to src-tauri/resources/)
 ├── scripts/fix-asset-src.mjs          # Astro → Vite asset codemod
 ├── src/                                # React frontend source
 ├── src-tauri/                          # Rust + Tauri backend
@@ -137,6 +138,7 @@ src/
 src-tauri/
 ├── Cargo.toml                        # Rust dependencies (tauri 2, serde, reqwest, sha, zip, discord-rp, etc.)
 ├── tauri.conf.json                   # App name, window config (360×380 fixed), bundle
+├── resources/reality-agent.jar       # Built branding agent, embedded with include_bytes! (rebuild: bun run build:agent)
 ├── build.rs
 ├── capabilities/default.json         # Security permissions
 ├── config/                           # Minecraft optimization configs
@@ -345,6 +347,7 @@ const KNOWN_UNPORTED = new Set(['fetchInstanceAgendas', 'fetchAllAgendas']);
 | `bun run tauri build` | Build production Tauri native app |
 | `bun test` | Run all tests |
 | `bun run check:bridge` | Typecheck bridge files |
+| `bun run build:agent` | Rebuild the branding Java agent (needs JDK + Maven) and copy it to `src-tauri/resources/` |
 | `VITE_PERF_BENCH=1 VITE_PERF_BENCH_EXIT=1 bun run tauri dev 2>&1 \| grep PERF_REPORT` | Dev-only perf bench: cycles tabs, scrolls Explore/Servers, fakes a progress burst, prints JSON, closes the window. Reads local data only. |
 
 ---
@@ -386,6 +389,7 @@ const KNOWN_UNPORTED = new Set(['fetchInstanceAgendas', 'fetchAllAgendas']);
 14. **`WEBKIT_DISABLE_DMABUF_RENDERER` is required** on the maintainer's Linux machine — never remove it as a perf fix; WebKitGTK's non-DMABuf path makes scroll repaint the main remaining cost
 15. **`src/components/ui/CalendarWidget.tsx` is dead and does not parse** (not imported anywhere). Plain `tsc -p tsconfig.json` only reports its syntax errors and hides every type error; exclude it to typecheck the app
 16. **Loader installers and zlib-ng** — Forge/NeoForge processors verify output jar SHA1s computed with classic zlib. Corretto on Linux links the system `libz`, which is zlib-ng on Arch/CachyOS/Fedora 40+, so installs fail. `installer_java()` in `launcher.rs` swaps in a JDK whose `lib/libzip.so` does not link `libz.so.1`; only the installer run uses it, the game still runs on the resolved Java
+17. **In-game branding agent** — every launch adds `-javaagent:<mc dir>/agent/reality-agent.jar` plus `-Dreality.title` / `-Dreality.brand`, and `${version_type}` resolves to `Reality Launcher`. The agent only patches unobfuscated classes (`org/lwjgl/glfw/GLFW.glfwSetWindowTitle`, LWJGL2 `Display.setTitle`, Forge/NeoForge `BrandingControl.getBrandings`) and injects branch-free java.base-only bytecode so no frames are recomputed and Forge module layers need not read the jar. CI has no Maven: after editing `agent/`, run `bun run build:agent` and commit the jar (the build is reproducible)
 
 ---
 
