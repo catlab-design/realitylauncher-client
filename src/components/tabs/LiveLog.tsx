@@ -27,6 +27,8 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
     const [isLoadingFile, setIsLoadingFile] = useState(false);
     const logContainerRef = useRef<HTMLDivElement>(null);
     const logIdRef = useRef(0);
+    const lastLevelRef = useRef<LogEntry["level"]>("info");
+    const [reloadKey, setReloadKey] = useState(0);
 
     useEffect(() => {
         if (autoScroll && logContainerRef.current) {
@@ -35,17 +37,22 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
     }, [logs, autoScroll]);
 
     
+    // Vanilla/Fabric: "[13:56:16] [main/INFO]: ..."; Forge: "[22Oct2026 13:50:53.856] [main/INFO] ...".
+    // Lines without a timestamp (stack traces, wrapped output) inherit the previous line's level.
     const parseLines = useCallback((content: string): LogEntry[] => {
         return content
-            .split("\n")
+            .split(/\r?\n/)
             .filter((line) => line.trim())
             .map((line) => {
-                let level: LogEntry["level"] = "info";
-                if (line.includes("/ERROR]") || line.includes("/FATAL]")) level = "error";
-                else if (line.includes("/WARN]")) level = "warn";
-                else if (line.includes("/DEBUG]")) level = "debug";
-
-                const timeMatch = line.match(/\[(\d{2}:\d{2}:\d{2})\]/);
+                const timeMatch = line.match(/^\[(?:\d{1,2}[A-Za-z]{3}\d{4} )?(\d{2}:\d{2}:\d{2})/);
+                let level = lastLevelRef.current;
+                if (timeMatch) {
+                    if (line.includes("/ERROR]") || line.includes("/FATAL]")) level = "error";
+                    else if (line.includes("/WARN]")) level = "warn";
+                    else if (line.includes("/DEBUG]")) level = "debug";
+                    else level = "info";
+                    lastLevelRef.current = level;
+                }
                 return {
                     id: logIdRef.current++,
                     timestamp: timeMatch ? timeMatch[1] : "",
@@ -65,6 +72,7 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
         let timer: ReturnType<typeof setTimeout> | null = null;
         let offset = 0;
         logIdRef.current = 0;
+        lastLevelRef.current = "info";
         setLogs([]);
 
         const append = (content: string) => {
@@ -114,7 +122,7 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
             cancelled = true;
             if (timer) clearTimeout(timer);
         };
-    }, [isOpen, instanceId, parseLines]);
+    }, [isOpen, instanceId, parseLines, reloadKey]);
 
     const clearLogs = useCallback(() => {
         setLogs([]);
@@ -126,31 +134,7 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
         navigator.clipboard.writeText(text);
     }, [logs]);
 
-    const reloadLogs = useCallback(async () => {
-        if (!instanceId) return;
-        setIsLoadingFile(true);
-        try {
-            const result = await (window.api as any)?.instanceReadLatestLog?.(instanceId);
-            if (result?.ok && result.content) {
-                const lines = result.content.split("\n").filter((line: string) => line.trim());
-                const entries: LogEntry[] = lines.map((line: string, idx: number) => {
-                    let level: LogEntry["level"] = "info";
-                    if (line.includes("/ERROR]") || line.includes("/FATAL]")) level = "error";
-                    else if (line.includes("/WARN]")) level = "warn";
-                    else if (line.includes("/DEBUG]")) level = "debug";
-                    const timeMatch = line.match(/\[(\d{2}:\d{2}:\d{2})\]/);
-                    const timestamp = timeMatch ? timeMatch[1] : "";
-                    return { id: idx, timestamp, level, message: line };
-                });
-                setLogs(entries);
-                logIdRef.current = entries.length;
-            }
-        } catch (error) {
-            console.error("[LiveLog] Failed to reload log file:", error);
-        } finally {
-            setIsLoadingFile(false);
-        }
-    }, [instanceId]);
+    const reloadLogs = useCallback(() => setReloadKey((k) => k + 1), []);
 
     const filteredLogs = filter === "all"
         ? logs
