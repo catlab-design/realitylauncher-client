@@ -20,8 +20,10 @@ const BADGE_GLYPH: char = '\u{E2A0}';
 /// badge, then skip forward past the head again.
 const BACK_SPACE: char = '\u{E2A1}';
 const FORWARD_SPACE: char = '\u{E2A2}';
-/// Badge advance (8 px glyph + 1) = how far the agent moves the head right.
-const HEAD_SHIFT: i32 = 9;
+/// Badge glyph advance: 8 px wide + 1 px.
+const BADGE_ADVANCE: i32 = 9;
+/// How far the agent moves the head right; leaves a 2 px gap after the badge.
+const HEAD_SHIFT: i32 = 10;
 const BADGE_PNG: &[u8] = include_bytes!("../resources/badge.png");
 const PACK_FILE: &str = "reality-badge.zip";
 const SESSION_FILE: &str = "session.properties";
@@ -81,7 +83,9 @@ fn pack_zip(mc_version: &str) -> Result<Vec<u8>, String> {
     })];
     if supports_head_left(mc_version) {
         let mut advances = serde_json::Map::new();
-        advances.insert(BACK_SPACE.to_string(), (-HEAD_SHIFT).into());
+        // Name text starts where the unmoved head ended: back up one badge to
+        // the row start, draw the badge, then skip past the moved head.
+        advances.insert(BACK_SPACE.to_string(), (-BADGE_ADVANCE).into());
         advances.insert(FORWARD_SPACE.to_string(), HEAD_SHIFT.into());
         providers.push(serde_json::json!({ "type": "space", "advances": advances }));
     }
@@ -458,6 +462,7 @@ mod tests {
         assert!(meta.contains("\"pack_format\": 15"));
         assert!(font.contains("\"space\""));
         assert!(font.contains("-9"));
+        assert!(font.contains("10"));
     }
 
     #[test]
@@ -509,7 +514,7 @@ mod tests {
         assert!(props.contains("scheme.count=1\n"));
         assert!(props.contains("self.uuids=11111111-2222-3333-4444-555555555555\n"));
         assert!(props.contains("badge.head=\\uE2A1\\uE2A0\\uE2A2\n"));
-        assert!(props.contains("badge.head.shift=9\n"));
+        assert!(props.contains("badge.head.shift=10\n"));
         assert!(!session_properties(&[scheme()], &[], false, None).contains("badge.head"));
         assert!(props.contains("scheme.0.overlay.desc=(Lnet/minecraft/class_640;)Lnet/minecraft/class_2561;\n"));
     }
