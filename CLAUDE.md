@@ -139,6 +139,7 @@ src-tauri/
 ├── Cargo.toml                        # Rust dependencies (tauri 2, serde, reqwest, sha, zip, discord-rp, etc.)
 ├── tauri.conf.json                   # App name, window config (360×380 fixed), bundle
 ├── resources/reality-agent.jar       # Built branding agent, embedded with include_bytes! (rebuild: bun run build:agent)
+├── resources/badge.png               # 8×8 pixel-art Reality cube used as the tab-list badge glyph
 ├── build.rs
 ├── capabilities/default.json         # Security permissions
 ├── config/                           # Minecraft optimization configs
@@ -169,7 +170,9 @@ src-tauri/
     ├── social.rs                     # Server ping
     ├── telemetry.rs                  # Telemetry logging
     ├── wardrobe.rs                   # Minecraft + CatSkinC skin management
-    └── mod_meta.rs                   # Mod metadata helpers
+    ├── mod_meta.rs                   # Mod metadata helpers
+    ├── mappings.rs                   # Runtime names of tab-list members per version/loader (Mojang + intermediary/SRG mappings)
+    └── tab_badge.rs                  # Tab-list badge: resource pack, agent session file, /presence heartbeat
 ```
 
 ---
@@ -390,6 +393,7 @@ const KNOWN_UNPORTED = new Set(['fetchInstanceAgendas', 'fetchAllAgendas']);
 15. **`src/components/ui/CalendarWidget.tsx` is dead and does not parse** (not imported anywhere). Plain `tsc -p tsconfig.json` only reports its syntax errors and hides every type error; exclude it to typecheck the app
 16. **Loader installers and zlib-ng** — Forge/NeoForge processors verify output jar SHA1s computed with classic zlib. Corretto on Linux links the system `libz`, which is zlib-ng on Arch/CachyOS/Fedora 40+, so installs fail. `installer_java()` in `launcher.rs` swaps in a JDK whose `lib/libzip.so` does not link `libz.so.1`; only the installer run uses it, the game still runs on the resolved Java
 17. **In-game branding agent** — every launch adds `-javaagent:<mc dir>/agent/reality-agent.jar` plus `-Dreality.title` / `-Dreality.brand`, and `${version_type}` resolves to `Reality Launcher`. The agent only patches unobfuscated classes (`org/lwjgl/glfw/GLFW.glfwSetWindowTitle` + `glfwCreateWindow` (Forge's early window), LWJGL2 `Display.setTitle`, Forge/NeoForge `BrandingControl.getBrandings`) and injects branch-free java.base-only bytecode so no frames are recomputed and Forge module layers need not read the jar. CI has no Maven: after editing `agent/`, run `bun run build:agent` and commit the jar (the build is reproducible)
+18. **Tab-list badge** (`tab_badge.rs`, `mappings.rs`, agent `TabBadges`/`TabScheme`) — 1.19–1.21.x only. Launch resolves runtime names (cached in `<mc dir>/mappings/<ver>/`, 60 s cap), writes `reality-badge.zip` into the instance and adds it to `options.txt`, and passes `-Dreality.session=<mc dir>/agent/session.properties` (0600; lookup token added once `/presence/start` answers). The agent adds a `reality$badge` static field to the tab-list class (filled by reflection in `<clinit>`) and calls it from `getNameForDisplay`; Forge/NeoForge get both `official` and `srg` schemes and the matching one wins. Needs the `realitylauncher-api` `/presence` routes (migration `0028_game_presence.sql`)
 
 ---
 

@@ -546,6 +546,12 @@ async fn launch_game(
         &config_val,
     )?;
     jvm_args.extend(branding_jvm_args(&minecraft_dir_val, &instance.minecraft_version));
+    let badge_setup =
+        prepare_tab_badges(&minecraft_dir_val, &libraries_dir, &instance_dir, &instance, &effective_version_json)
+            .await;
+    if let Some(ref setup) = badge_setup {
+        jvm_args.push(setup.jvm_arg());
+    }
 
     
     let (main_class, game_args) = build_game_args(
@@ -632,6 +638,16 @@ async fn launch_game(
     }));
     crate::telemetry::flush_now();
 
+    let presence = match (badge_setup, session.api_token.clone()) {
+        (Some(setup), Some(api_token)) => Some(crate::tab_badge::spawn_presence(
+            setup,
+            api_token,
+            telemetry_instance_id.clone(),
+            presence_uuids(&session),
+        )),
+        _ => None,
+    };
+
     let _ = app.emit(
         "game-started",
         GameStartedPayload {
@@ -716,6 +732,9 @@ async fn launch_game(
                 PollResult::Running => {}
                 PollResult::Stopped(exit_code) => {
                     println!("[Launcher] Game stopped (exit={:?})", exit_code);
+                    if let Some(ref presence) = presence {
+                        presence.stop();
+                    }
 
                     
                     crate::telemetry::queue_event("game_close", serde_json::json!({
@@ -1492,6 +1511,46 @@ fn ensure_agent_jar(minecraft_dir: &Path) -> Result<PathBuf, String> {
         e.to_string()
     })?;
     Ok(path)
+}
+
+/// Tab-list badge setup (`tab_badge`); `None` means this launch simply has no
+/// badges. Mapping downloads are capped so a slow network never stalls a launch.
+async fn prepare_tab_badges(
+    minecraft_dir: &Path,
+    libraries_dir: &Path,
+    instance_dir: &Path,
+    instance: &GameInstance,
+    version_json: &serde_json::Value,
+) -> Option<crate::tab_badge::BadgeSetup> {
+    let resolve = crate::mappings::resolve_tab_schemes(
+        minecraft_dir,
+        libraries_dir,
+        &instance.minecraft_version,
+        &instance.loader,
+        version_json,
+    );
+    let schemes = match tokio::time::timeout(std::time::Duration::from_secs(60), resolve).await {
+        Ok(Ok(schemes)) => schemes,
+        Ok(Err(e)) => {
+            log::warn!("[TabBadge] Could not resolve tab-list names: {e}");
+            return None;
+        }
+        Err(_) => {
+            log::warn!("[TabBadge] Resolving tab-list names timed out");
+            return None;
+        }
+    };
+    crate::tab_badge::prepare(minecraft_dir, instance_dir, &instance.minecraft_version, schemes)
+}
+
+/// UUIDs this player can appear as in a tab list: the account UUID on
+/// online-mode servers, the name-derived offline UUID on offline-mode servers.
+fn presence_uuids(session: &Session) -> Vec<String> {
+    let mut uuids = vec![offline_uuid(&session.username)];
+    if session.auth_type == "microsoft" && !session.uuid.starts_with("catid-") {
+        uuids.push(session.uuid.clone());
+    }
+    uuids
 }
 
 fn window_title(mc_version: &str) -> String {
