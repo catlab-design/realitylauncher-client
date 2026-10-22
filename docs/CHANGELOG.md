@@ -1,11 +1,16 @@
 ## [5.1.0] — 2026-10-22
 
 ### Added
+- Game Logs now start at the Play press: the launcher writes its own log for each launch (`<instance>/logs/launcher.log`) with the sign-in check, session status, server file sync, client/libraries/assets checks, Java, mod loader, memory, how long each slow step took, early game errors that never reach `latest.log` (bad JVM flags, out of memory), and the game's exit code. Game Logs shows it above Minecraft's own log and clears when a new launch starts. Sensitive text is censored in both logs: tokens, passwords, e-mail and IP addresses, the home folder in paths, and the player name.
+- Settings › Game & Performance › Native Wayland (Wayland sessions only), off by default.
 - Settings › Game & Performance › Linux performance (Linux only): toggles to run the game under MangoHud (`mangohud --dlsym`, in-game FPS/frame-time overlay) and Feral GameMode (`gamemoderun`). Each toggle is disabled with an install hint when the tool isn't on PATH.
 - In-game branding: the game window title is now `<instance name> | Reality Launcher (<game version>-<launcher version>)` and the window icon is the instance icon (the Reality logo when the instance has none). Only Minecraft's default title and icon are replaced, so modpacks/mods that set their own keep them. "Reality Launcher" also shows on the title screen and the F3 debug screen. Done with a small bundled Java agent (`agent/`) that patches LWJGL's window title and Forge/NeoForge's title-screen branding; vanilla/Fabric/Quilt show it through `--versionType`.
 - Reality badge in the multiplayer tab list (1.19–1.21.x, all loaders): players currently playing through Reality Launcher (including yourself) get a small Reality logo in front of their head (1.19.3+; before the name on servers without heads and on 1.19–1.19.2). Works on any server, visible to Reality users. The launcher registers the running game with the API (`/presence/*`, needs the matching backend), installs a tiny badge resource pack, and the agent patches the tab list using names resolved from Mojang/Fabric/Forge mappings.
 
 ### Fixed
+- Wayland: blank or crashing launcher windows ("Error 71 (Protocol error)", NVIDIA), no centering, and broken moving/resizing of the launcher window; Minecraft 1.20.2+ switching to native Wayland, where the window icon and position don't work. On Wayland sessions the launcher and the game now run through XWayland by default (`GDK_BACKEND=x11`; the game gets no `WAYLAND_DISPLAY`). The Native Wayland setting turns this off, and then disables NVIDIA explicit sync for WebKitGTK. Variables set by the player are left alone.
+- "Game launch timed out" fired 2 minutes after pressing Play even while the launch was still working (server mod sync, downloads, Forge installer). In the Library the game then opened anyway after the error; in the Servers tab the launcher killed the game as soon as it started, so a slow first launch of a server pack could never succeed. The timeout now only trips after 5 minutes with no progress at all, abandons the launch cleanly (new `cancel_launch` command, which never touches a game that is already running), and a late result no longer clears the state of a newer launch.
+- Pressing Play could hang silently: the account refresh that runs before every launch (up to 8 requests to the API, Microsoft, Xbox and Minecraft) had no overall time limit. It is now capped at 30 s with a clear error, and its outcome and duration are logged (`[Auth] Refresh …`).
 - Game Logs opened from the Servers tab showed no logs for server instances: it was given the server's cloud id instead of the local instance folder, so it read a `latest.log` that doesn't exist. It now uses the same local-id lookup as Play.
 - Forge/NeoForge install failed on Linux distros that ship zlib-ng (Arch, CachyOS, Fedora 40+) with `Processor failed, invalid outputs` / checksum mismatches. The bundled Corretto JDK compresses through the system zlib-ng, which produces different jar bytes than Forge expects. The loader installer now runs with an installed JDK that bundles its own zlib (same or newer major) when one is available; otherwise the error explains the cause.
 - Game Logs: lines were split into two entries when a poll landed mid-line; only complete lines are read now.
@@ -14,6 +19,14 @@
 - Game Logs: stack-trace lines were labelled INFO and hidden by the ERROR/WARN filters; untimestamped lines now inherit the level of the line above.
 - Game Logs: Reload rendered the full log uncapped and kept tailing from the old offset (duplicate lines); it now restarts the tail.
 - Loader installer failures no longer dump the installer's entire output (~20k lines) into the error; only the last 40 lines are kept.
+
+### Perf
+- **Faster launches.** Steps that redid the same work on every launch are now cached (dev-build timings for a Forge 1.20.1 server pack, before the change):
+  - window icon: decoding and resizing the instance icon and Minecraft's default icons (12.2 s);
+  - client jar: re-hashing the ~25 MB jar, now checked by size and date after its first verification (2.6 s);
+  - tab-list badge names: re-hashing and re-parsing ~10 MB of mappings (1.2 s);
+  - server sync: two independent API requests now run at the same time.
+- The console log prints how long each launch step took (`[Launcher] Stage …`).
 
 ## [5.0.2] — 2026-10-20
 

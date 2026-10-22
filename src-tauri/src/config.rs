@@ -54,6 +54,10 @@ pub struct LauncherConfig {
     /// Linux only: wrap the game with `gamemoderun`.
     #[serde(default)]
     pub enable_game_mode: bool,
+    /// Linux Wayland sessions: run the launcher and game natively on Wayland
+    /// instead of through XWayland (see `wayland.rs`).
+    #[serde(default)]
+    pub native_wayland: bool,
     
     
     #[serde(flatten)]
@@ -74,6 +78,7 @@ impl Default for LauncherConfig {
             max_concurrent_downloads: 8,
             enable_mango_hud: false,
             enable_game_mode: false,
+            native_wayland: false,
             extra: std::collections::HashMap::new(),
         }
     }

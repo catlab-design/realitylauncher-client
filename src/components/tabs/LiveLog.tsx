@@ -70,7 +70,10 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
 
         let cancelled = false;
         let timer: ReturnType<typeof setTimeout> | null = null;
-        let offset = 0;
+        // Two sources: the launcher's log of the last launch (launcher.log,
+        // from the Play press until the game starts) and the game's latest.log.
+        let launchOffset = 0;
+        let gameOffset = 0;
         logIdRef.current = 0;
         lastLevelRef.current = "info";
         setLogs([]);
@@ -88,14 +91,25 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
             if (cancelled) return;
             try {
                 if (!isPausedRef.current) {
-                    const res = await (window.api as any)?.instanceTailLog?.(instanceId, offset);
+                    const launch = await window.api?.instanceTailLaunchLog?.(instanceId, launchOffset);
+                    if (!cancelled && launch?.ok) {
+                        // The launch log only shrinks when Play starts a new launch.
+                        if (launch.size < launchOffset) {
+                            logIdRef.current = 0;
+                            lastLevelRef.current = "info";
+                            setLogs([]);
+                        }
+                        launchOffset = launch.size;
+                        if (launch.content) append(launch.content);
+                    }
+                    const res = await window.api?.instanceTailLog?.(instanceId, gameOffset);
                     if (!cancelled && res?.ok) {
-                        if (typeof res.size === "number") offset = res.size;
+                        gameOffset = res.size;
                         if (res.content) append(res.content);
                     }
                 }
             } catch {
-                
+
             }
             if (!cancelled) timer = setTimeout(poll, 1000);
         };
@@ -103,10 +117,19 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
         const init = async () => {
             setIsLoadingFile(true);
             try {
-                const result = await (window.api as any)?.instanceReadLatestLog?.(instanceId);
+                const launch = await window.api?.instanceTailLaunchLog?.(instanceId, 0);
+                if (!cancelled && launch?.ok) {
+                    launchOffset = launch.size;
+                    if (launch.content) append(launch.content);
+                }
+                const result = await window.api?.instanceReadLatestLog?.(instanceId);
                 if (!cancelled && result?.ok) {
-                    if (typeof result.size === "number") offset = result.size;
-                    if (result.content) append(result.content);
+                    gameOffset = result.size;
+                    // A latest.log last written before this launch began is the
+                    // previous session's; wait for the game to start a new one.
+                    const launchStarted = launch?.ok ? launch.created ?? 0 : 0;
+                    const stale = launchStarted > 0 && (result.modified ?? 0) < launchStarted;
+                    if (result.content && !stale) append(result.content);
                 }
             } catch (error) {
                 console.error("[LiveLog] Failed to load log file:", error);

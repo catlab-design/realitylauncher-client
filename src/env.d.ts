@@ -50,6 +50,15 @@ interface LauncherInfo {
   minecraftDir: string;
 }
 
+/** A read of an instance log; text is censored by the backend. Times are epoch ms (0 = unknown). */
+interface InstanceLogChunk {
+  ok: boolean;
+  content: string;
+  size: number;
+  modified?: number;
+  created?: number;
+}
+
 interface LaunchResult {
   ok: boolean;
   message?: string;
@@ -619,6 +628,10 @@ declare global {
       
       isGameRunning: (instanceId?: string) => Promise<boolean>;
       killGame: (instanceId?: string) => Promise<boolean>;
+      cancelLaunch: () => Promise<boolean>;
+      instanceReadLatestLog: (instanceId: string) => Promise<InstanceLogChunk>;
+      instanceTailLog: (instanceId: string, from: number) => Promise<InstanceLogChunk>;
+      instanceTailLaunchLog: (instanceId: string, from: number) => Promise<InstanceLogChunk>;
       onGameStarted: (
         callback: (data: { instanceId: string; pid: number }) => void,
       ) => () => void;
@@ -750,7 +763,7 @@ declare global {
         error?: string;
       }>;
       isDevMode: () => Promise<boolean>;
-      linuxPerfTools: () => Promise<{ linux: boolean; mangohud: boolean; gamemode: boolean }>;
+      linuxPerfTools: () => Promise<{ linux: boolean; mangohud: boolean; gamemode: boolean; wayland: boolean }>;
       checkForUpdates: () => Promise<void>;
       downloadUpdate: () => Promise<void>;
       installUpdate: (auto?: boolean) => Promise<void>;
