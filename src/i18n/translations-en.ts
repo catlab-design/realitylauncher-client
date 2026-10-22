@@ -364,6 +364,12 @@ export const enTranslations = {
     java_args: "Java Arguments",
     java_args_desc: "Add JVM arguments for Minecraft (e.g., -XX:+UseG1GC)",
     java_args_placeholder: "Enter Java arguments...",
+    linux_performance: "Linux performance",
+    mangohud: "MangoHud overlay",
+    mangohud_desc: "Show FPS, frame time and CPU/GPU usage in game.",
+    gamemode: "Feral GameMode",
+    gamemode_desc: "Ask the system for maximum CPU/GPU performance while the game runs.",
+    tool_not_installed: "{tool} is not installed. Install it with your package manager to use this.",
 
     
     java_install_path: "Java {version} Install Path",

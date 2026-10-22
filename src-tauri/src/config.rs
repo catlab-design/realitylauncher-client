@@ -48,6 +48,12 @@ pub struct LauncherConfig {
     pub theme: String,
     #[serde(rename = "maxConcurrentDownloads", default = "default_max_concurrent_downloads")]
     pub max_concurrent_downloads: u32,
+    /// Linux only: wrap the game with `mangohud --dlsym`.
+    #[serde(default)]
+    pub enable_mango_hud: bool,
+    /// Linux only: wrap the game with `gamemoderun`.
+    #[serde(default)]
+    pub enable_game_mode: bool,
     
     
     #[serde(flatten)]
@@ -66,6 +72,8 @@ impl Default for LauncherConfig {
             auto_update_enabled: true,
             theme: "dark".to_string(),
             max_concurrent_downloads: 8,
+            enable_mango_hud: false,
+            enable_game_mode: false,
             extra: std::collections::HashMap::new(),
         }
     }

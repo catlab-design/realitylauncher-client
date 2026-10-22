@@ -20,6 +20,7 @@ pub mod mod_meta;
 pub mod modpack;
 pub mod modrinth;
 pub mod op_guard;
+pub mod perf_tools;
 pub mod social;
 pub mod tab_badge;
 pub mod telemetry;

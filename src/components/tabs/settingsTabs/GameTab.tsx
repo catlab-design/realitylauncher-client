@@ -3,7 +3,7 @@ import toast from "react-hot-toast";
 import type { SettingsTabProps } from "./AccountTab";
 import { useTranslation } from "../../../hooks/useTranslation";
 import { cachedMaxRam, cachedSystemRam } from "../../../api";
-import { SettingsPage, SettingsSection, SettingsRow, fieldClass, fieldStyle, buttonClass, primaryButtonStyle } from "./SettingsUI";
+import { SettingsPage, SettingsSection, SettingsRow, Toggle, fieldClass, fieldStyle, buttonClass, primaryButtonStyle } from "./SettingsUI";
 import { RamSlider, RamPresetChips, RAM_PRESETS, recommendedRamFor, formatRam } from "./RamSlider";
 
 export interface GameTabProps extends SettingsTabProps {
@@ -18,7 +18,12 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
 
 
     const [resolvedDir, setResolvedDir] = useState("");
+    const [perfTools, setPerfTools] = useState<{ linux: boolean; mangohud: boolean; gamemode: boolean } | null>(null);
     const { t } = useTranslation(config.language);
+
+    useEffect(() => {
+        (window as any).api?.linuxPerfTools?.().then(setPerfTools).catch(() => setPerfTools(null));
+    }, []);
 
     useEffect(() => {
         (async () => {
@@ -128,6 +133,39 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
                     }
                 />
             </SettingsSection>
+
+            {perfTools?.linux && (
+                <SettingsSection title={t('linux_performance')} colors={colors}>
+                    <SettingsRow
+                        colors={colors}
+                        icon={<i className="fa-solid fa-gauge-high text-base"></i>}
+                        title={t('mangohud')}
+                        description={perfTools.mangohud ? t('mangohud_desc') : t('tool_not_installed').replace('{tool}', 'MangoHud')}
+                    >
+                        <Toggle
+                            checked={perfTools.mangohud && !!config.enableMangoHud}
+                            disabled={!perfTools.mangohud}
+                            label={t('mangohud')}
+                            colors={colors}
+                            onChange={() => updateConfig({ enableMangoHud: !config.enableMangoHud })}
+                        />
+                    </SettingsRow>
+                    <SettingsRow
+                        colors={colors}
+                        icon={<i className="fa-solid fa-rocket text-base"></i>}
+                        title={t('gamemode')}
+                        description={perfTools.gamemode ? t('gamemode_desc') : t('tool_not_installed').replace('{tool}', 'gamemoderun')}
+                    >
+                        <Toggle
+                            checked={perfTools.gamemode && !!config.enableGameMode}
+                            disabled={!perfTools.gamemode}
+                            label={t('gamemode')}
+                            colors={colors}
+                            onChange={() => updateConfig({ enableGameMode: !config.enableGameMode })}
+                        />
+                    </SettingsRow>
+                </SettingsSection>
+            )}
         </SettingsPage>
     );
 }
