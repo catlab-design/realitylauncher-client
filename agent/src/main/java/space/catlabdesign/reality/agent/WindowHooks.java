@@ -23,13 +23,15 @@ final class WindowHooks {
 
     /**
      * Vanilla: "Minecraft[*] &lt;version&gt;[ - &lt;status&gt;]" (status is translated).
+     * Forge/NeoForge patch in their name: "Minecraft* Forge 1.20.1 - Singleplayer".
      * Forge/NeoForge early loading window: "Minecraft: Forge ..." / "Minecraft: NeoForge ...".
      */
     static Pattern defaultTitlePattern(String mcVersion) {
         String version = mcVersion == null || mcVersion.trim().isEmpty()
                 ? "\\d\\S*"
                 : Pattern.quote(mcVersion.trim());
-        return Pattern.compile("Minecraft\\*? " + version + "( - .*)?|Minecraft: (Neo)?Forge.*", Pattern.DOTALL);
+        return Pattern.compile("Minecraft\\*?( (Neo)?Forge)? " + version + "( - .*)?|Minecraft: (Neo)?Forge.*",
+                Pattern.DOTALL);
     }
 
     static java.util.function.Function<Object, Object> titleHook(String replacement, String mcVersion) {
