@@ -1,4 +1,4 @@
-## [Unreleased] — 2026-10-22
+## [5.1.0] — 2026-10-22
 
 ### Added
 - Settings › Game & Performance › Linux performance (Linux only): toggles to run the game under MangoHud (`mangohud --dlsym`, in-game FPS/frame-time overlay) and Feral GameMode (`gamemoderun`). Each toggle is disabled with an install hint when the tool isn't on PATH.
