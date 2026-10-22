@@ -32,8 +32,9 @@ import org.objectweb.asm.Opcodes;
  *   reality.icon           RLIC file with the window icon (see WindowHooks)
  *   reality.vanillaIcons   CRC32s of Minecraft's default icon images
  *   reality.brand          line added to the Forge/NeoForge title screen branding
- *   reality.session        properties file with the tab-badge lookup token and the
- *                          runtime names of the tab-list members (see TabScheme)
+ *   reality.session        properties file with the tab-badge lookup token, badge
+ *                          strings and the runtime names of the tab-list members
+ *                          (see TabScheme, TabBadges, HeadShiftPatch)
  */
 public final class RealityAgent implements ClassFileTransformer {
     private static final String LWJGL3_GLFW = "org/lwjgl/glfw/GLFW";
@@ -97,10 +98,18 @@ public final class RealityAgent implements ClassFileTransformer {
             String badge = props.getProperty("badge");
             List<TabScheme> schemes = TabScheme.load(props);
             if (isBlank(badge) || schemes.isEmpty()) return Collections.emptyList();
+            int headShift;
+            try {
+                headShift = Integer.parseInt(props.getProperty("badge.head.shift", "0").trim());
+            } catch (NumberFormatException e) {
+                headShift = 0;
+            }
             TabBadges badges = new TabBadges(file, props.getProperty("api.url"), badge,
+                    props.getProperty("badge.head"), headShift,
                     TabBadges.parseUuids(props.getProperty("self.uuids")));
             badges.start();
             Hooks.BADGE = badges;
+            Hooks.HEADSHIFT = badges.headShiftHook();
             return schemes;
         } catch (Throwable t) {
             System.err.println("[RealityAgent] Tab badges disabled: " + t);
@@ -124,7 +133,11 @@ public final class RealityAgent implements ClassFileTransformer {
             }
             List<TabScheme> schemes = schemesFor(className);
             if (!schemes.isEmpty()) {
-                return rewrite(bytes, new TabPatch(className, schemes));
+                TabPatch tab = new TabPatch(className, schemes);
+                byte[] patched = rewrite(bytes, tab);
+                if (patched == null) return null;
+                byte[] withHead = HeadShiftPatch.apply(patched, className, tab.matched);
+                return withHead != null ? withHead : patched;
             }
         } catch (Throwable t) {
             System.err.println("[RealityAgent] Skipping " + className + ": " + t);
@@ -342,8 +355,11 @@ public final class RealityAgent implements ClassFileTransformer {
     private static final class TabPatch extends HookFields {
         private final List<TabScheme> schemes;
 
+        /** The scheme whose getNameForDisplay matched, for HeadShiftPatch. */
+        TabScheme matched;
+
         TabPatch(String owner, List<TabScheme> schemes) {
-            super(owner, "BADGE");
+            super(owner, "BADGE", "HEADSHIFT");
             this.schemes = schemes;
         }
 
@@ -356,6 +372,7 @@ public final class RealityAgent implements ClassFileTransformer {
             }
             if (scheme == null) return mv;
             applied = true;
+            this.matched = scheme;
             final TabScheme matched = scheme;
             return new MethodVisitor(Opcodes.ASM9, mv) {
                 @Override

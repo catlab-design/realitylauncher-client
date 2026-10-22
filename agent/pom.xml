@@ -23,6 +23,11 @@
             <artifactId>asm</artifactId>
             <version>${asm.version}</version>
         </dependency>
+        <dependency>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm-tree</artifactId>
+            <version>${asm.version}</version>
+        </dependency>
     </dependencies>
 
     <build>

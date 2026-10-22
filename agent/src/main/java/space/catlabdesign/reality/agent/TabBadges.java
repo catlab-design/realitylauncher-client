@@ -35,6 +35,14 @@ public final class TabBadges implements Function<Object, Object> {
 
     private final File sessionFile;
     private final String badge;
+    /**
+     * Badge drawn left of the head (negative space, glyph, positive space) and
+     * how far the head moves right to make room; null/0 when the font can't do it.
+     */
+    private final String headBadge;
+    private final int headShift;
+    /** Row whose head was just moved: its name comes next and gets headBadge. */
+    private volatile UUID pendingHead;
     /** This player's own UUIDs: always badged, the API leaves our own session out of lookups. */
     private final Set<UUID> self;
     private final Map<UUID, Long> checkedAt = new ConcurrentHashMap<>();
@@ -45,11 +53,36 @@ public final class TabBadges implements Function<Object, Object> {
     private volatile String apiUrl;
     private volatile String token;
 
-    TabBadges(File sessionFile, String apiUrl, String badge, Set<UUID> self) {
+    TabBadges(File sessionFile, String apiUrl, String badge, String headBadge, int headShift, Set<UUID> self) {
         this.sessionFile = sessionFile;
         this.apiUrl = apiUrl;
         this.badge = badge;
+        this.headBadge = headBadge == null || headBadge.isEmpty() || headShift <= 0 ? null : headBadge;
+        this.headShift = this.headBadge == null ? 0 : headShift;
         this.self = self;
+    }
+
+    /**
+     * Hooks.HEADSHIFT: called by the tab list right before it draws a row's head,
+     * which happens just before that row's name is built.
+     */
+    Function<Object, Object> headShiftHook() {
+        return profile -> {
+            try {
+                UUID id = profileId(profile);
+                if (headShift > 0 && id != null && isReality(id)) {
+                    pendingHead = id;
+                    return headShift;
+                }
+            } catch (Throwable ignored) {
+                // Draw the head where the game wants it.
+            }
+            return 0;
+        };
+    }
+
+    private boolean isReality(UUID id) {
+        return self.contains(id) || reality.contains(id);
     }
 
     static Set<UUID> parseUuids(String list) {
@@ -76,10 +109,16 @@ public final class TabBadges implements Function<Object, Object> {
         try {
             UUID id = profileId(profile);
             if (id == null) return "";
-            if (self.contains(id)) return badge;
-            Long at = checkedAt.get(id);
-            if (at == null || System.currentTimeMillis() - at > CACHE_MS) pending.add(id);
-            return reality.contains(id) ? badge : "";
+            if (!self.contains(id)) {
+                Long at = checkedAt.get(id);
+                if (at == null || System.currentTimeMillis() - at > CACHE_MS) pending.add(id);
+            }
+            if (!isReality(id)) return "";
+            if (id.equals(pendingHead)) {
+                pendingHead = null;
+                return headBadge;
+            }
+            return badge;
         } catch (Throwable t) {
             return "";
         }

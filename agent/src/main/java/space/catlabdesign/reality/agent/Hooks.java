@@ -15,6 +15,8 @@ public final class Hooks {
     public static Function<Object, Object> ICON = images -> images;
     /** GameProfile -> tab-list badge prefix ("" for none). */
     public static Function<Object, Object> BADGE = profile -> "";
+    /** GameProfile -> Integer pixels to move this row's tab-list head right (room for the badge). */
+    public static Function<Object, Object> HEADSHIFT = profile -> 0;
 
     private Hooks() {
     }
