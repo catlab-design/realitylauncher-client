@@ -956,6 +956,123 @@ fn ensure_launcher_profiles(minecraft_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
+const INSTALLER_ERROR_TAIL_LINES: usize = 40;
+
+fn tail_lines(text: &str, n: usize) -> String {
+    let lines: Vec<&str> = text.trim().lines().collect();
+    lines[lines.len().saturating_sub(n)..].join("\n")
+}
+
+/// Forge/NeoForge processors check the SHA1 of the jars they write, and those
+/// hashes assume classic zlib. A JDK whose libzip links the system libz
+/// deflates through zlib-ng on distros that ship zlib-ng-compat (Arch,
+/// CachyOS, Fedora 40+) and every processor output mismatches.
+fn libzip_links_system_zlib(java_home: &Path) -> bool {
+    fs::read(java_home.join("lib/libzip.so"))
+        .map(|bytes| bytes.windows(10).any(|w| w == b"libz.so.1\0"))
+        .unwrap_or(false)
+}
+
+fn java_home_of(java_path: &Path) -> Option<PathBuf> {
+    let resolved = fs::canonicalize(java_path).ok()?;
+    Some(resolved.parent()?.parent()?.to_path_buf())
+}
+
+/// On Linux, swaps a system-zlib JDK for one with bundled zlib (same or newer
+/// major) so loader installers produce the jars they expect.
+fn installer_java(java_path: &str) -> String {
+    if !cfg!(target_os = "linux") {
+        return java_path.to_string();
+    }
+    let Some(home) = java_home_of(Path::new(java_path)) else {
+        return java_path.to_string();
+    };
+    if !libzip_links_system_zlib(&home) {
+        return java_path.to_string();
+    }
+    let Ok(required) = get_java_major_version(java_path) else {
+        return java_path.to_string();
+    };
+
+    let mut search_dirs = vec![PathBuf::from("/usr/lib/jvm"), PathBuf::from("/usr/lib64/jvm")];
+    search_dirs.extend(home.parent().map(Path::to_path_buf));
+
+    let mut seen = std::collections::HashSet::new();
+    let best = search_dirs
+        .iter()
+        .filter_map(|dir| fs::read_dir(dir).ok())
+        .flatten()
+        .flatten()
+        .filter_map(|entry| fs::canonicalize(entry.path()).ok())
+        .filter(|candidate| seen.insert(candidate.clone()))
+        .filter(|candidate| candidate.join("lib/libzip.so").exists())
+        .filter(|candidate| !libzip_links_system_zlib(candidate))
+        .filter_map(|candidate| {
+            let java = candidate.join("bin/java");
+            let major = get_java_major_version(&java.to_string_lossy()).ok()?;
+            (major >= required).then_some((major, java))
+        })
+        .min_by_key(|(major, _)| *major);
+
+    match best {
+        Some((_, java)) => {
+            let java = java.to_string_lossy().to_string();
+            log::info!("[Launcher] {java_path} uses system zlib; running loader installer with {java}");
+            java
+        }
+        None => {
+            log::warn!(
+                "[Launcher] {java_path} uses system zlib and no bundled-zlib Java {required}+ was found; loader install may fail checksum checks"
+            );
+            java_path.to_string()
+        }
+    }
+}
+
+fn run_loader_installer(
+    loader: &str,
+    java_path: &str,
+    installer_path: &Path,
+    minecraft_dir: &Path,
+) -> Result<(), String> {
+    let mut cmd = Command::new(installer_java(java_path));
+    cmd.args([
+        "-jar",
+        &installer_path.to_string_lossy(),
+        "--installClient",
+        &minecraft_dir.to_string_lossy(),
+    ]);
+    if let Some(installer_dir) = installer_path.parent() {
+        cmd.current_dir(installer_dir);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+    let output = cmd.output()
+        .map_err(|e| format!("Failed to run {loader} installer: {e}"))?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let log_text = if stderr.trim().is_empty() { stdout } else { stderr };
+    let hint = if log_text.contains("Processor failed, invalid outputs") {
+        "\n\nThe installer's output checksums did not match. On Linux this usually means \
+         Java is using the system zlib-ng; install a distro OpenJDK of the same version \
+         (e.g. jdk17-openjdk) and try again."
+    } else {
+        ""
+    };
+    Err(format!(
+        "{loader} installer exited with {}:\n{}{hint}",
+        output.status,
+        tail_lines(&log_text, INSTALLER_ERROR_TAIL_LINES)
+    ))
+}
+
 async fn verify_installer_jar(bytes: &[u8], url: &str) -> Result<(), String> {
     if bytes.len() < 2 || bytes[0] != b'P' || bytes[1] != b'K' {
         return Err("Downloaded loader installer is not a valid JAR archive".to_string());
@@ -1047,32 +1164,7 @@ async fn install_forge(
     fs::write(&installer_path, &bytes).map_err(|e| e.to_string())?;
 
     ensure_launcher_profiles(minecraft_dir)?;
-
-    let mut cmd = Command::new(java_path);
-    cmd.args([
-        "-jar",
-        &installer_path.to_string_lossy(),
-        "--installClient",
-        &minecraft_dir.to_string_lossy(),
-    ])
-    .current_dir(&installer_dir);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000);
-    }
-    let output = cmd.output()
-        .map_err(|e| format!("Failed to run Forge installer: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        return Err(format!(
-            "Forge installer exited with {}: {}",
-            output.status,
-            if stderr.trim().is_empty() { stdout.trim() } else { stderr.trim() }
-        ));
-    }
+    run_loader_installer("Forge", java_path, &installer_path, minecraft_dir)?;
 
     if !version_json_path.exists() {
         return Err(format!(
@@ -1150,32 +1242,7 @@ async fn install_neoforge(
     fs::write(&installer_path, &bytes).map_err(|e| e.to_string())?;
 
     ensure_launcher_profiles(minecraft_dir)?;
-
-    let mut cmd = Command::new(java_path);
-    cmd.args([
-        "-jar",
-        &installer_path.to_string_lossy(),
-        "--installClient",
-        &minecraft_dir.to_string_lossy(),
-    ])
-    .current_dir(&installer_dir);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000);
-    }
-    let output = cmd.output()
-        .map_err(|e| format!("Failed to run NeoForge installer: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        return Err(format!(
-            "NeoForge installer exited with {}: {}",
-            output.status,
-            if stderr.trim().is_empty() { stdout.trim() } else { stderr.trim() }
-        ));
-    }
+    run_loader_installer("NeoForge", java_path, &installer_path, minecraft_dir)?;
 
     if !version_json_path.exists() {
         return Err(format!(
@@ -2350,4 +2417,31 @@ pub async fn instances_preinstall(app: tauri::AppHandle, id: String) -> Result<(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tail_lines_keeps_last_n() {
+        assert_eq!(tail_lines("a\nb\nc\nd\n", 2), "c\nd");
+        assert_eq!(tail_lines("a\nb", 10), "a\nb");
+    }
+
+    #[test]
+    fn detects_system_zlib_dependency() {
+        let dir = std::env::temp_dir().join(format!("rl-zlib-test-{}", std::process::id()));
+        let lib = dir.join("lib");
+        fs::create_dir_all(&lib).unwrap();
+
+        fs::write(lib.join("libzip.so"), b"\x7fELF...libjvm.so\0libz.so.1\0libc.so.6\0").unwrap();
+        assert!(libzip_links_system_zlib(&dir));
+
+        fs::write(lib.join("libzip.so"), b"\x7fELF...libjvm.so\0libc.so.6\0inflate").unwrap();
+        assert!(!libzip_links_system_zlib(&dir));
+
+        fs::remove_dir_all(&dir).unwrap();
+        assert!(!libzip_links_system_zlib(&dir));
+    }
 }
