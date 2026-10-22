@@ -9,7 +9,8 @@
         "build": "vite build",
         "preview": "vite preview",
         "tauri": "tauri",
-        "check:bridge": "tsc --noEmit -p tsconfig.bridge.json"
+        "check:bridge": "tsc --noEmit -p tsconfig.bridge.json",
+        "build:agent": "mvn -q -B -f agent/pom.xml clean package && cp agent/target/reality-agent.jar src-tauri/resources/reality-agent.jar"
     },
     "dependencies": {
         "@fontsource-variable/inter": "^5.2.8",

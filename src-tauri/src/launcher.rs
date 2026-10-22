@@ -537,7 +537,7 @@ async fn launch_game(
     )?;
 
     
-    let jvm_args = build_jvm_args(
+    let mut jvm_args = build_jvm_args(
         &effective_version_json,
         &classpath,
         &natives_dir,
@@ -545,6 +545,25 @@ async fn launch_game(
         &instance,
         &config_val,
     )?;
+    jvm_args.extend(branding_jvm_args(
+        &minecraft_dir_val,
+        &instance_dir,
+        &assets_dir,
+        &instance,
+        &effective_version_json,
+    ));
+    let badge_setup = prepare_tab_badges(
+        &minecraft_dir_val,
+        &libraries_dir,
+        &instance_dir,
+        &instance,
+        &effective_version_json,
+        &presence_uuids(&session),
+    )
+    .await;
+    if let Some(ref setup) = badge_setup {
+        jvm_args.push(setup.jvm_arg());
+    }
 
     
     let (main_class, game_args) = build_game_args(
@@ -631,6 +650,15 @@ async fn launch_game(
     }));
     crate::telemetry::flush_now();
 
+    let presence = match (badge_setup, session.api_token.clone()) {
+        (Some(setup), Some(api_token)) => Some(crate::tab_badge::spawn_presence(
+            setup,
+            api_token,
+            telemetry_instance_id.clone(),
+        )),
+        _ => None,
+    };
+
     let _ = app.emit(
         "game-started",
         GameStartedPayload {
@@ -715,6 +743,9 @@ async fn launch_game(
                 PollResult::Running => {}
                 PollResult::Stopped(exit_code) => {
                     println!("[Launcher] Game stopped (exit={:?})", exit_code);
+                    if let Some(ref presence) = presence {
+                        presence.stop();
+                    }
 
                     
                     crate::telemetry::queue_event("game_close", serde_json::json!({
@@ -1472,6 +1503,115 @@ fn minecraft_dir() -> PathBuf {
 
 
 
+const BRAND_NAME: &str = "Reality Launcher";
+const REALITY_AGENT_JAR: &[u8] = include_bytes!("../resources/reality-agent.jar");
+
+/// Writes the bundled agent (source in `agent/`) next to the libraries,
+/// replacing it only when the bytes differ.
+fn ensure_agent_jar(minecraft_dir: &Path) -> Result<PathBuf, String> {
+    let agent_dir = minecraft_dir.join("agent");
+    let path = agent_dir.join("reality-agent.jar");
+    if fs::read(&path).is_ok_and(|bytes| bytes == REALITY_AGENT_JAR) {
+        return Ok(path);
+    }
+    fs::create_dir_all(&agent_dir).map_err(|e| e.to_string())?;
+    let tmp = agent_dir.join(format!("reality-agent.jar.{}.tmp", std::process::id()));
+    fs::write(&tmp, REALITY_AGENT_JAR).map_err(|e| e.to_string())?;
+    fs::rename(&tmp, &path).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        e.to_string()
+    })?;
+    Ok(path)
+}
+
+/// Tab-list badge setup (`tab_badge`); `None` means this launch simply has no
+/// badges. Mapping downloads are capped so a slow network never stalls a launch.
+async fn prepare_tab_badges(
+    minecraft_dir: &Path,
+    libraries_dir: &Path,
+    instance_dir: &Path,
+    instance: &GameInstance,
+    version_json: &serde_json::Value,
+    self_uuids: &[String],
+) -> Option<crate::tab_badge::BadgeSetup> {
+    let resolve = crate::mappings::resolve_tab_schemes(
+        minecraft_dir,
+        libraries_dir,
+        &instance.minecraft_version,
+        &instance.loader,
+        version_json,
+    );
+    let schemes = match tokio::time::timeout(std::time::Duration::from_secs(60), resolve).await {
+        Ok(Ok(schemes)) => schemes,
+        Ok(Err(e)) => {
+            log::warn!("[TabBadge] Could not resolve tab-list names: {e}");
+            return None;
+        }
+        Err(_) => {
+            log::warn!("[TabBadge] Resolving tab-list names timed out");
+            return None;
+        }
+    };
+    crate::tab_badge::prepare(minecraft_dir, instance_dir, &instance.minecraft_version, schemes, self_uuids)
+}
+
+/// UUIDs this player can appear as in a tab list: the account UUID on
+/// online-mode servers, the name-derived offline UUID on offline-mode servers.
+fn presence_uuids(session: &Session) -> Vec<String> {
+    let mut uuids = vec![offline_uuid(&session.username)];
+    if session.auth_type == "microsoft" && !session.uuid.starts_with("catid-") {
+        uuids.push(session.uuid.clone());
+    }
+    uuids
+}
+
+/// The agent fixes the window title and adds the Forge/NeoForge title-screen
+/// line; vanilla/Fabric/Quilt show the brand through `--versionType`. Branding
+/// is cosmetic, so a failure to write the agent never blocks the launch.
+fn branding_jvm_args(
+    minecraft_dir: &Path,
+    instance_dir: &Path,
+    assets_dir: &Path,
+    instance: &GameInstance,
+    version_json: &serde_json::Value,
+) -> Vec<String> {
+    let agent = match ensure_agent_jar(minecraft_dir) {
+        Ok(agent) => agent,
+        Err(e) => {
+            log::warn!("[Launcher] Skipping in-game branding, could not write agent: {e}");
+            return Vec::new();
+        }
+    };
+    let mut args = vec![
+        format!("-javaagent:{}", agent.to_string_lossy()),
+        format!(
+            "-Dreality.title={}",
+            crate::game_window::window_title(&instance.name, &instance.minecraft_version)
+        ),
+        format!("-Dreality.mcversion={}", instance.minecraft_version),
+        format!("-Dreality.brand={BRAND_NAME}"),
+    ];
+
+    let asset_index = version_json
+        .get("assetIndex")
+        .and_then(|i| i.get("id"))
+        .and_then(|i| i.as_str())
+        .unwrap_or("legacy");
+    let fingerprints = crate::game_window::vanilla_icon_fingerprints(assets_dir, asset_index);
+    if fingerprints.is_empty() {
+        log::warn!("[Launcher] No default icons found in asset index {asset_index}; keeping the game icon");
+    } else {
+        match crate::game_window::write_icon_file(minecraft_dir, instance_dir) {
+            Ok(icon) => {
+                args.push(format!("-Dreality.icon={}", icon.to_string_lossy()));
+                args.push(format!("-Dreality.vanillaIcons={}", fingerprints.join(",")));
+            }
+            Err(e) => log::warn!("[Launcher] Could not write window icon: {e}"),
+        }
+    }
+    args
+}
+
 fn build_jvm_args(
     version_json: &serde_json::Value,
     classpath: &str,
@@ -1585,7 +1725,7 @@ fn build_game_args(
             .replace("${auth_access_token}", access_token)
             .replace("${auth_session}", access_token)
             .replace("${version_name}", version_name)
-            .replace("${version_type}", "release")
+            .replace("${version_type}", BRAND_NAME)
             .replace("${assets_root}", &assets_dir.to_string_lossy())
             .replace("${assets_index_name}", asset_index)
             .replace("${game_directory}", &instance_dir.to_string_lossy())
@@ -1656,6 +1796,8 @@ fn build_game_args(
             user_properties.to_string(),
             "--userType".to_string(),
             user_type.to_string(),
+            "--versionType".to_string(),
+            BRAND_NAME.to_string(),
         ]
     };
 
@@ -2453,6 +2595,27 @@ mod tests {
 
         fs::remove_dir_all(&dir).unwrap();
         assert_eq!(read_log_lines(&path, 4)["ok"], false);
+    }
+
+    #[test]
+    fn bundled_agent_declares_premain() {
+        assert_eq!(&REALITY_AGENT_JAR[..2], b"PK");
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(REALITY_AGENT_JAR)).unwrap();
+        let mut manifest = String::new();
+        std::io::Read::read_to_string(&mut zip.by_name("META-INF/MANIFEST.MF").unwrap(), &mut manifest)
+            .unwrap();
+        assert!(manifest.contains("Premain-Class: space.catlabdesign.reality.agent.RealityAgent"));
+    }
+
+    #[test]
+    fn ensure_agent_jar_writes_and_refreshes() {
+        let dir = std::env::temp_dir().join(format!("rl-agent-test-{}", std::process::id()));
+        let path = ensure_agent_jar(&dir).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), REALITY_AGENT_JAR);
+        fs::write(&path, b"stale").unwrap();
+        ensure_agent_jar(&dir).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), REALITY_AGENT_JAR);
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
