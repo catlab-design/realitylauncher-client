@@ -33,6 +33,7 @@ const defaultConfig: LauncherConfig = {
     maxConcurrentDownloads: 8,
     enableMangoHud: false,
     enableGameMode: false,
+    nativeWayland: false,
     telemetryEnabled: true,
     autoUpdateEnabled: true,
 };

@@ -370,6 +370,8 @@ export const enTranslations = {
     gamemode: "Feral GameMode",
     gamemode_desc: "Ask the system for maximum CPU/GPU performance while the game runs.",
     tool_not_installed: "{tool} is not installed. Install it with your package manager to use this.",
+    native_wayland: "Native Wayland",
+    native_wayland_desc: "Off (recommended): the launcher and Minecraft run through XWayland, which avoids blank or crashing windows and window placement problems. On: sharper on HiDPI screens, but window icons and some window features may not work. Restart the launcher to apply it to the launcher window.",
 
     
     java_install_path: "Java {version} Install Path",
@@ -641,7 +643,7 @@ export const enTranslations = {
     instance_delete_success: "Instance deleted successfully",
     instance_delete_failed: "Failed to delete instance",
     instance_created_success: "Instance created successfully",
-    launch_timeout: "Game launch timed out. Please try again.",
+    launch_timeout: "The game launch stopped making progress, so it was cancelled. Please try again.",
     launch_failed: "Failed to launch game",
     java_not_found_prompt: "Java not found on your system",
     install_java_now_ask: "Would you like to install Java now?",

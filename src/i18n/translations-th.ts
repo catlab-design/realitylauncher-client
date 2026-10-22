@@ -378,6 +378,8 @@ export const thTranslations = {
     gamemode: "Feral GameMode",
     gamemode_desc: "ให้ระบบเร่ง CPU/GPU เต็มประสิทธิภาพระหว่างเล่นเกม",
     tool_not_installed: "ยังไม่ได้ติดตั้ง {tool} ติดตั้งผ่าน package manager ก่อนจึงจะใช้ได้",
+    native_wayland: "Wayland แบบเนทีฟ",
+    native_wayland_desc: "ปิด (แนะนำ): ลันเชอร์และ Minecraft ทำงานผ่าน XWayland ช่วยแก้หน้าต่างว่างเปล่า หน้าต่างแครช และปัญหาตำแหน่งหน้าต่าง เปิด: คมชัดกว่าบนจอ HiDPI แต่ไอคอนหน้าต่างและบางฟีเจอร์ของหน้าต่างอาจใช้ไม่ได้ ต้องเปิดลันเชอร์ใหม่จึงจะมีผลกับหน้าต่างลันเชอร์",
 
     
     java_install_path: "ตำแหน่งติดตั้ง Java {version}",
@@ -723,7 +725,7 @@ export const thTranslations = {
     instance_delete_success: "ลบ Instance เรียบร้อย",
     instance_delete_failed: "ลบ Instance ไม่สำเร็จ",
     instance_created_success: "สร้าง instance เรียบร้อย",
-    launch_timeout: "การเปิดเกมใช้เวลานานเกินไป กรุณาลองใหม่",
+    launch_timeout: "การเปิดเกมไม่มีความคืบหน้านานเกินไป จึงยกเลิกให้แล้ว กรุณาลองใหม่",
     launch_failed: "เปิดเกมไม่สำเร็จ",
     java_not_found_prompt: "ไม่พบ Java ในเครื่องของคุณ",
     install_java_now_ask: "คุณต้องการติดตั้ง Java ทันทีหรือไม่?",

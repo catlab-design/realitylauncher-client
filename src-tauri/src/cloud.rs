@@ -1030,11 +1030,14 @@ async fn sync_server_mods(
     // a Cancel that already arrived (pressing Cancel immediately did nothing).
     emit_sync_progress(app_handle, "sync-start", "", None, None, None, None);
 
-    let (manifest_data, _manifest_not_modified) =
-        fetch_server_content(cloud_id, auth_token, true).await?;
+    // Independent requests; run them together to save a round trip per launch.
+    let (content, metadata) = tokio::join!(
+        fetch_server_content(cloud_id, auth_token, true),
+        fetch_instance_metadata(cloud_id, auth_token)
+    );
+    let (manifest_data, _manifest_not_modified) = content?;
 
-    
-    if let Ok((metadata, _)) = fetch_instance_metadata(cloud_id, auth_token).await {
+    if let Ok((metadata, _)) = metadata {
         if metadata
             .get("id")
             .and_then(|v| v.as_str())

@@ -78,6 +78,7 @@ pub fn window_set_main_mode(window: tauri::Window) -> Result<(), String> {
     window
         .set_size(Size::Logical(LogicalSize { width, height }))
         .map_err(|e| e.to_string())?;
-    window.center().map_err(|e| e.to_string())?;
+    // Wayland doesn't let apps place windows; the compositor decides there.
+    let _ = window.center();
     Ok(())
 }

@@ -1249,10 +1249,44 @@ async fn auth_refresh_core(force: bool) -> AuthCommandResult {
     }
 }
 
+/// The frontend runs this before every launch. The Microsoft chain is up to
+/// eight requests with only a connect timeout each, so cap the whole refresh:
+/// a server that stalls after connecting would otherwise hang Play silently.
+const REFRESH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
 #[tauri::command]
 pub async fn auth_refresh() -> AuthCommandResult {
-    auth_refresh_core(false).await
+    let started = std::time::Instant::now();
+    let result = match tokio::time::timeout(REFRESH_TIMEOUT, auth_refresh_core(false)).await {
+        Ok(result) => result,
+        Err(_) => AuthCommandResult {
+            ok: false,
+            account: None,
+            error: Some("Refreshing your Microsoft sign-in timed out. Check your connection and try again.".into()),
+        },
+    };
+    match &result.error {
+        Some(e) => println!("[Auth] Refresh failed after {:.1?}: {e}", started.elapsed()),
+        None => println!("[Auth] Refresh ok in {:.1?}", started.elapsed()),
+    }
+    *LAST_REFRESH.lock().unwrap() = Some(RefreshRecord {
+        at: std::time::Instant::now(),
+        took: started.elapsed(),
+        error: result.error.clone(),
+    });
+    result
 }
+
+/// The last `auth_refresh`, which the frontend runs right before every launch;
+/// the launch log reports it as the session check.
+pub struct RefreshRecord {
+    pub at: std::time::Instant,
+    pub took: std::time::Duration,
+    pub error: Option<String>,
+}
+
+pub static LAST_REFRESH: once_cell::sync::Lazy<std::sync::Mutex<Option<RefreshRecord>>> =
+    once_cell::sync::Lazy::new(|| std::sync::Mutex::new(None));
 
 /// Best-effort token refresh for internal callers (cloud 401 retry path).
 /// Forces the Microsoft refresh chain even when the MC token is not yet near

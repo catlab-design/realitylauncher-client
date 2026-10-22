@@ -18,6 +18,7 @@ mod game_window;
 mod http_client;
 mod instances;
 mod java;
+mod launch_log;
 mod launcher;
 mod mappings;
 mod mod_meta;
@@ -30,6 +31,7 @@ mod tab_badge;
 mod telemetry;
 mod update;
 mod wardrobe;
+mod wayland;
 mod window;
 
 fn main() {
@@ -38,6 +40,7 @@ fn main() {
         if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
             std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
         }
+        wayland::configure_launcher(config::config_get().native_wayland);
     }
 
     let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn"))
@@ -85,10 +88,12 @@ fn main() {
             
             launcher::is_game_running,
             launcher::kill_game,
+            launcher::cancel_launch,
             launcher::instances_launch,
             launcher::get_playing_instance_id,
             launcher::instance_read_latest_log,
             launcher::instance_tail_log,
+            launcher::instance_tail_launch_log,
             launcher::get_app_version,
             launcher::is_dev_mode,
             perf_tools::linux_perf_tools,
