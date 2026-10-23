@@ -2954,6 +2954,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn parses_java_versions() {
+        let graalvm = "java version \"21.0.12\" 2026-07-21 LTS\nJava(TM) SE Runtime Environment Oracle GraalVM 21.0.12+7.1";
+        assert_eq!(parse_java_version(graalvm), Some(21));
+        assert_eq!(parse_java_version("openjdk version \"17.0.20.1\" 2026-08-18 LTS"), Some(17));
+        assert_eq!(parse_java_version("java version \"1.8.0_462\""), Some(8));
+    }
+
+    #[test]
     fn installer_milestones() {
         assert_eq!(installer_milestone("Task: MCP_DATA"), Some("Task: MCP_DATA"));
         assert_eq!(installer_milestone("Building Processors\r"), Some("Building Processors"));

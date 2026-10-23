@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { type LauncherConfig } from '../types/launcher';
 
+/** Default game JVM flags. Every Java the launcher may run (8–25) must accept all of them. */
+export const DEFAULT_JAVA_ARGUMENTS = "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+DisableExplicitGC";
+
 interface ConfigState extends LauncherConfig {
     setConfig: (config: Partial<LauncherConfig>) => void;
     resetConfig: () => void;
@@ -29,11 +32,12 @@ const defaultConfig: LauncherConfig = {
     backgroundImage: "",
     backgroundImageOpacity: 0.15,
     fullscreen: false,
-    javaArguments: "",
+    javaArguments: DEFAULT_JAVA_ARGUMENTS,
     maxConcurrentDownloads: 8,
     enableMangoHud: false,
     enableGameMode: false,
     nativeWayland: false,
+    javaProvider: "corretto",
     telemetryEnabled: true,
     autoUpdateEnabled: true,
 };

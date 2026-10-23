@@ -26,6 +26,8 @@ interface LauncherConfig {
   discordRPCEnabled: boolean;
   backgroundImage?: string;
   backgroundImageOpacity?: number;
+  /** Absent until the player (or the startup default) sets it. */
+  javaArguments?: string;
 }
 
 interface AuthSession {

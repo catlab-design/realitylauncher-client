@@ -12,7 +12,7 @@ import { getColors } from "./launcherTheme";
 import { type AuthSession, type Server, type NewsItem, type LauncherConfig, type GameInstance } from "../types/launcher";
 import { playClick, playSucceed, playNotification, setSoundConfig } from "../lib/sounds";
 import { useTranslation } from "../hooks/useTranslation";
-import { useConfigStore } from "../store/configStore";
+import { DEFAULT_JAVA_ARGUMENTS, useConfigStore } from "../store/configStore";
 import { useAuthStore } from "../store/authStore";
 import { useGameEvents } from "../hooks/useGameEvents";
 import { useUiStore } from "../store/uiStore";
@@ -372,6 +372,12 @@ function LauncherAppContent() {
       try {
         const savedConfig = await window.api?.getConfig();
         if (!cancelled && savedConfig) {
+          // Players who never set Java arguments get the defaults, saved so the
+          // game launch (which reads config.json) uses them too.
+          if (savedConfig.javaArguments === undefined) {
+            savedConfig.javaArguments = DEFAULT_JAVA_ARGUMENTS;
+            void window.api?.setConfig?.({ javaArguments: DEFAULT_JAVA_ARGUMENTS });
+          }
           config.setConfig(savedConfig);
           console.log("[Config] Synced from Electron API");
         }

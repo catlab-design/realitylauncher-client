@@ -58,6 +58,11 @@ pub struct LauncherConfig {
     /// instead of through XWayland (see `wayland.rs`).
     #[serde(default)]
     pub native_wayland: bool,
+    /// Where Settings › Java and automatic installs get Java 21+: `graalvm`
+    /// (Oracle GraalVM) or anything else for Amazon Corretto. Java 8/17 always
+    /// come from Corretto; Oracle has no current GraalVM builds for them.
+    #[serde(default)]
+    pub java_provider: String,
     
     
     #[serde(flatten)]
@@ -79,6 +84,7 @@ impl Default for LauncherConfig {
             enable_mango_hud: false,
             enable_game_mode: false,
             native_wayland: false,
+            java_provider: String::new(),
             extra: std::collections::HashMap::new(),
         }
     }

@@ -3,7 +3,8 @@ import toast from "react-hot-toast";
 import type { SettingsTabProps } from "./AccountTab";
 import { useTranslation } from "../../../hooks/useTranslation";
 import { cachedMaxRam, cachedSystemRam } from "../../../api";
-import { SettingsPage, SettingsSection, SettingsRow, Toggle, fieldClass, fieldStyle, buttonClass, primaryButtonStyle } from "./SettingsUI";
+import { SettingsPage, SettingsSection, SettingsRow, Toggle, fieldClass, fieldStyle, buttonClass, buttonStyle, primaryButtonStyle } from "./SettingsUI";
+import { DEFAULT_JAVA_ARGUMENTS } from "../../../store/configStore";
 import { RamSlider, RamPresetChips, RAM_PRESETS, recommendedRamFor, formatRam } from "./RamSlider";
 
 export interface GameTabProps extends SettingsTabProps {
@@ -122,14 +123,26 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
                     title={t('java_args')}
                     description={t('java_args_desc')}
                     below={
-                        <input
-                            type="text"
-                            value={config.javaArguments}
-                            onChange={(e) => updateConfig({ javaArguments: e.target.value })}
-                            placeholder={t('java_args_placeholder')}
-                            className={`${fieldClass} w-full font-mono text-sm`}
-                            style={fieldStyle(colors)}
-                        />
+                        <div className="flex gap-2.5">
+                            <input
+                                type="text"
+                                value={config.javaArguments}
+                                onChange={(e) => updateConfig({ javaArguments: e.target.value })}
+                                placeholder={t('java_args_placeholder')}
+                                className={`${fieldClass} flex-1 min-w-0 font-mono text-sm`}
+                                style={fieldStyle(colors)}
+                            />
+                            {config.javaArguments !== DEFAULT_JAVA_ARGUMENTS && (
+                                <button
+                                    onClick={() => updateConfig({ javaArguments: DEFAULT_JAVA_ARGUMENTS })}
+                                    className={`${buttonClass} h-11`}
+                                    style={buttonStyle(colors)}
+                                >
+                                    <i className="fa-solid fa-rotate-left"></i>
+                                    {t('use_default')}
+                                </button>
+                            )}
+                        </div>
                     }
                 />
             </SettingsSection>

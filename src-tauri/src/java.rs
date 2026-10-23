@@ -45,8 +45,23 @@ fn java_exe_in(jdk_dir: &Path) -> Option<PathBuf> {
     None
 }
 
+/// Folder of a launcher-installed Java: `jdk-<major>` (Corretto) or
+/// `graalvm-jdk-<major>`.
+fn install_dir(major: i32, graalvm: bool) -> PathBuf {
+    let prefix = if graalvm { "graalvm-jdk" } else { "jdk" };
+    java_base_dir().join(format!("{prefix}-{major}"))
+}
+
+fn uses_graalvm(major: i32) -> bool {
+    major >= 21 && crate::config::config_get().java_provider == "graalvm"
+}
+
+/// A launcher-installed Java of this major, from the chosen provider first.
 fn bundled_java_exe(major: i32) -> Option<String> {
-    java_exe_in(&java_base_dir().join(format!("jdk-{major}")))
+    let preferred = uses_graalvm(major);
+    [preferred, !preferred]
+        .into_iter()
+        .find_map(|graalvm| java_exe_in(&install_dir(major, graalvm)))
         .map(|p| p.to_string_lossy().to_string())
 }
 
@@ -248,6 +263,25 @@ fn emit(app: &AppHandle, major: i32, phase: &str, percent: u32, message: &str) {
 }
 
 
+fn graalvm_url(major: i32) -> (String, String, bool) {
+    let os = if cfg!(windows) {
+        "windows"
+    } else if cfg!(target_os = "macos") {
+        "macos"
+    } else {
+        "linux"
+    };
+    let arch = if cfg!(target_arch = "aarch64") { "aarch64" } else { "x64" };
+    let is_zip = cfg!(windows);
+    let ext = if is_zip { "zip" } else { "tar.gz" };
+    let file = format!("graalvm-jdk-{major}_{os}-{arch}_bin.{ext}");
+    (
+        format!("https://download.oracle.com/graalvm/{major}/latest/{file}"),
+        file,
+        is_zip,
+    )
+}
+
 fn corretto_url(major: i32) -> (String, String, bool) {
     let os = if cfg!(windows) {
         "windows"
@@ -300,12 +334,14 @@ async fn install_java_inner(app: &AppHandle, major: i32) -> Result<String, Strin
     let base = java_base_dir();
     fs::create_dir_all(&base).map_err(|e| e.to_string())?;
 
-    if let Some(existing) = bundled_java_exe(major) {
+    let graalvm = uses_graalvm(major);
+    let target = install_dir(major, graalvm);
+    if let Some(existing) = java_exe_in(&target) {
         emit(app, major, "complete", 100, "Java already installed");
-        return Ok(existing);
+        return Ok(existing.to_string_lossy().to_string());
     }
 
-    let (url, file_name, is_zip) = corretto_url(major);
+    let (url, file_name, is_zip) = if graalvm { graalvm_url(major) } else { corretto_url(major) };
     emit(
         app,
         major,
@@ -321,7 +357,6 @@ async fn install_java_inner(app: &AppHandle, major: i32) -> Result<String, Strin
     .await?;
 
     emit(app, major, "extract", 0, "กำลังแตกไฟล์...");
-    let target = base.join(format!("jdk-{major}"));
     let exe = unpack_java(&archive_path, is_zip, &base.join(format!("temp-{major}")), &target)?;
     emit(app, major, "install", 90, "กำลังติดตั้ง...");
 
@@ -517,12 +552,18 @@ fn clear_recorded_java_path(major: i32) {
 
 #[tauri::command]
 pub fn delete_java(major_version: i32) -> serde_json::Value {
-    let dir = java_base_dir().join(format!("jdk-{major_version}"));
-    if !dir.exists() {
+    let dirs: Vec<PathBuf> = [false, true]
+        .into_iter()
+        .map(|graalvm| install_dir(major_version, graalvm))
+        .filter(|dir| dir.exists())
+        .collect();
+    if dirs.is_empty() {
         return serde_json::json!({ "ok": true, "message": format!("ไม่พบ Java {major_version}") });
     }
-    if let Err(e) = fs::remove_dir_all(&dir) {
-        return serde_json::json!({ "ok": false, "error": e.to_string() });
+    for dir in dirs {
+        if let Err(e) = fs::remove_dir_all(&dir) {
+            return serde_json::json!({ "ok": false, "error": e.to_string() });
+        }
     }
     clear_recorded_java_path(major_version);
     serde_json::json!({ "ok": true, "message": format!("ลบ Java {major_version} สำเร็จ") })

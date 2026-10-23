@@ -6,7 +6,7 @@ import { playClick } from "../../../lib/sounds";
 import type { LauncherConfig } from "../../../types/launcher";
 import type { SettingsTabProps } from "./AccountTab";
 import { useTranslation } from "../../../hooks/useTranslation";
-import { SettingsPage, SettingsSection, SettingsRow, fieldClass, fieldStyle, buttonClass, buttonStyle, primaryButtonStyle } from "./SettingsUI";
+import { SettingsPage, SettingsSection, SettingsRow, Segmented, fieldClass, fieldStyle, buttonClass, buttonStyle, primaryButtonStyle } from "./SettingsUI";
 
 interface JavaInstallProgress {
     majorVersion: number;
@@ -209,6 +209,24 @@ export function JavaTab({ config, updateConfig, colors }: SettingsTabProps) {
     return (
         <>
             <SettingsPage title={t('tab_java')} colors={colors}>
+                <SettingsSection colors={colors}>
+                    <SettingsRow
+                        colors={colors}
+                        title={t('java_provider')}
+                        description={t('java_provider_desc')}
+                        below={
+                            <Segmented
+                                value={config.javaProvider ?? "corretto"}
+                                colors={colors}
+                                options={[
+                                    { value: "corretto", label: "Amazon Corretto" },
+                                    { value: "graalvm", label: "Oracle GraalVM" },
+                                ]}
+                                onChange={(value) => updateConfig({ javaProvider: value })}
+                            />
+                        }
+                    />
+                </SettingsSection>
                 <SettingsSection colors={colors}>
                     {renderJavaSection(25, "25", "java25", (v) => v >= 25)}
                     {renderJavaSection(21, "21", "java21", (v) => v >= 21 && v < 25)}
