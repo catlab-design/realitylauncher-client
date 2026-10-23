@@ -315,47 +315,85 @@ async fn install_java_inner(app: &AppHandle, major: i32) -> Result<String, Strin
     );
 
     let archive_path = base.join(&file_name);
-    download_with_progress(app, major, &url, &archive_path).await?;
+    download_with_progress(&url, &archive_path, |percent, message| {
+        emit(app, major, "download", percent, &message)
+    })
+    .await?;
 
     emit(app, major, "extract", 0, "กำลังแตกไฟล์...");
-    let extract_dir = base.join(format!("temp-{major}"));
+    let target = base.join(format!("jdk-{major}"));
+    let exe = unpack_java(&archive_path, is_zip, &base.join(format!("temp-{major}")), &target)?;
+    emit(app, major, "install", 90, "กำลังติดตั้ง...");
+
+    record_java_path(major, &exe);
+    Ok(exe)
+}
+
+/// Unpacks a Java archive (one top-level dir) into `target` and returns its java.
+fn unpack_java(archive: &Path, is_zip: bool, extract_dir: &Path, target: &Path) -> Result<String, String> {
     if extract_dir.exists() {
-        fs::remove_dir_all(&extract_dir).ok();
+        fs::remove_dir_all(extract_dir).ok();
     }
-    fs::create_dir_all(&extract_dir).map_err(|e| e.to_string())?;
+    fs::create_dir_all(extract_dir).map_err(|e| e.to_string())?;
 
     if is_zip {
-        extract_zip(&archive_path, &extract_dir)?;
+        extract_zip(archive, extract_dir)?;
     } else {
-        extract_tar_gz(&archive_path, &extract_dir)?;
+        extract_tar_gz(archive, extract_dir)?;
     }
-    fs::remove_file(&archive_path).ok();
+    fs::remove_file(archive).ok();
 
-    emit(app, major, "install", 90, "กำลังติดตั้ง...");
-    let top_dir = fs::read_dir(&extract_dir)
+    let top_dir = fs::read_dir(extract_dir)
         .map_err(|e| e.to_string())?
         .flatten()
         .map(|e| e.path())
         .find(|p| p.is_dir())
         .ok_or("Extract produced no directory")?;
 
-    let target = base.join(format!("jdk-{major}"));
     if target.exists() {
-        fs::remove_dir_all(&target).ok();
+        fs::remove_dir_all(target).ok();
     }
-    fs::rename(&top_dir, &target).map_err(|e| e.to_string())?;
-    fs::remove_dir_all(&extract_dir).ok();
+    fs::rename(&top_dir, target).map_err(|e| e.to_string())?;
+    fs::remove_dir_all(extract_dir).ok();
 
-    let exe = java_exe_in(&target).ok_or_else(|| {
+    let exe = java_exe_in(target).ok_or_else(|| {
         format!(
             "Java executable not found after install ({})",
             java_exe_name()
         )
     })?;
-    let exe = exe.to_string_lossy().to_string();
+    Ok(exe.to_string_lossy().to_string())
+}
 
-    record_java_path(major, &exe);
-    Ok(exe)
+/// Linux only: a Temurin JRE kept for Forge/NeoForge installers, which need
+/// classic zlib (see `launcher::installer_java`). Temurin bundles zlib; Corretto
+/// links the system libz, which is zlib-ng on Arch/CachyOS/Fedora 40+. Lives in
+/// `java/installer-jre-<major>`, outside the game's Java detection.
+pub async fn install_installer_java(
+    major: i32,
+    on_progress: impl Fn(String),
+) -> Result<String, String> {
+    let base = java_base_dir();
+    let target = base.join(format!("installer-jre-{major}"));
+    if let Some(existing) = java_exe_in(&target) {
+        return Ok(existing.to_string_lossy().to_string());
+    }
+    let arch = match std::env::consts::ARCH {
+        "x86_64" => "x64",
+        "aarch64" => "aarch64",
+        other => return Err(format!("no Temurin build for {other}")),
+    };
+    fs::create_dir_all(&base).map_err(|e| e.to_string())?;
+    let url = format!(
+        "https://api.adoptium.net/v3/binary/latest/{major}/ga/linux/{arch}/jre/hotspot/normal/eclipse"
+    );
+    let archive_path = base.join(format!("installer-jre-{major}.tar.gz"));
+    download_with_progress(&url, &archive_path, |_, message| {
+        on_progress(format!("Java {major} for the loader installer: {message}"))
+    })
+    .await?;
+    on_progress(format!("Java {major} for the loader installer: unpacking"));
+    unpack_java(&archive_path, false, &base.join(format!("temp-installer-{major}")), &target)
 }
 
 fn record_java_path(major: i32, path: &str) {
@@ -375,10 +413,9 @@ fn record_java_path(major: i32, path: &str) {
 }
 
 async fn download_with_progress(
-    app: &AppHandle,
-    major: i32,
     url: &str,
     dest: &Path,
+    on_progress: impl Fn(u32, String),
 ) -> Result<(), String> {
     use futures_util::StreamExt;
     use std::io::Write;
@@ -409,13 +446,7 @@ async fn download_with_progress(
                 last_percent = percent;
                 let dl_mb = downloaded / 1_048_576;
                 let total_mb = total / 1_048_576;
-                emit(
-                    app,
-                    major,
-                    "download",
-                    percent,
-                    &format!("Downloading {dl_mb}/{total_mb} MB ({percent}%)"),
-                );
+                on_progress(percent, format!("Downloading {dl_mb}/{total_mb} MB ({percent}%)"));
             }
         }
     }
