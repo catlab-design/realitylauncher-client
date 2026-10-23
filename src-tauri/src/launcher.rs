@@ -1568,6 +1568,10 @@ impl NeoforgeArtifact {
         )
     }
 
+    fn loads_game_jar_itself(&self) -> bool {
+        self.artifact == "neoforge"
+    }
+
     fn patched_client_jar(&self, libraries_dir: &Path) -> PathBuf {
         libraries_dir
             .join("net/neoforged")
@@ -1691,6 +1695,10 @@ fn build_classpath(
     all_libs.retain(|lib| lib.get("natives").is_none());
 
     let mut paths: Vec<PathBuf> = Vec::new();
+    // A loader's libraries come before the inherited vanilla ones, so the
+    // loader's version of a shared library wins. NeoForge's bootstrap aborts
+    // on a jar listed twice ("Duplicate key").
+    let mut seen = std::collections::HashSet::new();
 
     for lib in &all_libs {
         if let Some(rules) = lib.get("rules").and_then(|r| r.as_array()) {
@@ -1700,7 +1708,14 @@ fn build_classpath(
         }
 
         if let Some(path) = resolve_library_path(lib, libraries_dir) {
-            paths.push(path);
+            let key = lib
+                .get("name")
+                .and_then(|n| n.as_str())
+                .map(library_identity)
+                .unwrap_or_else(|| path.to_string_lossy().to_string());
+            if seen.insert(key) {
+                paths.push(path);
+            }
         }
     }
 
@@ -1731,6 +1746,14 @@ fn build_classpath(
             .map(|v| NeoforgeArtifact::new(mc_version, v).patched_client_jar(libraries_dir)),
         _ => None,
     };
+    // NeoForge 1.20.2+ loads the game jar from libraries/ itself and, unlike
+    // Forge, has no `forge-` entry in its ignoreList: a client jar on the
+    // classpath becomes a second `minecraft` module and resolution fails.
+    let loader_finds_game_jar = matches!(instance.loader, LoaderType::Neoforge)
+        && instance
+            .loader_version
+            .as_deref()
+            .is_some_and(|v| NeoforgeArtifact::new(mc_version, v).loads_game_jar_itself());
 
     let client_jar = match patched_client_jar {
         Some(p) if p.exists() => p,
@@ -1739,7 +1762,7 @@ fn build_classpath(
             .join(client_version)
             .join(format!("{client_version}.jar")),
     };
-    if client_jar.exists() {
+    if !loader_finds_game_jar && client_jar.exists() {
         paths.push(client_jar);
     }
 
@@ -1779,6 +1802,16 @@ fn build_classpath(
     fs::write(&cp_path, &classpath).ok();
 
     Ok(classpath)
+}
+
+/// `group:artifact[:classifier]` of a Maven coordinate, without the version.
+fn library_identity(name: &str) -> String {
+    let parts: Vec<&str> = name.split('@').next().unwrap_or(name).split(':').collect();
+    match parts.as_slice() {
+        [group, artifact, _version, classifier, ..] => format!("{group}:{artifact}:{classifier}"),
+        [group, artifact, ..] => format!("{group}:{artifact}"),
+        _ => name.to_string(),
+    }
 }
 
 fn collect_libraries_recursive(
@@ -3123,5 +3156,15 @@ mod tests {
         );
         assert_eq!(legacy.version_id, "1.20.1-forge-47.1.106");
         assert_eq!(NeoforgeArtifact::new("1.20.1", "1.20.1-47.1.106").full_version, "1.20.1-47.1.106");
+    }
+
+    #[test]
+    fn library_identity_ignores_version_but_keeps_classifier() {
+        assert_eq!(library_identity("com.google.code.gson:gson:2.10.1"), "com.google.code.gson:gson");
+        assert_eq!(
+            library_identity("org.lwjgl:lwjgl:3.3.3:natives-linux"),
+            "org.lwjgl:lwjgl:natives-linux"
+        );
+        assert_eq!(library_identity("net.neoforged:neoforge:21.1.264:client@jar"), "net.neoforged:neoforge:client");
     }
 }
