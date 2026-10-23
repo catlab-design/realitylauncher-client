@@ -74,9 +74,20 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
         // from the Play press until the game starts) and the game's latest.log.
         let launchOffset = 0;
         let gameOffset = 0;
-        logIdRef.current = 0;
-        lastLevelRef.current = "info";
-        setLogs([]);
+        let launchCreated = 0;
+        let gameCreated = 0;
+        const reset = () => {
+            logIdRef.current = 0;
+            lastLevelRef.current = "info";
+            setLogs([]);
+        };
+        reset();
+
+        // Play recreates launcher.log and the game rotates latest.log. A new file
+        // has a new creation time; where the filesystem doesn't report one, a file
+        // smaller than what was already read is the only sign.
+        const replaced = (res: { size: number; created?: number }, offset: number, created: number) =>
+            res.size < offset || (created > 0 && (res.created ?? 0) > 0 && res.created !== created);
 
         const append = (content: string) => {
             const entries = parseLines(content);
@@ -91,20 +102,25 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
             if (cancelled) return;
             try {
                 if (!isPausedRef.current) {
-                    const launch = await window.api?.instanceTailLaunchLog?.(instanceId, launchOffset);
+                    let launch = await window.api?.instanceTailLaunchLog?.(instanceId, launchOffset);
+                    if (!cancelled && launch?.ok && replaced(launch, launchOffset, launchCreated)) {
+                        // A new launch: start over, keeping the previous game's
+                        // latest.log hidden until the game rotates it.
+                        reset();
+                        launch = await window.api?.instanceTailLaunchLog?.(instanceId, 0);
+                    }
                     if (!cancelled && launch?.ok) {
-                        // The launch log only shrinks when Play starts a new launch.
-                        if (launch.size < launchOffset) {
-                            logIdRef.current = 0;
-                            lastLevelRef.current = "info";
-                            setLogs([]);
-                        }
                         launchOffset = launch.size;
+                        launchCreated = launch.created ?? 0;
                         if (launch.content) append(launch.content);
                     }
-                    const res = await window.api?.instanceTailLog?.(instanceId, gameOffset);
+                    let res = await window.api?.instanceTailLog?.(instanceId, gameOffset);
+                    if (!cancelled && res?.ok && replaced(res, gameOffset, gameCreated)) {
+                        res = await window.api?.instanceTailLog?.(instanceId, 0);
+                    }
                     if (!cancelled && res?.ok) {
                         gameOffset = res.size;
+                        gameCreated = res.created ?? 0;
                         if (res.content) append(res.content);
                     }
                 }
@@ -120,11 +136,13 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
                 const launch = await window.api?.instanceTailLaunchLog?.(instanceId, 0);
                 if (!cancelled && launch?.ok) {
                     launchOffset = launch.size;
+                    launchCreated = launch.created ?? 0;
                     if (launch.content) append(launch.content);
                 }
                 const result = await window.api?.instanceReadLatestLog?.(instanceId);
                 if (!cancelled && result?.ok) {
                     gameOffset = result.size;
+                    gameCreated = result.created ?? 0;
                     // A latest.log last written before this launch began is the
                     // previous session's; wait for the game to start a new one.
                     const launchStarted = launch?.ok ? launch.created ?? 0 : 0;
