@@ -1,3 +1,8 @@
+## [Unreleased] — 2026-10-23
+
+### Fixed
+- Launcher sounds were silent on Linux systems without GStreamer's "good" plugins (`GStreamer element autoaudiosink not found`). The `.deb` now depends on `gstreamer1.0-plugins-good` and the `.rpm` on `gstreamer1-plugins-good`. The AppImage now bundles GStreamer and its plugins, so it doesn't rely on the system's.
+
 ## [5.1.0] — 2026-10-22
 
 ### Added
