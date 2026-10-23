@@ -1,6 +1,7 @@
 ## [Unreleased] — 2026-10-23
 
 ### Fixed
+- First launch of a Forge/NeoForge instance was cancelled with "Launch cancelled: no progress for 5 minutes" while the loader installer was still working (slow connection or CPU): the installer ran silently, so the Play watchdog saw no progress, and the installer kept running after the cancel. Its output now counts as launch progress (shown as "Installing Forge: …"), its phases (`Downloading libraries`, `Building Processors`, `Task: …`) and the path of its full log appear in Game Logs, a minute without output logs its last line, and cancelling a launch stops the installer. It also no longer blocks a background worker thread while it runs.
 - Launcher sounds were silent on Linux systems without GStreamer's "good" plugins (`GStreamer element autoaudiosink not found`). The `.deb` now depends on `gstreamer1.0-plugins-good` and the `.rpm` on `gstreamer1-plugins-good`. The AppImage now bundles GStreamer and its plugins, so it doesn't rely on the system's.
 
 ## [5.1.0] — 2026-10-22
