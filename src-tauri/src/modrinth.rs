@@ -308,9 +308,9 @@ async fn get_forge_versions(game_version: &str) -> Result<Vec<String>, String> {
     Ok(versions)
 }
 
-async fn get_neoforge_versions(game_version: &str) -> Result<Vec<String>, String> {
-    let url = "https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml";
-    let resp = crate::http_client::HTTP_CLIENT.get(url).send()
+async fn neoforge_maven_versions(artifact: &str) -> Result<Vec<String>, String> {
+    let url = format!("https://maven.neoforged.net/releases/net/neoforged/{artifact}/maven-metadata.xml");
+    let resp = crate::http_client::HTTP_CLIENT.get(&url).send()
         .await
         .map_err(|e| format!("NeoForge releases maven request failed: {e}"))?;
 
@@ -332,6 +332,30 @@ async fn get_neoforge_versions(game_version: &str) -> Result<Vec<String>, String
             break;
         }
     }
+    Ok(all_versions)
+}
+
+/// NeoForge for 1.20.1 is the legacy `net.neoforged:forge` artifact
+/// (`1.20.1-47.1.x`, unordered in its metadata); 1.20.2+ is `net.neoforged:neoforge`.
+async fn get_neoforge_versions(game_version: &str) -> Result<Vec<String>, String> {
+    if game_version == "1.20.1" {
+        let prefix = format!("{game_version}-");
+        let mut versions: Vec<String> = neoforge_maven_versions("forge")
+            .await?
+            .into_iter()
+            .filter_map(|v| v.strip_prefix(&prefix).map(str::to_string))
+            .collect();
+        versions.sort_by_cached_key(|v| {
+            std::cmp::Reverse(
+                v.split(|c: char| !c.is_ascii_digit())
+                    .map(|n| n.parse::<u64>().unwrap_or(0))
+                    .collect::<Vec<_>>(),
+            )
+        });
+        return Ok(versions);
+    }
+
+    let all_versions = neoforge_maven_versions("neoforge").await?;
 
     let mut versions = Vec::new();
     if game_version.starts_with("1.") {
