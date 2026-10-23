@@ -1169,8 +1169,9 @@ fn java_home_of(java_path: &Path) -> Option<PathBuf> {
 }
 
 /// On Linux, swaps a system-zlib JDK for one with bundled zlib (same or newer
-/// major) so loader installers produce the jars they expect.
-fn installer_java(java_path: &str) -> String {
+/// major) so loader installers produce the jars they expect. With none
+/// installed, downloads a Temurin JRE for it once (`java::install_installer_java`).
+async fn installer_java(java_path: &str, watch: Option<LaunchWatch<'_>>) -> String {
     if !cfg!(target_os = "linux") {
         return java_path.to_string();
     }
@@ -1183,7 +1184,38 @@ fn installer_java(java_path: &str) -> String {
     let Ok(required) = get_java_major_version(java_path) else {
         return java_path.to_string();
     };
+    if let Some(java) = bundled_zlib_java(&home, required) {
+        log::info!("[Launcher] {java_path} uses system zlib; running loader installer with {java}");
+        return java;
+    }
 
+    log::info!("[Launcher] {java_path} uses system zlib; downloading Temurin {required} for the loader installer");
+    if watch.is_some() {
+        crate::launch_log::info(format!(
+            "Java uses the system zlib-ng, which breaks the loader installer's checksums; \
+             getting Java {required} with its own zlib for the installer (downloaded once)"
+        ));
+    }
+    let progress = |message: String| {
+        if let Some(watch) = watch {
+            watch.progress(message);
+        }
+    };
+    match crate::java::install_installer_java(required, progress).await {
+        Ok(java) => java,
+        Err(e) => {
+            log::warn!("[Launcher] Could not get a bundled-zlib Java {required}: {e}; loader install may fail checksum checks");
+            if watch.is_some() {
+                crate::launch_log::warn(format!("Could not download Java {required} for the installer: {e}"));
+            }
+            java_path.to_string()
+        }
+    }
+}
+
+/// An installed JDK/JRE with bundled zlib, Java `required` or newer (the
+/// oldest such one).
+fn bundled_zlib_java(home: &Path, required: i32) -> Option<String> {
     let mut search_dirs = vec![PathBuf::from("/usr/lib/jvm"), PathBuf::from("/usr/lib64/jvm")];
     search_dirs.extend(home.parent().map(Path::to_path_buf));
 
@@ -1203,20 +1235,7 @@ fn installer_java(java_path: &str) -> String {
             (major >= required).then_some((major, java))
         })
         .min_by_key(|(major, _)| *major);
-
-    match best {
-        Some((_, java)) => {
-            let java = java.to_string_lossy().to_string();
-            log::info!("[Launcher] {java_path} uses system zlib; running loader installer with {java}");
-            java
-        }
-        None => {
-            log::warn!(
-                "[Launcher] {java_path} uses system zlib and no bundled-zlib Java {required}+ was found; loader install may fail checksum checks"
-            );
-            java_path.to_string()
-        }
-    }
+    best.map(|(_, java)| java.to_string_lossy().to_string())
 }
 
 /// A launch waiting on a loader installer. The installer's output is relayed
@@ -1288,7 +1307,7 @@ async fn run_loader_installer(
     minecraft_dir: &Path,
     watch: Option<LaunchWatch<'_>>,
 ) -> Result<(), String> {
-    let mut cmd = tokio::process::Command::new(installer_java(java_path));
+    let mut cmd = tokio::process::Command::new(installer_java(java_path, watch).await);
     cmd.args([
         "-jar",
         &installer_path.to_string_lossy(),
