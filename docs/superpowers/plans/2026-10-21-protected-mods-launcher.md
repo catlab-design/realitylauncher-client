@@ -1,8 +1,8 @@
-# Protected Mods — Launcher Support (5.1, dormant) Implementation Plan
+# Protected Mods — Launcher Support (5.2, dormant) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship launcher support for encrypted custom mods (`.rlmod`), so it is already installed on most players' machines before the server feature launches. Against today's API it must behave exactly like 5.0.2.
+**Goal:** Ship launcher support for encrypted custom mods (`.rlmod`), so it is already installed on most players' machines before the server feature launches. Against today's API it must behave exactly like 5.1.0.
 
 **Architecture:** A new Rust module directory, `src-tauri/src/protected_mods/`, owns everything protected:
 - the `.rlmod` format;
@@ -45,6 +45,7 @@ Existing sync code only (a) sends the capability header, (b) skips entries marke
 - **Launch error strings are machine codes** `protected:<code>`, where `<code>` ∈ `not_member | offline | decrypt_failed | update_required | rate_limited | unavailable`. The UI maps them to i18n keys `protected_error_<code>`.
 - **Dormant:** with no protected markers in any response, the code makes no extra network requests and touches no `.rl-protected/` files, except purging a stale `.rl-protected/` (Task 6).
 - Never remove `WEBKIT_DISABLE_DMABUF_RENDERER` (CLAUDE.md gotcha 14).
+- **Never log key bytes, the bearer token or the fingerprint.** That covers `println!`, `emit_progress` and `launch_log` (CLAUDE.md gotcha 20). Log file counts and fileIds only.
 
 ## Review Focus
 
@@ -262,14 +263,14 @@ Existing sync code only (a) sends the capability header, (b) skips entries marke
 
 **Files:**
 - Modify: `src-tauri/src/pack_v2.rs`:
-  - `fetch_manifest` (around line 349): add `CAPABILITY`.
-  - `FileEntry` (around line 46): `url` and `layer` become `Option`/`#[serde(default)]`, and add `#[serde(default)] protected: Option<ProtectedRef>` where `struct ProtectedRef { file_id: String }`.
+  - `fetch_manifest` (line 348): add `CAPABILITY`.
+  - `FileEntry` (line 55): `url` and `layer` become `Option`/`#[serde(default)]`, and add `#[serde(default)] protected: Option<ProtectedRef>` where `struct ProtectedRef { file_id: String }`.
   - `wants_from`: skip protected files.
   - `Outcome::Synced` becomes `Synced { failed: Vec<(String,String)>, protected_seen: bool }`.
 - Modify: `src-tauri/src/cloud.rs`:
-  - `ServerMod` (line 17) and `ManagedMod` (line 78) get `#[serde(default)] pub protected: bool`.
+  - `ServerMod` (line 19) and `ManagedMod` (line 78) get `#[serde(default)] pub protected: bool`.
   - `ServerContentPayload` gets `#[serde(default)] protected_required: bool`.
-  - Add `CAPABILITY` to the content (around line 481), managed (around 679/688) and pack fetches.
+  - Add `CAPABILITY` to the content (lines 471–473), managed (`fetch_managed_mods`, line 675) and pack fetches.
   - In `sync_managed_mods` and the `/content` path, protected entries are neither downloaded nor added to `keep`.
   - `sync_server_mods` returns `Result<(Vec<(String,String)>, bool), String>`, where the bool is `protected_seen` (any protected marker, or `protected_required`).
   - `sync_instance_for_launch` and `cloud_instance_sync_managed`, plus every other caller of `sync_server_mods`/`sync_managed_mods` (find them with `grep -n "sync_server_mods(\|sync_managed_mods(" src-tauri/src`), call `crate::protected_mods::sync::sync_protected(API_URL, dir, cloud_id, &token, seen)` after the existing sync and append its failures.
@@ -284,7 +285,7 @@ Existing sync code only (a) sends the capability header, (b) skips entries marke
 
 - [ ] **Step 1: Failing tests**
   - In `pack_v2.rs` tests: `wants_from_skips_protected` (a manifest JSON with `files:[{path:"mods/x.jar",protected:{fileId:"…"}}]` gives no Want and reports seen).
-  - In `cloud.rs` tests: `server_mod_protected_parses` and `content_without_protected_fields_parses` (a 5.0.2-era JSON still parses with `protected == false`).
+  - In `cloud.rs` tests: `server_mod_protected_parses` and `content_without_protected_fields_parses` (a 5.1.0-era JSON still parses with `protected == false`).
 - [ ] **Step 2:** Run `cargo test --lib pack_v2 cloud`. Expected: FAIL.
 - [ ] **Step 3:** Implement.
 - [ ] **Step 4:** Run `cargo test --lib` and `cargo check --lib`. Expected: PASS and clean.
@@ -294,14 +295,15 @@ Existing sync code only (a) sends the capability header, (b) skips entries marke
 
 **Files:**
 - Modify: `src-tauri/src/launcher.rs`:
-  - In `launch_game`, before `build_classpath` (line 529): if `instance.cloud_id` is set, `emit_progress(&app,"protected","Preparing protected mods...",0.84)`, then `prepare_launch(API_URL, &instance_dir, &instance.id, cloud_id, &token, &OsKeychain, chrono::Utc::now().timestamp())` and propagate `Err`. Get the token the way `cloud::get_api_token` does; make it `pub(crate)`.
-  - In the monitor `PollResult::Stopped` branch (around line 715, before the `game-stopped` emit) and in `kill_game` after the child is cleared: clear `PLAYING_INSTANCE_ID` first, then `protected_mods::store::cleanup_session(&dir, &id)`. `cleanup_session` refuses to run while the instance counts as playing, so the order matters.
-- Modify: `src-tauri/src/main.rs` `.setup` (line 210): `std::thread::spawn(protected_mods::launch::cleanup_all_instances);`
+  - In `launch_game`, before the "classpath" `emit_progress` (line 630): if `instance.cloud_id` is set, `emit_progress(&app,"protected","Preparing protected mods...",0.84)`, then `prepare_launch(API_URL, &instance_dir, &instance.id, cloud_id, &token, &OsKeychain, chrono::Utc::now().timestamp())` and propagate `Err`. Get the token the way `cloud::get_api_token` does; make it `pub(crate)`.
+  - In the monitor `PollResult::Stopped` branch (line 891, before the `game-stopped` emit) and in `kill_game` (line 137) after the child is cleared: clear `PLAYING_INSTANCE_ID` first, then `protected_mods::store::cleanup_session(&dir, &id)`. `cleanup_session` refuses to run while the instance counts as playing, so the order matters.
+  - **Abandoned or failed launch:** when `launch_game` returns `Err` after `prepare_launch` succeeded, or drops its child because `cancel_launch` bumped `LAUNCH_GENERATION` (CLAUDE.md gotcha 19), call `cleanup_session` before returning. Decrypted jars must never outlive a launch that didn't start a game.
+- Modify: `src-tauri/src/main.rs` `.setup` (line 220): `std::thread::spawn(protected_mods::launch::cleanup_all_instances);`
 
 - [ ] **Step 1:** Implement. These are glue-only edits and are covered by the Task 3 and Task 7 tests.
 - [ ] **Step 2:** Run `cargo check --lib && cargo test --lib`. Expected: clean, all pass.
 - [ ] **Step 3: Manual dormant check.** `bun run tauri dev`. Launch an existing cloud instance and a local instance. Both launch exactly as before, and no `.rl-protected/` directory is created.
-- [ ] **Step 4: Manual protected check against a mock.**
+- [ ] **Step 4: Manual protected check against a mock.** Also press Play, then cancel while "Preparing protected mods..." shows, and confirm `mods/` has no protected jar.
   - Run a wiremock-based example `src-tauri/examples/mock_protected_api.rs` for cloud id `mock`. It serves:
     - `/instances/mock/pack/manifest` → 404
     - `/instances/mock/content` → `{mods:[{filename:"mods/fixture.jar",protected:true}]}`
@@ -321,7 +323,7 @@ Existing sync code only (a) sends the capability header, (b) skips entries marke
   - `instance_toggle_mod` (84), `instance_delete_mod` (89) and `instance_toggle_lock` (1232) return an error for protected filenames.
 - Modify: `src/types/launcher.ts` (`ModInfo.protected?: boolean`)
 - Modify: `src/components/tabs/ModPackTabs/LazyModItem.tsx`: badge `t('protected_badge')` next to the locked badge (line 256); toggle, delete and lock are disabled when `mod.protected`.
-- Modify: `src/components/tabs/ModPack.tsx:296`: if `errorMessage.startsWith('protected:')`, show `t('protected_error_' + code)`.
+- Modify: `src/components/tabs/ModPack.tsx:318` and `src/components/tabs/ServerMenu.tsx:373`: if `errorMessage.startsWith('protected:')`, show `t('protected_error_' + code)`.
 - Modify: `src/i18n/translations-en.ts` and `src/i18n/translations-th.ts`. Add the keys `protected_badge` and `protected_error_{not_member,offline,decrypt_failed,update_required,rate_limited,unavailable}` with this English copy:
   - **Protected**
   - You're no longer a member of this server.

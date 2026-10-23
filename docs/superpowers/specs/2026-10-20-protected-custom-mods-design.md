@@ -87,7 +87,7 @@ New table `protected_key_grants`: `id`, `user_id`, `instance_id`, `file_ids` (JS
 ## 4. API behaviour (`realitylauncher-api`)
 
 ### 4.1 Capability header
-Clients that can decrypt send `X-RL-Capabilities: protected-mods/1`. The API logs the header's presence per request so the 5.1 adoption rate can be measured.
+Clients that can decrypt send `X-RL-Capabilities: protected-mods/1`. The API logs the header's presence per request so the 5.2 adoption rate can be measured.
 
 ### 4.2 Existing routes, for protected instances
 
@@ -133,7 +133,7 @@ Clients that can decrypt send `X-RL-Capabilities: protected-mods/1`. The API log
 - On the instance files page, a **"Protect custom mods"** toggle plus an offline-grace hours input.
 - Turning the toggle on or off loops `POST /protection/step` with a progress bar until the state is `on`/`off`. On `failed` it shows the errors and a Retry button.
 - A lock badge on protected rows.
-- Copy explains the limits: "Prevents copying and re-uploading. Players need Reality Launcher 5.1+. Reality Mini users get public mods only."
+- Copy explains the limits: "Prevents copying and re-uploading. Players need Reality Launcher 5.2+. Reality Mini users get public mods only."
 
 ## 6. Launcher (`realitylauncher-client`)
 
@@ -232,16 +232,16 @@ On-disk layout per instance:
 
 The launcher ships support **before** the server feature exists, so most players already run a capable version when protection goes live. The server system is "coming soon" until step 3.
 
-1. **Launcher 5.1 (dormant support).** Sync, launch decryption, cleanup, grace, and the UI from §6.
-   - It is inert against today's API: it sends the capability header (ignored today) and acts only when a response contains `protected` entries, `protectedRequired`, or a `/protected` list. With none present, every path behaves exactly like 5.0.2.
+1. **Launcher 5.2 (dormant support).** Sync, launch decryption, cleanup, grace, and the UI from §6.
+   - It is inert against today's API: it sends the capability header (ignored today) and acts only when a response contains `protected` entries, `protectedRequired`, or a `/protected` list. With none present, every path behaves exactly like 5.1.0.
    - It is built against this spec as a frozen contract (`protected-mods/1`). The `.rlmod` reference encoder lives in Rust test code, and its test vectors are committed to `src-tauri/tests/fixtures/rlmod/`. The API's encoder must later decrypt-match these vectors. That reverses the direction stated in §8, which said the API generates the vectors.
    - It is tested end to end against a local mock API (the test helper serves `/protected`, `/protected/keys` and `.rlmod` files).
-2. **Monitor adoption.** As soon as the API logs the capability header (a one-line change, deployable before anything else), track the share of 5.1+ requests.
+2. **Monitor adoption.** As soon as the API logs the capability header (a one-line change, deployable before anything else), track the share of 5.2+ requests.
 3. **API + management dashboard.** Schema, endpoints, leak closure and backfill (§3–§5), deployed with the toggle hidden or labelled "Coming soon".
 4. **Reality Mini update** (§7).
 5. **Enable the toggle.** CatLab's own instances go first.
 
-Any change to the wire format after 5.1 ships requires bumping the capability version (`protected-mods/2`), with the API serving both versions.
+Any change to the wire format after 5.2 ships requires bumping the capability version (`protected-mods/2`), with the API serving both versions.
 
 ## 10. Phase 2 (not in this spec)
 - In-memory decryption for Reality Mini through a Forge mod locator.
