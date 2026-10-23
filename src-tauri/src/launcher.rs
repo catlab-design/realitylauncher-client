@@ -607,8 +607,10 @@ async fn launch_game(
     
     let effective_version_json = if instance.loader != LoaderType::Vanilla {
         emit_progress(&app, "modloader", "Installing mod loader...", 0.75);
+        let watch = LaunchWatch { app: &app, generation: launch_gen };
         let loader_json =
-            install_mod_loader(&instance, &minecraft_dir_val, &libraries_dir, &java_path).await?;
+            install_mod_loader(&instance, &minecraft_dir_val, &libraries_dir, &java_path, Some(watch))
+                .await?;
         // Fabric/Quilt profiles only list their libraries (loader, intermediary, mixin, asm);
         // nothing else downloads them, and build_classpath skips missing jars, which left the
         // game without its main class. Forge/NeoForge installers fetch their own.
@@ -1060,6 +1062,7 @@ async fn install_mod_loader(
     minecraft_dir: &Path,
     libraries_dir: &Path,
     java_path: &str,
+    watch: Option<LaunchWatch<'_>>,
 ) -> Result<serde_json::Value, String> {
     let loader_version = instance.loader_version.as_deref().unwrap_or("latest");
     match instance.loader {
@@ -1073,6 +1076,7 @@ async fn install_mod_loader(
                 minecraft_dir,
                 libraries_dir,
                 java_path,
+                watch,
             )
             .await
         }
@@ -1083,6 +1087,7 @@ async fn install_mod_loader(
                 minecraft_dir,
                 libraries_dir,
                 java_path,
+                watch,
             )
             .await
         }
@@ -1147,11 +1152,6 @@ fn ensure_launcher_profiles(minecraft_dir: &Path) -> Result<(), String> {
 }
 
 const INSTALLER_ERROR_TAIL_LINES: usize = 40;
-
-fn tail_lines(text: &str, n: usize) -> String {
-    let lines: Vec<&str> = text.trim().lines().collect();
-    lines[lines.len().saturating_sub(n)..].join("\n")
-}
 
 /// Forge/NeoForge processors check the SHA1 of the jars they write, and those
 /// hashes assume classic zlib. A JDK whose libzip links the system libz
@@ -1219,37 +1219,166 @@ fn installer_java(java_path: &str) -> String {
     }
 }
 
-fn run_loader_installer(
+/// A launch waiting on a loader installer. The installer's output is relayed
+/// as launch progress, so the UI's stall watchdog sees it working (Forge can
+/// take minutes on a slow connection), and a cancelled launch stops it.
+#[derive(Clone, Copy)]
+struct LaunchWatch<'a> {
+    app: &'a tauri::AppHandle,
+    generation: u64,
+}
+
+impl LaunchWatch<'_> {
+    fn cancelled(&self) -> bool {
+        *LAUNCH_GENERATION.lock().unwrap() != self.generation
+    }
+
+    fn progress(&self, message: String) {
+        let _ = self.app.emit(
+            "launch-progress",
+            ProgressPayload {
+                stage: "modloader".to_string(),
+                message,
+                progress: 0.75,
+            },
+        );
+    }
+}
+
+const INSTALLER_PROGRESS_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
+const INSTALLER_QUIET_WARNING: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Installer lines worth a Game Logs entry. Forge prints 20–35k lines per run
+/// (all of them also land in `<installer>.log` next to the jar).
+fn installer_milestone(line: &str) -> Option<&str> {
+    let line = line.trim_end();
+    (line == "Downloading libraries" || line == "Building Processors" || line.starts_with("Task: "))
+        .then_some(line)
+}
+
+fn shorten(text: &str, max_chars: usize) -> String {
+    match text.char_indices().nth(max_chars) {
+        Some((cut, _)) => format!("{}…", &text[..cut]),
+        None => text.to_string(),
+    }
+}
+
+fn forward_lines<R>(reader: R, tx: tokio::sync::mpsc::UnboundedSender<String>)
+where
+    R: tokio::io::AsyncRead + Unpin + Send + 'static,
+{
+    use tokio::io::AsyncBufReadExt;
+    tokio::spawn(async move {
+        let mut reader = tokio::io::BufReader::new(reader);
+        let mut buf = Vec::new();
+        while matches!(reader.read_until(b'\n', &mut buf).await, Ok(n) if n > 0) {
+            let line = String::from_utf8_lossy(&buf).trim_end().to_string();
+            buf.clear();
+            if tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+}
+
+async fn run_loader_installer(
     loader: &str,
     java_path: &str,
     installer_path: &Path,
     minecraft_dir: &Path,
+    watch: Option<LaunchWatch<'_>>,
 ) -> Result<(), String> {
-    let mut cmd = Command::new(installer_java(java_path));
+    let mut cmd = tokio::process::Command::new(installer_java(java_path));
     cmd.args([
         "-jar",
         &installer_path.to_string_lossy(),
         "--installClient",
         &minecraft_dir.to_string_lossy(),
-    ]);
+    ])
+    .stdin(Stdio::null())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .kill_on_drop(true);
     if let Some(installer_dir) = installer_path.parent() {
         cmd.current_dir(installer_dir);
     }
     #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000);
+    cmd.creation_flags(0x08000000);
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to run {loader} installer: {e}"))?;
+    if watch.is_some() {
+        crate::launch_log::info(format!(
+            "{loader} installer started; its full log: {}.log",
+            crate::launch_log::display_path(installer_path)
+        ));
     }
-    let output = cmd.output()
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    if let Some(stdout) = child.stdout.take() {
+        forward_lines(stdout, tx.clone());
+    }
+    if let Some(stderr) = child.stderr.take() {
+        forward_lines(stderr, tx);
+    }
+
+    let mut tail = std::collections::VecDeque::with_capacity(INSTALLER_ERROR_TAIL_LINES);
+    let mut invalid_outputs = false;
+    let mut last_line_at = std::time::Instant::now();
+    let mut last_progress_at: Option<std::time::Instant> = None;
+    let mut quiet_logged = false;
+    let mut tick = tokio::time::interval(std::time::Duration::from_secs(1));
+    loop {
+        tokio::select! {
+            line = rx.recv() => {
+                let Some(line) = line else { break };
+                if line.trim().is_empty() {
+                    continue;
+                }
+                last_line_at = std::time::Instant::now();
+                quiet_logged = false;
+                invalid_outputs |= line.contains("Processor failed, invalid outputs");
+                if let Some(watch) = watch {
+                    if let Some(milestone) = installer_milestone(&line) {
+                        crate::launch_log::info(format!("{loader} installer: {milestone}"));
+                    }
+                    if last_progress_at.is_none_or(|at| at.elapsed() >= INSTALLER_PROGRESS_INTERVAL) {
+                        last_progress_at = Some(std::time::Instant::now());
+                        watch.progress(format!("Installing {loader}: {}", shorten(line.trim(), 60)));
+                    }
+                }
+                if tail.len() == INSTALLER_ERROR_TAIL_LINES {
+                    tail.pop_front();
+                }
+                tail.push_back(line);
+            }
+            _ = tick.tick() => {
+                let Some(watch) = watch else { continue };
+                if watch.cancelled() {
+                    let _ = child.kill().await;
+                    return Err("Launch cancelled".to_string());
+                }
+                if !quiet_logged && last_line_at.elapsed() >= INSTALLER_QUIET_WARNING {
+                    quiet_logged = true;
+                    crate::launch_log::warn(format!(
+                        "{loader} installer: no output for {} s. Last line: {}",
+                        INSTALLER_QUIET_WARNING.as_secs(),
+                        tail.back().map(String::as_str).unwrap_or("(none)")
+                    ));
+                }
+            }
+        }
+    }
+    let status = child
+        .wait()
+        .await
         .map_err(|e| format!("Failed to run {loader} installer: {e}"))?;
 
-    if output.status.success() {
+    if status.success() {
         return Ok(());
     }
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let log_text = if stderr.trim().is_empty() { stdout } else { stderr };
-    let hint = if log_text.contains("Processor failed, invalid outputs") {
+    let log_text = Vec::from(tail).join("\n");
+    let hint = if invalid_outputs {
         "\n\nThe installer's output checksums did not match. On Linux this usually means \
          Java is using the system zlib-ng; install a distro OpenJDK of the same version \
          (e.g. jdk17-openjdk) and try again."
@@ -1258,8 +1387,8 @@ fn run_loader_installer(
     };
     Err(format!(
         "{loader} installer exited with {}:\n{}{hint}",
-        output.status,
-        tail_lines(&log_text, INSTALLER_ERROR_TAIL_LINES)
+        status,
+        log_text
     ))
 }
 
@@ -1296,6 +1425,7 @@ async fn install_forge(
     minecraft_dir: &Path,
     libraries_dir: &Path,
     java_path: &str,
+    watch: Option<LaunchWatch<'_>>,
 ) -> Result<serde_json::Value, String> {
     let full_version = if forge_version.starts_with(mc_version) {
         forge_version.to_string()
@@ -1354,7 +1484,7 @@ async fn install_forge(
     fs::write(&installer_path, &bytes).map_err(|e| e.to_string())?;
 
     ensure_launcher_profiles(minecraft_dir)?;
-    run_loader_installer("Forge", java_path, &installer_path, minecraft_dir)?;
+    run_loader_installer("Forge", java_path, &installer_path, minecraft_dir, watch).await?;
 
     if !version_json_path.exists() {
         return Err(format!(
@@ -1382,6 +1512,7 @@ async fn install_neoforge(
     minecraft_dir: &Path,
     libraries_dir: &Path,
     java_path: &str,
+    watch: Option<LaunchWatch<'_>>,
 ) -> Result<serde_json::Value, String> {
     let full_version = if neoforge_version.starts_with(&format!("{mc_version}-")) {
         neoforge_version.to_string()
@@ -1432,7 +1563,7 @@ async fn install_neoforge(
     fs::write(&installer_path, &bytes).map_err(|e| e.to_string())?;
 
     ensure_launcher_profiles(minecraft_dir)?;
-    run_loader_installer("NeoForge", java_path, &installer_path, minecraft_dir)?;
+    run_loader_installer("NeoForge", java_path, &installer_path, minecraft_dir, watch).await?;
 
     if !version_json_path.exists() {
         return Err(format!(
@@ -2789,7 +2920,7 @@ pub async fn instances_preinstall(app: tauri::AppHandle, id: String) -> Result<(
             crate::java::ensure_compatible_java(&app, &instance, &config_val, required_java)
                 .await?;
         let loader_json =
-            install_mod_loader(&instance, &minecraft_dir_val, &libraries_dir, &java_path).await?;
+            install_mod_loader(&instance, &minecraft_dir_val, &libraries_dir, &java_path, None).await?;
         // Same as launch: Fabric/Quilt libraries are only listed in the profile.
         if matches!(instance.loader, LoaderType::Fabric | LoaderType::Quilt) {
             ensure_libraries(&loader_json, &libraries_dir).await?;
@@ -2804,9 +2935,51 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tail_lines_keeps_last_n() {
-        assert_eq!(tail_lines("a\nb\nc\nd\n", 2), "c\nd");
-        assert_eq!(tail_lines("a\nb", 10), "a\nb");
+    fn installer_milestones() {
+        assert_eq!(installer_milestone("Task: MCP_DATA"), Some("Task: MCP_DATA"));
+        assert_eq!(installer_milestone("Building Processors\r"), Some("Building Processors"));
+        assert_eq!(installer_milestone("  Downloading library from https://x"), None);
+        assert_eq!(installer_milestone("Data kindly mirrored by CreeperHost"), None);
+    }
+
+    #[test]
+    fn shorten_cuts_on_char_boundary() {
+        assert_eq!(shorten("abc", 5), "abc");
+        assert_eq!(shorten("ไทยภาษา", 3), "ไทย…");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn loader_installer_failure_keeps_output_tail() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("reality-installer-test-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let fake_java = dir.join("java");
+        fs::write(
+            &fake_java,
+            "#!/bin/sh\nfor i in $(seq 1 60); do echo \"line $i\"; done\n\
+             echo 'Processor failed, invalid outputs' >&2\necho 'last'\nexit 3\n",
+        )
+        .unwrap();
+        fs::set_permissions(&fake_java, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let ok = dir.join("ok");
+        fs::write(&ok, "#!/bin/sh\necho done\n").unwrap();
+        fs::set_permissions(&ok, fs::Permissions::from_mode(0o755)).unwrap();
+        let installer = dir.join("installer.jar");
+
+        assert!(run_loader_installer("Forge", &ok.to_string_lossy(), &installer, &dir, None)
+            .await
+            .is_ok());
+        let err = run_loader_installer("Forge", &fake_java.to_string_lossy(), &installer, &dir, None)
+            .await
+            .unwrap_err();
+        let _ = fs::remove_dir_all(&dir);
+
+        assert!(err.contains("exit status: 3"), "{err}");
+        assert!(err.contains("line 60") && err.contains("last"), "{err}");
+        assert!(!err.contains("line 5\n"), "{err}");
+        assert!(err.contains("zlib-ng"), "{err}");
     }
 
     #[test]
