@@ -25,6 +25,7 @@
 2. **Key left recoverable.** Key on disk or on the command line fails the whole approach. Covered by Phase 0 gate G3; Phase 1 step verifies `ps` and the instance tree.
 3. **Agent channel absent / malformed.** Game must still launch (unprotected or fallback), never hang waiting on a channel. Covered by Phase 3 manual check.
 4. **Member revoked / offline.** Reuses base plan grant logic; agent never receives keys the server didn't grant. Covered by base plan Tasks 5 & 7.
+5. **Memory growth.** The agent must keep exactly one decrypted copy per mod and reuse it on every access; retained heap must not grow during play. Covered by Phase 0 gate G5, T1.1 and T3.2.
 
 ---
 
@@ -40,15 +41,16 @@ Output is a recommendation, not kept code. Build a minimal agent hook + one encr
   - G2 no plain `.jar`/`.class` of the mod anywhere under the instance dir during or after the run
   - G3 key absent from disk and from `ps -ef` output
   - G4 record per-loader coverage (pass/fail each)
-- [ ] **S5. Write findings** to `docs/superpowers/specs/2026-10-23-agent-inmemory-mods-addendum.md` under a new "Phase 0 findings" section: the interception point, the key channel, per-loader coverage, and a go/no-go recommendation. Delete the throwaway prototype.
+  - G5 memory: same instance and `-Xmx`, protected mods agent-served vs. the same mods as plain jars. Record used heap after startup and after 30 minutes of play (`jcmd <pid> GC.heap_info` after `jcmd <pid> GC.run`). Pass if the extra heap is at most ~2× the protected jars' total plaintext size and does not grow between the two readings
+- [ ] **S5. Write findings** to `docs/superpowers/specs/2026-10-23-agent-inmemory-mods-addendum.md` under a new "Phase 0 findings" section: the interception point, the key channel, per-loader coverage, the G5 memory numbers, and a go/no-go recommendation. If G5's overhead is too large, also say whether chunk-on-demand decryption (addendum §4.1) is needed. Delete the throwaway prototype.
 
-**Gate:** If G1–G3 pass for at least one loader, continue to Phase 1 (loaders that fail G4 use fallback). If G1–G3 fail, STOP — ship the base plan.
+**Gate:** If G1–G3 and G5 pass for at least one loader, continue to Phase 1 (loaders that fail G4 use fallback). If G1–G3 fail, STOP — ship the base plan. If only G5 fails, either add chunk-on-demand decryption to Phase 1 (if the findings show it fixes the overhead) or STOP.
 
 ## Phase 1 — Agent protected-mods subsystem
 
 (Only after a go decision. Exact hook/channel per Phase 0 findings.)
 
-- [ ] **T1.1** Add the subsystem to `agent/`, gated in `premain` like the existing title/icon/badge subsystems: active only when the protected-mods channel is present. Decrypt `.rlmod` bytes in memory into a filename→bytes map; clear key material after each file.
+- [ ] **T1.1** Add the subsystem to `agent/`, gated in `premain` like the existing title/icon/badge subsystems: active only when the protected-mods channel is present. Decrypt `.rlmod` bytes in memory into a filename→bytes map; clear key material after each file. The map holds exactly one copy per mod, created once in `premain` and never replaced; every access returns that same copy (or a read-only view of it), never a new array.
 - [ ] **T1.2** Implement the loader interception found in Phase 0, expressed in stable names, covering the loaders that passed G4.
 - [ ] **T1.3** Record the per-user fingerprint inside the served bytes (base spec §6.3).
 - [ ] **T1.4** `bun run build:agent`; commit the reproducible jar.
@@ -65,5 +67,5 @@ Output is a recommendation, not kept code. Build a minimal agent hook + one encr
 ## Phase 3 — Verification & docs
 
 - [ ] **T3.1** Manual matrix: Fabric, Quilt, Forge, NeoForge — protected mod loads; for unsupported loaders confirm fallback; confirm absent/malformed channel still launches.
-- [ ] **T3.2** Confirm G2/G3 across the matrix (no plain jar; key not on disk or in `ps`).
+- [ ] **T3.2** Confirm G2/G3 across the matrix (no plain jar; key not on disk or in `ps`), and repeat the G5 memory measurement on Fabric and Forge with the final agent build.
 - [ ] **T3.3** Update `docs/CHANGELOG.md` (Added) and `CLAUDE.md` (agent gotcha 17 + §2 agent file list). Pre-commit checklist (CLAUDE.md §10). Commit: `docs: agent-served protected mods`

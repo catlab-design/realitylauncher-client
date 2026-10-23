@@ -20,6 +20,7 @@ The in-memory path ships **only if** the spike proves all of these on this machi
 - G2. No plain `.jar` (or extracted `.class`) for the protected mod exists anywhere under the instance dir while the game runs or after it exits.
 - G3. The decryption key is never written to disk and never passed on the process command line (it is visible in `ps`); it reaches the agent by a private channel (§5).
 - G4. One agent build works for Fabric, Quilt, Forge and NeoForge without per-loader native code. If a loader cannot be covered by the shared hook, that loader falls back to decrypt-to-disk (base spec §6) for its protected mods.
+- G5. **Memory stays bounded.** With the same instance and `-Xmx`, compare the game's heap after startup and after 30 minutes of play, with protected mods served by the agent versus the same mods as plain jars in `mods/`. The extra retained heap must be at most about 2× the total plaintext size of the protected jars, and must not grow between the startup and 30-minute measurements.
 
 If G1–G3 fail, we ship the base decrypt-to-disk design unchanged and archive this addendum. G4 may pass for some loaders and fail for others; coverage is per-loader.
 
@@ -30,6 +31,14 @@ If G1–G3 fail, we ship the base decrypt-to-disk design unchanged and archive t
 - The agent, early in `premain`, decrypts each `.rlmod` in memory and holds the jar bytes in a map keyed by the intended filename. No plaintext is written to disk.
 - The agent makes those in-memory jars visible to whichever loader is running, at the point the loader enumerates/opens mod files. The exact interception point is the spike's main unknown and will be documented by Phase 0; it must be expressed in terms of stable `java.base` / loader-API names (the agent's existing rule: no obfuscated names), so one build spans versions.
 - The fingerprint is still recorded inside the served bytes (base spec §6.3) so a dump remains traceable.
+
+### 4.1 Memory
+
+- Java loads classes lazily, so the decrypted bytes must stay reachable for the whole game session; the agent cannot free them after startup. This is retained memory, counted against the player's `-Xmx`, not a leak, but it must be bounded and visible.
+- The agent keeps **exactly one** decrypted copy per protected mod and returns that same copy on every access. Building a new copy per access would make memory grow with use, which is a real leak.
+- Expected overhead is roughly the total plaintext size of the protected jars, possibly up to about 2× if the loader makes its own copy. Phase 0 measures it (gate G5).
+- **Optional, only if G5 shows the overhead is too large:** keep each mod encrypted in memory and decrypt only the 1 MiB chunks the loader reads. That reduces retained plaintext but adds complexity, so it is not built unless the numbers call for it.
+- The launcher's own memory is unaffected: it streams `.rlmod` files and only passes keys and a small manifest to the agent.
 
 ## 5. Key channel (launcher → agent, no disk, no command line)
 
