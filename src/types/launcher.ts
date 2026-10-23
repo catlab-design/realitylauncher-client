@@ -112,6 +112,8 @@ export interface LauncherConfig {
   enableGameMode?: boolean;
   /** Linux Wayland sessions: run natively instead of through XWayland (launcher restart applies it to the launcher). */
   nativeWayland?: boolean;
+  /** Source of Java 21/25 for Settings › Java and automatic installs; Java 8/17 always come from Corretto. */
+  javaProvider?: "corretto" | "graalvm";
   telemetryEnabled: boolean;
   autoUpdateEnabled: boolean;
   lastSeenVersion?: string;

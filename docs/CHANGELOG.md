@@ -1,5 +1,9 @@
 ## [Unreleased] — 2026-10-23
 
+### Added
+- Settings › Java › Download Java from: Amazon Corretto (default) or Oracle GraalVM. With GraalVM chosen, Install and automatic installs of Java 21 and 25 download Oracle GraalVM (`java/graalvm-jdk-<version>`); Java 8 and 17 still come from Corretto, since Oracle no longer offers GraalVM for them. Java that's already installed is kept and still used.
+- Java arguments now have a default (`-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+DisableExplicitGC`, accepted by Java 8–25). It's filled in once for players who never set their own, can be edited any time in Settings › Game & Performance, and "Use Default" restores it. Instances with their own arguments keep them.
+
 ### Fixed
 - Forge/NeoForge still failed to install with `Processor failed, invalid outputs` on Linux distros with zlib-ng (Arch, CachyOS, Fedora 40+) when no distro OpenJDK was installed. The launcher now downloads a Temurin JRE of the same version once (`java/installer-jre-<version>`, about 45 MB) and runs only the loader installer with it; Temurin has its own zlib. The download shows as launch progress, and the game still runs on the usual Java.
 - Game Logs, left open across a new Play press, could keep the previous launch's lines and pick up the new launch log from the middle when the new log had already grown past the old one by the next poll; the game's rotated `latest.log` had the same problem. A new log file is now detected by its creation time (file size is still the fallback), so Game Logs starts over for each launch.
