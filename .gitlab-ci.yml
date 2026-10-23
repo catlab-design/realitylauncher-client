@@ -144,6 +144,7 @@ build:linux:
   needs: [prepare]
   rules: !reference [.release, rules]
   script:
+    - apt-get install -y gstreamer1.0-plugins-base gstreamer1.0-plugins-good
     - bun run tauri build
     - mkdir -p artifacts/reality-launcher-linux
     - cp src-tauri/target/release/bundle/appimage/*.AppImage artifacts/reality-launcher-linux/ 2>/dev/null || true
