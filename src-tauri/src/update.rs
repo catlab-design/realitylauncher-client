@@ -20,9 +20,8 @@ const API_URL: &str = "https://api.reality.catlabdesign.space";
 /// (the base64 blob, not the `untrusted comment:` line) here.
 ///
 /// An update whose `.minisig` does not verify against this key is deleted and
-/// never installed. Leaving this as the placeholder disables auto-updates
-/// (every download is rejected), which is the safe failure direction.
-const UPDATE_PUBLIC_KEY: &str = "RWQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+/// never installed.
+const UPDATE_PUBLIC_KEY: &str = "RWR0izgZgSF+UT4+SE/KtkbCVfqCAQOuGi2E3F4JXh48dkRkkIuLBakP";
 
 /// Hosts an update installer (and its detached signature) may be served from.
 /// A tampered `/launcher/latest` response can name a download URL, but it can't
@@ -727,6 +726,14 @@ mod tests {
         assert_eq!(compare_versions("3.3.2-beta.1", "3.3.2"), 0);
         assert_eq!(compare_versions("v3.3.2", "3.3.2"), 0);
         assert_eq!(compare_versions("3.3", "3.3.1"), -1);
+    }
+
+    #[test]
+    fn test_embedded_public_key_is_valid() {
+        // Guards against a typo'd or placeholder key shipping — a key that
+        // doesn't parse would reject every update, silently disabling updates.
+        minisign_verify::PublicKey::from_base64(UPDATE_PUBLIC_KEY)
+            .expect("UPDATE_PUBLIC_KEY must be a valid minisign public key");
     }
 
     #[test]
