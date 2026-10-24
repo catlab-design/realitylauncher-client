@@ -664,6 +664,7 @@ async fn exchange_with_ml_api(
     let mut resp = client
         .post(format!("{API_URL}/auth/microsoft/login"))
         .header("Content-Type", "application/json")
+        .header("X-Client-App", "RealityLauncher")
         .json(&body)
         .send()
         .await
@@ -673,6 +674,7 @@ async fn exchange_with_ml_api(
         resp = client
             .post(format!("{API_URL}/auth/microsoft/link"))
             .header("Content-Type", "application/json")
+            .header("X-Client-App", "RealityLauncher")
             .json(&body)
             .send()
             .await
@@ -1211,6 +1213,7 @@ async fn auth_refresh_core(force: bool) -> AuthCommandResult {
         let mut api_resp = client
             .post(format!("{API_URL}/auth/microsoft/login"))
             .header("Content-Type", "application/json")
+            .header("X-Client-App", "RealityLauncher")
             .json(&refresh_body)
             .send()
             .await;
@@ -1220,6 +1223,7 @@ async fn auth_refresh_core(force: bool) -> AuthCommandResult {
                 api_resp = client
                     .post(format!("{API_URL}/auth/microsoft/link"))
                     .header("Content-Type", "application/json")
+                    .header("X-Client-App", "RealityLauncher")
                     .json(&refresh_body)
                     .send()
                     .await;
