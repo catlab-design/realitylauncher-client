@@ -30,6 +30,8 @@ urlencoding = "2"
 # so neither track needs to edit Cargo.toml.
 sha1 = "0.10"
 sha2 = "0.10"
+# Verifies the detached minisign signature of a downloaded update before it is installed.
+minisign-verify = "0.2"
 # RSA signing for the Mojang player-certificate proof (already built via rustls).
 ring = "0.17"
 md-5 = "0.10"

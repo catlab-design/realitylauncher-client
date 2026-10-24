@@ -1,6 +1,7 @@
-## [Unreleased] — 2026-10-23
+## [Unreleased] — 2026-10-24
 
 ### Added
+- Auto-updates are now cryptographically verified. Each released installer is signed with minisign in CI, and the launcher verifies the downloaded package against an embedded public key (fetching the detached `<installer>.minisig` from the CDN) before it is ever renamed into place, stashed, or run — including on the silent install-on-exit path. A missing, malformed, or mismatched signature deletes the download and aborts the update, so a tampered or wrong-origin package can't be installed. Download and signature URLs are also restricted to an allowlist of trusted hosts (`cdn.reality.catlabdesign.space`, `gitlab.com`), so a tampered release manifest can't redirect the client to an arbitrary host.
 - Settings › Java › Download Java from: Amazon Corretto (default) or Oracle GraalVM. With GraalVM chosen, Install and automatic installs of Java 21 and 25 download Oracle GraalVM (`java/graalvm-jdk-<version>`); Java 8 and 17 still come from Corretto, since Oracle no longer offers GraalVM for them. Java that's already installed is kept and still used.
 - Java arguments now have a default (`-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+DisableExplicitGC`, accepted by Java 8–25). It's filled in once for players who never set their own, can be edited any time in Settings › Game & Performance, and "Use Default" restores it. Instances with their own arguments keep them.
 

@@ -238,6 +238,28 @@ release:
       echo "=== Downloaded artifacts ==="
       ls -R artifacts
 
+      # Sign every installer with minisign so the launcher can verify it before
+      # installing (UPDATE_PUBLIC_KEY in src-tauri/src/update.rs). The detached
+      # <file>.minisig lands next to its installer and is uploaded by the loops
+      # below. MINISIGN_SECRET_KEY (full key-file contents) and MINISIGN_PASSWORD
+      # are masked, protected CI variables; without them the release aborts
+      # rather than ship unsigned packages.
+      if [ -z "${MINISIGN_SECRET_KEY:-}" ]; then
+        echo "MINISIGN_SECRET_KEY is not set; refusing to publish unsigned installers." >&2
+        exit 1
+      fi
+      apt-get install -y minisign
+      printf '%s\n' "$MINISIGN_SECRET_KEY" > reality.key
+      trap 'rm -f reality.key' EXIT
+      for file in artifacts/reality-launcher-*/*; do
+        [ -f "$file" ] || continue
+        case "$file" in *.minisig) continue ;; esac
+        printf '%s\n' "${MINISIGN_PASSWORD:-}" | minisign -S -s reality.key -m "$file" -x "$file.minisig"
+        echo "✓ Signed $(basename "$file")"
+      done
+      rm -f reality.key
+      trap - EXIT
+
       if [ "${ENABLE_R2_RELEASE:-true}" = "true" ] && [ -n "${CLOUDFLARE_API_TOKEN:-}" ] && [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
         echo "R2 credentials are configured; CDN upload will run."
         npm install -g wrangler

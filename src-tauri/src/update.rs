@@ -12,6 +12,85 @@ use once_cell::sync::Lazy;
 
 const API_URL: &str = "https://api.reality.catlabdesign.space";
 
+/// Minisign public key that every update package is signed with. The matching
+/// secret key lives only in CI (`MINISIGN_SECRET_KEY`); see `.gitlab-ci.yml`.
+///
+/// Generate the pair once with `minisign -G -p reality.pub -s reality.key`,
+/// keep `reality.key` secret, and paste the *second* line of `reality.pub`
+/// (the base64 blob, not the `untrusted comment:` line) here.
+///
+/// An update whose `.minisig` does not verify against this key is deleted and
+/// never installed. Leaving this as the placeholder disables auto-updates
+/// (every download is rejected), which is the safe failure direction.
+const UPDATE_PUBLIC_KEY: &str = "RWQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
+/// Hosts an update installer (and its detached signature) may be served from.
+/// A tampered `/launcher/latest` response can name a download URL, but it can't
+/// point the client at a host outside this set.
+const ALLOWED_DOWNLOAD_HOSTS: &[&str] = &[
+    "cdn.reality.catlabdesign.space",
+    "gitlab.com",
+];
+
+fn host_is_allowed(url: &str) -> bool {
+    // Minimal, dependency-free host extraction: scheme must be https, then the
+    // authority runs up to the next '/', '?' or '#'. Any userinfo ('@') or port
+    // (':') is stripped before the exact, case-insensitive host comparison.
+    let rest = match url.strip_prefix("https://") {
+        Some(r) => r,
+        None => return false,
+    };
+    let authority = rest
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("");
+    let host = authority
+        .rsplit('@')
+        .next()
+        .unwrap_or("")
+        .split(':')
+        .next()
+        .unwrap_or("");
+    ALLOWED_DOWNLOAD_HOSTS
+        .iter()
+        .any(|allowed| host.eq_ignore_ascii_case(allowed))
+}
+
+/// Fetches the detached minisign signature that sits next to `installer_url`
+/// (same path, `.minisig` appended) and verifies `file_bytes` against the
+/// embedded public key. Returns an error on any failure — missing signature,
+/// malformed key, or mismatch — so the caller can refuse the installer.
+async fn verify_update_signature(installer_url: &str, file_bytes: &[u8]) -> Result<(), String> {
+    use minisign_verify::{PublicKey, Signature};
+
+    let public_key = PublicKey::from_base64(UPDATE_PUBLIC_KEY)
+        .map_err(|e| format!("Update public key is invalid: {e}"))?;
+
+    let sig_url = format!("{installer_url}.minisig");
+    if !host_is_allowed(&sig_url) {
+        return Err("Update signature host is not allowed".into());
+    }
+    let resp = crate::http_client::HTTP_CLIENT
+        .clone()
+        .get(&sig_url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch update signature: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("Update signature unavailable (HTTP {})", resp.status()));
+    }
+    let sig_text = resp
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read update signature: {e}"))?;
+
+    let signature = Signature::decode(&sig_text)
+        .map_err(|e| format!("Update signature is malformed: {e}"))?;
+    public_key
+        .verify(file_bytes, &signature, false)
+        .map_err(|e| format!("Update signature verification failed: {e}"))
+}
+
 
 static DOWNLOADED_INSTALLER: Lazy<Mutex<Option<PathBuf>>> = Lazy::new(|| Mutex::new(None));
 static DOWNLOADED_VERSION: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
@@ -297,6 +376,10 @@ pub async fn download_update(app: tauri::AppHandle) -> serde_json::Value {
         }
     };
 
+    if !host_is_allowed(&url) {
+        return serde_json::json!({ "ok": false, "error": "Update download host is not allowed" });
+    }
+
     let raw_filename = url
         .rsplit('/')
         .next()
@@ -354,6 +437,24 @@ pub async fn download_update(app: tauri::AppHandle) -> serde_json::Value {
         }
     }
     drop(file);
+
+    // Verify the downloaded bytes against the embedded minisign key before the
+    // file is ever renamed to its final name or stashed for install. A failure
+    // here (bad/absent signature, tampered bytes) deletes the temp file and
+    // aborts, so neither `install_update` nor the silent on-exit path can run an
+    // unverified installer.
+    match std::fs::read(&tmp_path) {
+        Ok(bytes) => {
+            if let Err(e) = verify_update_signature(&url, &bytes).await {
+                let _ = std::fs::remove_file(&tmp_path);
+                return serde_json::json!({ "ok": false, "error": e });
+            }
+        }
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp_path);
+            return serde_json::json!({ "ok": false, "error": e.to_string() });
+        }
+    }
 
     if dest.exists() {
         let _ = std::fs::remove_file(&dest);
@@ -626,6 +727,20 @@ mod tests {
         assert_eq!(compare_versions("3.3.2-beta.1", "3.3.2"), 0);
         assert_eq!(compare_versions("v3.3.2", "3.3.2"), 0);
         assert_eq!(compare_versions("3.3", "3.3.1"), -1);
+    }
+
+    #[test]
+    fn test_host_is_allowed() {
+        assert!(host_is_allowed("https://cdn.reality.catlabdesign.space/client/4.1.0/app.AppImage"));
+        assert!(host_is_allowed("https://CDN.Reality.CatLabDesign.Space/x"));
+        assert!(host_is_allowed("https://gitlab.com/api/v4/x"));
+        // Wrong scheme, wrong host, look-alike host, and embedded-userinfo tricks.
+        assert!(!host_is_allowed("http://cdn.reality.catlabdesign.space/x"));
+        assert!(!host_is_allowed("https://evil.com/x"));
+        assert!(!host_is_allowed("https://cdn.reality.catlabdesign.space.evil.com/x"));
+        assert!(!host_is_allowed("https://cdn.reality.catlabdesign.space@evil.com/x"));
+        assert!(!host_is_allowed("ftp://cdn.reality.catlabdesign.space/x"));
+        assert!(!host_is_allowed("not a url"));
     }
 
     #[test]
