@@ -20,3 +20,11 @@ src-tauri/gen/schemas/
 
 # Java agent build output (the shipped jar lives in src-tauri/resources/)
 agent/target/
+
+# ai.
+.qodo
+
+# Update signing keys — NEVER commit the secret key
+reality.key
+reality.pub
+*.minisig

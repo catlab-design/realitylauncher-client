@@ -1525,6 +1525,62 @@ async fn install_forge(
 
 
 
+/// Maven coordinates of a NeoForge build. 1.20.1 builds are the legacy
+/// `net.neoforged:forge:1.20.1-47.1.x` artifact; 1.20.2+ are
+/// `net.neoforged:neoforge:<ver>` with no Minecraft prefix.
+struct NeoforgeArtifact {
+    artifact: &'static str,
+    full_version: String,
+    version_id: String,
+}
+
+impl NeoforgeArtifact {
+    fn new(mc_version: &str, neoforge_version: &str) -> Self {
+        let bare = neoforge_version
+            .strip_prefix("neoforge-")
+            .unwrap_or(neoforge_version);
+        let bare = bare.strip_prefix(&format!("{mc_version}-")).unwrap_or(bare);
+        if mc_version == "1.20.1" {
+            Self {
+                artifact: "forge",
+                full_version: format!("{mc_version}-{bare}"),
+                version_id: format!("{mc_version}-forge-{bare}"),
+            }
+        } else {
+            Self {
+                artifact: "neoforge",
+                full_version: bare.to_string(),
+                version_id: format!("neoforge-{bare}"),
+            }
+        }
+    }
+
+    fn file_name(&self, classifier: &str) -> String {
+        format!("{}-{}-{classifier}.jar", self.artifact, self.full_version)
+    }
+
+    fn installer_url(&self) -> String {
+        format!(
+            "https://maven.neoforged.net/releases/net/neoforged/{}/{}/{}",
+            self.artifact,
+            self.full_version,
+            self.file_name("installer")
+        )
+    }
+
+    fn loads_game_jar_itself(&self) -> bool {
+        self.artifact == "neoforge"
+    }
+
+    fn patched_client_jar(&self, libraries_dir: &Path) -> PathBuf {
+        libraries_dir
+            .join("net/neoforged")
+            .join(self.artifact)
+            .join(&self.full_version)
+            .join(self.file_name("client"))
+    }
+}
+
 async fn install_neoforge(
     mc_version: &str,
     neoforge_version: &str,
@@ -1533,20 +1589,12 @@ async fn install_neoforge(
     java_path: &str,
     watch: Option<LaunchWatch<'_>>,
 ) -> Result<serde_json::Value, String> {
-    let full_version = if neoforge_version.starts_with(&format!("{mc_version}-")) {
-        neoforge_version.to_string()
-    } else {
-        format!("{mc_version}-{neoforge_version}")
-    };
-    let version_id = format!("neoforge-{neoforge_version}");
+    let nf = NeoforgeArtifact::new(mc_version, neoforge_version);
     let version_json_path = minecraft_dir
         .join("versions")
-        .join(&version_id)
-        .join(format!("{version_id}.json"));
-    let patched_client_jar = libraries_dir
-        .join("net/neoforged/neoforge")
-        .join(&full_version)
-        .join(format!("neoforge-{full_version}-client.jar"));
+        .join(&nf.version_id)
+        .join(format!("{}.json", nf.version_id));
+    let patched_client_jar = nf.patched_client_jar(libraries_dir);
 
     if version_json_path.exists() && patched_client_jar.exists() {
         let content = fs::read_to_string(&version_json_path).map_err(|e| e.to_string())?;
@@ -1556,10 +1604,8 @@ async fn install_neoforge(
         return Ok(version_data);
     }
 
-    let installer_filename = format!("neoforge-{full_version}-installer.jar");
-    let installer_url = format!(
-        "https://maven.neoforged.net/releases/net/neoforged/neoforge/{full_version}/{installer_filename}"
-    );
+    let installer_filename = nf.file_name("installer");
+    let installer_url = nf.installer_url();
 
     let client = crate::http_client::HTTP_CLIENT.clone();
     let resp = client
@@ -1649,6 +1695,10 @@ fn build_classpath(
     all_libs.retain(|lib| lib.get("natives").is_none());
 
     let mut paths: Vec<PathBuf> = Vec::new();
+    // A loader's libraries come before the inherited vanilla ones, so the
+    // loader's version of a shared library wins. NeoForge's bootstrap aborts
+    // on a jar listed twice ("Duplicate key").
+    let mut seen = std::collections::HashSet::new();
 
     for lib in &all_libs {
         if let Some(rules) = lib.get("rules").and_then(|r| r.as_array()) {
@@ -1658,7 +1708,14 @@ fn build_classpath(
         }
 
         if let Some(path) = resolve_library_path(lib, libraries_dir) {
-            paths.push(path);
+            let key = lib
+                .get("name")
+                .and_then(|n| n.as_str())
+                .map(library_identity)
+                .unwrap_or_else(|| path.to_string_lossy().to_string());
+            if seen.insert(key) {
+                paths.push(path);
+            }
         }
     }
 
@@ -1683,19 +1740,20 @@ fn build_classpath(
                 .join(&full_version)
                 .join(format!("forge-{full_version}-client.jar"))
         }),
-        LoaderType::Neoforge => instance.loader_version.as_deref().map(|v| {
-            let full_version = if v.starts_with(mc_version.as_str()) {
-                v.to_string()
-            } else {
-                format!("{mc_version}-{v}")
-            };
-            libraries_dir
-                .join("net/neoforged/neoforge")
-                .join(&full_version)
-                .join(format!("neoforge-{full_version}-client.jar"))
-        }),
+        LoaderType::Neoforge => instance
+            .loader_version
+            .as_deref()
+            .map(|v| NeoforgeArtifact::new(mc_version, v).patched_client_jar(libraries_dir)),
         _ => None,
     };
+    // NeoForge 1.20.2+ loads the game jar from libraries/ itself and, unlike
+    // Forge, has no `forge-` entry in its ignoreList: a client jar on the
+    // classpath becomes a second `minecraft` module and resolution fails.
+    let loader_finds_game_jar = matches!(instance.loader, LoaderType::Neoforge)
+        && instance
+            .loader_version
+            .as_deref()
+            .is_some_and(|v| NeoforgeArtifact::new(mc_version, v).loads_game_jar_itself());
 
     let client_jar = match patched_client_jar {
         Some(p) if p.exists() => p,
@@ -1704,7 +1762,7 @@ fn build_classpath(
             .join(client_version)
             .join(format!("{client_version}.jar")),
     };
-    if client_jar.exists() {
+    if !loader_finds_game_jar && client_jar.exists() {
         paths.push(client_jar);
     }
 
@@ -1744,6 +1802,16 @@ fn build_classpath(
     fs::write(&cp_path, &classpath).ok();
 
     Ok(classpath)
+}
+
+/// `group:artifact[:classifier]` of a Maven coordinate, without the version.
+fn library_identity(name: &str) -> String {
+    let parts: Vec<&str> = name.split('@').next().unwrap_or(name).split(':').collect();
+    match parts.as_slice() {
+        [group, artifact, _version, classifier, ..] => format!("{group}:{artifact}:{classifier}"),
+        [group, artifact, ..] => format!("{group}:{artifact}"),
+        _ => name.to_string(),
+    }
 }
 
 fn collect_libraries_recursive(
@@ -3069,5 +3137,34 @@ mod tests {
 
         fs::remove_dir_all(&dir).unwrap();
         assert!(!libzip_links_system_zlib(&dir));
+    }
+
+    #[test]
+    fn neoforge_artifact_coordinates() {
+        let modern = NeoforgeArtifact::new("1.21.1", "21.1.264");
+        assert_eq!(
+            modern.installer_url(),
+            "https://maven.neoforged.net/releases/net/neoforged/neoforge/21.1.264/neoforge-21.1.264-installer.jar"
+        );
+        assert_eq!(modern.version_id, "neoforge-21.1.264");
+        assert_eq!(NeoforgeArtifact::new("1.21.1", "neoforge-21.1.264").full_version, "21.1.264");
+
+        let legacy = NeoforgeArtifact::new("1.20.1", "47.1.106");
+        assert_eq!(
+            legacy.installer_url(),
+            "https://maven.neoforged.net/releases/net/neoforged/forge/1.20.1-47.1.106/forge-1.20.1-47.1.106-installer.jar"
+        );
+        assert_eq!(legacy.version_id, "1.20.1-forge-47.1.106");
+        assert_eq!(NeoforgeArtifact::new("1.20.1", "1.20.1-47.1.106").full_version, "1.20.1-47.1.106");
+    }
+
+    #[test]
+    fn library_identity_ignores_version_but_keeps_classifier() {
+        assert_eq!(library_identity("com.google.code.gson:gson:2.10.1"), "com.google.code.gson:gson");
+        assert_eq!(
+            library_identity("org.lwjgl:lwjgl:3.3.3:natives-linux"),
+            "org.lwjgl:lwjgl:natives-linux"
+        );
+        assert_eq!(library_identity("net.neoforged:neoforge:21.1.264:client@jar"), "net.neoforged:neoforge:client");
     }
 }
