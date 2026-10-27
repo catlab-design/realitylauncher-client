@@ -35,6 +35,9 @@ import org.objectweb.asm.Opcodes;
  *   reality.session        properties file with the tab-badge lookup token, badge
  *                          strings and the runtime names of the tab-list members
  *                          (see TabScheme, TabBadges, HeadShiftPatch)
+ *   reality.status         file the agent keeps the player's whereabouts in, for
+ *                          the launcher's Discord presence (see GameStatus);
+ *                          needs the tab-list names from reality.session
  */
 public final class RealityAgent implements ClassFileTransformer {
     private static final String LWJGL3_GLFW = "org/lwjgl/glfw/GLFW";
@@ -51,12 +54,15 @@ public final class RealityAgent implements ClassFileTransformer {
     private final boolean icon;
     private final String brand;
     private final List<TabScheme> tabSchemes;
+    private final GameStatus status;
 
-    private RealityAgent(boolean title, boolean icon, String brand, List<TabScheme> tabSchemes) {
+    private RealityAgent(boolean title, boolean icon, String brand, List<TabScheme> tabSchemes,
+                         GameStatus status) {
         this.title = title;
         this.icon = icon;
         this.brand = brand;
         this.tabSchemes = tabSchemes;
+        this.status = status;
     }
 
     public static void premain(String args, Instrumentation inst) {
@@ -64,8 +70,16 @@ public final class RealityAgent implements ClassFileTransformer {
         boolean icon = installIcon();
         String brand = System.getProperty("reality.brand");
         List<TabScheme> tabSchemes = startTabBadges(System.getProperty("reality.session"));
+        GameStatus status = startGameStatus(System.getProperty("reality.status"), tabSchemes);
         if (!title && !icon && isBlank(brand) && tabSchemes.isEmpty()) return;
-        inst.addTransformer(new RealityAgent(title, icon, brand, tabSchemes));
+        inst.addTransformer(new RealityAgent(title, icon, brand, tabSchemes, status));
+    }
+
+    private static GameStatus startGameStatus(String path, List<TabScheme> tabSchemes) {
+        if (isBlank(path) || tabSchemes.isEmpty()) return null;
+        GameStatus status = new GameStatus(new File(path));
+        status.start();
+        return status;
     }
 
     private static boolean installTitle() {
@@ -133,6 +147,7 @@ public final class RealityAgent implements ClassFileTransformer {
             }
             List<TabScheme> schemes = schemesFor(className);
             if (!schemes.isEmpty()) {
+                if (status != null) status.observe(loader, bytes);
                 TabPatch tab = new TabPatch(className, schemes);
                 byte[] patched = rewrite(bytes, tab);
                 if (patched == null) return null;

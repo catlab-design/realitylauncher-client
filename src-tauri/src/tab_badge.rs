@@ -27,6 +27,8 @@ const HEAD_SHIFT: i32 = 10;
 const BADGE_PNG: &[u8] = include_bytes!("../resources/badge.png");
 const PACK_FILE: &str = "reality-badge.zip";
 const SESSION_FILE: &str = "session.properties";
+/// Where the agent reports the player's whereabouts (`GameStatus`), read by `discord`.
+const GAME_STATUS_FILE: &str = "game-status.properties";
 const DEFAULT_HEARTBEAT_SECS: u64 = 120;
 
 /// Resource pack format per Minecraft version (1.19+). Unknown newer versions
@@ -259,15 +261,51 @@ fn session_properties(
 
 pub struct BadgeSetup {
     session_path: PathBuf,
+    status_path: PathBuf,
     schemes: Vec<TabScheme>,
     self_uuids: Vec<String>,
     head_left: bool,
 }
 
 impl BadgeSetup {
-    pub fn jvm_arg(&self) -> String {
-        format!("-Dreality.session={}", self.session_path.to_string_lossy())
+    pub fn jvm_args(&self) -> [String; 2] {
+        [
+            format!("-Dreality.session={}", self.session_path.to_string_lossy()),
+            format!("-Dreality.status={}", self.status_path.to_string_lossy()),
+        ]
     }
+}
+
+pub fn game_status_path(minecraft_dir: &Path) -> PathBuf {
+    minecraft_dir.join("agent").join(GAME_STATUS_FILE)
+}
+
+/// Where the agent last saw the player; `None` before the game reports anything.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GameStatus {
+    Menu,
+    Singleplayer,
+    Server { players: u32 },
+}
+
+pub fn parse_game_status(text: &str) -> Option<GameStatus> {
+    let value = |key: &str| {
+        text.lines()
+            .find_map(|l| l.strip_prefix(key)?.strip_prefix('='))
+            .map(str::trim)
+    };
+    match value("state")? {
+        "menu" => Some(GameStatus::Menu),
+        "singleplayer" => Some(GameStatus::Singleplayer),
+        "server" => Some(GameStatus::Server {
+            players: value("players")?.parse().ok()?,
+        }),
+        _ => None,
+    }
+}
+
+pub fn read_game_status(minecraft_dir: &Path) -> Option<GameStatus> {
+    parse_game_status(&fs::read_to_string(game_status_path(minecraft_dir)).ok()?)
 }
 
 /// Writes the pack, enables it and writes the session file (without a token
@@ -292,7 +330,8 @@ pub fn prepare(
         let session_path = minecraft_dir.join("agent").join(SESSION_FILE);
         let head_left = supports_head_left(mc_version);
         write_atomic(&session_path, session_properties(&schemes, &self_uuids, head_left, None).as_bytes())?;
-        Ok(BadgeSetup { session_path, schemes, self_uuids: self_uuids.clone(), head_left })
+        let status_path = game_status_path(minecraft_dir);
+        Ok(BadgeSetup { session_path, status_path, schemes, self_uuids: self_uuids.clone(), head_left })
     })();
     match result {
         Ok(setup) => Some(setup),
@@ -424,6 +463,18 @@ mod tests {
             append: "method_10852".into(),
             append_desc: "(Lnet/minecraft/class_2561;)Lnet/minecraft/class_5250;".into(),
         }
+    }
+
+    #[test]
+    fn parses_game_status() {
+        assert_eq!(parse_game_status("state=menu\n"), Some(GameStatus::Menu));
+        assert_eq!(parse_game_status("state=singleplayer\nplayers=1\n"), Some(GameStatus::Singleplayer));
+        assert_eq!(
+            parse_game_status("state=server\nplayers=12\n"),
+            Some(GameStatus::Server { players: 12 })
+        );
+        assert_eq!(parse_game_status("state=server\n"), None);
+        assert_eq!(parse_game_status(""), None);
     }
 
     #[test]
