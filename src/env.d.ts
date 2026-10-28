@@ -257,7 +257,8 @@ declare global {
           | "browsing_about"
           | "browsing_admin"
           | "browsing_modpacks"
-          | "browsing_servers",
+          | "browsing_servers"
+          | "picking_server",
         serverName?: string,
         serverIcon?: string,
         pingMs?: number,
