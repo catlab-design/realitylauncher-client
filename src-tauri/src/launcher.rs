@@ -654,6 +654,8 @@ async fn launch_game(
         &effective_version_json,
     ));
     mark_stage("tab-badges");
+    // A previous game's whereabouts must not reach this launch's Discord presence.
+    let _ = std::fs::remove_file(crate::tab_badge::game_status_path(&minecraft_dir_val));
     let badge_setup = prepare_tab_badges(
         &minecraft_dir_val,
         &libraries_dir,
@@ -664,7 +666,7 @@ async fn launch_game(
     )
     .await;
     if let Some(ref setup) = badge_setup {
-        jvm_args.push(setup.jvm_arg());
+        jvm_args.extend(setup.jvm_args());
         crate::launch_log::info("Tab-list badges: on");
     } else {
         crate::launch_log::info("Tab-list badges: off for this launch");
