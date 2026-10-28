@@ -3,6 +3,7 @@
 ### Added
 - Settings › Java › Download Java from: Amazon Corretto (default) or Oracle GraalVM. With GraalVM chosen, Install and automatic installs of Java 21 and 25 download Oracle GraalVM (`java/graalvm-jdk-<version>`); Java 8 and 17 still come from Corretto, since Oracle no longer offers GraalVM for them. Java that's already installed is kept and still used.
 - Discord Rich Presence follows the game: the second line shows "Playing in Main Menu", "Playing Singleplayer" or "Playing with N online" (N = players in the server's tab list), reported by the in-game agent every 2 s (Minecraft 1.19–1.21.x, the versions with the tab-list badge; others show "Playing"). For server instances the third line is "By <team>" (the team that made the instance, or its owner), instead of the player name; the player name stays on the avatar tooltip.
+- Discord Rich Presence on the Servers tab shows "Picking a Server" with the name and logo of the server on screen (the featured one, or the one whose page is open), and your avatar, like while playing. Leaving the tab goes back to the usual status.
 - Java arguments now have a default (`-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+DisableExplicitGC`, accepted by Java 8–25). It's filled in once for players who never set their own, can be edited any time in Settings › Game & Performance, and "Use Default" restores it. Instances with their own arguments keep them.
 
 ### Fixed

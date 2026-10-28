@@ -88,7 +88,8 @@ fn clean_image_key(icon: Option<String>) -> Option<String> {
     let icon = icon?;
     let lower = icon.to_lowercase();
     if lower.starts_with("http://") || lower.starts_with("https://") {
-        return Some(icon);
+        // Discord rejects the whole activity when an image URL is over 256 characters.
+        return (icon.len() <= 256).then_some(icon);
     }
     if !icon.is_empty()
         && !icon.contains('/')
@@ -162,6 +163,15 @@ fn map_status_to_activity(
             Some("server".to_string()),
             Some("Browsing Servers".to_string()),
         ),
+        "picking_server" => {
+            let name = server_name.as_deref().unwrap_or("Minecraft");
+            (
+                "Picking a Server".to_string(),
+                name.to_string(),
+                clean_image_key(server_icon.clone()).or(Some("server".to_string())),
+                Some(name.to_string()),
+            )
+        }
         _ => {
             let name = server_name.as_deref().unwrap_or("Minecraft");
             let icon = clean_image_key(server_icon.clone()).or(Some("logo".to_string()));
@@ -317,7 +327,7 @@ async fn discord_rpc_update_raw(
     let mut small_image = None;
     let mut small_text = None;
 
-    if final_status == "playing" || final_status == "launching" {
+    if matches!(final_status.as_str(), "playing" | "launching" | "picking_server") {
         small_image = Some("r_nobg".to_string());
 
         if let Some(session) = crate::auth::get_session_inner() {

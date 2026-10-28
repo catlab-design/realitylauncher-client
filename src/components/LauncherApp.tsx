@@ -502,28 +502,35 @@ function LauncherAppContent() {
     [],
   );
 
+  const pickedServer = useUiStore((s) => s.pickedServer);
+  const sendRpcStatus = useCallback(() => {
+    if (activeTab === "servers" && pickedServer) {
+      window.api?.discordRPCUpdate?.("picking_server", pickedServer.name, pickedServer.icon ?? undefined);
+    } else {
+      window.api?.discordRPCUpdate?.(getRpcStatusFromTab(activeTab));
+    }
+  }, [activeTab, pickedServer, getRpcStatusFromTab]);
+
   useEffect(() => {
     if (!isInitialized || !window.api) return;
 
     if (config.discordRPCEnabled) {
       window.api.discordRPCSetEnabled?.(true);
-      window.api.discordRPCUpdate?.(getRpcStatusFromTab(activeTab));
+      sendRpcStatus();
     } else {
       window.api.discordRPCSetEnabled?.(false);
     }
-  }, [activeTab, config.discordRPCEnabled, getRpcStatusFromTab, isInitialized]);
+  }, [config.discordRPCEnabled, sendRpcStatus, isInitialized]);
 
   useEffect(() => {
     if (!isInitialized || !window.api || !config.discordRPCEnabled) return;
 
-    const removeStoppedListener = window.api.onGameStopped?.(() => {
-      window.api?.discordRPCUpdate?.(getRpcStatusFromTab(activeTab));
-    });
+    const removeStoppedListener = window.api.onGameStopped?.(sendRpcStatus);
 
     return () => {
       removeStoppedListener?.();
     };
-  }, [activeTab, config.discordRPCEnabled, getRpcStatusFromTab, isInitialized]);
+  }, [config.discordRPCEnabled, sendRpcStatus, isInitialized]);
 
   useEffect(() => {
     const fetchAnnouncements = async () => {

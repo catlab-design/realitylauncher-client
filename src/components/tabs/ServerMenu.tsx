@@ -199,6 +199,8 @@ export function ServerMenu({
     const m = useMotionPreset();
     const setImmersive = useUiStore((state) => state.setImmersive);
     const setFullBleed = useUiStore((state) => state.setFullBleed);
+    const setPickedServer = useUiStore((state) => state.setPickedServer);
+    useEffect(() => () => setPickedServer(null), [setPickedServer]);
     const listRootRef = React.useRef<HTMLDivElement>(null);
     const heroWrapRef = React.useRef<HTMLDivElement>(null);
     const headerRef = React.useRef<HTMLDivElement>(null);
@@ -754,6 +756,14 @@ export function ServerMenu({
     };
 
     const showHero = !!session && !loading && !isSearching && !!heroInstance;
+
+    // Discord shows the server on screen: the open detail page, else the hero.
+    const pickedInstance: any = viewingInstance ?? (showHero ? heroInstance : null);
+    const pickedName: string | null = pickedInstance?.name ?? null;
+    const pickedIcon: string | null = pickedInstance?.iconUrl || null;
+    useEffect(() => {
+        setPickedServer(pickedName ? { name: pickedName, icon: pickedIcon } : null);
+    }, [pickedName, pickedIcon, setPickedServer]);
     // Loading draws a hero placeholder too; the controls sit on top of either, so nothing jumps when data lands.
     const heroArea = showHero || (!!session && (loading || isSearching));
 

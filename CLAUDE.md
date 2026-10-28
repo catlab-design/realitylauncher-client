@@ -171,7 +171,7 @@ src-tauri/
     ├── fs_utils.rs                   # FS utilities (open, browse, clear cache)
     ├── game_window.rs                # Game window title + icon file (instance icon / Reality logo) + default-icon fingerprints for the agent
     ├── window.rs                     # Window management
-    ├── discord.rs                    # Discord Rich Presence (line 2 = agent game status, line 3 = "By <team>")
+    ├── discord.rs                    # Discord Rich Presence (line 2 = agent game status, line 3 = "By <team>"; "Picking a Server" with the on-screen server logo)
     ├── social.rs                     # Server ping
     ├── telemetry.rs                  # Telemetry logging
     ├── wardrobe.rs                   # Minecraft + CatSkinC skin management
@@ -230,7 +230,7 @@ LauncherApp
 |---|---|---|---|
 | `authStore` | `store/authStore.ts` | Yes (`reality_auth_store`) | `session`, `accounts[]`, add/remove/update, logout |
 | `configStore` | `store/configStore.ts` | Yes (`reality_config`, v1) | All `LauncherConfig` fields, setConfig, resetConfig, setTheme, setLanguage |
-| `uiStore` | `store/uiStore.ts` | No | `activeTab`, `lastContentTab`, `wardrobeMode`, `settingsTab`, 9 modal booleans |
+| `uiStore` | `store/uiStore.ts` | No | `activeTab`, `lastContentTab`, `wardrobeMode`, `settingsTab`, `pickedServer` (Discord "Picking a Server"), 9 modal booleans |
 | `launchStore` | `store/launchStore.ts` | No | `launchingId` |
 | `progressStore` | `store/progressStore.ts` | No | `isInstalling`, `installProgress`, `operationType`, `installingInstanceId` |
 

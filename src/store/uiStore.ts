@@ -9,6 +9,9 @@ interface UiState {
     /** Server whose detail page the Servers tab should open as soon as it has its list (set by Home cards). */
     pendingServerDetailId: string | null;
     setPendingServerDetailId: (id: string | null) => void;
+    /** Server last clicked on the Servers tab, shown as "Picking a Server" in Discord. */
+    pickedServer: { name: string; icon: string | null } | null;
+    setPickedServer: (server: { name: string; icon: string | null } | null) => void;
     /** A full-bleed page is open: the title bar floats transparently over it. */
     immersive: boolean;
     setImmersive: (on: boolean) => void;
@@ -53,6 +56,8 @@ export const useUiStore = create<UiState>((set) => ({
     pendingLaunchId: null,
     pendingServerDetailId: null,
     setPendingServerDetailId: (id) => set({ pendingServerDetailId: id }),
+    pickedServer: null,
+    setPickedServer: (server) => set({ pickedServer: server }),
     immersive: false,
     setImmersive: (on) => set({ immersive: on }),
     fullBleed: false,
