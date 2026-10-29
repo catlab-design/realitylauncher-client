@@ -229,7 +229,7 @@ pub async fn modrinth_get_loader_versions(
     }
 }
 
-async fn get_fabric_loader_versions(game_version: &str) -> Result<Vec<String>, String> {
+pub(crate) async fn get_fabric_loader_versions(game_version: &str) -> Result<Vec<String>, String> {
     let url = format!("https://meta.fabricmc.net/v2/versions/loader/{game_version}");
     let resp = crate::http_client::HTTP_CLIENT.get(&url).send()
         .await
@@ -254,7 +254,7 @@ async fn get_fabric_loader_versions(game_version: &str) -> Result<Vec<String>, S
     Ok(versions)
 }
 
-async fn get_quilt_loader_versions(game_version: &str) -> Result<Vec<String>, String> {
+pub(crate) async fn get_quilt_loader_versions(game_version: &str) -> Result<Vec<String>, String> {
     let url = format!("https://meta.quiltmc.org/v3/versions/loader/{game_version}");
     let resp = crate::http_client::HTTP_CLIENT.get(&url).send()
         .await
@@ -279,7 +279,7 @@ async fn get_quilt_loader_versions(game_version: &str) -> Result<Vec<String>, St
     Ok(versions)
 }
 
-async fn get_forge_versions(game_version: &str) -> Result<Vec<String>, String> {
+async fn forge_promotions() -> Result<serde_json::Map<String, serde_json::Value>, String> {
     let url = "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json";
     let resp = crate::http_client::HTTP_CLIENT.get(url).send()
         .await
@@ -289,11 +289,30 @@ async fn get_forge_versions(game_version: &str) -> Result<Vec<String>, String> {
         return Err(format!("Forge promotions slim error: {}", resp.status()));
     }
 
-    let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    let promos = data
-        .get("promos")
-        .and_then(|p| p.as_object())
-        .ok_or_else(|| "Invalid forge promotions JSON".to_string())?;
+    let mut data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    match data.get_mut("promos").map(serde_json::Value::take) {
+        Some(serde_json::Value::Object(promos)) => Ok(promos),
+        _ => Err("Invalid forge promotions JSON".to_string()),
+    }
+}
+
+/// The `<mc>-recommended` (or `<mc>-latest`) Forge build, falling back to the other.
+pub(crate) async fn forge_promoted_version(
+    game_version: &str,
+    prefer_latest: bool,
+) -> Result<Option<String>, String> {
+    let promos = forge_promotions().await?;
+    let order = if prefer_latest { ["latest", "recommended"] } else { ["recommended", "latest"] };
+    Ok(order.iter().find_map(|kind| {
+        promos
+            .get(&format!("{game_version}-{kind}"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+    }))
+}
+
+async fn get_forge_versions(game_version: &str) -> Result<Vec<String>, String> {
+    let promos = forge_promotions().await?;
 
     let prefix = format!("{}-", game_version);
     let mut versions: Vec<String> = promos
@@ -337,7 +356,7 @@ async fn neoforge_maven_versions(artifact: &str) -> Result<Vec<String>, String> 
 
 /// NeoForge for 1.20.1 is the legacy `net.neoforged:forge` artifact
 /// (`1.20.1-47.1.x`, unordered in its metadata); 1.20.2+ is `net.neoforged:neoforge`.
-async fn get_neoforge_versions(game_version: &str) -> Result<Vec<String>, String> {
+pub(crate) async fn get_neoforge_versions(game_version: &str) -> Result<Vec<String>, String> {
     if game_version == "1.20.1" {
         let prefix = format!("{game_version}-");
         let mut versions: Vec<String> = neoforge_maven_versions("forge")

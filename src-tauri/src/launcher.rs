@@ -552,6 +552,7 @@ async fn launch_game(
     launch_gen: u64,
 ) -> Result<(), String> {
     emit_progress(&app, "preparing", "Preparing to launch...", 0.0);
+    let instance = resolve_loader_version(instance).await?;
 
     let config_val = crate::config::config_get();
     let minecraft_dir_val = get_minecraft_dir();
@@ -1098,6 +1099,47 @@ async fn install_mod_loader(
         }
         LoaderType::Vanilla => unreachable!(),
     }
+}
+
+/// Instances made without a loader build (a cloud server that omits
+/// `loaderVersion`, or "latest"/"recommended") would put that word into the
+/// Maven URL. Resolves it to a concrete build and pins it on the instance so
+/// later launches reuse the installed loader.
+async fn resolve_loader_version(mut instance: GameInstance) -> Result<GameInstance, String> {
+    if instance.loader == LoaderType::Vanilla {
+        return Ok(instance);
+    }
+    let mc = instance.minecraft_version.clone();
+    let current = instance.loader_version.as_deref().unwrap_or("").trim();
+    let wanted = current
+        .strip_prefix(&format!("{mc}-"))
+        .unwrap_or(current)
+        .to_ascii_lowercase();
+    if !matches!(wanted.as_str(), "" | "latest" | "recommended") {
+        return Ok(instance);
+    }
+
+    let first = |v: Vec<String>| v.into_iter().next();
+    let resolved = match instance.loader {
+        LoaderType::Forge => crate::modrinth::forge_promoted_version(&mc, wanted == "latest").await?,
+        LoaderType::Neoforge => first(crate::modrinth::get_neoforge_versions(&mc).await?),
+        LoaderType::Fabric => first(crate::modrinth::get_fabric_loader_versions(&mc).await?),
+        LoaderType::Quilt => first(crate::modrinth::get_quilt_loader_versions(&mc).await?),
+        LoaderType::Vanilla => unreachable!(),
+    }
+    .ok_or_else(|| format!("No {:?} build found for Minecraft {mc}", instance.loader))?;
+
+    crate::launch_log::info(format!(
+        "Loader version \"{current}\" resolved to {resolved}"
+    ));
+    if let Err(e) = crate::instances::instances_update(
+        instance.id.clone(),
+        serde_json::json!({ "loaderVersion": resolved }),
+    ) {
+        crate::launch_log::warn(format!("Could not save the resolved loader version: {e}"));
+    }
+    instance.loader_version = Some(resolved);
+    Ok(instance)
 }
 
 async fn install_fabric(
@@ -2980,6 +3022,7 @@ pub async fn instances_preinstall(app: tauri::AppHandle, id: String) -> Result<(
         Some(i) => i,
         None => return Err("Instance not found".to_string()),
     };
+    let instance = resolve_loader_version(instance).await?;
 
     let minecraft_dir_val = get_minecraft_dir();
     let libraries_dir = minecraft_dir_val.join("libraries");
