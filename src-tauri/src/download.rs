@@ -268,7 +268,10 @@ async fn download_file_once(
     }
 
     let hash_info = select_hash_algo(item.expected_sha1.as_deref(), &item.hashes);
-    let is_jar = item.url.ends_with(".jar") || item.dest.to_string_lossy().ends_with(".jar");
+    let is_jar = item.url.ends_with(".jar") || {
+        let dest = item.dest.to_string_lossy();
+        dest.ends_with(".jar") || dest.ends_with(".jar.disabled")
+    };
 
     let mut file =
         std::fs::File::create(&tmp_path).map_err(|e| format!("Create error: {e}"))?;
