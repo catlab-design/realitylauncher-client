@@ -305,6 +305,23 @@ pub(crate) fn safe_join(base: &Path, rel: &str) -> Option<std::path::PathBuf> {
     }
 }
 
+/// Where a synced file lives: the player's disabled copy (`<file>.disabled`)
+/// when there is one, so disabling a server-managed mod survives syncs and
+/// pack updates land in the disabled copy instead of re-enabling it. Removes
+/// an enabled duplicate that older syncs re-downloaded next to it.
+pub(crate) fn honor_disabled(path: std::path::PathBuf) -> std::path::PathBuf {
+    let mut disabled = path.clone().into_os_string();
+    disabled.push(".disabled");
+    let disabled = std::path::PathBuf::from(disabled);
+    if !disabled.is_file() {
+        return path;
+    }
+    if path.is_file() {
+        let _ = fs::remove_file(&path);
+    }
+    disabled
+}
+
 fn normalize_mods(mods: Option<Vec<ServerMod>>) -> Vec<ServerMod> {
     let Some(entries) = mods else { return vec![] };
     let mut seen: HashMap<String, ServerMod> = HashMap::new();
@@ -786,6 +803,7 @@ async fn sync_managed_mods(
             }
             None => mods_dir.join(&m.file_name),
         };
+        let file_path = honor_disabled(file_path);
 
         let needs_download = if file_path.exists() {
             if let Some(ref hash) = m.file_hash {
@@ -1143,7 +1161,7 @@ async fn sync_server_mods(
         
         
         
-        let Some(file_path) = safe_join(instance_path, &m.filename) else {
+        let Some(file_path) = safe_join(instance_path, &m.filename).map(honor_disabled) else {
             continue;
         };
 
@@ -1219,7 +1237,7 @@ async fn sync_server_mods(
             }
         };
 
-        let Some(file_path) = safe_join(instance_path, &m.filename) else {
+        let Some(file_path) = safe_join(instance_path, &m.filename).map(honor_disabled) else {
             failed.push((m.filename.clone(), "Path traversal blocked".into()));
             no_url_count += 1;
             continue;

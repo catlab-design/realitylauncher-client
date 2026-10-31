@@ -338,7 +338,9 @@ async fn download_mrpack_file(
     use sha1::Digest as Sha1Digest;
     use std::io::Write;
 
-    let target = safe_instance_path(instance_dir, &mod_file.path).ok_or("Unsafe file path")?;
+    let target = safe_instance_path(instance_dir, &mod_file.path)
+        .map(crate::cloud::honor_disabled)
+        .ok_or("Unsafe file path")?;
     if local_file_matches(&target, mod_file) {
         return Ok(());
     }
@@ -368,7 +370,7 @@ async fn download_mrpack_file(
 
     let mut file = std::fs::File::create(&tmp_path).map_err(|e| e.to_string())?;
     let mut stream = resp.bytes_stream();
-    let is_jar = target.to_string_lossy().ends_with(".jar");
+    let is_jar = mod_file.path.ends_with(".jar");
     let mut hash_algo = if let Some(s) = mod_file.hashes.get("sha1") {
         Some((HashState::Sha1(sha1::Sha1::new()), s.clone()))
     } else if let Some(s) = mod_file.hashes.get("sha256") {
@@ -1261,7 +1263,8 @@ fn extract_zip_folder<T: std::io::Read + std::io::Seek>(
         }
 
         let target_path = match safe_instance_path(target, &relative) {
-            Some(p) => p,
+            Some(p) if entry.is_dir() => p,
+            Some(p) => crate::cloud::honor_disabled(p),
             None => continue,
         };
 

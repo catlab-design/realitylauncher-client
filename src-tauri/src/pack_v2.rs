@@ -19,7 +19,7 @@ use std::sync::atomic::Ordering;
 
 use serde::{Deserialize, Serialize};
 
-use crate::cloud::{cleanup_unmanaged_mods, compute_sha1, compute_sha256, emit_sync_progress, safe_join};
+use crate::cloud::{cleanup_unmanaged_mods, compute_sha1, compute_sha256, emit_sync_progress, honor_disabled, safe_join};
 use crate::modpack::CANCELLED_SENTINEL;
 
 const API_URL: &str = "https://api.reality.catlabdesign.space";
@@ -123,7 +123,7 @@ fn wants_from(manifest: &Manifest, dir: &Path) -> (Vec<Want>, Vec<(String, Strin
     let mut wants = Vec::new();
     let mut rejected = Vec::new();
     for m in manifest.mods.iter().filter(|m| m.side != "server") {
-        let Some(dest) = safe_join(dir, &m.path) else {
+        let Some(dest) = safe_join(dir, &m.path).map(honor_disabled) else {
             rejected.push((m.path.clone(), "Unsafe path".into()));
             continue;
         };
@@ -146,7 +146,7 @@ fn wants_from(manifest: &Manifest, dir: &Path) -> (Vec<Want>, Vec<(String, Strin
         });
     }
     for f in manifest.files.iter().filter(|f| f.side != "server") {
-        let Some(dest) = safe_join(dir, &f.path) else {
+        let Some(dest) = safe_join(dir, &f.path).map(honor_disabled) else {
             rejected.push((f.path.clone(), "Unsafe path".into()));
             continue;
         };
@@ -606,6 +606,25 @@ mod tests {
         fs::create_dir_all(dir.join("mods")).unwrap();
         fs::write(dir.join("mods/a.jar"), b"tampered jar").unwrap();
         assert!(needs_update(&w, Some(&prev)));
+    }
+
+    #[test]
+    fn disabled_mods_stay_disabled() {
+        let dir = temp_dir("disabled");
+        fs::create_dir_all(dir.join("mods")).unwrap();
+        let jar = dir.join("mods/a.jar");
+        let disabled = dir.join("mods/a.jar.disabled");
+        assert_eq!(honor_disabled(jar.clone()), jar);
+
+        fs::write(&disabled, b"jar").unwrap();
+        fs::write(&jar, b"jar").unwrap();
+        assert_eq!(honor_disabled(jar.clone()), disabled);
+        assert!(!jar.exists());
+
+        let mut w = want(&dir, "mods/a.jar", b"jar", true);
+        w.dest = honor_disabled(w.dest);
+        assert!(!needs_update(&w, None));
+        assert!(!jar.exists());
     }
 
     #[test]
