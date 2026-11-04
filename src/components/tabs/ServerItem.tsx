@@ -9,6 +9,7 @@ import { ServerSocialButtons, StoryReaderModal, useServerStory } from "./serverS
 import { normalizeGallery } from "./ServerGallery";
 import { ScrollStrip } from "../ui/ScrollStrip";
 import { VerifiedBadge, type InstanceVerification } from "../ui/VerifiedBadge";
+import { BannerVideo } from "../ui/BannerVideo";
 
 export interface Instance {
     id: string;
@@ -16,6 +17,8 @@ export interface Instance {
     description: string | null;
     iconUrl: string | null;
     bannerUrl: string | null;
+    /** Looping banner video (MP4/WebM); bannerUrl is its poster. Played on the hero and detail page only. */
+    bannerVideoUrl?: string | null;
     minecraftVersion: string | null;
     loaderType: string | null;
     status: string;
@@ -428,6 +431,9 @@ export function ServerHero({
                     className="absolute inset-0"
                 >
                     <CoverArt src={cover} eager />
+                    {instance.bannerVideoUrl && (
+                        <BannerVideo src={getWithTimestamp(instance.bannerVideoUrl)} className="absolute inset-0" />
+                    )}
                 </motion.div>
             </AnimatePresence>
 

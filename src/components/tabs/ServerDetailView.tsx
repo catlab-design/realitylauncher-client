@@ -5,6 +5,7 @@ import { playClick } from "../../lib/sounds";
 import { useMotionPreset } from "../../lib/motion";
 import { useUiStore } from "../../store/uiStore";
 import appBanner from "../../assets/banner.png";
+import { BannerVideo } from "../ui/BannerVideo";
 import { ServerSocialButtons, StoryReaderModal, useServerStory } from "./serverStory";
 import { GalleryLightbox, ServerGalleryStrip, normalizeGallery } from "./ServerGallery";
 import type { ServerPing } from "./ServerItem";
@@ -104,6 +105,9 @@ export function ServerDetailView({
                 aria-hidden="true"
                 className="absolute inset-0 w-full h-full object-cover"
             />
+            {instance.bannerVideoUrl && (
+                <BannerVideo src={getWithTimestamp(instance.bannerVideoUrl)} className="absolute inset-0" />
+            )}
             <div className="absolute inset-0 bg-linear-to-b from-black/45 via-transparent to-black/55" />
             <div className="absolute inset-x-0 bottom-0 h-1/2 bg-linear-to-t from-black/50 to-transparent" />
             <div className="absolute inset-0 bg-linear-to-r from-black/30 via-transparent to-transparent" />
