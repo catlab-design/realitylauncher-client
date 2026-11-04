@@ -1,4 +1,4 @@
-## [Unreleased] — 2026-10-23
+## [5.2.0] — 2026-11-04
 
 ### Added
 - Settings › Java › Download Java from: Amazon Corretto (default) or Oracle GraalVM. With GraalVM chosen, Install and automatic installs of Java 21 and 25 download Oracle GraalVM (`java/graalvm-jdk-<version>`); Java 8 and 17 still come from Corretto, since Oracle no longer offers GraalVM for them. Java that's already installed is kept and still used.
