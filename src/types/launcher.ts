@@ -44,6 +44,8 @@ export interface Server {
   iconUrl?: string;
   image?: string;
   bannerUrl?: string;
+  /** Looping banner video (MP4/WebM); bannerUrl is its poster. */
+  bannerVideoUrl?: string | null;
   description?: string;
   websiteUrl?: string;
   socials?: string | null;

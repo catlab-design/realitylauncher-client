@@ -5,7 +5,7 @@
 | Property | Value |
 |---|---|
 | **Name** | Reality Launcher (package: `ml-tauri-poc`) |
-| **Version** | 5.2.0 |
+| **Version** | 5.2.1 |
 | **License** | GPL-3.0-only |
 | **Description** | ML-Launcher POC with Tauri + Rust — Minecraft launcher |
 | **Copyright** | 2026 CatLab Design <hi@catlabdesign.space> |
@@ -74,10 +74,11 @@ src/
 │   │   ├── ModPackTabs/               # (16 files) CreateInstanceModal, etc.
 │   │   ├── settingsTabs/              # (10 files) Account, Java, Game, etc.
 │   │   └── wardrobe/SkinPreview3D.tsx
-│   └── ui/                            # Reusable UI primitives (18 components)
+│   └── ui/                            # Reusable UI primitives (19 components)
 │       ├── AnimatedGradientText.tsx
 │       ├── AppVersionBadge.tsx
 │       ├── BannerImage.tsx
+│       ├── BannerVideo.tsx            # Muted looping server banner video over its poster image
 │       ├── CalendarWidget.tsx
 │       ├── ChangelogModal.tsx
 │       ├── ConfirmDialog.tsx
@@ -407,6 +408,7 @@ const KNOWN_UNPORTED = new Set(['fetchInstanceAgendas', 'fetchAllAgendas']);
 20. **Launch log and censoring** — `launch_log::start` (in `instances_launch`) recreates `<instance>/logs/launcher.log`; `emit_progress` writes each stage message there, `mark_stage` adds "took" lines for steps ≥ 1 s and prints `[Launcher] Stage <name>: N ms` to the console. Lines use Forge's layout (`[ddMMMyyyy HH:mm:ss.SSS] [Launcher/INFO] …`) so `LiveLog` parses them like game lines. Early game stderr is copied in until `latest.log` is written. `read_log_lines` passes every chunk (both logs) through `launch_log::redact`, so never log secrets anywhere expecting the viewer to hide them — but don't rely on the viewer either: keep tokens out of log messages. `LiveLog` reads launcher.log then latest.log, skips a latest.log older than the launch log's creation time, and clears when launcher.log shrinks (a new launch)
 21. **Launch caches** — `game_window` keeps encoded icons in `<mc dir>/agent/icons/<crc>.rlic` (8 most recent) and default-icon fingerprints in `assets/indexes/.<index>.icon-fingerprints`; the client jar has a `.<ver>.jar.verified` size+mtime marker; `mappings::resolve_tab_schemes` caches results in `mappings/<mc>/tab-schemes-<loader>.json`, keyed by launcher version, mapping SHA-1 and mcp_config — bump nothing by hand, a new launcher version invalidates it
 22. **Wayland** — on Wayland sessions with XWayland available, the launcher runs with `GDK_BACKEND=x11` and the game is spawned without `WAYLAND_DISPLAY` and with `XDG_SESSION_TYPE=x11` (GLFW 3.4 in MC 1.20.2+ otherwise picks native Wayland: no window icon/position, agent icon swap has no effect). `nativeWayland` opts out. The maintainer's machine (NVIDIA 470, XFCE X11) can't run a Wayland compositor, so Wayland changes can only be checked on another machine
+24. **Banner videos** — `bannerUrl` is always an image; a server's optional video is `bannerVideoUrl` (API column `banner_video_url`, stored as `banner-video.<mp4|webm>` at the instance root, served by `/storage/assets/instance/:id/banner-video` with byte ranges, kept out of sync manifests and packs). The management site uploads a WebP still of the video as `banner`, so older launchers and every card keep working. Only the Servers hero (`ServerItem.tsx`) and `ServerDetailView` play it, through `BannerVideo` (hidden under reduced motion/Performance mode, paused while the window is hidden, poster on error). WebKitGTK plays WebM (VP8/VP9) with the bundled GStreamer "good" plugins; H.264 MP4 needs `gst-libav`, so MP4 may show only the poster on Linux
 23. **Server sync never deletes player mods** — `cloud::cleanup_unmanaged_mods` (used by pack v2, `.mrpack`, managed and per-file syncs) removes a top-level `mods/*.jar[.disabled]` only if `.reality/managed-mods.json` (the previous sync's keep set, rewritten every sync) lists it and the server no longer ships it; locked mods are always kept. With no record yet it removes everything except keep, locked and mods with an Explore content link (`.reality-content-links.json`)
 
 ---
