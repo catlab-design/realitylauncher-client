@@ -724,40 +724,93 @@ async fn fetch_managed_mods(cloud_id: &str, auth_token: &str) -> Result<Vec<Mana
 
 
 
+const MANAGED_MODS_FILE: &str = ".reality/managed-mods.json";
+
+fn load_managed_mods(dir: &Path) -> Option<std::collections::HashSet<String>> {
+    let bytes = fs::read(dir.join(MANAGED_MODS_FILE)).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+fn save_managed_mods(dir: &Path, names: &std::collections::HashSet<String>) {
+    let path = dir.join(MANAGED_MODS_FILE);
+    let Some(parent) = path.parent() else { return };
+    let mut sorted: Vec<&String> = names.iter().collect();
+    sorted.sort();
+    let Ok(json) = serde_json::to_vec_pretty(&sorted) else { return };
+    let tmp = path.with_extension("json.tmp");
+    let ok = fs::create_dir_all(parent).is_ok()
+        && fs::write(&tmp, json).is_ok()
+        && fs::rename(&tmp, &path).is_ok();
+    if !ok {
+        let _ = fs::remove_file(&tmp);
+        log::warn!("[Cloud Sync] could not save {}", path.display());
+    }
+}
+
+/// Which top-level mod jars a sync may delete: only ones an earlier sync put
+/// there (`.reality/managed-mods.json`) and the server no longer ships, so mods
+/// the player added themselves survive. Instances synced before the record
+/// existed fall back to "anything the player didn't install from the launcher".
+fn should_remove_mod(
+    real_name: &str,
+    keep: &std::collections::HashSet<String>,
+    locked: &[String],
+    previous: Option<&std::collections::HashSet<String>>,
+    player_installed: impl Fn(&str) -> bool,
+) -> bool {
+    if keep.contains(real_name) || locked.iter().any(|l| l == real_name) {
+        return false;
+    }
+    match previous {
+        Some(prev) => prev.contains(real_name),
+        None => !player_installed(real_name),
+    }
+}
+
 pub(crate) fn cleanup_unmanaged_mods(instance_dir: &str, keep: &std::collections::HashSet<String>) {
     // Deletes files from the instance dir — never run while a migration or
     // other exclusive op is in flight.
     let Some(_guard) = crate::op_guard::OperationGuard::try_shared() else {
         return;
     };
-    let mods_dir = Path::new(instance_dir).join("mods");
-    if !mods_dir.exists() {
-        return;
-    }
+    let dir = Path::new(instance_dir);
+    let mods_dir = dir.join("mods");
+    let keep: std::collections::HashSet<String> = keep
+        .iter()
+        .map(|n| n.strip_suffix(".disabled").unwrap_or(n).to_string())
+        .collect();
 
-    
-    
-    let locked: Vec<String> = crate::instances::instances_list_sync()
-        .into_iter()
-        .find(|i| i.game_directory == instance_dir)
-        .and_then(|i| i.locked_mods)
-        .unwrap_or_default();
+    if mods_dir.exists() {
+        let locked: Vec<String> = crate::instances::instances_list_sync()
+            .into_iter()
+            .find(|i| i.game_directory == instance_dir)
+            .and_then(|i| i.locked_mods)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|n| n.strip_suffix(".disabled").map(str::to_string).unwrap_or(n))
+            .collect();
+        let previous = load_managed_mods(dir);
+        let links = crate::mod_meta::read_content_links(dir);
 
-    if let Ok(entries) = fs::read_dir(&mods_dir) {
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if !name.ends_with(".jar") && !name.ends_with(".jar.disabled") {
-                continue;
-            }
-            let real_name = name.replace(".jar.disabled", ".jar");
-            if locked.contains(&name) || locked.contains(&real_name) {
-                continue;
-            }
-            if !keep.contains(&name) && !keep.contains(&real_name) {
-                let _ = fs::remove_file(entry.path());
+        if let Ok(entries) = fs::read_dir(&mods_dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if !name.ends_with(".jar") && !name.ends_with(".jar.disabled") {
+                    continue;
+                }
+                let real_name = name.strip_suffix(".disabled").unwrap_or(&name);
+                let remove = should_remove_mod(real_name, &keep, &locked, previous.as_ref(), |n| {
+                    crate::mod_meta::link_for(&links, "mod", n).is_some()
+                });
+                if remove {
+                    log::info!("[Cloud Sync] removing mod the server dropped: {name}");
+                    let _ = fs::remove_file(entry.path());
+                }
             }
         }
     }
+
+    save_managed_mods(dir, &keep);
 }
 
 async fn sync_managed_mods(
@@ -2251,4 +2304,40 @@ pub async fn notifications_delete(notification_id: String) -> Result<bool, Strin
     .map_err(|e| format!("Network error: {}", e))?;
 
     Ok(resp.status().is_success())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_remove_mod;
+    use std::collections::HashSet;
+
+    fn set(names: &[&str]) -> HashSet<String> {
+        names.iter().map(|n| n.to_string()).collect()
+    }
+
+    #[test]
+    fn player_mods_survive_sync() {
+        let keep = set(&["sodium.jar"]);
+        let prev = set(&["sodium.jar", "old-lib.jar"]);
+        let remove = |n| should_remove_mod(n, &keep, &[], Some(&prev), |_| false);
+        assert!(!remove("sodium.jar"));
+        assert!(remove("old-lib.jar"));
+        assert!(!remove("my-minimap.jar"));
+    }
+
+    #[test]
+    fn locked_mods_are_never_removed() {
+        let prev = set(&["old-lib.jar"]);
+        let locked = vec!["old-lib.jar".to_string()];
+        assert!(!should_remove_mod("old-lib.jar", &set(&[]), &locked, Some(&prev), |_| false));
+    }
+
+    #[test]
+    fn first_sync_without_record_keeps_launcher_installed_mods() {
+        let keep = set(&["sodium.jar"]);
+        let installed = |n: &str| n == "my-minimap.jar";
+        assert!(!should_remove_mod("my-minimap.jar", &keep, &[], None, installed));
+        assert!(should_remove_mod("stale.jar", &keep, &[], None, installed));
+        assert!(!should_remove_mod("sodium.jar", &keep, &[], None, installed));
+    }
 }
