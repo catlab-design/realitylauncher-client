@@ -1,4 +1,4 @@
-## 5.1.0 — 2026-10-24
+## [5.2.0] — 2026-11-04
 
 ### Added
 - Auto-updates are now cryptographically verified. Each released installer is signed with minisign in CI, and the launcher verifies the downloaded package against an embedded public key (fetching the detached `<installer>.minisig` from the CDN) before it is ever renamed into place, stashed, or run — including on the silent install-on-exit path. A missing, malformed, or mismatched signature deletes the download and aborts the update, so a tampered or wrong-origin package can't be installed. Download and signature URLs are also restricted to an allowlist of trusted hosts (`cdn.reality.catlabdesign.space`, `gitlab.com`), so a tampered release manifest can't redirect the client to an arbitrary host.
