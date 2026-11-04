@@ -1,4 +1,4 @@
-## [Unreleased] — 2026-11-04
+## [5.2.1] — 2026-11-04
 
 ### Added
 - Server banners can be a GIF or a looping video. On the Servers tab, the featured server and the server page play the video muted on top of the banner image, which is a still taken from the video. Server cards, Home and the Library keep showing the still. The video isn't played with Performance mode or reduced motion on, and pauses while the launcher window is hidden. If the video can't be played, the still is shown: MP4 (H.264) on Linux systems without `gst-libav`, which is why WebM is the recommended format. Older launchers show the still. Server owners upload the video from the management site; it needs the matching `realitylauncher-api` migration (`0030_instance_banner_video.sql`).
