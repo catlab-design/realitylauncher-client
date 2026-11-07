@@ -1,3 +1,8 @@
+## [5.2.2] — 2026-11-07
+
+### Fixed
+- With Figura installed, the Reality logo in the tab list was missing for players with a Figura avatar: their avatar head was drawn where the logo goes, and the head's own spot stayed empty (or showed the head twice). Figura draws the avatar head from the position the game passes to the head drawing, which the launcher only moved afterwards. The head position is now moved first, so the Figura head sits after the logo like every other head. Turning on Figura's panic mode was a workaround and is no longer needed.
+
 ## [5.2.1] — 2026-11-04
 
 ### Added
