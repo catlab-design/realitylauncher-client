@@ -108,6 +108,7 @@ src/
 │   ├── apiBase.ts                    # API_BASE_URL + apiUrl(path, params) for frontend fetches (+ test)
 │   ├── bulkDelete.ts
 │   ├── constants.ts                  # COLOR_THEMES map
+│   ├── externalUrl.ts                # getSafeExternalUrl(): only http(s) links reach openExternal (+ test)
 │   ├── firstRunOnboarding.ts
 │   ├── installLock.ts
 │   ├── launchPolicy.ts
@@ -286,7 +287,7 @@ ConfigStore migration (v0→v1): `closeOnLaunch` changed from `boolean` to `'kee
 | **curseforge** | `curseforge_search`, `get_project`, `get_files`, `get_description`, `clear_cache` |
 | **modpack** | `install`, `install_from_modrinth`, `install_from_curseforge`, `cancel_install`, `pre_install`, `list_files` |
 | **update** | `check_latest_version`, `download_update`, `install_update` |
-| **fs_utils** | `open_folder`, `open_url`, `browse_directory`, `browse_icon`, `browse_modpack`, `launcher_clear_cache`, `check_dir_empty` |
+| **fs_utils** | `open_folder`, `open_url` (http(s) only via `validate_external_url`; Windows uses ShellExecuteExW, never `cmd`), `browse_directory`, `browse_icon`, `browse_modpack`, `launcher_clear_cache`, `check_dir_empty` |
 | **window** | `window_minimize`, `window_maximize`/`unmaximize`, `window_close`, `is_maximized`, `set_main_mode` |
 | **cloud** | joined servers, join/leave, cloud install/sync, invitations, notifications |
 | **discord** | `discord_rpc_set_enabled`, `discord_rpc_update`, `discord_rpc_is_connected` |
@@ -337,7 +338,7 @@ const KNOWN_UNPORTED = new Set(['fetchInstanceAgendas', 'fetchAllAgendas']);
 ## 6. Testing
 
 - **Framework**: `bun:test`
-- **Test files**: `src/api.test.ts` (120 lines), `src/lib/apiBase.test.ts`, `src/lib/launchWatchdog.test.ts`, `src/lib/perfStats.test.ts`, `src/lib/tabKeepAlive.test.ts`, `src/lib/pageVisibility.test.ts`
+- **Test files**: `src/api.test.ts` (120 lines), `src/lib/apiBase.test.ts`, `src/lib/externalUrl.test.ts`, `src/lib/launchWatchdog.test.ts`, `src/lib/perfStats.test.ts`, `src/lib/tabKeepAlive.test.ts`, `src/lib/pageVisibility.test.ts`
 - **Perf bench** (dev only, real app): see §7; besides metrics it reports `checks` (install toast live, keep-alive layout/remount, rainbow CSS) — all must be `true`
 - **Run tests**: `bun test` or `bun test src/api.test.ts`
 - **Bridge parity validation**:

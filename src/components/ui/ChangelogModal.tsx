@@ -2,6 +2,7 @@
 import ReactMarkdown from 'react-markdown';
 import { useTranslation } from "../../hooks/useTranslation";
 import { useMotionPreset } from "../../lib/motion";
+import { getSafeExternalUrl } from "../../lib/externalUrl";
 
 interface ChangelogModalProps {
     isOpen: boolean;
@@ -56,7 +57,7 @@ export function ChangelogModal({
                 href={href || "#"}
                 onClick={(e) => {
                     e.preventDefault();
-                    if (href && (href.startsWith('http') || href.startsWith('https'))) {
+                    if (getSafeExternalUrl(href)) {
                         (window as any).api?.openExternal?.(href);
                     }
                 }}

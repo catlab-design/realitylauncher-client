@@ -23,6 +23,7 @@ import quiltIcon from "../../../assets/quilt.svg";
 import modrinthIcon from "../../../assets/modrinth.svg";
 import curseforgeIcon from "../../../assets/curseforge.svg";
 import datapackIcon from "../../../assets/modpack_icon.webp";
+import { getSafeExternalUrl } from "../../../lib/externalUrl";
 
 interface ProjectDetailPageProps {
     colors: any;
@@ -553,7 +554,7 @@ export function ProjectDetailPage({
                                                         href={href || "#"} 
                                                         onClick={(e) => {
                                                             e.preventDefault();
-                                                            if (href && (href.startsWith('http') || href.startsWith('https'))) {
+                                                            if (getSafeExternalUrl(href)) {
                                                                 (window as any).api?.openExternal?.(href);
                                                             }
                                                         }}

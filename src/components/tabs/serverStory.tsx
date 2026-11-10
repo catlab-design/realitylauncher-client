@@ -12,6 +12,7 @@ import { stripMarkdown } from "../ui/SimpleMarkdown";
 import { useMotionPreset } from "../../lib/motion";
 import { GalleryLightbox } from "./ServerGallery";
 import type { GalleryImage } from "./ServerItem";
+import { getSafeExternalUrl } from "../../lib/externalUrl";
 
 // Shared by the server detail page and the Server List hero: story teaser, reader and social links.
 
@@ -20,16 +21,7 @@ export type SocialLink = {
     url: string;
 };
 
-export function getSafeExternalUrl(rawUrl?: string | null): string | null {
-    if (typeof rawUrl !== "string") return null;
-    try {
-        const parsed = new URL(rawUrl);
-        if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
-        return parsed.toString();
-    } catch {
-        return null;
-    }
-}
+export { getSafeExternalUrl };
 
 function getHostname(rawUrl?: string | null): string {
     if (typeof rawUrl !== "string") return "";

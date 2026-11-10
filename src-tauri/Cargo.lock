@@ -2617,6 +2617,7 @@ dependencies = [
  "minecraft-msa-auth",
  "minisign-verify",
  "once_cell",
+ "open",
  "regex",
  "reqwest 0.12.28",
  "rfd",
@@ -2630,6 +2631,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-shell",
  "tokio",
+ "url",
  "urlencoding",
  "zip",
 ]

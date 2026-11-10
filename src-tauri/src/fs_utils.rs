@@ -37,18 +37,40 @@ pub async fn open_folder(app: tauri::AppHandle, path: String) -> Result<(), Stri
     Ok(())
 }
 
+/// Only absolute http(s) links with a host are opened. The result is the
+/// re-serialised URL, so spaces, quotes and control characters are percent-encoded.
+pub(crate) fn validate_external_url(raw: &str) -> Result<String, String> {
+    let raw = raw.trim();
+    if raw.len() > 8192 {
+        return Err("URL is too long".into());
+    }
+    let parsed = url::Url::parse(raw).map_err(|_| "Invalid URL".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("Only http(s) links can be opened".into());
+    }
+    if parsed.host_str().map_or(true, str::is_empty) {
+        return Err("URL has no host".into());
+    }
+    let normalized = parsed.to_string();
+    if normalized
+        .chars()
+        .any(|c| c.is_control() || c.is_whitespace() || c == '"')
+    {
+        return Err("Invalid URL".into());
+    }
+    Ok(normalized)
+}
+
 #[tauri::command]
 pub async fn open_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    let url = validate_external_url(&url)?;
+
     #[cfg(target_os = "windows")]
     {
         let _ = &app;
-        // Spawn via std with CREATE_NO_WINDOW so the cmd console never flashes.
-        use std::os::windows::process::CommandExt;
-        std::process::Command::new("cmd")
-            .args(["/C", "start", "", &url])
-            .creation_flags(0x08000000)
-            .spawn()
-            .map_err(|e| e.to_string())?;
+        // ShellExecuteExW hands the URL to the default browser without cmd.exe,
+        // so shell metacharacters (& | ^ % …) in a link are never interpreted.
+        open::that_detached(&url).map_err(|e| e.to_string())?;
     }
 
     #[cfg(target_os = "macos")]
@@ -278,5 +300,30 @@ pub fn back_up_unreadable_file(path: &Path) -> Option<PathBuf> {
             log::error!("[fs] Failed to back up {:?}: {e}", path);
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_external_url;
+
+    #[test]
+    fn accepts_http_and_https() {
+        assert_eq!(validate_external_url("https://modrinth.com/mod/sodium").unwrap(), "https://modrinth.com/mod/sodium");
+        assert!(validate_external_url("http://example.com").is_ok());
+    }
+
+    #[test]
+    fn rejects_other_schemes() {
+        for u in ["file:///C:/Windows/System32/calc.exe", "javascript:alert(1)", "ms-msdt:/id", "httpx://a", "\\\\server\\share", "calc.exe", "http:/", ""] {
+            assert!(validate_external_url(u).is_err(), "{u}");
+        }
+    }
+
+    #[test]
+    fn neutralises_shell_syntax() {
+        let out = validate_external_url("https://example.com/a\" & calc & \"b c").unwrap();
+        assert!(!out.contains('"') && !out.contains(' '), "{out}");
+        assert!(validate_external_url("https://example.com/\r\ncalc").map_or(true, |o| !o.contains('\n')));
     }
 }
