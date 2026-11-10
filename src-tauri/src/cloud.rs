@@ -854,7 +854,13 @@ async fn sync_managed_mods(
                 }
                 joined
             }
-            None => mods_dir.join(&m.file_name),
+            None => match crate::fs_utils::safe_file_name(&m.file_name) {
+                Some(name) => mods_dir.join(name),
+                None => {
+                    failed.push((m.file_name.clone(), "Path traversal blocked".into()));
+                    continue;
+                }
+            },
         };
         let file_path = honor_disabled(file_path);
 

@@ -37,6 +37,21 @@ pub async fn open_folder(app: tauri::AppHandle, path: String) -> Result<(), Stri
     Ok(())
 }
 
+/// A single file name from the network (API or server), safe to join to a folder:
+/// no separators, no `.`/`..`, no drive prefix (`C:x`) or NUL, so the joined path
+/// can't leave the folder on any platform.
+pub(crate) fn safe_file_name(name: &str) -> Option<&str> {
+    let ok = !name.is_empty()
+        && name.len() <= 255
+        && name != "."
+        && name != ".."
+        && !name.starts_with("..")
+        && !name
+            .chars()
+            .any(|c| matches!(c, '/' | '\\' | ':' | '\0') || c.is_control());
+    ok.then_some(name)
+}
+
 /// Only absolute http(s) links with a host are opened. The result is the
 /// re-serialised URL, so spaces, quotes and control characters are percent-encoded.
 pub(crate) fn validate_external_url(raw: &str) -> Result<String, String> {
@@ -305,7 +320,17 @@ pub fn back_up_unreadable_file(path: &Path) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_external_url;
+    use super::{safe_file_name, validate_external_url};
+
+    #[test]
+    fn safe_file_name_rejects_traversal() {
+        for n in ["../evil.jar", "..\\evil.jar", "/etc/passwd", "C:\\x.jar", "C:x.jar", "a/b.jar", "..", ".", "", "a\0b"] {
+            assert!(safe_file_name(n).is_none(), "{n:?}");
+        }
+        for n in ["sodium-fabric-0.5.11+mc1.21.jar", "pack.mrpack", "Shader v1.2.zip"] {
+            assert_eq!(safe_file_name(n), Some(n));
+        }
+    }
 
     #[test]
     fn accepts_http_and_https() {

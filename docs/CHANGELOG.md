@@ -2,6 +2,7 @@
 
 ### Security
 - Windows: clicking a crafted link inside the launcher (mod/modpack descriptions from Modrinth or CurseForge, server pages, changelogs) could run commands on the computer. `open_url` passed the URL to `cmd /C start` unquoted, so characters such as `&` or `|` split off a second command. Links are now opened with `ShellExecuteExW` (no command interpreter), and on every platform the backend only accepts absolute `http`/`https` URLs with a host, re-serialised by a URL parser so spaces and quotes are percent-encoded. The frontend uses the same check (`src/lib/externalUrl.ts`) instead of `startsWith('http')`, which also let through look-alike schemes such as `http-foo:`.
+- Downloads could be written outside the instance folder when a server or API returned a file name with `..`, a path separator or an absolute/drive path (GHSA-jxjf-mwvh-cw58): cloud sync of managed mods without a `path` (`fileName`), content installs from Modrinth/CurseForge (`filename`/`fileName`) and the temporary `.mrpack` download. These names now go through `fs_utils::safe_file_name` (one plain file name: no `/`, `\\`, `:`, NUL or control characters, not `.`/`..`); an unsafe name fails that file (cloud sync reports it as "Path traversal blocked"), and the `.mrpack` temp file falls back to `modpack.mrpack`. Local mod rename/delete use the same check.
 
 ## [5.2.2] — 2026-11-07
 

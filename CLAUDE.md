@@ -170,7 +170,7 @@ src-tauri/
     ├── cloud.rs                      # Cloud sync, server instances, invitations
     ├── admin.rs                      # Admin commands (10)
     ├── update.rs                     # App update check/download/install
-    ├── fs_utils.rs                   # FS utilities (open, browse, clear cache)
+    ├── fs_utils.rs                   # FS utilities (open, browse, clear cache) + safe_file_name() for every network-supplied file name
     ├── game_window.rs                # Game window title + icon file (instance icon / Reality logo) + default-icon fingerprints for the agent
     ├── window.rs                     # Window management
     ├── discord.rs                    # Discord Rich Presence (line 2 = agent game status, line 3 = "By <team>"; "Picking a Server" with the on-screen server logo)

@@ -302,6 +302,12 @@ pub async fn instance_install_content(
             }
         }
     };
+    let Some(filename) = crate::fs_utils::safe_file_name(filename) else {
+        return InstallContentResult {
+            ok: false,
+            error: Some("Invalid filename".to_string()),
+        };
+    };
 
     let target_dir = match content_type.as_str() {
         "mod" => get_instance_dir(&instance_id).join("mods"),
@@ -924,6 +930,14 @@ pub async fn content_download_to_instance(
         }
     };
 
+    if crate::fs_utils::safe_file_name(&filename).is_none() {
+        return DownloadResult {
+            ok: false,
+            filepath: None,
+            filename: None,
+            error: Some("Invalid filename".to_string()),
+        };
+    }
     fs::create_dir_all(&target_dir).ok();
     let target_path = target_dir.join(&filename);
 
@@ -1089,12 +1103,7 @@ pub struct ToggleResult {
 }
 
 fn safe_content_name(name: &str) -> bool {
-    !name.is_empty()
-        && name != "."
-        && name != ".."
-        && !name.starts_with("..")
-        && !name.contains('/')
-        && !name.contains('\\')
+    crate::fs_utils::safe_file_name(name).is_some()
 }
 
 fn toggle_in_dir(dir: &std::path::Path, filename: &str) -> Result<(String, bool), String> {
