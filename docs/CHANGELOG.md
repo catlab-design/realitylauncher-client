@@ -1,4 +1,4 @@
-## [Unreleased] — 2026-11-10
+## [5.2.3] — 2026-11-10
 
 ### Security
 - Windows: clicking a crafted link inside the launcher (mod/modpack descriptions from Modrinth or CurseForge, server pages, changelogs) could run commands on the computer. `open_url` passed the URL to `cmd /C start` unquoted, so characters such as `&` or `|` split off a second command. Links are now opened with `ShellExecuteExW` (no command interpreter), and on every platform the backend only accepts absolute `http`/`https` URLs with a host, re-serialised by a URL parser so spaces and quotes are percent-encoded. The frontend uses the same check (`src/lib/externalUrl.ts`) instead of `startsWith('http')`, which also let through look-alike schemes such as `http-foo:`.
