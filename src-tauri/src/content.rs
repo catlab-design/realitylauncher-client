@@ -1066,8 +1066,8 @@ async fn get_curseforge_download_url(
     let download_url = data
         .get("data")
         .and_then(|d| d.as_str())
-        .ok_or("No download URL")?
-        .to_string();
+        .filter(|u| !u.is_empty())
+        .map(str::to_string);
 
     let file_url = format!("{API_URL}/curseforge/file/{project_id}/{file_id}");
     let file_resp = client
@@ -1089,6 +1089,16 @@ async fn get_curseforge_download_url(
         .and_then(|f| f.as_str())
         .unwrap_or(&format!("{file_id}.jar"))
         .to_string();
+
+    // Files whose author disabled third-party distribution have no API
+    // download URL; CurseForge still serves them from its CDN path.
+    let download_url = match download_url {
+        Some(u) => u,
+        None if file_info.get("data").and_then(|d| d.get("fileName")).is_some() => {
+            crate::modpack::cf_cdn_url(file_id as i64, &filename)
+        }
+        None => return Err("No download URL".to_string()),
+    };
 
     Ok((download_url, filename))
 }

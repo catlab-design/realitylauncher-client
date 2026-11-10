@@ -592,8 +592,9 @@ export function Explore({ colors, config }: ExploreProps) {
                 if (failed && failed.length > 0) {
                     // Install succeeded but some mods are missing โ€” warn instead of
                     // claiming a clean install so the user can re-download.
+                    const names = failed.slice(0, 3).join(', ') + (failed.length > 3 ? ', …' : '');
                     toast(
-                        `${t('install_complete')} โ€” ${failed.length} ${t('files_failed_to_download') || 'file(s) failed to download'}`,
+                        `${t('install_complete')} โ€” ${failed.length} ${t('files_failed_to_download') || 'file(s) failed to download'}: ${names}`,
                         { duration: 8000, icon: 'โ ๏ธ' },
                     );
                 } else {

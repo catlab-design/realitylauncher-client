@@ -716,6 +716,166 @@ async fn install_mrpack(app: &tauri::AppHandle, file_path: &str) -> ModpackInsta
     }
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CfFileInfo {
+    id: i64,
+    #[serde(default)]
+    file_name: Option<String>,
+    #[serde(default)]
+    download_url: Option<String>,
+    #[serde(default)]
+    hashes: Vec<CfFileHash>,
+    #[serde(default)]
+    modules: Vec<CfFileModule>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct CfFileHash {
+    value: String,
+    algo: i32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct CfFileModule {
+    name: String,
+}
+
+impl CfFileInfo {
+    fn sha1(&self) -> Option<String> {
+        self.hashes
+            .iter()
+            .find(|h| h.algo == 1 && h.value.len() == 40)
+            .map(|h| h.value.to_lowercase())
+    }
+}
+
+/// CurseForge serves every file from this path, including files whose author
+/// disabled third-party distribution (the API returns `downloadUrl: null`).
+pub(crate) fn cf_cdn_url(file_id: i64, file_name: &str) -> String {
+    format!(
+        "https://edge.forgecdn.net/files/{}/{}/{}",
+        file_id / 1000,
+        file_id % 1000,
+        urlencoding::encode(file_name)
+    )
+}
+
+/// Instance folder for a pack file. Mods are jars; CurseForge packs also pin
+/// resource packs, shader packs and data packs (zips), which Forge/NeoForge
+/// reject as "not a valid mod file" when dropped into `mods/`.
+fn cf_target_folder(file_name: &str, modules: &[CfFileModule]) -> &'static str {
+    if file_name.to_ascii_lowercase().ends_with(".jar") {
+        return "mods";
+    }
+    let has = |n: &str| modules.iter().any(|m| m.name.eq_ignore_ascii_case(n));
+    if has("shaders") {
+        "shaderpacks"
+    } else if has("assets") || (has("pack.mcmeta") && !has("data")) {
+        "resourcepacks"
+    } else if has("data") {
+        "datapacks"
+    } else if modules.is_empty() {
+        "resourcepacks"
+    } else {
+        "mods"
+    }
+}
+
+async fn cf_post_files(
+    client: &reqwest::Client,
+    chunk: &[i32],
+) -> Result<Vec<CfFileInfo>, String> {
+    let mut last_err = String::new();
+    for attempt in 0..4u32 {
+        if attempt > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(500 * 2u64.pow(attempt))).await;
+        }
+        let resp = match client
+            .post(format!("{API_URL}/curseforge/files"))
+            .header("Accept", "application/json")
+            .json(&serde_json::json!({ "fileIds": chunk }))
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                last_err = e.to_string();
+                continue;
+            }
+        };
+        let status = resp.status();
+        if status.as_u16() == 429 || status.is_server_error() {
+            last_err = format!("HTTP {status}");
+            continue;
+        }
+        if !status.is_success() {
+            return Err(format!("HTTP {status}"));
+        }
+        let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+        let data = body.get("data").cloned().unwrap_or_default();
+        return Ok(data
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| serde_json::from_value::<CfFileInfo>(v.clone()).ok())
+                    .collect()
+            })
+            .unwrap_or_default());
+    }
+    Err(last_err)
+}
+
+async fn cf_fetch_files_batch(
+    client: &reqwest::Client,
+    file_ids: &[i32],
+) -> Result<std::collections::HashMap<i64, CfFileInfo>, String> {
+    let mut out = std::collections::HashMap::new();
+    for chunk in file_ids.chunks(500) {
+        for info in cf_post_files(client, chunk).await? {
+            out.insert(info.id, info);
+        }
+    }
+    Ok(out)
+}
+
+async fn cf_fetch_file_single(
+    client: &reqwest::Client,
+    project_id: i32,
+    file_id: i32,
+) -> Result<CfFileInfo, String> {
+    let mut last_err = String::new();
+    for attempt in 0..3u32 {
+        if attempt > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(500 * 2u64.pow(attempt))).await;
+        }
+        let resp = match client
+            .get(format!("{API_URL}/curseforge/file/{project_id}/{file_id}"))
+            .header("Accept", "application/json")
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                last_err = e.to_string();
+                continue;
+            }
+        };
+        let status = resp.status();
+        if status.as_u16() == 429 || status.is_server_error() {
+            last_err = format!("HTTP {status}");
+            continue;
+        }
+        if !status.is_success() {
+            return Err(format!("{project_id}/{file_id}: HTTP {status}"));
+        }
+        let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+        let data = body.get("data").cloned().unwrap_or_default();
+        return serde_json::from_value(data).map_err(|e| format!("{project_id}/{file_id}: {e}"));
+    }
+    Err(format!("{project_id}/{file_id}: {last_err}"))
+}
+
 async fn install_cf_modpack(app: &tauri::AppHandle, file_path: &str) -> ModpackInstallResult {
     let cancel = crate::op_guard::CancelToken::new();
     let run = || -> Result<_, String> {
@@ -791,62 +951,83 @@ async fn install_cf_modpack(app: &tauri::AppHandle, file_path: &str) -> ModpackI
     fs::create_dir_all(&mods_dir).ok();
     let total = manifest.files.len();
 
-    // Phase 1: resolve all CurseForge download URLs concurrently
+    // Phase 1: resolve every pinned file in one batch call (real file name,
+    // SHA-1, and a CDN URL for files whose author disabled third-party
+    // distribution); per-file lookups only for ids the batch didn't return.
     emit_progress(app, "resolving", "Resolving download URLs...", 0);
     let client = crate::http_client::HTTP_CLIENT.clone();
+    let file_ids: Vec<i32> = manifest.files.iter().map(|f| f.file_id).collect();
+    let mut resolved = match cf_fetch_files_batch(&client, &file_ids).await {
+        Ok(map) => map,
+        Err(e) => {
+            log::warn!("[Modpack] CF batch resolve failed, falling back to per-file: {e}");
+            std::collections::HashMap::new()
+        }
+    };
 
-    let concurrency = std::sync::Arc::new(tokio::sync::Semaphore::new(crate::config::get_max_concurrent_downloads()));
-    let resolve_handles: Vec<_> = manifest
+    let concurrency = std::sync::Arc::new(tokio::sync::Semaphore::new(
+        crate::config::get_max_concurrent_downloads().min(4),
+    ));
+    let missing: Vec<&CfFileEntry> = manifest
         .files
         .iter()
-        .map(|file_entry| {
+        .filter(|f| !resolved.contains_key(&(f.file_id as i64)))
+        .collect();
+    let single_handles: Vec<_> = missing
+        .iter()
+        .map(|f| {
             let client = client.clone();
             let sem = concurrency.clone();
-            let proj = file_entry.project_id;
-            let fid = file_entry.file_id;
-            let dest = mods_dir.join(format!("{}_{}.jar", proj, fid));
-            let label = format!("{}_{}.jar", proj, fid);
-
+            let (proj, fid) = (f.project_id, f.file_id);
             tokio::spawn(async move {
                 let _permit = sem.acquire().await.map_err(|e| e.to_string())?;
-                let url = format!("{API_URL}/curseforge/download/{proj}/{fid}");
-                let resp = client
-                    .get(&url)
-                    .header("Accept", "application/json")
-                    .send()
-                    .await
-                    .map_err(|e| format!("Resolve {label}: {e}"))?;
-                if !resp.status().is_success() {
-                    return Err::<_, String>(format!("HTTP {}", resp.status()));
-                }
-                let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-                let download_url = data
-                    .get("data")
-                    .and_then(|d| d.as_str())
-                    .ok_or("No download URL")?
-                    .to_string();
-                Ok::<_, String>((
-                    label.clone(),
-                    crate::download::DownloadItem::new(download_url, dest).with_label(label),
-                ))
+                cf_fetch_file_single(&client, proj, fid).await
             })
         })
         .collect();
+    for handle in single_handles {
+        match handle.await {
+            Ok(Ok(info)) => {
+                resolved.insert(info.id, info);
+            }
+            Ok(Err(e)) => log::warn!("[Modpack] CF resolve failed: {e}"),
+            Err(e) => log::warn!("[Modpack] CF resolve task failed: {e}"),
+        }
+    }
 
     let mut items: Vec<crate::download::DownloadItem> = Vec::new();
     let mut failed: Vec<String> = Vec::new();
-    for handle in resolve_handles {
-        match handle.await {
-            Ok(Ok((_, item))) => items.push(item),
-            Ok(Err(e)) => {
-                log::warn!("[Modpack] CF resolve failed: {e}");
-                failed.push("resolve_error".into());
-            }
-            Err(e) => {
-                log::warn!("[Modpack] CF resolve task failed: {e}");
-                failed.push("resolve_task_error".into());
-            }
+    for entry in &manifest.files {
+        let fallback_label = format!("CurseForge project {} file {}", entry.project_id, entry.file_id);
+        let Some(info) = resolved.get(&(entry.file_id as i64)) else {
+            failed.push(fallback_label);
+            continue;
+        };
+        let file_name = info
+            .file_name
+            .as_deref()
+            .and_then(crate::fs_utils::safe_file_name)
+            .map(str::to_string);
+        let url = info
+            .download_url
+            .clone()
+            .filter(|u| !u.is_empty())
+            .or_else(|| file_name.as_deref().map(|n| cf_cdn_url(info.id, n)));
+        let Some(url) = url else {
+            failed.push(file_name.unwrap_or(fallback_label));
+            continue;
+        };
+        let file_name =
+            file_name.unwrap_or_else(|| format!("{}_{}.jar", entry.project_id, entry.file_id));
+        let folder = cf_target_folder(&file_name, &info.modules);
+        let dir = instance_dir.join(folder);
+        fs::create_dir_all(&dir).ok();
+        let mut item = crate::download::DownloadItem::new(url, dir.join(&file_name))
+            .with_label(file_name.clone());
+        if let Some(sha1) = info.sha1() {
+            item = item.with_sha1(sha1);
         }
+        items.push(item);
     }
 
     if cancel.is_cancelled() {
@@ -1064,9 +1245,12 @@ pub async fn modpack_install_from_curseforge(
         Err(e) => return ModpackInstallResult::fail(e.to_string()),
     };
 
-    let actual_url = match data.get("data").and_then(|d| d.as_str()) {
+    let actual_url = match data.get("data").and_then(|d| d.as_str()).filter(|u| !u.is_empty()) {
         Some(u) => u.to_string(),
-        None => return ModpackInstallResult::fail("No download URL".to_string()),
+        None => match cf_fetch_file_single(&client, project_id, file_id).await {
+            Ok(CfFileInfo { id, file_name: Some(name), .. }) => cf_cdn_url(id, &name),
+            _ => return ModpackInstallResult::fail("No download URL".to_string()),
+        },
     };
 
     let temp_dir = std::env::temp_dir().join("mlauncher-modpacks");
@@ -1077,6 +1261,9 @@ pub async fn modpack_install_from_curseforge(
         Ok(r) => r,
         Err(e) => return ModpackInstallResult::fail(e.to_string()),
     };
+    if !resp.status().is_success() {
+        return ModpackInstallResult::fail(format!("Modpack download failed: HTTP {}", resp.status()));
+    }
 
     match resp.bytes().await {
         Ok(bytes) => {
@@ -1406,5 +1593,44 @@ async fn fetch_and_set_assets(instance_id: &str, source: &str, project_id: &str)
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod cf_resolve_tests {
+    use super::*;
+
+    fn modules(names: &[&str]) -> Vec<CfFileModule> {
+        names.iter().map(|n| CfFileModule { name: n.to_string() }).collect()
+    }
+
+    #[test]
+    fn cdn_url_splits_file_id() {
+        assert_eq!(
+            cf_cdn_url(5_123_045, "jei-1.21.1 neoforge.jar"),
+            "https://edge.forgecdn.net/files/5123/45/jei-1.21.1%20neoforge.jar"
+        );
+    }
+
+    #[test]
+    fn non_mod_files_leave_mods_folder() {
+        assert_eq!(cf_target_folder("Sodium.JAR", &modules(&["META-INF"])), "mods");
+        assert_eq!(cf_target_folder("Complementary.zip", &modules(&["shaders"])), "shaderpacks");
+        assert_eq!(cf_target_folder("Fresh.zip", &modules(&["assets", "pack.mcmeta"])), "resourcepacks");
+        assert_eq!(cf_target_folder("dp.zip", &modules(&["data", "pack.mcmeta"])), "datapacks");
+        assert_eq!(cf_target_folder("x.zip", &[]), "resourcepacks");
+    }
+
+    #[test]
+    fn parses_batch_file_with_null_download_url() {
+        let v = serde_json::json!({
+            "id": 6000123, "modId": 1, "fileName": "blocked-mod-1.0.jar", "downloadUrl": null,
+            "hashes": [{"value": "ABCDEF0123456789ABCDEF0123456789ABCDEF01", "algo": 1}, {"value": "x", "algo": 2}],
+            "modules": [{"name": "META-INF", "fingerprint": 1}]
+        });
+        let info: CfFileInfo = serde_json::from_value(v).unwrap();
+        assert!(info.download_url.is_none());
+        assert_eq!(info.sha1().as_deref(), Some("abcdef0123456789abcdef0123456789abcdef01"));
+        assert_eq!(cf_target_folder(info.file_name.as_deref().unwrap(), &info.modules), "mods");
     }
 }
