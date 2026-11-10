@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type { GameInstance, LauncherConfig } from './types/launcher';
+import { getSafeExternalUrl } from './lib/externalUrl';
 
 /** A read of an instance log; text is already censored by the backend. Times are epoch ms (0 = unknown). */
 type LogChunk = { ok: boolean; content: string; size: number; modified?: number; created?: number };
@@ -294,7 +295,14 @@ export const api = {
         }
         return invoke<void>('open_folder', { path: targetPath });
     },
-    openExternal: (url: string) => invoke<void>('open_url', { url }),
+    openExternal: async (url: string) => {
+        const safeUrl = getSafeExternalUrl(url);
+        if (!safeUrl) {
+            console.warn('[api] Refusing to open non-http(s) URL');
+            return;
+        }
+        return invoke<void>('open_url', { url: safeUrl });
+    },
     selectFile: async (filters?: any) => {
         if (filters?.filters?.some((f: any) => f.extensions?.includes('png') || f.extensions?.includes('jpg'))) {
             return invoke<string | null>('browse_icon');

@@ -1,4 +1,5 @@
 import React from "react";
+import { getSafeExternalUrl } from "../../lib/externalUrl";
 
 interface SimpleMarkdownProps {
   content: string;
@@ -68,7 +69,7 @@ function renderInline(text: string, keyPrefix: string) {
           className="font-semibold underline decoration-2 underline-offset-4 decoration-[#f5c518] hover:opacity-75 break-all cursor-pointer"
           onClick={(e) => {
             e.preventDefault();
-            if (node.href && (node.href.startsWith('http') || node.href.startsWith('https'))) {
+            if (getSafeExternalUrl(node.href)) {
               (window as any).api?.openExternal?.(node.href);
             }
           }}

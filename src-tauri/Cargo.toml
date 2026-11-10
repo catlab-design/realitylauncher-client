@@ -1,6 +1,6 @@
 [package]
 name = "ml-tauri-poc"
-version = "5.2.2"
+version = "5.2.3"
 description = "ML-Launcher POC with Tauri + Rust"
 edition = "2021"
 
@@ -25,6 +25,8 @@ chrono = { version = "0.4", features = ["serde"] }
 base64 = "0.22"
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "http2", "gzip", "brotli", "rustls-tls"] }
 urlencoding = "2"
+# Parses and normalises external links before they are handed to the OS (open_url).
+url = "2"
 
 # Pre-added for the launch (Track A) and cloud-sync (Track B) migration tasks
 # so neither track needs to edit Cargo.toml.
@@ -49,6 +51,10 @@ regex = "1"
 log = "0.4"
 env_logger = "0.11"
 fs4 = "0.13"
+
+[target.'cfg(windows)'.dependencies]
+# ShellExecuteW for open_url, so links never go through cmd.exe.
+open = "5"
 
 [features]
 default = ["custom-protocol"]

@@ -989,10 +989,11 @@ pub async fn modpack_install_from_modrinth(
         None => return ModpackInstallResult::fail("No download URL".to_string()),
     };
 
-    let filename = match mrpack["filename"].as_str() {
-        Some(n) => n.to_string(),
-        None => "modpack.mrpack".to_string(),
-    };
+    let filename = mrpack["filename"]
+        .as_str()
+        .and_then(crate::fs_utils::safe_file_name)
+        .unwrap_or("modpack.mrpack")
+        .to_string();
 
     let temp_dir = std::env::temp_dir().join("mlauncher-modpacks");
     fs::create_dir_all(&temp_dir).ok();

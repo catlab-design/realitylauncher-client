@@ -2599,7 +2599,7 @@ dependencies = [
 
 [[package]]
 name = "ml-tauri-poc"
-version = "5.2.2"
+version = "5.2.3"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -2617,6 +2617,7 @@ dependencies = [
  "minecraft-msa-auth",
  "minisign-verify",
  "once_cell",
+ "open",
  "regex",
  "reqwest 0.12.28",
  "rfd",
@@ -2630,6 +2631,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-shell",
  "tokio",
+ "url",
  "urlencoding",
  "zip",
 ]
