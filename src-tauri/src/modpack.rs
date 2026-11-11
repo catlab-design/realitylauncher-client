@@ -233,6 +233,7 @@ pub async fn modpack_install(app: tauri::AppHandle, file_path: String) -> Modpac
 
     match ext.as_str() {
         "mrpack" => install_mrpack(&app, &file_path).await,
+        "zip" if is_prism_zip(&file_path) => install_prism_instance(&app, &file_path).await,
         "zip" => install_cf_modpack(&app, &file_path).await,
         _ => ModpackInstallResult::fail(format!("Unsupported modpack format: .{ext}")),
     }
@@ -1099,6 +1100,365 @@ pub async fn modpack_install_from_curseforge(
     result
 }
 
+// ---------------------------------------------------------------------------
+// Prism Launcher / MultiMC instance exports (.zip)
+//
+// Layout: `mmc-pack.json` + `instance.cfg` (+ `<iconKey>.png`) at the root (or inside one
+// top-level folder), and the game folder as `minecraft/` (Prism) or `.minecraft/` (MultiMC).
+// Mods are usually bundled; `<dir>/.index/*.pw.toml` (packwiz metadata) lists the source of
+// each file, so anything not bundled is downloaded from there.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+struct MmcPack {
+    #[serde(default)]
+    components: Vec<MmcComponent>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MmcComponent {
+    uid: String,
+    version: Option<String>,
+    cached_version: Option<String>,
+}
+
+struct PrismPack {
+    /// Folder holding mmc-pack.json ("" or "<folder>/").
+    root_prefix: String,
+    /// Game folder inside the zip, e.g. "minecraft/".
+    game_prefix: String,
+    name: String,
+    minecraft_version: String,
+    loader: crate::instances::LoaderType,
+    loader_version: Option<String>,
+    loader_uid: Option<String>,
+    icon_key: Option<String>,
+}
+
+/// Skipped when copying the game folder: Prism metadata and per-machine leftovers.
+const PRISM_SKIP_DIRS: &[&str] = &["logs/", "crash-reports/", ".cache/", "natives/"];
+
+fn is_prism_zip(file_path: &str) -> bool {
+    fs::File::open(file_path)
+        .ok()
+        .and_then(|f| zip::ZipArchive::new(f).ok())
+        .is_some_and(|mut a| find_prism_root(&mut a).is_some())
+}
+
+/// Folder prefix of `mmc-pack.json` at the zip root or one folder deep.
+fn find_prism_root<R: std::io::Read + std::io::Seek>(archive: &mut zip::ZipArchive<R>) -> Option<String> {
+    (0..archive.len())
+        .filter_map(|i| archive.name_for_index(i).map(str::to_string))
+        .filter_map(|n| n.strip_suffix("mmc-pack.json").map(str::to_string))
+        .filter(|prefix| prefix.is_empty() || (prefix.ends_with('/') && prefix.matches('/').count() == 1))
+        .min_by_key(|prefix| prefix.len())
+}
+
+fn read_zip_text<R: std::io::Read + std::io::Seek>(archive: &mut zip::ZipArchive<R>, name: &str) -> Option<String> {
+    let mut entry = archive.by_name(name).ok()?;
+    let mut content = String::new();
+    entry.read_to_string(&mut content).ok()?;
+    Some(content)
+}
+
+/// `key=value` from instance.cfg (Qt INI; values may be quoted).
+fn ini_value(content: &str, key: &str) -> Option<String> {
+    content.lines().find_map(|line| {
+        let (k, v) = line.split_once('=')?;
+        (k.trim() == key).then(|| v.trim().trim_matches('"').to_string()).filter(|v| !v.is_empty())
+    })
+}
+
+fn read_prism_pack<R: std::io::Read + std::io::Seek>(
+    archive: &mut zip::ZipArchive<R>,
+    file_path: &str,
+) -> Result<PrismPack, String> {
+    let root_prefix = find_prism_root(archive).ok_or("Missing mmc-pack.json")?;
+    let pack: MmcPack = serde_json::from_str(
+        &read_zip_text(archive, &format!("{root_prefix}mmc-pack.json")).ok_or("Failed to read mmc-pack.json")?,
+    )
+    .map_err(|e| format!("Invalid mmc-pack.json: {e}"))?;
+    let cfg = read_zip_text(archive, &format!("{root_prefix}instance.cfg")).unwrap_or_default();
+
+    let version_of = |uid: &str| {
+        pack.components
+            .iter()
+            .find(|c| c.uid == uid)
+            .and_then(|c| c.version.clone().or_else(|| c.cached_version.clone()))
+    };
+    let minecraft_version = version_of("net.minecraft").ok_or("mmc-pack.json has no Minecraft version")?;
+    use crate::instances::LoaderType;
+    let (loader, loader_uid) = [
+        (LoaderType::Neoforge, "net.neoforged"),
+        (LoaderType::Forge, "net.minecraftforge"),
+        (LoaderType::Fabric, "net.fabricmc.fabric-loader"),
+        (LoaderType::Quilt, "org.quiltmc.quilt-loader"),
+    ]
+    .into_iter()
+    .find(|(_, uid)| version_of(uid).is_some())
+    .map(|(l, uid)| (l, Some(uid)))
+    .unwrap_or((LoaderType::Vanilla, None));
+    let loader_version = loader_uid.and_then(version_of);
+
+    let has_dir = |archive: &mut zip::ZipArchive<R>, dir: &str| {
+        (0..archive.len()).any(|i| archive.name_for_index(i).is_some_and(|n| n.starts_with(dir)))
+    };
+    let game_prefix = [".minecraft/", "minecraft/"]
+        .into_iter()
+        .map(|d| format!("{root_prefix}{d}"))
+        .find(|d| has_dir(archive, d))
+        .unwrap_or_else(|| format!("{root_prefix}minecraft/"));
+
+    let name = ini_value(&cfg, "name").unwrap_or_else(|| {
+        std::path::Path::new(file_path)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "Prism Instance".to_string())
+    });
+
+    Ok(PrismPack {
+        root_prefix,
+        game_prefix,
+        name,
+        minecraft_version,
+        loader,
+        loader_version,
+        loader_uid: loader_uid.map(str::to_string),
+        icon_key: ini_value(&cfg, "iconKey"),
+    })
+}
+
+/// One `*.pw.toml` entry: where `<dir>/<filename>` comes from.
+struct PackwizFile {
+    dir: String,
+    filename: String,
+    url: String,
+    hash_format: Option<String>,
+    hash: Option<String>,
+}
+
+/// Minimal packwiz TOML reader: top-level `filename` and the `[download]` table.
+fn parse_packwiz_toml(dir: &str, content: &str) -> Option<PackwizFile> {
+    let mut section = String::new();
+    let (mut filename, mut url, mut hash, mut hash_format, mut mode) = (None, None, None, None, None);
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            section = line.trim_matches(|c| c == '[' || c == ']').to_string();
+            continue;
+        }
+        let Some((k, v)) = line.split_once('=') else { continue };
+        let v = v.trim().trim_matches(|c| c == '\'' || c == '"').to_string();
+        match (section.as_str(), k.trim()) {
+            ("", "filename") => filename = Some(v),
+            ("download", "url") => url = Some(v),
+            ("download", "hash") => hash = Some(v),
+            ("download", "hash-format") => hash_format = Some(v),
+            ("download", "mode") => mode = Some(v),
+            _ => {}
+        }
+    }
+    // "metadata:curseforge" entries have no direct URL.
+    if mode.as_deref().is_some_and(|m| !m.is_empty() && m != "url") {
+        return None;
+    }
+    Some(PackwizFile { dir: dir.to_string(), filename: filename?, url: url?, hash_format, hash })
+}
+
+struct PrismExtractResult {
+    packwiz: Vec<PackwizFile>,
+}
+
+/// Streams the game folder into the instance (no whole-file buffering: exports reach GBs).
+fn extract_prism_game_dir(
+    app: &tauri::AppHandle,
+    archive: &mut zip::ZipArchive<fs::File>,
+    pack: &PrismPack,
+    instance_dir: &std::path::Path,
+    cancel: &std::sync::atomic::AtomicBool,
+) -> Result<PrismExtractResult, String> {
+    let entries: Vec<(usize, String)> = (0..archive.len())
+        .filter_map(|i| {
+            let rel = archive.name_for_index(i)?.strip_prefix(&pack.game_prefix)?.to_string();
+            (!rel.is_empty()).then_some((i, rel))
+        })
+        .collect();
+    let total_bytes: u64 = entries
+        .iter()
+        .filter_map(|(i, _)| archive.by_index_raw(*i).ok().map(|e| e.size()))
+        .sum::<u64>()
+        .max(1);
+
+    let mut packwiz = Vec::new();
+    let mut done_bytes = 0u64;
+    let mut last_percent = 0u32;
+    for (index, rel) in entries {
+        if cancel.load(Ordering::SeqCst) {
+            return Err(CANCELLED_SENTINEL.to_string());
+        }
+        let mut entry = archive.by_index(index).map_err(|e| e.to_string())?;
+        // <dir>/.index/<name>.pw.toml: read for missing-file downloads, not copied.
+        if let Some((dir, _)) = rel.split_once("/.index/") {
+            if rel.ends_with(".pw.toml") && !entry.is_dir() {
+                let mut content = String::new();
+                if entry.read_to_string(&mut content).is_ok() {
+                    packwiz.extend(parse_packwiz_toml(dir, &content));
+                }
+            }
+            continue;
+        }
+        if PRISM_SKIP_DIRS.iter().any(|d| rel.starts_with(d)) {
+            continue;
+        }
+        let Some(target) = safe_instance_path(instance_dir, &rel) else { continue };
+        if entry.is_dir() {
+            fs::create_dir_all(&target).ok();
+            continue;
+        }
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        let target = crate::cloud::honor_disabled(target);
+        let mut out = std::io::BufWriter::new(fs::File::create(&target).map_err(|e| format!("{rel}: {e}"))?);
+        std::io::copy(&mut entry, &mut out).map_err(|e| format!("{rel}: {e}"))?;
+
+        done_bytes += entry.size();
+        let percent = 5 + ((done_bytes * 80) / total_bytes) as u32;
+        if percent > last_percent {
+            last_percent = percent;
+            emit_progress(app, "extracting", &format!("กำลังคัดลอกไฟล์ ({}%)", (done_bytes * 100) / total_bytes), percent);
+        }
+    }
+    Ok(PrismExtractResult { packwiz })
+}
+
+async fn install_prism_instance(app: &tauri::AppHandle, file_path: &str) -> ModpackInstallResult {
+    let cancel = crate::op_guard::CancelToken::new();
+    emit_progress(app, "preparing", "กำลังอ่านไฟล์ Prism...", 0);
+
+    let opened = (|| -> Result<_, String> {
+        let file = fs::File::open(file_path).map_err(|e| e.to_string())?;
+        let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+        let pack = read_prism_pack(&mut archive, file_path)?;
+        Ok((archive, pack))
+    })();
+    let (mut archive, pack) = match opened {
+        Ok(res) => res,
+        Err(e) => return ModpackInstallResult::fail(e),
+    };
+
+    let name = pack.name.clone();
+    let instance = match crate::instances::instances_create(crate::instances::CreateInstanceOptions {
+        name: name.clone(),
+        minecraft_version: pack.minecraft_version.clone(),
+        loader: Some(pack.loader.clone()),
+        loader_version: pack.loader_version.clone(),
+        icon: None,
+    }) {
+        Ok(i) => i,
+        Err(e) => return ModpackInstallResult::fail(e),
+    };
+    let instance_dir = crate::instances::get_instance_dir(&instance.id);
+
+    // Zip reading and file writes are blocking; keep them off the async runtime.
+    let extracted = {
+        let app = app.clone();
+        let flag = cancel.flag_arc();
+        let instance_dir = instance_dir.clone();
+        tokio::task::spawn_blocking(move || {
+            let result = extract_prism_game_dir(&app, &mut archive, &pack, &instance_dir, &flag);
+            // The custom instance icon sits next to instance.cfg as <iconKey>.png.
+            if result.is_ok() {
+                if let Some(key) = pack.icon_key.as_deref() {
+                    let mut bytes = Vec::new();
+                    let read = archive
+                        .by_name(&format!("{}{key}.png", pack.root_prefix))
+                        .ok()
+                        .and_then(|mut e| e.read_to_end(&mut bytes).ok());
+                    if read.is_some() && !bytes.is_empty() {
+                        let _ = fs::write(instance_dir.join("icon.png"), &bytes);
+                    }
+                }
+            }
+            result
+        })
+        .await
+        .map_err(|e| e.to_string())
+        .and_then(|r| r)
+    };
+    let extracted = match extracted {
+        Ok(r) => r,
+        Err(e) => {
+            let _ = crate::instances::instances_delete(instance.id.clone()).await;
+            if e == CANCELLED_SENTINEL {
+                emit_progress(app, "cancelled", "ยกเลิกการติดตั้ง", 0);
+            } else {
+                emit_progress(app, "error", &e, 0);
+            }
+            return ModpackInstallResult::fail(e);
+        }
+    };
+
+    // Files listed in .index but not bundled in the export.
+    let items: Vec<crate::download::DownloadItem> = extracted
+        .packwiz
+        .into_iter()
+        .filter_map(|f| {
+            let target = safe_instance_path(&instance_dir, &format!("{}/{}", f.dir, crate::fs_utils::safe_file_name(&f.filename)?))?;
+            let mut disabled = target.clone().into_os_string();
+            disabled.push(".disabled");
+            if target.exists() || std::path::Path::new(&disabled).exists() {
+                return None;
+            }
+            let mut item = crate::download::DownloadItem::new(f.url, target).with_label(f.filename);
+            if let (Some(format), Some(hash)) = (f.hash_format, f.hash) {
+                if matches!(format.as_str(), "sha1" | "sha256" | "sha512") {
+                    item.hashes.insert(format, hash);
+                }
+            }
+            Some(item)
+        })
+        .collect();
+
+    let mut failed: Vec<String> = Vec::new();
+    if !items.is_empty() {
+        let config = crate::download::DownloadConfig {
+            concurrency: crate::config::get_max_concurrent_downloads(),
+            max_retries: 2,
+        };
+        let result = crate::download::download_batch(items, &config, Some(cancel.flag_arc()), |current, total, _| {
+            let percent = 85 + if total > 0 { (current * 14 / total) as u32 } else { 0 };
+            emit_progress_counted(app, "downloading", &format!("({current}/{total}) mods"), percent, Some(current), Some(total));
+        })
+        .await;
+        failed.extend(result.failed.into_iter().map(|(label, _)| label));
+        failed.extend(result.missing_on_server.into_iter().map(|(label, _)| label));
+    }
+
+    if cancel.is_cancelled() {
+        let _ = crate::instances::instances_delete(instance.id.clone()).await;
+        emit_progress(app, "cancelled", "ยกเลิกการติดตั้ง", 0);
+        return ModpackInstallResult::fail(CANCELLED_SENTINEL);
+    }
+
+    let message = if failed.is_empty() {
+        "เสร็จสิ้น".to_string()
+    } else {
+        format!("เสร็จสิ้น ({} ไฟล์โหลดไม่สำเร็จ)", failed.len())
+    };
+    emit_progress(app, "creating", &message, 100);
+
+    ModpackInstallResult {
+        ok: true,
+        instance_id: Some(instance.id.clone()),
+        instance: Some(instance),
+        name: Some(name),
+        error: None,
+        failed_files: failed,
+    }
+}
+
 #[tauri::command]
 pub async fn instances_pre_install(file_path: String) -> PreInstallResult {
     let path = std::path::Path::new(&file_path);
@@ -1186,13 +1546,28 @@ pub async fn instances_pre_install(file_path: String) -> PreInstallResult {
         }
     }
 
+    if let Ok(pack) = read_prism_pack(&mut archive, &file_path) {
+        let files_count = (0..archive.len())
+            .filter_map(|i| archive.name_for_index(i))
+            .filter(|n| n.starts_with(&pack.game_prefix) && n.ends_with(".jar"))
+            .count() as u32;
+        return PreInstallResult {
+            ok: true,
+            name: pack.name,
+            version: pack.minecraft_version,
+            loaders: pack.loader_uid.into_iter().collect(),
+            files_count,
+            error: None,
+        };
+    }
+
     PreInstallResult {
         ok: false,
         name: String::new(),
         version: String::new(),
         loaders: Vec::new(),
         files_count: 0,
-        error: Some("Invalid modpack: no modrinth.index.json or manifest.json found".to_string()),
+        error: Some("Invalid modpack: no modrinth.index.json, manifest.json or mmc-pack.json found".to_string()),
     }
 }
 
@@ -1406,5 +1781,85 @@ async fn fetch_and_set_assets(instance_id: &str, source: &str, project_id: &str)
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod prism_tests {
+    use super::*;
+    use std::io::Write;
+
+    fn zip_with(files: &[(&str, &str)]) -> zip::ZipArchive<std::io::Cursor<Vec<u8>>> {
+        let mut buf = std::io::Cursor::new(Vec::new());
+        {
+            let mut w = zip::ZipWriter::new(&mut buf);
+            for (name, body) in files {
+                w.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
+                w.write_all(body.as_bytes()).unwrap();
+            }
+            w.finish().unwrap();
+        }
+        buf.set_position(0);
+        zip::ZipArchive::new(buf).unwrap()
+    }
+
+    const MMC_PACK: &str = r#"{"components":[
+        {"uid":"org.lwjgl3","version":"3.3.3"},
+        {"uid":"net.minecraft","version":"1.21.1"},
+        {"uid":"net.neoforged","version":"21.1.262"}],"formatVersion":1}"#;
+
+    #[test]
+    fn reads_prism_export_at_root() {
+        let mut a = zip_with(&[
+            ("mmc-pack.json", MMC_PACK),
+            ("instance.cfg", "[General]\nname=Craft n' Fluff\niconKey=wasabi_berry\n"),
+            ("minecraft/mods/a.jar", "x"),
+        ]);
+        let pack = read_prism_pack(&mut a, "pack.zip").unwrap();
+        assert_eq!(pack.root_prefix, "");
+        assert_eq!(pack.game_prefix, "minecraft/");
+        assert_eq!(pack.name, "Craft n' Fluff");
+        assert_eq!(pack.minecraft_version, "1.21.1");
+        assert_eq!(pack.loader, crate::instances::LoaderType::Neoforge);
+        assert_eq!(pack.loader_version.as_deref(), Some("21.1.262"));
+        assert_eq!(pack.icon_key.as_deref(), Some("wasabi_berry"));
+    }
+
+    #[test]
+    fn reads_multimc_export_in_a_folder() {
+        let mut a = zip_with(&[
+            ("My Pack/mmc-pack.json", r#"{"components":[{"uid":"net.minecraft","cachedVersion":"1.20.1"},{"uid":"net.fabricmc.fabric-loader","version":"0.16.9"}]}"#),
+            ("My Pack/.minecraft/options.txt", ""),
+        ]);
+        let pack = read_prism_pack(&mut a, "x/My Pack.zip").unwrap();
+        assert_eq!(pack.root_prefix, "My Pack/");
+        assert_eq!(pack.game_prefix, "My Pack/.minecraft/");
+        assert_eq!(pack.name, "My Pack");
+        assert_eq!(pack.loader, crate::instances::LoaderType::Fabric);
+    }
+
+    #[test]
+    fn ignores_deeply_nested_mmc_pack() {
+        let mut a = zip_with(&[("a/b/mmc-pack.json", MMC_PACK), ("manifest.json", "{}")]);
+        assert!(find_prism_root(&mut a).is_none());
+    }
+
+    #[test]
+    fn parses_packwiz_url_entries_only() {
+        let url = parse_packwiz_toml("mods", "filename = 'a.jar'\nname = \"A\"\n\n[download]\nhash = 'abc'\nhash-format = 'sha512'\nmode = 'url'\nurl = 'https://cdn.modrinth.com/a.jar'\n").unwrap();
+        assert_eq!((url.dir.as_str(), url.filename.as_str(), url.url.as_str()), ("mods", "a.jar", "https://cdn.modrinth.com/a.jar"));
+        assert_eq!((url.hash_format.as_deref(), url.hash.as_deref()), (Some("sha512"), Some("abc")));
+        assert!(parse_packwiz_toml("mods", "filename = 'b.jar'\n[download]\nmode = 'metadata:curseforge'\n").is_none());
+    }
+
+    /// `REALITY_PRISM_ZIP=<path> cargo test --lib prism_real_export -- --ignored`
+    #[test]
+    #[ignore]
+    fn prism_real_export() {
+        let path = std::env::var("REALITY_PRISM_ZIP").unwrap();
+        assert!(is_prism_zip(&path));
+        let mut a = zip::ZipArchive::new(fs::File::open(&path).unwrap()).unwrap();
+        let pack = read_prism_pack(&mut a, &path).unwrap();
+        println!("{} | {} | {:?} {:?} | {} | icon {:?}", pack.name, pack.minecraft_version, pack.loader, pack.loader_version, pack.game_prefix, pack.icon_key);
     }
 }

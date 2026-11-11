@@ -165,7 +165,7 @@ src-tauri/
     ├── java.rs                       # Java detection/installation
     ├── modrinth.rs                   # Modrinth API
     ├── curseforge.rs                 # CurseForge API
-    ├── modpack.rs                    # Modpack install
+    ├── modpack.rs                    # Modpack install: .mrpack, CurseForge .zip, Prism/MultiMC instance .zip (mmc-pack.json)
     ├── content.rs                    # Mod/resourcepack management
     ├── cloud.rs                      # Cloud sync, server instances, invitations
     ├── admin.rs                      # Admin commands (10)

@@ -1,3 +1,8 @@
+## [Unreleased] — 2026-11-11
+
+### Added
+- Import Prism Launcher and MultiMC instance exports (`.zip` with `mmc-pack.json`) from Library › Import: Minecraft version and loader (NeoForge, Forge, Fabric, Quilt) come from `mmc-pack.json`, the name and icon from `instance.cfg`, and the `minecraft/` (or `.minecraft/`) folder is copied into the new instance. Mods listed in `.index/*.pw.toml` but not bundled in the export are downloaded from their recorded URL and hash-checked. Large exports are copied as a stream with progress and can be cancelled.
+
 ## [5.2.3] — 2026-11-10
 
 ### Security
