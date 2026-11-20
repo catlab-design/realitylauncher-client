@@ -1001,9 +1001,17 @@ fn emit_instances_updated(app_handle: &tauri::AppHandle) {
 pub async fn sync_instance_for_launch(
     app_handle: &tauri::AppHandle,
     instance: &crate::instances::GameInstance,
+    mode: crate::keybinds::KeybindMode,
 ) -> Result<Vec<(String, String)>, String> {
     let Some(cloud_id) = instance.cloud_id.as_deref() else {
         return Ok(Vec::new());
+    };
+    let keybinds = crate::keybinds::KeybindSync {
+        mode,
+        backup_dir: match mode {
+            crate::keybinds::KeybindMode::Repair => crate::keybind_backups::backup_dir(app_handle, &instance.id).ok(),
+            crate::keybinds::KeybindMode::FirstInstallOnly => None,
+        },
     };
     // Per-operation cancel token: a Cancel pressed during this sync aborts it
     // (and any other op running at that moment), but starting a new op never
@@ -1017,6 +1025,7 @@ pub async fn sync_instance_for_launch(
         cloud_id,
         &api_token,
         &cancel,
+        &keybinds,
     )
     .await
 }
@@ -1058,7 +1067,7 @@ pub async fn instance_check_integrity(app_handle: tauri::AppHandle, id: String) 
         };
     }
 
-    match sync_instance_for_launch(&app_handle, &instance).await {
+    match sync_instance_for_launch(&app_handle, &instance, crate::keybinds::KeybindMode::Repair).await {
         Ok(failed) => {
             emit_instances_updated(&app_handle);
             if failed.is_empty() {
@@ -1100,6 +1109,7 @@ async fn sync_server_mods(
     cloud_id: &str,
     auth_token: &str,
     cancel: &crate::op_guard::CancelToken,
+    keybinds: &crate::keybinds::KeybindSync,
 ) -> Result<Vec<(String, String)>, String> {
     // NOTE: cancellation is scoped to the entry command's per-operation token
     // (instances_cloud_install / sync_instance_for_launch)
@@ -1131,7 +1141,7 @@ async fn sync_server_mods(
     
     
     // Pack v2 (manifest + layers) first; instances without one fall through.
-    match crate::pack_v2::sync(app_handle, Path::new(instance_dir), cloud_id, cancel).await {
+    match crate::pack_v2::sync(app_handle, Path::new(instance_dir), cloud_id, cancel, keybinds).await {
         Ok(crate::pack_v2::Outcome::Synced(failed)) => return Ok(failed),
         Ok(crate::pack_v2::Outcome::NotV2) => {}
         Err(e) if e == crate::modpack::CANCELLED_SENTINEL => return Err(e),
@@ -1843,6 +1853,7 @@ pub async fn instances_cloud_install(app_handle: tauri::AppHandle, id: String) -
         &cloud_id,
         &api_token,
         &cancel,
+        &crate::keybinds::KeybindSync { mode: crate::keybinds::KeybindMode::FirstInstallOnly, backup_dir: None },
     )
     .await
     {

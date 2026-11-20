@@ -289,7 +289,7 @@ pub async fn instances_launch(
         
         emit_progress(&app_handle, "sync", "Syncing server mods...", 0.02);
         let sync_started = std::time::Instant::now();
-        let synced = crate::cloud::sync_instance_for_launch(&app_handle, &instance).await;
+        let synced = crate::cloud::sync_instance_for_launch(&app_handle, &instance, crate::keybinds::KeybindMode::FirstInstallOnly).await;
         match &synced {
             Ok(failed) if failed.is_empty() => crate::launch_log::info(format!(
                 "Server files up to date (checked in {})",

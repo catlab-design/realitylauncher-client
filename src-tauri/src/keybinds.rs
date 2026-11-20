@@ -1,9 +1,13 @@
 //! Pack keybinds: parse `reality/keybinds.json` and apply it to `options.txt`.
 //!
-//! Pure functions only; file I/O, backups and sync wiring live elsewhere.
+//! The parsing and line rewriting are pure; `apply_pack_keybinds` is the sync-time
+//! I/O wrapper (backups live in `keybind_backups`).
 
 use serde::Deserialize;
 use std::collections::BTreeMap;
+use std::fs;
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
 
 /// Keybind id (without the `key_` prefix) to value, e.g. `key.jump` -> `key.keyboard.j`.
 pub type KeyMap = BTreeMap<String, String>;
@@ -83,6 +87,94 @@ pub fn parse_keybinds_file(json: &str) -> Result<KeyMap, String> {
     Ok(file.set)
 }
 
+/// When a sync may write pack keybinds into `options.txt`.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum KeybindMode {
+    /// Launch / install: only on a brand-new instance.
+    FirstInstallOnly,
+    /// Repair: back up the current keys, then overwrite the pack's keys.
+    Repair,
+}
+
+/// Keybind settings threaded through a sync.
+#[derive(Clone, Debug)]
+pub struct KeybindSync {
+    pub mode: KeybindMode,
+    /// Backup folder for this instance; required for `Repair` to touch anything.
+    pub backup_dir: Option<PathBuf>,
+}
+
+const PACK_FILE: &str = "reality/keybinds.json";
+const OPTIONS_FILE: &str = "options.txt";
+
+/// A fresh instance: no pack state and no `options.txt`. Call before writing pack files.
+pub fn is_first_install(instance_dir: &Path) -> bool {
+    !instance_dir.join(crate::pack_v2::STATE_FILE).exists() && !instance_dir.join(OPTIONS_FILE).exists()
+}
+
+/// Apply the pack's `reality/keybinds.json` to `options.txt` according to `mode`.
+/// Never fails: every problem is logged and the step is skipped.
+pub fn apply_pack_keybinds(
+    instance_dir: &Path,
+    mode: KeybindMode,
+    first_install: bool,
+    backup_dir: Option<&Path>,
+    now_ms: u64,
+) {
+    let json = match fs::read_to_string(instance_dir.join(PACK_FILE)) {
+        Ok(j) => j,
+        Err(e) if e.kind() == ErrorKind::NotFound => return,
+        Err(e) => {
+            log::warn!("[Keybinds] cannot read {PACK_FILE}: {e}");
+            return;
+        }
+    };
+    let set = match parse_keybinds_file(&json) {
+        Ok(set) => set,
+        Err(e) => {
+            log::warn!("[Keybinds] skipping pack keybinds: {e}");
+            return;
+        }
+    };
+    if mode == KeybindMode::FirstInstallOnly && !first_install {
+        return;
+    }
+
+    let options_path = instance_dir.join(OPTIONS_FILE);
+    let current = match fs::read_to_string(&options_path) {
+        Ok(text) => Some(text),
+        Err(e) if e.kind() == ErrorKind::NotFound => None,
+        Err(e) => {
+            log::warn!("[Keybinds] cannot read options.txt, leaving it alone: {e}");
+            return;
+        }
+    };
+
+    if mode == KeybindMode::Repair {
+        let Some(backup_dir) = backup_dir else {
+            log::warn!("[Keybinds] no backup folder; not changing keybinds");
+            return;
+        };
+        if let Err(e) =
+            crate::keybind_backups::create_backup(backup_dir, current.as_deref(), "before-repair", now_ms)
+        {
+            log::warn!("[Keybinds] backup failed, not changing keybinds: {e}");
+            return;
+        }
+    }
+
+    let updated = apply_keys(current.as_deref(), &set);
+    if current.as_deref() == Some(updated.as_str()) {
+        return;
+    }
+    let tmp = instance_dir.join("options.txt.reality-tmp");
+    let result = fs::write(&tmp, &updated).and_then(|_| fs::rename(&tmp, &options_path));
+    if let Err(e) = result {
+        let _ = fs::remove_file(&tmp);
+        log::warn!("[Keybinds] cannot write options.txt: {e}");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -148,6 +240,63 @@ mod tests {
             &km(&[("key.x", "key.keyboard.k")]),
         );
         assert_eq!(out, "key_key.x:key.keyboard.k\r\nkey_key.y:key.keyboard.t\r\n");
+    }
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("keybinds-test-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn pack(dir: &Path, json: &str) { fs::create_dir_all(dir.join("reality")).unwrap(); fs::write(dir.join("reality/keybinds.json"), json).unwrap(); }
+    const SET_J: &str = r#"{"version":1,"set":{"key.jump":"key.keyboard.j"}}"#;
+
+    #[test] fn first_install_detection() {
+        let d = temp_dir("first");
+        assert!(is_first_install(&d));
+        fs::write(d.join("options.txt"), "fov:1\n").unwrap();
+        assert!(!is_first_install(&d));
+    }
+    #[test] fn first_install_detection_pack_state_only() {
+        let d = temp_dir("first-state");
+        fs::create_dir_all(d.join(".reality")).unwrap();
+        fs::write(d.join(".reality/pack-state.json"), "{}").unwrap();
+        assert!(!is_first_install(&d));
+    }
+    #[test] fn first_install_writes_keys() {
+        let d = temp_dir("fi"); pack(&d, SET_J);
+        apply_pack_keybinds(&d, KeybindMode::FirstInstallOnly, true, None, 1);
+        assert_eq!(fs::read_to_string(d.join("options.txt")).unwrap(), "key_key.jump:key.keyboard.j\n");
+    }
+    #[test] fn launch_sync_never_changes_played_instance() {
+        let d = temp_dir("played"); pack(&d, SET_J);
+        fs::write(d.join("options.txt"), "key_key.jump:key.keyboard.space\n").unwrap();
+        apply_pack_keybinds(&d, KeybindMode::FirstInstallOnly, false, None, 1);
+        assert_eq!(fs::read_to_string(d.join("options.txt")).unwrap(), "key_key.jump:key.keyboard.space\n");
+    }
+    #[test] fn repair_backs_up_then_overwrites_only_pack_keys() {
+        let d = temp_dir("repair"); let b = temp_dir("repair-bk"); pack(&d, SET_J);
+        fs::write(d.join("options.txt"), "fov:1\nkey_key.jump:key.keyboard.space\nkey_key.drop:key.keyboard.g\n").unwrap();
+        apply_pack_keybinds(&d, KeybindMode::Repair, false, Some(&b), 7);
+        assert_eq!(fs::read_to_string(d.join("options.txt")).unwrap(), "fov:1\nkey_key.jump:key.keyboard.j\nkey_key.drop:key.keyboard.g\n");
+        let l = crate::keybind_backups::list_backups(&b);
+        assert_eq!((l.len(), l[0].reason.as_str(), l[0].key_count), (1, "before-repair", 2));
+        assert!(!d.join("options.txt.reality-tmp").exists());
+    }
+    #[test] fn repair_without_backup_dir_changes_nothing() {
+        let d = temp_dir("nobk"); pack(&d, SET_J);
+        fs::write(d.join("options.txt"), "key_key.jump:key.keyboard.space\n").unwrap();
+        apply_pack_keybinds(&d, KeybindMode::Repair, false, None, 1);
+        assert_eq!(fs::read_to_string(d.join("options.txt")).unwrap(), "key_key.jump:key.keyboard.space\n");
+    }
+    #[test] fn no_pack_file_or_bad_file_is_a_no_op() {
+        let d = temp_dir("nofile");
+        fs::write(d.join("options.txt"), "fov:1\n").unwrap();
+        apply_pack_keybinds(&d, KeybindMode::Repair, false, Some(&temp_dir("nofile-bk")), 1);
+        pack(&d, r#"{"version":9,"set":{}}"#);
+        apply_pack_keybinds(&d, KeybindMode::FirstInstallOnly, true, None, 1);
+        assert_eq!(fs::read_to_string(d.join("options.txt")).unwrap(), "fov:1\n");
     }
 
     #[test]

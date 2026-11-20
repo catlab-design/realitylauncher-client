@@ -23,7 +23,7 @@ use crate::cloud::{cleanup_unmanaged_mods, compute_sha1, compute_sha256, emit_sy
 use crate::modpack::CANCELLED_SENTINEL;
 
 const API_URL: &str = "https://api.reality.catlabdesign.space";
-const STATE_FILE: &str = ".reality/pack-state.json";
+pub(crate) const STATE_FILE: &str = ".reality/pack-state.json";
 /// Download the whole layer once this share of its bytes is needed...
 const LAYER_BYTES_SHARE: f64 = 0.6;
 /// ...or this many of its files.
@@ -368,7 +368,10 @@ pub async fn sync(
     dir: &Path,
     cloud_id: &str,
     cancel: &crate::op_guard::CancelToken,
+    keybinds: &crate::keybinds::KeybindSync,
 ) -> Result<Outcome, String> {
+    // Must run before anything is written to `dir` (a pack may ship options.txt).
+    let first_install = crate::keybinds::is_first_install(dir);
     let Some(manifest) = fetch_manifest(cloud_id).await? else {
         return Ok(Outcome::NotV2);
     };
@@ -543,6 +546,10 @@ pub async fn sync(
         log::warn!("[Pack v2] {path}: {reason}");
     }
     failed.extend(errors);
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64);
+    crate::keybinds::apply_pack_keybinds(dir, keybinds.mode, first_install, keybinds.backup_dir.as_deref(), now_ms);
     emit_sync_progress(app, "sync-complete", "Sync complete", None, None, Some(100), None);
     Ok(Outcome::Synced(failed))
 }
@@ -556,6 +563,20 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn first_install_is_captured_before_pack_files_are_written() {
+        let d = temp_dir("first-install-capture");
+        let first_install = crate::keybinds::is_first_install(&d);
+        // A pack shipping options.txt writes it during the sync, after capture.
+        fs::write(d.join("options.txt"), "fov:1\n").unwrap();
+        assert!(first_install);
+        assert!(!crate::keybinds::is_first_install(&d));
+        // The state file sync writes also marks the instance as installed.
+        fs::remove_file(d.join("options.txt")).unwrap();
+        save_state(&d, &State { version: 1, entries: Default::default() }).unwrap();
+        assert!(!crate::keybinds::is_first_install(&d));
     }
 
     fn want(dir: &Path, path: &str, body: &[u8], enforce: bool) -> Want {
