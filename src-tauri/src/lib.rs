@@ -13,6 +13,7 @@ pub mod fs_utils;
 pub mod game_window;
 pub mod http_client;
 pub mod instances;
+pub mod keybinds;
 pub mod java;
 pub mod launch_log;
 pub mod launcher;
