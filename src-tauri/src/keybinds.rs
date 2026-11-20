@@ -77,14 +77,45 @@ pub fn apply_keys(options_txt: Option<&str>, keys: &KeyMap) -> String {
     out
 }
 
+/// A keybind id that can be written as `key_<id>:` and read back: non-empty,
+/// no `:`, no whitespace, no control characters.
+pub fn is_valid_key_id(id: &str) -> bool {
+    !id.is_empty() && !id.chars().any(|c| c == ':' || c.is_whitespace() || c.is_control())
+}
+
+/// `key.(keyboard|mouse).[a-z0-9._]+` with an optional `:SHIFT|:CONTROL|:ALT`.
+pub fn is_valid_key_value(value: &str) -> bool {
+    let (key, modifier) = match value.split_once(':') {
+        Some((k, m)) => (k, Some(m)),
+        None => (value, None),
+    };
+    if !matches!(modifier, None | Some("SHIFT" | "CONTROL" | "ALT")) {
+        return false;
+    }
+    let Some(name) = key.strip_prefix("key.keyboard.").or_else(|| key.strip_prefix("key.mouse.")) else {
+        return false;
+    };
+    !name.is_empty() && name.chars().all(|c| matches!(c, 'a'..='z' | '0'..='9' | '.' | '_'))
+}
+
 /// Parse a pack `keybinds.json` and return its `set`. `known` is ignored.
+/// Entries with an invalid id or value are dropped (and logged); they would
+/// otherwise inject lines into `options.txt` or never match their line.
 pub fn parse_keybinds_file(json: &str) -> Result<KeyMap, String> {
     let file: KeybindsFile =
         serde_json::from_str(json).map_err(|e| format!("invalid keybinds.json: {e}"))?;
     if file.version != 1 {
         return Err(format!("unsupported keybinds.json version {}", file.version));
     }
-    Ok(file.set)
+    let mut set = file.set;
+    set.retain(|id, value| {
+        let ok = is_valid_key_id(id) && is_valid_key_value(value);
+        if !ok {
+            log::warn!("[Keybinds] dropping invalid pack keybind {id:?}: {value:?}");
+        }
+        ok
+    });
+    Ok(set)
 }
 
 /// When a sync may write pack keybinds into `options.txt`.
@@ -102,6 +133,9 @@ pub struct KeybindSync {
     pub mode: KeybindMode,
     /// Backup folder for this instance; required for `Repair` to touch anything.
     pub backup_dir: Option<PathBuf>,
+    /// The instance's game is running: Minecraft rewrites `options.txt` on exit,
+    /// so Repair only takes the backup and leaves `options.txt` alone.
+    pub game_running: bool,
 }
 
 const PACK_FILE: &str = "reality/keybinds.json";
@@ -119,6 +153,7 @@ pub fn apply_pack_keybinds(
     mode: KeybindMode,
     first_install: bool,
     backup_dir: Option<&Path>,
+    game_running: bool,
     now_ms: u64,
 ) {
     if mode == KeybindMode::FirstInstallOnly && !first_install {
@@ -167,6 +202,10 @@ pub fn apply_pack_keybinds(
         }
     };
     if !backed_up {
+        return;
+    }
+    if game_running {
+        log::warn!("[Keybinds] game is running; not writing pack keybinds (Minecraft would overwrite options.txt on exit)");
         return;
     }
 
@@ -280,19 +319,19 @@ mod tests {
     }
     #[test] fn first_install_writes_keys() {
         let d = temp_dir("fi"); pack(&d, SET_J);
-        apply_pack_keybinds(&d, KeybindMode::FirstInstallOnly, true, None, 1);
+        apply_pack_keybinds(&d, KeybindMode::FirstInstallOnly, true, None, false, 1);
         assert_eq!(fs::read_to_string(d.join("options.txt")).unwrap(), "key_key.jump:key.keyboard.j\n");
     }
     #[test] fn launch_sync_never_changes_played_instance() {
         let d = temp_dir("played"); pack(&d, SET_J);
         fs::write(d.join("options.txt"), "key_key.jump:key.keyboard.space\n").unwrap();
-        apply_pack_keybinds(&d, KeybindMode::FirstInstallOnly, false, None, 1);
+        apply_pack_keybinds(&d, KeybindMode::FirstInstallOnly, false, None, false, 1);
         assert_eq!(fs::read_to_string(d.join("options.txt")).unwrap(), "key_key.jump:key.keyboard.space\n");
     }
     #[test] fn repair_backs_up_then_overwrites_only_pack_keys() {
         let d = temp_dir("repair"); let b = temp_dir("repair-bk"); pack(&d, SET_J);
         fs::write(d.join("options.txt"), "fov:1\nkey_key.jump:key.keyboard.space\nkey_key.drop:key.keyboard.g\n").unwrap();
-        apply_pack_keybinds(&d, KeybindMode::Repair, false, Some(&b), 7);
+        apply_pack_keybinds(&d, KeybindMode::Repair, false, Some(&b), false, 7);
         assert_eq!(fs::read_to_string(d.join("options.txt")).unwrap(), "fov:1\nkey_key.jump:key.keyboard.j\nkey_key.drop:key.keyboard.g\n");
         let l = crate::keybind_backups::list_backups(&b);
         assert_eq!((l.len(), l[0].reason.as_str(), l[0].key_count), (1, "before-repair", 2));
@@ -301,13 +340,13 @@ mod tests {
     #[test] fn repair_without_backup_dir_changes_nothing() {
         let d = temp_dir("nobk"); pack(&d, SET_J);
         fs::write(d.join("options.txt"), "key_key.jump:key.keyboard.space\n").unwrap();
-        apply_pack_keybinds(&d, KeybindMode::Repair, false, None, 1);
+        apply_pack_keybinds(&d, KeybindMode::Repair, false, None, false, 1);
         assert_eq!(fs::read_to_string(d.join("options.txt")).unwrap(), "key_key.jump:key.keyboard.space\n");
     }
     #[test] fn repair_without_pack_file_still_backs_up() {
         let d = temp_dir("repair-nopack"); let b = temp_dir("repair-nopack-bk");
         fs::write(d.join("options.txt"), "key_key.jump:key.keyboard.space\n").unwrap();
-        apply_pack_keybinds(&d, KeybindMode::Repair, false, Some(&b), 3);
+        apply_pack_keybinds(&d, KeybindMode::Repair, false, Some(&b), false, 3);
         assert_eq!(fs::read_to_string(d.join("options.txt")).unwrap(), "key_key.jump:key.keyboard.space\n");
         let l = crate::keybind_backups::list_backups(&b);
         assert_eq!((l.len(), l[0].reason.as_str(), l[0].key_count), (1, "before-repair", 1));
@@ -316,17 +355,73 @@ mod tests {
         let d = temp_dir("repair-badpack"); let b = temp_dir("repair-badpack-bk");
         pack(&d, "not json");
         fs::write(d.join("options.txt"), "key_key.jump:key.keyboard.space\n").unwrap();
-        apply_pack_keybinds(&d, KeybindMode::Repair, false, Some(&b), 3);
+        apply_pack_keybinds(&d, KeybindMode::Repair, false, Some(&b), false, 3);
         assert_eq!(fs::read_to_string(d.join("options.txt")).unwrap(), "key_key.jump:key.keyboard.space\n");
         assert_eq!(crate::keybind_backups::list_backups(&b).len(), 1);
     }
     #[test] fn no_pack_file_or_bad_file_is_a_no_op() {
         let d = temp_dir("nofile");
         fs::write(d.join("options.txt"), "fov:1\n").unwrap();
-        apply_pack_keybinds(&d, KeybindMode::Repair, false, Some(&temp_dir("nofile-bk")), 1);
+        apply_pack_keybinds(&d, KeybindMode::Repair, false, Some(&temp_dir("nofile-bk")), false, 1);
         pack(&d, r#"{"version":9,"set":{}}"#);
-        apply_pack_keybinds(&d, KeybindMode::FirstInstallOnly, true, None, 1);
+        apply_pack_keybinds(&d, KeybindMode::FirstInstallOnly, true, None, false, 1);
         assert_eq!(fs::read_to_string(d.join("options.txt")).unwrap(), "fov:1\n");
+    }
+
+    #[test]
+    fn drops_invalid_entries_and_keeps_valid_ones() {
+        let set = parse_keybinds_file(
+            r#"{"version":1,"set":{
+                "key.jump":"key.keyboard.j",
+                "key.evil":"key.keyboard.k\nfov:1",
+                "key.cr":"key.keyboard.k\r",
+                "key:bad":"key.keyboard.l",
+                "key bad":"key.keyboard.l",
+                "":"key.keyboard.l",
+                "key.rot":"key.keyboard.r:SHIFT",
+                "key.ctl":"key.keyboard.r:CONTROL",
+                "key.alt":"key.keyboard.r:ALT",
+                "key.meta":"key.keyboard.r:META",
+                "key.use":"key.mouse.right",
+                "key.none":"key.keyboard.unknown",
+                "key.upper":"key.keyboard.J",
+                "key.other":"key.gamepad.a",
+                "key.empty":"key.keyboard."
+            }}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            set,
+            km(&[
+                ("key.jump", "key.keyboard.j"),
+                ("key.rot", "key.keyboard.r:SHIFT"),
+                ("key.ctl", "key.keyboard.r:CONTROL"),
+                ("key.alt", "key.keyboard.r:ALT"),
+                ("key.use", "key.mouse.right"),
+                ("key.none", "key.keyboard.unknown"),
+            ])
+        );
+    }
+
+    #[test]
+    fn key_value_validation() {
+        assert!(is_valid_key_value("key.keyboard.left.shift"));
+        assert!(is_valid_key_value("key.mouse.4"));
+        assert!(is_valid_key_value("key.keyboard.keypad.0:ALT"));
+        assert!(!is_valid_key_value("key.keyboard.j:SHIFT:ALT"));
+        assert!(!is_valid_key_value("key.keyboard.j:"));
+        assert!(!is_valid_key_value("key.keyboard"));
+        assert!(!is_valid_key_id("key.\tjump"));
+        assert!(is_valid_key_id("key.create.rotate_menu"));
+    }
+
+    #[test] fn repair_while_game_running_backs_up_but_leaves_options() {
+        let d = temp_dir("repair-running"); let b = temp_dir("repair-running-bk"); pack(&d, SET_J);
+        fs::write(d.join("options.txt"), "key_key.jump:key.keyboard.space\n").unwrap();
+        apply_pack_keybinds(&d, KeybindMode::Repair, false, Some(&b), true, 5);
+        assert_eq!(fs::read_to_string(d.join("options.txt")).unwrap(), "key_key.jump:key.keyboard.space\n");
+        let l = crate::keybind_backups::list_backups(&b);
+        assert_eq!((l.len(), l[0].reason.as_str()), (1, "before-repair"));
     }
 
     #[test]

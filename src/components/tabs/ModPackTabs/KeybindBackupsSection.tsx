@@ -23,6 +23,11 @@ function errorMessage(e: unknown): string {
 
 export function KeybindBackupsSection({ instanceId, colors, language }: KeybindBackupsSectionProps) {
     const { t } = useTranslation(language);
+    // The backend may grow new reasons before the UI knows them: show the raw string.
+    const reasonLabel = (reason: string) => {
+        const key = REASON_KEYS[reason as keyof typeof REASON_KEYS];
+        return key ? t(key) : reason;
+    };
     const [backups, setBackups] = useState<KeybindBackup[]>([]);
     const [running, setRunning] = useState(false);
     const [busy, setBusy] = useState(false);
@@ -138,7 +143,7 @@ export function KeybindBackupsSection({ instanceId, colors, language }: KeybindB
                                 {new Date(b.createdAt).toLocaleString(language === "th" ? "th-TH" : "en-US")}
                             </div>
                             <div className="opacity-70" style={{ color: colors.onSurfaceVariant }}>
-                                {t(REASON_KEYS[b.reason])} · {t("keybind_key_count", { count: b.keyCount })}
+                                {reasonLabel(b.reason)} · {t("keybind_key_count", { count: b.keyCount })}
                             </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">

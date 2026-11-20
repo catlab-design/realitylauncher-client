@@ -549,7 +549,7 @@ pub async fn sync(
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_millis() as u64);
-    crate::keybinds::apply_pack_keybinds(dir, keybinds.mode, first_install, keybinds.backup_dir.as_deref(), now_ms);
+    crate::keybinds::apply_pack_keybinds(dir, keybinds.mode, first_install, keybinds.backup_dir.as_deref(), keybinds.game_running, now_ms);
     emit_sync_progress(app, "sync-complete", "Sync complete", None, None, Some(100), None);
     Ok(Outcome::Synced(failed))
 }

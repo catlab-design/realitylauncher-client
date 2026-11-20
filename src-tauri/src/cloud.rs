@@ -1012,6 +1012,8 @@ pub async fn sync_instance_for_launch(
             crate::keybinds::KeybindMode::Repair => crate::keybind_backups::backup_dir(app_handle, &instance.id).ok(),
             crate::keybinds::KeybindMode::FirstInstallOnly => None,
         },
+        game_running: mode == crate::keybinds::KeybindMode::Repair
+            && crate::launcher::is_game_running(Some(instance.id.clone())),
     };
     // Per-operation cancel token: a Cancel pressed during this sync aborts it
     // (and any other op running at that moment), but starting a new op never
@@ -1853,7 +1855,7 @@ pub async fn instances_cloud_install(app_handle: tauri::AppHandle, id: String) -
         &cloud_id,
         &api_token,
         &cancel,
-        &crate::keybinds::KeybindSync { mode: crate::keybinds::KeybindMode::FirstInstallOnly, backup_dir: None },
+        &crate::keybinds::KeybindSync { mode: crate::keybinds::KeybindMode::FirstInstallOnly, backup_dir: None, game_running: false },
     )
     .await
     {
