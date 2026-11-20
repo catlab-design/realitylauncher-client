@@ -145,6 +145,13 @@ export interface ColorThemeInfo {
 
 export type LoaderType = "vanilla" | "fabric" | "forge" | "neoforge" | "quilt";
 
+export interface KeybindBackup {
+  name: string;
+  createdAt: number;
+  reason: 'manual' | 'before-repair' | 'before-restore';
+  keyCount: number;
+}
+
 export interface GameInstance {
   id: string;
   name: string;

@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { GameInstance, LauncherConfig } from './types/launcher';
+import type { GameInstance, KeybindBackup, LauncherConfig } from './types/launcher';
 import { getSafeExternalUrl } from './lib/externalUrl';
 
 /** A read of an instance log; text is already censored by the backend. Times are epoch ms (0 = unknown). */
@@ -372,6 +372,10 @@ export const api = {
     instancesCloudSync: () => invoke<SimpleResult>('instances_cloud_sync'),
     cloudInstanceSyncManaged: (id: string) => invoke<SimpleResult>('cloud_instance_sync_managed', { id }),
     instanceCheckIntegrity: (id: string) => invoke<SimpleResult>('instance_check_integrity', { id }),
+    keybindBackupsList: (id: string) => invoke<KeybindBackup[]>('keybind_backups_list', { id }),
+    keybindBackupCreate: (id: string) => invoke<KeybindBackup | null>('keybind_backup_create', { id }),
+    keybindBackupRestore: (id: string, name: string) => invoke<void>('keybind_backup_restore', { id, name }),
+    keybindBackupDelete: (id: string, name: string) => invoke<void>('keybind_backup_delete', { id, name }),
 
     invitationsFetch: () => invoke<Invitation[]>('invitations_fetch'),
     invitationsAccept: (invitationId: string) => invoke<boolean>('invitations_accept', { invitationId }),

@@ -1,7 +1,7 @@
 //! Per-instance backups of the player's keybinds, stored as small JSON files
 //! under `<app data>/keybind-backups/<instance id>/`.
 
-use crate::keybinds::{read_keys, KeyMap};
+use crate::keybinds::{apply_keys, read_keys, write_options_atomic, KeyMap};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -130,6 +130,71 @@ fn prune(backup_dir: &Path) {
     }
 }
 
+/// Restore a backup's keys into `options.txt`. Refused while the game runs.
+/// The current keys are backed up first (`before-restore`); if that fails the
+/// restore is aborted without touching `options.txt`.
+pub fn restore_backup(instance_dir: &Path, backup_dir: &Path, name: &str, running: bool, now_ms: u64) -> Result<(), String> {
+    if running {
+        return Err("game-running".to_string());
+    }
+    let keys = read_backup(backup_dir, name)?;
+    let options_path = instance_dir.join("options.txt");
+    let current = match fs::read_to_string(&options_path) {
+        Ok(text) => Some(text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(format!("Cannot read options.txt: {e}")),
+    };
+    create_backup(backup_dir, current.as_deref(), "before-restore", now_ms)?;
+    let updated = apply_keys(current.as_deref(), &keys);
+    write_options_atomic(instance_dir, &updated).map_err(|e| format!("Cannot write options.txt: {e}"))
+}
+
+fn instance_paths(app: &tauri::AppHandle, id: &str) -> Result<(PathBuf, PathBuf), String> {
+    let instance = crate::instances::instances_get(id.to_string()).ok_or_else(|| "Instance not found".to_string())?;
+    Ok((PathBuf::from(instance.game_directory), backup_dir(app, id)?))
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+#[tauri::command]
+pub fn keybind_backups_list(app: tauri::AppHandle, id: String) -> Result<Vec<BackupEntry>, String> {
+    let (_, dir) = instance_paths(&app, &id)?;
+    Ok(list_backups(&dir))
+}
+
+/// `None` = nothing new to back up (unchanged or no keys).
+#[tauri::command]
+pub fn keybind_backup_create(app: tauri::AppHandle, id: String) -> Result<Option<BackupEntry>, String> {
+    let (game_dir, dir) = instance_paths(&app, &id)?;
+    let options = match fs::read_to_string(game_dir.join("options.txt")) {
+        Ok(t) => Some(t),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(format!("Cannot read options.txt: {e}")),
+    };
+    Ok(match create_backup(&dir, options.as_deref(), MANUAL, now_ms())? {
+        CreateResult::Created(entry) => Some(entry),
+        CreateResult::Unchanged | CreateResult::NoKeys => None,
+    })
+}
+
+#[tauri::command]
+pub fn keybind_backup_restore(app: tauri::AppHandle, id: String, name: String) -> Result<(), String> {
+    let (game_dir, dir) = instance_paths(&app, &id)?;
+    let running = crate::launcher::is_game_running(Some(id));
+    restore_backup(&game_dir, &dir, &name, running, now_ms())
+}
+
+#[tauri::command]
+pub fn keybind_backup_delete(app: tauri::AppHandle, id: String, name: String) -> Result<(), String> {
+    let (_, dir) = instance_paths(&app, &id)?;
+    delete_backup(&dir, &name)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -170,5 +235,26 @@ mod tests {
         assert_eq!(read_backup(&d, &e.name).unwrap().get("key.jump").map(String::as_str), Some("key.keyboard.j"));
         assert!(read_backup(&d, "../x.json").is_err());
         assert!(delete_backup(&d, "a/b.json").is_err());
+    }
+    #[test] fn restore_refused_while_running() {
+        let (i, b) = (temp_dir("ri"), temp_dir("rb"));
+        assert_eq!(restore_backup(&i, &b, "1-manual.json", true, 1).unwrap_err(), "game-running");
+    }
+    #[test] fn restore_writes_keys_and_backs_up_current() {
+        let (i, b) = (temp_dir("ri2"), temp_dir("rb2"));
+        let CreateResult::Created(e) = create_backup(&b, Some("key_key.jump:key.keyboard.j\n"), "manual", 1).unwrap() else { panic!() };
+        fs::write(i.join("options.txt"), "fov:1\nkey_key.jump:key.keyboard.space\n").unwrap();
+        restore_backup(&i, &b, &e.name, false, 2).unwrap();
+        assert_eq!(fs::read_to_string(i.join("options.txt")).unwrap(), "fov:1\nkey_key.jump:key.keyboard.j\n");
+        assert_eq!(list_backups(&b)[0].reason, "before-restore");
+    }
+    #[test] fn restore_creates_missing_options_and_unknown_backup_leaves_file() {
+        let (i, b) = (temp_dir("ri3"), temp_dir("rb3"));
+        let CreateResult::Created(e) = create_backup(&b, Some("key_key.jump:key.keyboard.j\n"), "manual", 1).unwrap() else { panic!() };
+        restore_backup(&i, &b, &e.name, false, 2).unwrap();
+        assert_eq!(fs::read_to_string(i.join("options.txt")).unwrap(), "key_key.jump:key.keyboard.j\n");
+        fs::write(i.join("options.txt"), "fov:1\n").unwrap();
+        assert!(restore_backup(&i, &b, "9-manual.json", false, 3).is_err());
+        assert_eq!(fs::read_to_string(i.join("options.txt")).unwrap(), "fov:1\n");
     }
 }

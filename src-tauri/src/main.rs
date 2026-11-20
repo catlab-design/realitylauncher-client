@@ -17,6 +17,8 @@ mod fs_utils;
 mod game_window;
 mod http_client;
 mod instances;
+mod keybind_backups;
+mod keybinds;
 mod java;
 mod launch_log;
 mod launcher;
@@ -188,6 +190,10 @@ fn main() {
             cloud::instances_cloud_install,
             cloud::instances_cloud_sync,
             cloud::instance_check_integrity,
+            keybind_backups::keybind_backups_list,
+            keybind_backups::keybind_backup_create,
+            keybind_backups::keybind_backup_restore,
+            keybind_backups::keybind_backup_delete,
             cloud::cloud_instance_sync_managed,
             cloud::invitations_fetch,
             cloud::invitations_accept,

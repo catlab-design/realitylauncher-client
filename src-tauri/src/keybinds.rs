@@ -174,12 +174,19 @@ pub fn apply_pack_keybinds(
     if current.as_deref() == Some(updated.as_str()) {
         return;
     }
-    let tmp = instance_dir.join("options.txt.reality-tmp");
-    let result = fs::write(&tmp, &updated).and_then(|_| fs::rename(&tmp, &options_path));
-    if let Err(e) = result {
-        let _ = fs::remove_file(&tmp);
+    if let Err(e) = write_options_atomic(instance_dir, &updated) {
         log::warn!("[Keybinds] cannot write options.txt: {e}");
     }
+}
+
+/// Atomically replace `options.txt` (temp file + rename).
+pub(crate) fn write_options_atomic(instance_dir: &Path, content: &str) -> std::io::Result<()> {
+    let tmp = instance_dir.join("options.txt.reality-tmp");
+    let result = fs::write(&tmp, content).and_then(|_| fs::rename(&tmp, instance_dir.join(OPTIONS_FILE)));
+    if result.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    result
 }
 
 #[cfg(test)]
