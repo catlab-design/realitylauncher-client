@@ -1179,4 +1179,19 @@ export const enTranslations = {
     library_stat_server_packs: "{count} server packs",
     // Instance content browser
     install_to_instance_name: "Install to {name}",
+    // Keybind backups
+    keybind_backups: "Keybinds",
+    keybind_backups_desc: "Back up and restore your key settings",
+    keybind_backup_now: "Back up now",
+    keybind_backup_unchanged: "Keybinds match the latest backup",
+    keybind_backup_none: "No backups yet",
+    keybind_restore: "Restore",
+    keybind_restore_running: "Close the game before restoring",
+    keybind_restored: "Keybinds restored",
+    keybind_reason_manual: "Manual",
+    keybind_reason_before_repair: "Before repair",
+    keybind_reason_before_restore: "Before restore",
+    keybind_key_count: "{count} keys",
+    keybind_delete: "Delete",
+    keybind_delete_confirm: "Confirm delete",
 };

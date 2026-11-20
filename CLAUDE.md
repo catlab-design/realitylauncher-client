@@ -5,7 +5,7 @@
 | Property | Value |
 |---|---|
 | **Name** | Reality Launcher (package: `ml-tauri-poc`) |
-| **Version** | 5.2.3 |
+| **Version** | 5.3.0 |
 | **License** | GPL-3.0-only |
 | **Description** | ML-Launcher POC with Tauri + Rust — Minecraft launcher |
 | **Copyright** | 2026 CatLab Design <hi@catlabdesign.space> |
@@ -166,6 +166,8 @@ src-tauri/
     ├── modrinth.rs                   # Modrinth API
     ├── curseforge.rs                 # CurseForge API
     ├── modpack.rs                    # Modpack install: .mrpack, CurseForge .zip, Prism/MultiMC instance .zip (mmc-pack.json)
+    ├── keybinds.rs                   # Pack keybinds (reality/keybinds.json): apply `key_` lines to options.txt on first install / Repair
+    ├── keybind_backups.rs            # Keybind backups (<app data>/keybind-backups/<instance id>/) + list/create/restore/delete commands
     ├── content.rs                    # Mod/resourcepack management
     ├── cloud.rs                      # Cloud sync, server instances, invitations
     ├── admin.rs                      # Admin commands (10)
@@ -285,6 +287,7 @@ ConfigStore migration (v0→v1): `closeOnLaunch` changed from `boolean` to `'kee
 | **content** | mod/resourcepack CRUD + toggle + delete + install + lock |
 | **modrinth** | `modrinth_search`, `get_project`, `get_versions`, etc. |
 | **curseforge** | `curseforge_search`, `get_project`, `get_files`, `get_description`, `clear_cache` |
+| **keybinds** | `keybind_backups_list`, `keybind_backup_create` (returns `null` when unchanged / no keys), `keybind_backup_restore` (rejects `"game-running"`), `keybind_backup_delete` |
 | **modpack** | `install`, `install_from_modrinth`, `install_from_curseforge`, `cancel_install`, `pre_install`, `list_files` |
 | **update** | `check_latest_version`, `download_update`, `install_update` |
 | **fs_utils** | `open_folder`, `open_url` (http(s) only via `validate_external_url`; Windows uses ShellExecuteExW, never `cmd`), `browse_directory`, `browse_icon`, `browse_modpack`, `launcher_clear_cache`, `check_dir_empty` |
@@ -411,6 +414,7 @@ const KNOWN_UNPORTED = new Set(['fetchInstanceAgendas', 'fetchAllAgendas']);
 22. **Wayland** — on Wayland sessions with XWayland available, the launcher runs with `GDK_BACKEND=x11` and the game is spawned without `WAYLAND_DISPLAY` and with `XDG_SESSION_TYPE=x11` (GLFW 3.4 in MC 1.20.2+ otherwise picks native Wayland: no window icon/position, agent icon swap has no effect). `nativeWayland` opts out. The maintainer's machine (NVIDIA 470, XFCE X11) can't run a Wayland compositor, so Wayland changes can only be checked on another machine
 24. **Banner videos** — `bannerUrl` is always an image; a server's optional video is `bannerVideoUrl` (API column `banner_video_url`, stored as `banner-video.<mp4|webm>` at the instance root, served by `/storage/assets/instance/:id/banner-video` with byte ranges, kept out of sync manifests and packs). The management site uploads a WebP still of the video as `banner`, so older launchers and every card keep working. Only the Servers hero (`ServerItem.tsx`) and `ServerDetailView` play it, through `BannerVideo` (hidden under reduced motion/Performance mode, paused while the window is hidden, poster on error). WebKitGTK plays WebM (VP8/VP9) with the bundled GStreamer "good" plugins; H.264 MP4 needs `gst-libav`, so MP4 may show only the poster on Linux
 23. **Server sync never deletes player mods** — `cloud::cleanup_unmanaged_mods` (used by pack v2, `.mrpack`, managed and per-file syncs) removes a top-level `mods/*.jar[.disabled]` only if `.reality/managed-mods.json` (the previous sync's keep set, rewritten every sync) lists it and the server no longer ships it; locked mods are always kept. With no record yet it removes everything except keep, locked and mods with an Explore content link (`.reality-content-links.json`)
+25. **Pack keybinds** — `reality/keybinds.json` (pack v2) is applied by `keybinds.rs` only on first install (no `.reality/pack-state.json` and no `options.txt`, checked before any file is written) and on Repair (a "before-repair" backup is taken first; keys are written only if that backup step succeeded). Only `key_` lines in `set` change. Backups live in `<app data>/keybind-backups/<instance id>/`, 30 max, automatic ones pruned first; restore is blocked while the game runs (`KeybindBackupsSection` checks `isGameRunning`, backend rejects `"game-running"`)
 
 ---
 

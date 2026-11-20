@@ -1,6 +1,8 @@
 ## [Unreleased] — 2026-11-11
 
 ### Added
+- Pack keybinds: a server pack can ship default key bindings (`reality/keybinds.json`). They are applied to `options.txt` on the first install of an instance and again on Repair; only `key_` lines named by the pack change, everything else in `options.txt` is kept.
+- Keybind backups in instance settings (Installation tab): back up your keys manually, restore or delete a backup. The launcher also backs up automatically before Repair and before a restore. Backups are kept in the launcher data folder (`keybind-backups/<instance id>/`), 30 per instance (automatic ones are removed first). Restore is blocked while the game is running.
 - Import Prism Launcher and MultiMC instance exports (`.zip` with `mmc-pack.json`) from Library › Import: Minecraft version and loader (NeoForge, Forge, Fabric, Quilt) come from `mmc-pack.json`, the name and icon from `instance.cfg`, and the `minecraft/` (or `.minecraft/`) folder is copied into the new instance. Mods listed in `.index/*.pw.toml` but not bundled in the export are downloaded from their recorded URL and hash-checked. Large exports are copied as a stream with progress and can be cancelled.
 
 ## [5.2.3] — 2026-11-10

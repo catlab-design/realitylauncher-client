@@ -8,6 +8,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Portal } from "../../ui/Portal";
 import { useMotionPreset } from "../../../lib/motion";
 import { SettingsSection, SettingsRow, Toggle, fieldClass, fieldStyle, buttonClass, buttonStyle } from "../settingsTabs/SettingsUI";
+import { KeybindBackupsSection } from "./KeybindBackupsSection";
 import { RamSlider, RamPresetChips, RAM_PRESETS, formatRam, recommendedRamFor } from "../settingsTabs/RamSlider";
 
 import modrinthIcon from "../../../assets/modrinth.svg";
@@ -636,6 +637,7 @@ export function InstanceSettingsModal({
                                                     {t('repair_files' as any)}
                                                 </button>
                                             </div>
+                                            <KeybindBackupsSection instanceId={instance.id} colors={colors} language={language} />
                                         </div>
                                     )}
                                 </div>

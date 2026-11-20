@@ -1185,4 +1185,19 @@ export const thTranslations = {
     library_stat_server_packs: "{count} แพ็กเซิร์ฟเวอร์",
     // Instance content browser
     install_to_instance_name: "ติดตั้งลง {name}",
+    // Keybind backups
+    keybind_backups: "คีย์ลัด",
+    keybind_backups_desc: "สำรองและกู้คืนการตั้งค่าปุ่มของคุณ",
+    keybind_backup_now: "สำรองตอนนี้",
+    keybind_backup_unchanged: "คีย์ลัดเหมือนข้อมูลสำรองล่าสุด",
+    keybind_backup_none: "ยังไม่มีข้อมูลสำรอง",
+    keybind_restore: "กู้คืน",
+    keybind_restore_running: "ปิดเกมก่อนกู้คืน",
+    keybind_restored: "กู้คืนคีย์ลัดแล้ว",
+    keybind_reason_manual: "สำรองเอง",
+    keybind_reason_before_repair: "ก่อนซ่อมแซม",
+    keybind_reason_before_restore: "ก่อนกู้คืน",
+    keybind_key_count: "{count} ปุ่ม",
+    keybind_delete: "ลบ",
+    keybind_delete_confirm: "ยืนยันลบ",
 };

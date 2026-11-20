@@ -630,6 +630,10 @@ declare global {
       }>;
       
       isGameRunning: (instanceId?: string) => Promise<boolean>;
+      keybindBackupsList: (id: string) => Promise<import("./types/launcher").KeybindBackup[]>;
+      keybindBackupCreate: (id: string) => Promise<import("./types/launcher").KeybindBackup | null>;
+      keybindBackupRestore: (id: string, name: string) => Promise<void>;
+      keybindBackupDelete: (id: string, name: string) => Promise<void>;
       killGame: (instanceId?: string) => Promise<boolean>;
       cancelLaunch: () => Promise<boolean>;
       instanceReadLatestLog: (instanceId: string) => Promise<InstanceLogChunk>;
