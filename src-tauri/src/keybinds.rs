@@ -121,6 +121,36 @@ pub fn apply_pack_keybinds(
     backup_dir: Option<&Path>,
     now_ms: u64,
 ) {
+    if mode == KeybindMode::FirstInstallOnly && !first_install {
+        return;
+    }
+
+    let options_path = instance_dir.join(OPTIONS_FILE);
+    let current = match fs::read_to_string(&options_path) {
+        Ok(text) => Some(text),
+        Err(e) if e.kind() == ErrorKind::NotFound => None,
+        Err(e) => {
+            log::warn!("[Keybinds] cannot read options.txt, leaving it alone: {e}");
+            return;
+        }
+    };
+
+    // Repair always backs up first, even when the pack has no keybinds.json.
+    let backed_up = mode != KeybindMode::Repair
+        || match backup_dir {
+            None => {
+                log::warn!("[Keybinds] no backup folder; not changing keybinds");
+                false
+            }
+            Some(dir) => match crate::keybind_backups::create_backup(dir, current.as_deref(), "before-repair", now_ms) {
+                Ok(_) => true,
+                Err(e) => {
+                    log::warn!("[Keybinds] backup failed, not changing keybinds: {e}");
+                    false
+                }
+            },
+        };
+
     let json = match fs::read_to_string(instance_dir.join(PACK_FILE)) {
         Ok(j) => j,
         Err(e) if e.kind() == ErrorKind::NotFound => return,
@@ -136,31 +166,8 @@ pub fn apply_pack_keybinds(
             return;
         }
     };
-    if mode == KeybindMode::FirstInstallOnly && !first_install {
+    if !backed_up {
         return;
-    }
-
-    let options_path = instance_dir.join(OPTIONS_FILE);
-    let current = match fs::read_to_string(&options_path) {
-        Ok(text) => Some(text),
-        Err(e) if e.kind() == ErrorKind::NotFound => None,
-        Err(e) => {
-            log::warn!("[Keybinds] cannot read options.txt, leaving it alone: {e}");
-            return;
-        }
-    };
-
-    if mode == KeybindMode::Repair {
-        let Some(backup_dir) = backup_dir else {
-            log::warn!("[Keybinds] no backup folder; not changing keybinds");
-            return;
-        };
-        if let Err(e) =
-            crate::keybind_backups::create_backup(backup_dir, current.as_deref(), "before-repair", now_ms)
-        {
-            log::warn!("[Keybinds] backup failed, not changing keybinds: {e}");
-            return;
-        }
     }
 
     let updated = apply_keys(current.as_deref(), &set);
@@ -289,6 +296,22 @@ mod tests {
         fs::write(d.join("options.txt"), "key_key.jump:key.keyboard.space\n").unwrap();
         apply_pack_keybinds(&d, KeybindMode::Repair, false, None, 1);
         assert_eq!(fs::read_to_string(d.join("options.txt")).unwrap(), "key_key.jump:key.keyboard.space\n");
+    }
+    #[test] fn repair_without_pack_file_still_backs_up() {
+        let d = temp_dir("repair-nopack"); let b = temp_dir("repair-nopack-bk");
+        fs::write(d.join("options.txt"), "key_key.jump:key.keyboard.space\n").unwrap();
+        apply_pack_keybinds(&d, KeybindMode::Repair, false, Some(&b), 3);
+        assert_eq!(fs::read_to_string(d.join("options.txt")).unwrap(), "key_key.jump:key.keyboard.space\n");
+        let l = crate::keybind_backups::list_backups(&b);
+        assert_eq!((l.len(), l[0].reason.as_str(), l[0].key_count), (1, "before-repair", 1));
+    }
+    #[test] fn repair_with_bad_pack_file_backs_up_and_changes_nothing() {
+        let d = temp_dir("repair-badpack"); let b = temp_dir("repair-badpack-bk");
+        pack(&d, "not json");
+        fs::write(d.join("options.txt"), "key_key.jump:key.keyboard.space\n").unwrap();
+        apply_pack_keybinds(&d, KeybindMode::Repair, false, Some(&b), 3);
+        assert_eq!(fs::read_to_string(d.join("options.txt")).unwrap(), "key_key.jump:key.keyboard.space\n");
+        assert_eq!(crate::keybind_backups::list_backups(&b).len(), 1);
     }
     #[test] fn no_pack_file_or_bad_file_is_a_no_op() {
         let d = temp_dir("nofile");
