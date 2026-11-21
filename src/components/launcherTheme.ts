@@ -41,18 +41,19 @@ export function getColors(
     return {
       primary: themeColor,
       onPrimary: "#1a1a1a",
-      primaryContainer: "#2a2a2a",
+      primaryContainer: "#1a1a1d",
       onPrimaryContainer: "#ffffff",
       secondary: themeColor,
       secondaryContainer: themeColor,
-      surface: "#1a1a1a",
-      surfaceContainer: "#242424",
-      surfaceContainerHigh: "#2e2e2e",
-      surfaceContainerHighest: "#3a3a3a",
-      onSurface: "#ffffff",
-      onSurfaceVariant: "#b3b3b3",
-      outline: "#4a4a4a",
-      outlineVariant: "#3a3a3a",
+      // Near-black with thin, low-contrast borders.
+      surface: "#0a0a0b",
+      surfaceContainer: "#121214",
+      surfaceContainerHigh: "#1a1a1d",
+      surfaceContainerHighest: "#242428",
+      onSurface: "#f5f5f5",
+      onSurfaceVariant: "#9a9aa2",
+      outline: "#2c2c31",
+      outlineVariant: "#1e1e22",
     };
   }
 

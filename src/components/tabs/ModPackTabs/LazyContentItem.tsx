@@ -50,6 +50,10 @@ function cleanName(name: string = ""): string {
         .trim();
 }
 
+/** Shared column template for the content table (header row in ContentList + each row). */
+export const CONTENT_ROW_GRID =
+    "grid grid-cols-[1.125rem_minmax(0,1fr)_10rem] md:grid-cols-[1.125rem_minmax(0,1.25fr)_minmax(0,1fr)_10rem] items-center gap-x-4";
+
 interface LazyContentItemProps {
     item: ContentItem | DatapackItem;
     category: "resourcepack" | "shader" | "datapack";
@@ -214,13 +218,14 @@ export function LazyContentItem({
                     handleOpenProject();
                 }
             }}
-            className={`grid grid-cols-[auto_3rem_minmax(220px,0.9fr)_minmax(260px,1fr)_auto] items-center gap-4 min-h-[64px] px-4 py-3 rounded-xl transition-all group ${canOpenProject ? "cursor-pointer hover:brightness-[0.98]" : ""}`}
+            className={`${CONTENT_ROW_GRID} min-h-18 px-3 py-2.5 rounded-xl transition-colors group bg-(--row-bg) hover:bg-(--row-hover) ${canOpenProject ? "cursor-pointer" : ""}`}
             style={{
-                backgroundColor: isSelected ? colors.secondary + "15" : colors.surfaceContainer,
-                opacity: currentItem.enabled ? 1 : 0.6,
-                border: isSelected ? `1px solid ${colors.secondary}50` : "1px solid transparent",
-                marginBottom: "4px"
-            }}
+                "--row-bg": isSelected ? colors.secondary + "1f" : "transparent",
+                "--row-hover": isSelected ? colors.secondary + "29" : colors.surfaceContainer,
+                "--btn-fg": colors.onSurfaceVariant,
+                "--btn-hover-fg": colors.onSurface,
+                "--btn-hover-bg": colors.surfaceContainerHighest,
+            } as React.CSSProperties}
         >
             <div
                 onClick={(e) => {
@@ -228,55 +233,56 @@ export function LazyContentItem({
                     playClick();
                     onToggleSelection?.(currentItem.filename);
                 }}
-                className={`w-5 h-5 rounded-md flex items-center justify-center transition-all cursor-pointer border-2 shrink-0 ${isSelected ? "scale-110" : "opacity-40 group-hover:opacity-100"}`}
+                className={`w-4.5 h-4.5 rounded-md flex items-center justify-center transition-all cursor-pointer border-[1.5px] shrink-0 ${isSelected ? "" : "opacity-50 group-hover:opacity-100"}`}
                 style={{
                     backgroundColor: isSelected ? colors.secondary : "transparent",
                     borderColor: isSelected ? colors.secondary : colors.onSurfaceVariant
                 }}
             >
-                {isSelected && <Icons.Check className="w-3.5 h-3.5" style={{ color: "#1a1a1a" }} />}
+                {isSelected && <Icons.Check className="w-3.5 h-3.5" style={{ color: "#111" }} />}
             </div>
 
-            {iconUrl ? (
-                <img
-                    src={iconUrl}
-                    alt={cleanName(currentItem.name)}
-                    className="w-12 h-12 rounded-xl object-contain shrink-0"
-                />
-            ) : (
-                <div
-                    className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
-                    style={{ backgroundColor: colors.surfaceContainerHighest }}
-                >
-                    <Icons.Box className={`w-6 h-6 ${isIconLoading ? 'animate-pulse' : ''}`} style={{ color: colors.onSurfaceVariant }} />
+            <div className={`flex items-center gap-3 min-w-0 transition-opacity ${currentItem.enabled ? "" : "opacity-60"}`}>
+                {iconUrl ? (
+                    <img
+                        src={iconUrl}
+                        alt={cleanName(currentItem.name)}
+                        className="w-12 h-12 rounded-xl object-contain shrink-0"
+                    />
+                ) : (
+                    <div
+                        className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: colors.surfaceContainerHighest }}
+                    >
+                        <Icons.Box className="w-5 h-5" style={{ color: colors.onSurfaceVariant }} />
+                    </div>
+                )}
+
+                <div className="min-w-0 flex flex-col justify-center">
+                    <p className="font-semibold text-base leading-tight truncate" style={{ color: colors.onSurface }}>
+                        {cleanName(currentItem.name)}
+                    </p>
+                    <p className="text-sm truncate mt-0.5" style={{ color: colors.onSurfaceVariant }}>
+                        {isDatapack && currentItem.worldName && `${currentItem.worldName} - `}
+                        {formatSize(currentItem.size)}
+                    </p>
                 </div>
-            )}
-
-            <div className="min-w-0 pr-4 flex flex-col justify-center">
-                <p className="font-bold text-[15px] truncate" style={{ color: colors.onSurface }}>
-                    {cleanName(currentItem.name)}
-                </p>
-                <p className="text-xs truncate opacity-70 mt-1" style={{ color: colors.onSurfaceVariant }}>
-                    {isDatapack && currentItem.worldName && `${currentItem.worldName} - `}
-                    {formatSize(currentItem.size)}
-                </p>
             </div>
 
-            <div className="min-w-0 pr-4 hidden md:flex flex-col justify-center">
-                <p className="text-sm font-bold truncate mb-0.5 flex items-center gap-1.5" style={{ color: colors.onSurface }}>
-                    {currentItem.version || "Unknown Version"}
-
+            <div className={`min-w-0 hidden md:flex flex-col justify-center transition-opacity ${currentItem.enabled ? "" : "opacity-60"}`}>
+                <p className="text-sm font-medium truncate" style={{ color: colors.onSurface }}>
+                    {currentItem.version ? `v${String(currentItem.version).replace(/^v/i, "")}` : "—"}
                 </p>
-                <p className="text-xs truncate opacity-60" style={{ color: colors.onSurfaceVariant }}>
+                <p className="text-sm truncate mt-0.5" style={{ color: colors.onSurfaceVariant }}>
                     {currentItem.filename}
                 </p>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
-                
+            <div className="flex items-center justify-end gap-1 shrink-0">
+
                 <button
                     onClick={(e) => { e.stopPropagation(); playClick(); onToggle(currentItem.filename, isDatapack ? currentItem.worldName : undefined); }}
-                    className="relative w-11 h-6 rounded-full transition-colors shrink-0"
+                    className="relative w-10 h-6 mr-1.5 rounded-full transition-colors shrink-0"
                     style={{ backgroundColor: currentItem.enabled ? colors.secondary : colors.surfaceContainerHighest }}
                     title={currentItem.enabled ? t('disable') : t('enable')}
                 >
@@ -311,7 +317,7 @@ export function LazyContentItem({
                             <button
                                 onClick={handleUpdateClick}
                                 disabled={isUpdating && !onSwitchVersion}
-                                className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:bg-white/10 shrink-0 disabled:opacity-50"
+                                className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-green-500/15 shrink-0 disabled:opacity-50"
                                 style={{ color: "#22c55e" }}
                                 title={t('update_to_latest' as any) || "Update to latest"}
                                 type="button"
@@ -324,8 +330,7 @@ export function LazyContentItem({
                         return (
                             <button
                                 onClick={(e) => { e.stopPropagation(); playClick(); onSwitchVersion(item); }}
-                                className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:bg-white/10 shrink-0"
-                                style={{ color: colors.onSurfaceVariant }}
+                                className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 text-(--btn-fg) hover:text-(--btn-hover-fg) hover:bg-(--btn-hover-bg)"
                                 title={t('switch_version_title' as any) || 'Switch version'}
                                 type="button"
                             >
@@ -338,8 +343,7 @@ export function LazyContentItem({
 
                 <button
                     onClick={(e) => { e.stopPropagation(); playClick(); onDelete(currentItem.filename, isDatapack ? currentItem.worldName : undefined); }}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:bg-white/10 shrink-0"
-                    style={{ color: colors.onSurfaceVariant }}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 text-(--btn-fg) hover:text-red-500 hover:bg-red-500/10"
                     title={t('delete')}
                 >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
@@ -352,8 +356,7 @@ export function LazyContentItem({
                 
                 <button
                     onClick={(e) => e.stopPropagation()}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:bg-white/10 shrink-0"
-                    style={{ color: colors.onSurfaceVariant }}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 text-(--btn-fg) hover:text-(--btn-hover-fg) hover:bg-(--btn-hover-bg)"
                 >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
                         <circle cx="12" cy="12" r="1"></circle>

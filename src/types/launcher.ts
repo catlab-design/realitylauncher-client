@@ -44,6 +44,8 @@ export interface Server {
   iconUrl?: string;
   image?: string;
   bannerUrl?: string;
+  /** Looping banner video (MP4/WebM); bannerUrl is its poster. */
+  bannerVideoUrl?: string | null;
   description?: string;
   websiteUrl?: string;
   socials?: string | null;
@@ -106,12 +108,21 @@ export interface LauncherConfig {
   fullscreen: boolean;
   javaArguments: string;
   maxConcurrentDownloads: number;
+  /** Linux only: run the game under `mangohud --dlsym`. */
+  enableMangoHud?: boolean;
+  /** Linux only: run the game under `gamemoderun`. */
+  enableGameMode?: boolean;
+  /** Linux Wayland sessions: run natively instead of through XWayland (launcher restart applies it to the launcher). */
+  nativeWayland?: boolean;
+  /** Source of Java 21/25 for Settings › Java and automatic installs; Java 8/17 always come from Corretto. */
+  javaProvider?: "corretto" | "graalvm";
   telemetryEnabled: boolean;
   autoUpdateEnabled: boolean;
   lastSeenVersion?: string;
   clickSoundEnabled: boolean;
   notificationSoundEnabled: boolean;
   rainbowMode: boolean;
+  performanceMode?: boolean;
   backgroundImage?: string;
   backgroundImageOpacity?: number;
 }
@@ -133,6 +144,13 @@ export interface ColorThemeInfo {
 }
 
 export type LoaderType = "vanilla" | "fabric" | "forge" | "neoforge" | "quilt";
+
+export interface KeybindBackup {
+  name: string;
+  createdAt: number;
+  reason: 'manual' | 'before-repair' | 'before-restore';
+  keyCount: number;
+}
 
 export interface GameInstance {
   id: string;

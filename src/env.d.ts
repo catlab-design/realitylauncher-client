@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 
 type ColorTheme =
   | "yellow"
@@ -25,6 +26,8 @@ interface LauncherConfig {
   discordRPCEnabled: boolean;
   backgroundImage?: string;
   backgroundImageOpacity?: number;
+  /** Absent until the player (or the startup default) sets it. */
+  javaArguments?: string;
 }
 
 interface AuthSession {
@@ -47,6 +50,15 @@ interface LauncherInfo {
   javaOK: boolean;
   runtime: string;
   minecraftDir: string;
+}
+
+/** A read of an instance log; text is censored by the backend. Times are epoch ms (0 = unknown). */
+interface InstanceLogChunk {
+  ok: boolean;
+  content: string;
+  size: number;
+  modified?: number;
+  created?: number;
 }
 
 interface LaunchResult {
@@ -96,6 +108,13 @@ interface UpdateInstanceOptions {
 }
 
 declare global {
+  interface ImportMetaEnv {
+    readonly VITE_PERF_BENCH?: string;
+    readonly VITE_PERF_BENCH_EXIT?: string;
+    readonly VITE_PERF_EXPERIMENT?: string;
+    readonly VITE_PERF_LITE?: string;
+  }
+
   interface Window {
     api?: {
       
@@ -238,7 +257,8 @@ declare global {
           | "browsing_about"
           | "browsing_admin"
           | "browsing_modpacks"
-          | "browsing_servers",
+          | "browsing_servers"
+          | "picking_server",
         serverName?: string,
         serverIcon?: string,
         pingMs?: number,
@@ -289,16 +309,19 @@ declare global {
         password: string,
       ) => Promise<{
         ok: boolean;
-        session?: {
+        // Mirrors Rust `Session` (auth.rs, camelCase); expiresAt is epoch ms.
+        account?: {
           username: string;
           uuid: string;
-          token: string;
-          minecraftUuid?: string;
-          expiresAt?: string;
+          accessToken?: string | null;
+          refreshToken?: string | null;
+          apiToken?: string | null;
+          expiresAt?: number | null;
           avatarUrl?: string;
           avatarSource?: string;
-        };
-        error?: string;
+          authType: string;
+        } | null;
+        error?: string | null;
       }>;
       linkCatID: (
         username: string,
@@ -420,6 +443,25 @@ declare global {
         requiresRelogin?: boolean;
         error?: string;
       }>;
+      /** Minecraft server-list status ping (src-tauri social::server_ping). */
+      serverPing: (host: string, port?: number) => Promise<{
+        online: boolean;
+        host: string;
+        port: number;
+        players: { online: number; max: number; sample?: string[] } | null;
+        /** Plain-text MOTD. */
+        motd: string | null;
+        /** Raw `description`: legacy section-sign string or chat component JSON. */
+        motdRaw?: unknown;
+        latency: number | null;
+        version: string | null;
+        protocol?: number | null;
+        /** data:image/png;base64,... */
+        favicon: string | null;
+        error: string | null;
+      }>;
+      /** Entries of the instance's in-game multiplayer list (servers.dat), in order. */
+      instanceSavedServers: (instanceId: string) => Promise<Array<{ name: string; ip: string; icon: string | null }>>;
       catskincGetConfig: (gameDirectory?: string) => Promise<{ ok: boolean; configured: boolean; ip: string }>;
       catskincGetSelectedSkin: (gameDirectory?: string) => Promise<{
         ok: boolean;
@@ -438,11 +480,12 @@ declare global {
       catskincClearAssets: (payload: {
         mode: "all" | "skin" | "mouth";
         gameDirectory?: string;
-      }) => Promise<{ ok: boolean; error?: string }>;
+      }) => Promise<{ ok: boolean; error?: string; message?: string }>;
       
       windowMinimize: () => Promise<void>;
       windowMaximize: () => Promise<void>;
       windowClose: () => Promise<void>;
+      devPerfReport: (report: unknown) => Promise<void>;
       windowIsMaximized: () => Promise<boolean>;
       windowSetMainMode: () => Promise<void>;
       
@@ -587,7 +630,15 @@ declare global {
       }>;
       
       isGameRunning: (instanceId?: string) => Promise<boolean>;
+      keybindBackupsList: (id: string) => Promise<import("./types/launcher").KeybindBackup[]>;
+      keybindBackupCreate: (id: string) => Promise<import("./types/launcher").KeybindBackup | null>;
+      keybindBackupRestore: (id: string, name: string) => Promise<void>;
+      keybindBackupDelete: (id: string, name: string) => Promise<void>;
       killGame: (instanceId?: string) => Promise<boolean>;
+      cancelLaunch: () => Promise<boolean>;
+      instanceReadLatestLog: (instanceId: string) => Promise<InstanceLogChunk>;
+      instanceTailLog: (instanceId: string, from: number) => Promise<InstanceLogChunk>;
+      instanceTailLaunchLog: (instanceId: string, from: number) => Promise<InstanceLogChunk>;
       onGameStarted: (
         callback: (data: { instanceId: string; pid: number }) => void,
       ) => () => void;
@@ -719,9 +770,11 @@ declare global {
         error?: string;
       }>;
       isDevMode: () => Promise<boolean>;
+      linuxPerfTools: () => Promise<{ linux: boolean; mangohud: boolean; gamemode: boolean; wayland: boolean }>;
       checkForUpdates: () => Promise<void>;
       downloadUpdate: () => Promise<void>;
-      installUpdate: () => Promise<void>;
+      installUpdate: (auto?: boolean) => Promise<void>;
+      setInstallUpdateOnExit: (enabled: boolean) => Promise<void>;
       getAppVersion: () => Promise<string>;
       checkLatestVersion: () => Promise<{
         ok: boolean;

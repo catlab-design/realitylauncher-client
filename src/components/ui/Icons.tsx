@@ -63,6 +63,17 @@ export const Icons = {
             <path d="m12 21.35-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
         </svg>
     ),
+    // Paper box: open cardboard carton with the flaps folded out (outline style).
+    PaperBox: (props: IconProps) => (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" {...props}>
+            <path d="M3.5 8.5 12 4.5l8.5 4v9.5L12 22l-8.5-4V8.5z" />
+            <path d="M3.5 8.5 12 12.5l8.5-4" />
+            <path d="M12 12.5V22" />
+            <path d="M7.75 6.5 16.25 10.5" />
+            <path d="M3.5 8.5 7.75 6.5" />
+            <path d="M20.5 8.5 16.25 6.5" />
+        </svg>
+    ),
     Box: (props: IconProps) => (
         <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
             <path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18-.21 0-.41-.06-.57-.18l-7.9-4.44A.991.991 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18.21 0 .41.06.57.18l7.9 4.44c.32.17.53.5.53.88v9zM12 4.15L6.04 7.5 12 10.85l5.96-3.35L12 4.15zM5 15.91l6 3.38v-6.71L5 9.21v6.7zm14 0v-6.7l-6 3.37v6.71l6-3.38z"/>

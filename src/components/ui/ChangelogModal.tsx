@@ -1,6 +1,8 @@
-﻿import React, { useEffect, useState } from "react";
+﻿import { AnimatePresence, motion } from "framer-motion";
 import ReactMarkdown from 'react-markdown';
 import { useTranslation } from "../../hooks/useTranslation";
+import { useMotionPreset } from "../../lib/motion";
+import { getSafeExternalUrl } from "../../lib/externalUrl";
 
 interface ChangelogModalProps {
     isOpen: boolean;
@@ -27,25 +29,7 @@ export function ChangelogModal({
     colors,
 }: ChangelogModalProps) {
     const { t } = useTranslation();
-    const [isAnimating, setIsAnimating] = useState(false);
-    const [shouldRender, setShouldRender] = useState(false);
-
-    useEffect(() => {
-        if (isOpen) {
-            setShouldRender(true);
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    setIsAnimating(true);
-                });
-            });
-        } else {
-            setIsAnimating(false);
-            const timer = setTimeout(() => setShouldRender(false), 200);
-            return () => clearTimeout(timer);
-        }
-    }, [isOpen]);
-
-    if (!shouldRender) return null;
+    const m = useMotionPreset();
 
     const components = {
         h1: ({ node, ...props }: any) => <h2 className="text-lg font-bold mt-4 mb-2" style={{ color: colors.onSurface }} {...props} />,
@@ -73,7 +57,7 @@ export function ChangelogModal({
                 href={href || "#"}
                 onClick={(e) => {
                     e.preventDefault();
-                    if (href && (href.startsWith('http') || href.startsWith('https'))) {
+                    if (getSafeExternalUrl(href)) {
                         (window as any).api?.openExternal?.(href);
                     }
                 }}
@@ -111,18 +95,20 @@ export function ChangelogModal({
     };
 
     return (
-        <div
-            className={`fixed inset-0 z-50 flex items-center justify-center transition-opacity duration-200 ${isAnimating ? 'bg-black/50' : 'bg-black/0'
-                }`}
+        <AnimatePresence>
+        {isOpen && (
+        <motion.div
+            key="changelog-modal"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
             onClick={onClose}
+            variants={m.modal.backdrop}
+            {...m.states}
         >
-            <div
-                className={`w-full max-w-sm rounded-lg shadow-xl relative overflow-hidden transition-all duration-200 ${isAnimating
-                        ? 'opacity-100 scale-100'
-                        : 'opacity-0 scale-95'
-                    }`}
+            <motion.div
+                className="w-full max-w-sm rounded-lg shadow-xl relative overflow-hidden"
                 style={{ backgroundColor: colors.surface, border: `1px solid ${colors.outline}40` }}
                 onClick={(e) => e.stopPropagation()}
+                variants={m.modal.panel}
             >
                 <div
                     className="px-4 py-3 border-b flex items-center gap-3"
@@ -175,7 +161,9 @@ export function ChangelogModal({
                         {t('confirm')}
                     </button>
                 </div>
-            </div>
-        </div>
+            </motion.div>
+        </motion.div>
+        )}
+        </AnimatePresence>
     );
 }

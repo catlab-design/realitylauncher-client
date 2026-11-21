@@ -5,10 +5,10 @@
 | Property | Value |
 |---|---|
 | **Name** | Reality Launcher (package: `ml-tauri-poc`) |
-| **Version** | 4.0.2 |
+| **Version** | 5.3.1 |
 | **License** | GPL-3.0-only |
 | **Description** | ML-Launcher POC with Tauri + Rust — Minecraft launcher |
-| **Copyright** | 2026 SpaceLogic Studio <hi@catlabdesign.space> |
+| **Copyright** | 2026 CatLab Design <hi@catlabdesign.space> |
 | **Stack** | **Frontend**: React 19 + TypeScript + Vite 5 &nbsp;·&nbsp; **Backend**: Rust + Tauri v2 &nbsp;·&nbsp; **State**: Zustand 5 &nbsp;·&nbsp; **Styling**: Tailwind CSS v4 &nbsp;·&nbsp; **Animations**: Framer Motion 12 + GSAP &nbsp;·&nbsp; **Package Mgr**: Bun |
 | **Origin** | Electron-to-Tauri migration (see `docs/plans/`) |
 
@@ -22,6 +22,7 @@
 ├── docs/
 │   ├── gap-analysis-2026-06-30.md
 │   └── plans/2026-06-29-electron-to-tauri-migration.md
+├── agent/                             # Java agent for in-game branding (Maven; built jar is committed to src-tauri/resources/)
 ├── scripts/fix-asset-src.mjs          # Astro → Vite asset codemod
 ├── src/                                # React frontend source
 ├── src-tauri/                          # Rust + Tauri backend
@@ -30,6 +31,7 @@
 ├── vite.config.ts                      # Vite build config
 ├── tsconfig.json / tsconfig.node.json / tsconfig.bridge.json
 ├── bun.lock
+├── .gitlab-ci.yml                     # GitLab CI: check + build/release pipeline
 ├── LICENSE (GPL-3.0)
 └── CONTRIBUTING.md / CODE_OF_CONDUCT.md / SECURITY.md
 ```
@@ -43,10 +45,11 @@ src/
 ├── env.d.ts                          # Global type declarations
 ├── components/
 │   ├── LauncherApp.tsx               # Root component
-│   ├── LauncherAppLazyTabs.tsx       # Lazy-loaded tab re-exports
+│   ├── LauncherAppLazyTabs.tsx       # React.lazy tab chunks (memoized) + idle preloadTabs()
 │   ├── LauncherAppOverlays.tsx        # All modal dialogs
 │   ├── LauncherAppShell.tsx           # Shell (titlebar + sidebar + content)
 │   ├── LauncherAppTitleBar.tsx        # Custom title bar
+│   ├── PerfTab.tsx                    # React.Profiler wrapper (dev only)
 │   ├── SettingsDialog.tsx             # Settings overlay
 │   ├── launcherTheme.ts               # Theme color generation
 │   ├── auth/                         # Auth modals
@@ -71,10 +74,11 @@ src/
 │   │   ├── ModPackTabs/               # (16 files) CreateInstanceModal, etc.
 │   │   ├── settingsTabs/              # (10 files) Account, Java, Game, etc.
 │   │   └── wardrobe/SkinPreview3D.tsx
-│   └── ui/                            # Reusable UI primitives (18 components)
+│   └── ui/                            # Reusable UI primitives (19 components)
 │       ├── AnimatedGradientText.tsx
 │       ├── AppVersionBadge.tsx
 │       ├── BannerImage.tsx
+│       ├── BannerVideo.tsx            # Muted looping server banner video over its poster image
 │       ├── CalendarWidget.tsx
 │       ├── ChangelogModal.tsx
 │       ├── ConfirmDialog.tsx
@@ -94,19 +98,29 @@ src/
 ├── hooks/
 │   ├── useGameEvents.ts              # Game lifecycle event hook
 │   ├── useInstances.ts               # Instance fetching/mutation
+│   ├── useStableCallback.ts          # Stable-identity callback that always calls the latest closure
 │   └── useTranslation.ts             # i18n hook
 ├── i18n/
 │   ├── translations.ts               # Barrel export
 │   ├── translations-en.ts            # English (1111 keys)
 │   └── translations-th.ts            # Thai (732+ keys, default fallback)
 ├── lib/
+│   ├── apiBase.ts                    # API_BASE_URL + apiUrl(path, params) for frontend fetches (+ test)
 │   ├── bulkDelete.ts
 │   ├── constants.ts                  # COLOR_THEMES map
+│   ├── externalUrl.ts                # getSafeExternalUrl(): only http(s) links reach openExternal (+ test)
 │   ├── firstRunOnboarding.ts
 │   ├── installLock.ts
 │   ├── launchPolicy.ts
+│   ├── launchWatchdog.ts             # Play-button stall watchdog: trips after 5 min without launch/install progress (+ test)
 │   ├── microsoftLoginFlow.ts         # MS device code flow
+│   ├── performanceMode.ts            # effectiveVisuals(config): Performance mode → lite CSS, reduced motion, rainbow suspended (+ test)
+│   ├── pageVisibility.ts             # data-hidden on <html> while the window is hidden; isPageHidden() (+ test)
+│   ├── perfStats.ts                  # Pure frame/long-task summaries (+ perfStats.test.ts)
+│   ├── perfProbe.ts                  # Dev-only render/frame/long-task collector
+│   ├── perfBench.ts                  # Dev-only scripted bench (VITE_PERF_BENCH=1)
 │   ├── sounds.ts                     # Sound effects manager
+│   ├── tabKeepAlive.ts               # KEEP_ALIVE_TABS, nextMountedTabs, TabActiveContext/useTabActive (+ test)
 │   └── utils.ts                      # cn(), getContrastColor()
 ├── store/
 │   ├── authStore.ts                  # Auth state (persisted)
@@ -127,6 +141,8 @@ src/
 src-tauri/
 ├── Cargo.toml                        # Rust dependencies (tauri 2, serde, reqwest, sha, zip, discord-rp, etc.)
 ├── tauri.conf.json                   # App name, window config (360×380 fixed), bundle
+├── resources/reality-agent.jar       # Built branding agent, embedded with include_bytes! (rebuild: bun run build:agent)
+├── resources/badge.png               # 8×8 pixel-art Reality cube used as the tab-list badge glyph
 ├── build.rs
 ├── capabilities/default.json         # Security permissions
 ├── config/                           # Minecraft optimization configs
@@ -138,26 +154,34 @@ src-tauri/
     ├── lib.rs                        # Module declarations
     ├── http_client.rs                # (23 lines) Global shared reqwest::Client (pooled, HTTP/2, gzip, brotli)
     ├── download.rs                   # (315 lines) Shared concurrent download engine
+    ├── launch_log.rs                 # Per-launch launcher log (<instance>/logs/launcher.log) + redact() used by every log read
     ├── launcher.rs                   # (2127 lines) Game launch — largest module
     ├── auth.rs                       # Microsoft OAuth + CatID auth
     ├── config.rs                     # (335 lines) Config + RAM detection + folder migration (cancel/progress/rollback)
     ├── instances.rs                  # Instance CRUD + copy_dir_recursive_with_progress
     ├── op_guard.rs                   # Exclusive/shared operation guard (migration vs install/sync/launch)
+    ├── perf_tools.rs                 # Linux game wrappers: mangohud --dlsym / gamemoderun (+ linux_perf_tools command)
+    ├── wayland.rs                    # Wayland sessions: XWayland by default for launcher (GDK_BACKEND) and game (no WAYLAND_DISPLAY)
     ├── java.rs                       # Java detection/installation
     ├── modrinth.rs                   # Modrinth API
     ├── curseforge.rs                 # CurseForge API
-    ├── modpack.rs                    # Modpack install
+    ├── modpack.rs                    # Modpack install: .mrpack, CurseForge .zip, Prism/MultiMC instance .zip (mmc-pack.json)
+    ├── keybinds.rs                   # Pack keybinds (reality/keybinds.json): apply `key_` lines to options.txt on first install / Repair
+    ├── keybind_backups.rs            # Keybind backups (<app data>/keybind-backups/<instance id>/) + list/create/restore/delete commands
     ├── content.rs                    # Mod/resourcepack management
     ├── cloud.rs                      # Cloud sync, server instances, invitations
     ├── admin.rs                      # Admin commands (10)
     ├── update.rs                     # App update check/download/install
-    ├── fs_utils.rs                   # FS utilities (open, browse, clear cache)
+    ├── fs_utils.rs                   # FS utilities (open, browse, clear cache) + safe_file_name() for every network-supplied file name
+    ├── game_window.rs                # Game window title + icon file (instance icon / Reality logo) + default-icon fingerprints for the agent
     ├── window.rs                     # Window management
-    ├── discord.rs                    # Discord Rich Presence
+    ├── discord.rs                    # Discord Rich Presence (line 2 = agent game status, line 3 = "By <team>"; "Picking a Server" with the on-screen server logo)
     ├── social.rs                     # Server ping
     ├── telemetry.rs                  # Telemetry logging
     ├── wardrobe.rs                   # Minecraft + CatSkinC skin management
-    └── mod_meta.rs                   # Mod metadata helpers
+    ├── mod_meta.rs                   # Mod metadata helpers
+    ├── mappings.rs                   # Runtime names of tab-list members per version/loader (Mojang + intermediary/SRG mappings)
+    └── tab_badge.rs                  # Tab-list badge: resource pack, agent session file, /presence heartbeat
 ```
 
 ---
@@ -210,11 +234,13 @@ LauncherApp
 |---|---|---|---|
 | `authStore` | `store/authStore.ts` | Yes (`reality_auth_store`) | `session`, `accounts[]`, add/remove/update, logout |
 | `configStore` | `store/configStore.ts` | Yes (`reality_config`, v1) | All `LauncherConfig` fields, setConfig, resetConfig, setTheme, setLanguage |
-| `uiStore` | `store/uiStore.ts` | No | `activeTab`, `lastContentTab`, `wardrobeMode`, `settingsTab`, 9 modal booleans |
+| `uiStore` | `store/uiStore.ts` | No | `activeTab`, `lastContentTab`, `wardrobeMode`, `settingsTab`, `pickedServer` (Discord "Picking a Server"), 9 modal booleans |
 | `launchStore` | `store/launchStore.ts` | No | `launchingId` |
 | `progressStore` | `store/progressStore.ts` | No | `isInstalling`, `installProgress`, `operationType`, `installingInstanceId` |
 
 ConfigStore migration (v0→v1): `closeOnLaunch` changed from `boolean` to `'keep-open' | 'hide-reopen' | 'close'`.
+
+`javaArguments` defaults to `DEFAULT_JAVA_ARGUMENTS` (`configStore.ts`): `LauncherApp` writes it to config.json at startup when the key is absent (the game launch reads config.json, not the store). Every flag in it must be accepted by Java 8–25.
 
 ### 3.5 i18n
 - English: `translations-en.ts` — 1111 keys
@@ -254,20 +280,22 @@ ConfigStore migration (v0→v1): `closeOnLaunch` changed from `boolean` to `'kee
 | **config** | `config_get`, `config_set`, `config_get_minecraft_dir`, `config_migrate_minecraft_dir` (emits `migrate-progress`/`migrate-cancelled`/`instances-updated`), `cancel_migrate`, `reset_config` (preserves `minecraft_dir`), `get_system_ram`, `get_max_ram` |
 | **instances** | `instances_list`, `instances_get`, `instances_create`, `instances_update`, `instances_delete`, `instances_duplicate`, `instances_set_icon` |
 | **download** | `download_batch()`, `download_file()`, `DownloadItem`, `DownloadConfig`, `BatchResult` — shared concurrent engine used by modpack and cloud |
-| **launcher** | `is_game_running`, `kill_game` (emits `game-stopped`), `instances_launch`, `get_playing_instance_id`, `instance_read_latest_log`, `instance_tail_log`, `get_app_version`, `is_dev_mode`, `browse_java`, `instances_preinstall` |
-| **java** | `install_java`, `detect_java_installations`, `delete_java`, `test_java_execution`, `auto_detect_java` |
+| **perf_tools** | `linux_perf_tools` (Linux: which of mangohud/gamemoderun are on PATH, and whether the session is Wayland) |
+| **launcher** | `is_game_running`, `kill_game` (emits `game-stopped`), `cancel_launch` (abandons a launch whose game process isn't registered yet; never kills a running game), `instances_launch`, `get_playing_instance_id`, `instance_read_latest_log`, `instance_tail_log`, `instance_tail_launch_log`, `get_app_version`, `is_dev_mode`, `browse_java`, `instances_preinstall` |
+| **java** | `install_java` (Corretto, or Oracle GraalVM for 21/25 when `javaProvider` = `graalvm`; dirs `java/jdk-<n>` / `java/graalvm-jdk-<n>`), `detect_java_installations`, `delete_java` (both dirs), `test_java_execution`, `auto_detect_java` |
 | **admin** | `check_status`, `get_settings`, `save_setting`, `get_users`, `ban_user`, `unban_user`, `toggle_user_admin`, `create_user`, `get_user_details`, `get_system_info` |
 | **content** | mod/resourcepack CRUD + toggle + delete + install + lock |
 | **modrinth** | `modrinth_search`, `get_project`, `get_versions`, etc. |
 | **curseforge** | `curseforge_search`, `get_project`, `get_files`, `get_description`, `clear_cache` |
+| **keybinds** | `keybind_backups_list`, `keybind_backup_create` (returns `null` when unchanged / no keys), `keybind_backup_restore` (rejects `"game-running"`), `keybind_backup_delete` |
 | **modpack** | `install`, `install_from_modrinth`, `install_from_curseforge`, `cancel_install`, `pre_install`, `list_files` |
 | **update** | `check_latest_version`, `download_update`, `install_update` |
-| **fs_utils** | `open_folder`, `open_url`, `browse_directory`, `browse_icon`, `browse_modpack`, `launcher_clear_cache`, `check_dir_empty` |
+| **fs_utils** | `open_folder`, `open_url` (http(s) only via `validate_external_url`; Windows uses ShellExecuteExW, never `cmd`), `browse_directory`, `browse_icon`, `browse_modpack`, `launcher_clear_cache`, `check_dir_empty` |
 | **window** | `window_minimize`, `window_maximize`/`unmaximize`, `window_close`, `is_maximized`, `set_main_mode` |
 | **cloud** | joined servers, join/leave, cloud install/sync, invitations, notifications |
 | **discord** | `discord_rpc_set_enabled`, `discord_rpc_update`, `discord_rpc_is_connected` |
 | **social** | `server_ping` |
-| **telemetry** | `telemetry_log_event` |
+| **telemetry** | `telemetry_log_event`, `dev_perf_report` (debug builds print `PERF_REPORT <json>` to stdout; no-op in release) |
 | **wardrobe** | catskinc config/skin, minecraft profile/skin, auth_update_avatar_source |
 
 ### 4.3 Known Gaps (Unported Methods)
@@ -313,7 +341,8 @@ const KNOWN_UNPORTED = new Set(['fetchInstanceAgendas', 'fetchAllAgendas']);
 ## 6. Testing
 
 - **Framework**: `bun:test`
-- **Test file**: `src/api.test.ts` (120 lines)
+- **Test files**: `src/api.test.ts` (120 lines), `src/lib/apiBase.test.ts`, `src/lib/externalUrl.test.ts`, `src/lib/launchWatchdog.test.ts`, `src/lib/perfStats.test.ts`, `src/lib/tabKeepAlive.test.ts`, `src/lib/pageVisibility.test.ts`
+- **Perf bench** (dev only, real app): see §7; besides metrics it reports `checks` (install toast live, keep-alive layout/remount, rainbow CSS) — all must be `true`
 - **Run tests**: `bun test` or `bun test src/api.test.ts`
 - **Bridge parity validation**:
   1. Every `invoke('command_name')` in api.ts must exist as a `#[tauri::command] fn` in Rust
@@ -334,6 +363,8 @@ const KNOWN_UNPORTED = new Set(['fetchInstanceAgendas', 'fetchAllAgendas']);
 | `bun run tauri build` | Build production Tauri native app |
 | `bun test` | Run all tests |
 | `bun run check:bridge` | Typecheck bridge files |
+| `bun run build:agent` | Rebuild the branding Java agent (needs JDK + Maven) and copy it to `src-tauri/resources/` |
+| `VITE_PERF_BENCH=1 VITE_PERF_BENCH_EXIT=1 bun run tauri dev 2>&1 \| grep PERF_REPORT` | Dev-only perf bench: cycles tabs, scrolls Explore/Servers, fakes a progress burst, prints JSON, closes the window. Reads local data only. |
 
 ---
 
@@ -352,6 +383,7 @@ const KNOWN_UNPORTED = new Set(['fetchInstanceAgendas', 'fetchAllAgendas']);
 - Background: `#09090b`
 - Centered on screen
 - Linux: `WEBKIT_DISABLE_DMABUF_RENDERER` set automatically in main.rs
+- Linux Wayland: `wayland::configure_launcher` sets `GDK_BACKEND=x11` (XWayland) unless the `nativeWayland` config is on or the player set it; native mode on NVIDIA sets `__NV_DISABLE_EXPLICIT_SYNC=1`
 
 ---
 
@@ -365,8 +397,24 @@ const KNOWN_UNPORTED = new Set(['fetchInstanceAgendas', 'fetchAllAgendas']);
 5. **Some UI code still uses `window.api.X()`** from the Electron era — these are validated by the bridge parity test
 6. **Fonts are self-hosted** via `@fontsource` — works offline, no Google Fonts dependency
 7. **No `public/` directory** — all assets are in `src/assets/` and imported directly
-8. **No Docker** — CI lives in `.github/workflows/` (`build.yml` tag/manual-triggered build + R2/GitHub Release, `ci.yml`)
+8. **No Docker** — CI lives in `.gitlab-ci.yml`: `check` job on MRs/main pushes; `v*` tags or a manual run with `PIPELINE_TYPE=release` build Linux/Windows/macOS installers and publish to R2 + a GitLab Release (assets in the generic package registry); the opt-in `mirror:github` job (`MIRROR_GITHUB_RELEASE=true` + `GITHUB_TOKEN`) copies each release to GitHub Releases. Linux packages need GStreamer "good" plugins for `<audio>` (WebKitGTK): `.deb`/`.rpm` declare them in `tauri.conf.json` `bundle.linux`, and the AppImage bundles them (`bundleMediaFramework`), so `build:linux` installs them first
 9. **`src-tauri/src/download.rs`** — shared concurrent download engine using `tokio::sync::Semaphore` (default 8 concurrency). Accepts a progress callback, supports retry with backoff, SHA1/SHA256/SHA512 hash verification, atomic writes (temp + rename), JAR/ZIP validation, and per-error `missing_on_server` vs `failed` classification. Replaces old sequential loops in CurseForge modpack install (`install_cf_modpack`) and cloud sync (`sync_managed_mods`, `sync_server_mods` queue).
+
+11. **Store subscriptions** — always select fields (`useStore((s) => s.x)` or `useStore(useShallow((s) => ({ ... })))`); a bare `useXStore()` re-renders on every `set`, e.g. every install-progress tick or `setImmersive` on scroll. Handlers passed to the memoized shell/overlays/tabs go through `useStableCallback`
+12. **Library (ModPack) and Install (Explore) are kept mounted** after the first visit (`src/lib/tabKeepAlive.ts`). Effects that touch shared shell state (`setFullBleed`, `setImmersive`, listeners on the shared `<main>` scroller) must be gated on ModPack's `isActive` prop or `useTabActive()`, or they leak into other tabs
+13. **Rust release profile** is thin LTO (`codegen-units = 16`, `strip`, `opt-level = 3`); full LTO took ~16 min cold on 4 cores and was rejected for build time
+14. **`WEBKIT_DISABLE_DMABUF_RENDERER` is required** on the maintainer's Linux machine — never remove it as a perf fix; WebKitGTK's non-DMABuf path makes scroll repaint the main remaining cost
+15. **`src/components/ui/CalendarWidget.tsx` is dead and does not parse** (not imported anywhere). Plain `tsc -p tsconfig.json` only reports its syntax errors and hides every type error; exclude it to typecheck the app
+16. **Loader installers and zlib-ng** — Forge/NeoForge processors verify output jar SHA1s computed with classic zlib. Corretto on Linux links the system `libz`, which is zlib-ng on Arch/CachyOS/Fedora 40+, so installs fail. `installer_java()` in `launcher.rs` swaps in a JDK whose `lib/libzip.so` does not link `libz.so.1` (distro OpenJDKs in `/usr/lib/jvm`; with none, `java::install_installer_java` downloads a Temurin JRE — bundled zlib — once into `java/installer-jre-<major>`, hidden from game Java detection); only the installer run uses it, the game still runs on the resolved Java
+17. **In-game branding agent** — every launch adds `-javaagent:<mc dir>/agent/reality-agent.jar` plus `-Dreality.title` (`<instance> | Reality Launcher (<mc>-<launcher>)`), `-Dreality.mcversion`, `-Dreality.icon` (`<mc dir>/agent/window-icon.rlic`, RGBA at 16–256 px, instance `icon.png` — often WebP — or the Reality logo), `-Dreality.vanillaIcons` (CRC32 of the default `icons/*.png` RGBA from the asset index) and `-Dreality.brand`; `${version_type}` resolves to `Reality Launcher`. The agent only replaces Minecraft's *default* title (`Minecraft[*][ Forge| NeoForge][*] <ver>[ - …]` — Forge patches its name into `createTitle`; NeoForge puts the star after its name, `Minecraft NeoForge* 1.21.1` — and `Minecraft: (Neo)Forge…`) and only icons whose every image matches a default fingerprint, so mod-set titles/icons win. Hooks: `GLFW.glfwCreateWindow`/`glfwSetWindowTitle`/`glfwSetWindowIcon`, LWJGL2 `Display.setTitle`, Forge/NeoForge `BrandingControl.getBrandings`. Injected code is branch-free and java.base-only: it calls `Hooks.*` through `reality$*` static fields filled by reflection in `<clinit>`, so Forge module layers need not read the jar. macOS ignores `glfwSetWindowIcon` (dock icon stays). CI has no Maven: after editing `agent/`, run `bun run build:agent` and commit the jar (the build is reproducible)
+18. **Tab-list badge** (`tab_badge.rs`, `mappings.rs`, agent `TabBadges`/`TabScheme`) — 1.19–1.21.x only. Launch resolves runtime names (cached in `<mc dir>/mappings/<ver>/`, 60 s cap), writes `reality-badge.zip` into the instance and adds it to `options.txt`, and passes `-Dreality.session=<mc dir>/agent/session.properties` (0600; `self.uuids` = own offline + account UUIDs and `self.name` = player name, always badged because the API excludes the caller's session; lookup token added once `/presence/start` answers). `/presence/start` sends `uuids` + `name`, and `/presence/lookup` sends each row's `uuids` + `names`; a row is badged when its UUID **or** its name (lowercased) is live, because offline/proxy servers and tab plugins show other UUIDs. Presence is registered on every launch with an API token, even when this launch has no badge setup (`spawn_presence(None, …)`), so others still badge the player. The agent adds a `reality$badge` static field to the tab-list class (filled by reflection in `<clinit>`) and calls it from `getNameForDisplay`; Forge/NeoForge get both `official` and `srg` schemes and the matching one wins. Logo left of the head (1.19.3+): `HeadShiftPatch` (asm-tree) finds the head draw by shape — static void call with ≥3 int args followed by `iinc x 9`, after `info.getProfile()` — and adds `Hooks.HEADSHIFT` (10 for Reality rows: 2 px gap after the badge) right after the `ILOAD x` that feeds the call, so mixins reading the call's args see the moved x (Figura's `@ModifyArg` on the head size draws its avatar portrait at the x it gets; wrapping the call instead left the portrait over the badge); the name then gets `badge.head` = back-space U+E2A1 (−9, one badge advance), glyph U+E2A0, forward-space U+E2A2 (+10) from the pack's `space` provider. Needs the `realitylauncher-api` `/presence` routes (migration `0028_game_presence.sql`). The same launch passes `-Dreality.status=<mc dir>/agent/game-status.properties` (deleted at every launch): agent `GameStatus` reads the Minecraft and packet-listener classes and the tab-list getter off the unpatched `PlayerTabOverlay` bytecode (ctor arg 0; `GETFIELD …connection` + `()Ljava/util/Collection;` call), finds `getInstance`/`getConnection` by signature, and every 2 s writes `state=menu|singleplayer|server` + `players=N` (null connection = menu; a "Server thread" = singleplayer). `discord.rs` polls it every 5 s and shows line 3 as "By <teamName>" (owner name fallback) from `/instances/:id`
+19. **Launch timeout** — Play (`ModPack.tsx`, `ServerMenu.tsx`) uses `createLaunchWatchdog` (`src/lib/launchWatchdog.ts`): every `launch-progress`/`install-progress` event restarts a 5 min timer, and on a stall the UI calls `cancel_launch`, which bumps `LAUNCH_GENERATION` under the `GAME_PROCESS` lock so `launch_game` drops its child, and refuses if a game is already registered. Each Play press is its own `{ cancelled, watchdog }` object so a stale launch can't reset a newer one. Don't reintroduce a fixed wall-clock cap: first launches (mod sync, downloads, Forge installer) legitimately take minutes. `auth_refresh` (run before every launch) is capped at 30 s. Long silent steps must report progress: `run_loader_installer` streams the Forge/NeoForge installer's output as throttled `launch-progress` events (milestones only to launcher.log; the full log is `<installer>.log`) and kills the installer when the launch generation changes
+20. **Launch log and censoring** — `launch_log::start` (in `instances_launch`) recreates `<instance>/logs/launcher.log`; `emit_progress` writes each stage message there, `mark_stage` adds "took" lines for steps ≥ 1 s and prints `[Launcher] Stage <name>: N ms` to the console. Lines use Forge's layout (`[ddMMMyyyy HH:mm:ss.SSS] [Launcher/INFO] …`) so `LiveLog` parses them like game lines. Early game stderr is copied in until `latest.log` is written. `read_log_lines` passes every chunk (both logs) through `launch_log::redact`, so never log secrets anywhere expecting the viewer to hide them — but don't rely on the viewer either: keep tokens out of log messages. `LiveLog` reads launcher.log then latest.log, skips a latest.log older than the launch log's creation time, and clears when launcher.log shrinks (a new launch)
+21. **Launch caches** — `game_window` keeps encoded icons in `<mc dir>/agent/icons/<crc>.rlic` (8 most recent) and default-icon fingerprints in `assets/indexes/.<index>.icon-fingerprints`; the client jar has a `.<ver>.jar.verified` size+mtime marker; `mappings::resolve_tab_schemes` caches results in `mappings/<mc>/tab-schemes-<loader>.json`, keyed by launcher version, mapping SHA-1 and mcp_config — bump nothing by hand, a new launcher version invalidates it
+22. **Wayland** — on Wayland sessions with XWayland available, the launcher runs with `GDK_BACKEND=x11` and the game is spawned without `WAYLAND_DISPLAY` and with `XDG_SESSION_TYPE=x11` (GLFW 3.4 in MC 1.20.2+ otherwise picks native Wayland: no window icon/position, agent icon swap has no effect). `nativeWayland` opts out. The maintainer's machine (NVIDIA 470, XFCE X11) can't run a Wayland compositor, so Wayland changes can only be checked on another machine
+24. **Banner videos** — `bannerUrl` is always an image; a server's optional video is `bannerVideoUrl` (API column `banner_video_url`, stored as `banner-video.<mp4|webm>` at the instance root, served by `/storage/assets/instance/:id/banner-video` with byte ranges, kept out of sync manifests and packs). The management site uploads a WebP still of the video as `banner`, so older launchers and every card keep working. Only the Servers hero (`ServerItem.tsx`) and `ServerDetailView` play it, through `BannerVideo` (hidden under reduced motion/Performance mode, paused while the window is hidden, poster on error). WebKitGTK plays WebM (VP8/VP9) with the bundled GStreamer "good" plugins; H.264 MP4 needs `gst-libav`, so MP4 may show only the poster on Linux
+23. **Server sync never deletes player mods** — `cloud::cleanup_unmanaged_mods` (used by pack v2, `.mrpack`, managed and per-file syncs) removes a top-level `mods/*.jar[.disabled]` only if `.reality/managed-mods.json` (the previous sync's keep set, rewritten every sync) lists it and the server no longer ships it; locked mods are always kept. With no record yet it removes everything except keep, locked and mods with an Explore content link (`.reality-content-links.json`)
+25. **Pack keybinds** — `reality/keybinds.json` (pack v2) is applied by `keybinds.rs` only on first install (no `.reality/pack-state.json` and no `options.txt`, checked before any file is written) and on Repair (a "before-repair" backup is taken first; keys are written only if that backup step succeeded). Only `key_` lines in `set` change. Backups live in `<app data>/keybind-backups/<instance id>/`, 30 max, automatic ones pruned first; restore is blocked while the game runs (`KeybindBackupsSection` checks `isGameRunning`, backend rejects `"game-running"`)
 
 ---
 

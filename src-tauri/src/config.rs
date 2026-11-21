@@ -48,6 +48,21 @@ pub struct LauncherConfig {
     pub theme: String,
     #[serde(rename = "maxConcurrentDownloads", default = "default_max_concurrent_downloads")]
     pub max_concurrent_downloads: u32,
+    /// Linux only: wrap the game with `mangohud --dlsym`.
+    #[serde(default)]
+    pub enable_mango_hud: bool,
+    /// Linux only: wrap the game with `gamemoderun`.
+    #[serde(default)]
+    pub enable_game_mode: bool,
+    /// Linux Wayland sessions: run the launcher and game natively on Wayland
+    /// instead of through XWayland (see `wayland.rs`).
+    #[serde(default)]
+    pub native_wayland: bool,
+    /// Where Settings › Java and automatic installs get Java 21+: `graalvm`
+    /// (Oracle GraalVM) or anything else for Amazon Corretto. Java 8/17 always
+    /// come from Corretto; Oracle has no current GraalVM builds for them.
+    #[serde(default)]
+    pub java_provider: String,
     
     
     #[serde(flatten)]
@@ -66,6 +81,10 @@ impl Default for LauncherConfig {
             auto_update_enabled: true,
             theme: "dark".to_string(),
             max_concurrent_downloads: 8,
+            enable_mango_hud: false,
+            enable_game_mode: false,
+            native_wayland: false,
+            java_provider: String::new(),
             extra: std::collections::HashMap::new(),
         }
     }

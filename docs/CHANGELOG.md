@@ -1,3 +1,184 @@
+## [5.3.1] — 2026-11-21
+
+### Fixed
+- Some players who play through Reality were missing the Reality logo in the tab list. Two causes:
+  - The logo was matched only by the player's UUID, but many servers show a different UUID in the tab list than the one the launcher knows: offline-mode servers behind a proxy, and plugins such as TAB that draw their own tab rows. The logo now also matches by player name.
+  - A player was only announced as a Reality player when the logo could be set up in their own game (it can't on Minecraft versions without the tab-list logo, or when the launcher couldn't get the game's names in time). They're now announced on every launch, so other players see their logo either way.
+
+  Both players need 5.3.1 for name matching; a player on an older launcher still shows the logo on servers where the UUID matches.
+
+## [5.3.0] — 2026-11-21
+
+### Added
+- Pack keybinds: a server pack can ship default key bindings (`reality/keybinds.json`). They are applied to `options.txt` on the first install of an instance and again on Repair; only `key_` lines named by the pack change, everything else in `options.txt` is kept.
+- Keybind backups in instance settings (Installation tab): back up your keys manually, restore or delete a backup. The launcher also backs up automatically before Repair and before a restore. Backups are kept in the launcher data folder (`keybind-backups/<instance id>/`), 30 per instance (automatic ones are removed first). Restore is blocked while the game is running.
+- Repair while the game is running still takes the keybind backup but leaves `options.txt` alone, because Minecraft writes its own settings back when it closes. Close the game and run Repair again to apply the pack's keys.
+- Keybind entries in a pack that aren't valid Minecraft key names (for example values containing line breaks) are skipped, so a pack's keybinds can never add or change other lines in `options.txt`.
+- Import Prism Launcher and MultiMC instance exports (`.zip` with `mmc-pack.json`) from Library › Import: Minecraft version and loader (NeoForge, Forge, Fabric, Quilt) come from `mmc-pack.json`, the name and icon from `instance.cfg`, and the `minecraft/` (or `.minecraft/`) folder is copied into the new instance. Mods listed in `.index/*.pw.toml` but not bundled in the export are downloaded from their recorded URL and hash-checked. Large exports are copied as a stream with progress and can be cancelled.
+
+## [5.2.3] — 2026-11-10
+
+### Security
+- Windows: clicking a crafted link inside the launcher (mod/modpack descriptions from Modrinth or CurseForge, server pages, changelogs) could run commands on the computer. `open_url` passed the URL to `cmd /C start` unquoted, so characters such as `&` or `|` split off a second command. Links are now opened with `ShellExecuteExW` (no command interpreter), and on every platform the backend only accepts absolute `http`/`https` URLs with a host, re-serialised by a URL parser so spaces and quotes are percent-encoded. The frontend uses the same check (`src/lib/externalUrl.ts`) instead of `startsWith('http')`, which also let through look-alike schemes such as `http-foo:`.
+- Downloads could be written outside the instance folder when a server or API returned a file name with `..`, a path separator or an absolute/drive path (GHSA-jxjf-mwvh-cw58): cloud sync of managed mods without a `path` (`fileName`), content installs from Modrinth/CurseForge (`filename`/`fileName`) and the temporary `.mrpack` download. These names now go through `fs_utils::safe_file_name` (one plain file name: no `/`, `\\`, `:`, NUL or control characters, not `.`/`..`); an unsafe name fails that file (cloud sync reports it as "Path traversal blocked"), and the `.mrpack` temp file falls back to `modpack.mrpack`. Local mod rename/delete use the same check.
+
+## [5.2.2] — 2026-11-07
+
+### Fixed
+- With Figura installed, the Reality logo in the tab list was missing for players with a Figura avatar: their avatar head was drawn where the logo goes, and the head's own spot stayed empty (or showed the head twice). Figura draws the avatar head from the position the game passes to the head drawing, which the launcher only moved afterwards. The head position is now moved first, so the Figura head sits after the logo like every other head. Turning on Figura's panic mode was a workaround and is no longer needed.
+
+## [5.2.1] — 2026-11-04
+
+### Added
+- Server banners can now be a GIF or a short looping video. On the Servers tab, the featured server and the server page play the video, muted, over the banner image; server cards, Home and the Library show a still from the video. The video doesn't play with Performance mode or reduced motion on, pauses while the launcher is minimized or hidden, and the still is shown if the video can't play (MP4 on Linux systems without `gst-libav`; WebM is the safe choice). Server owners add the video from the management site.
+
+## [5.2.0] — 2026-11-04
+
+### Added
+- Auto-updates are now cryptographically verified. Each released installer is signed with minisign in CI, and the launcher verifies the downloaded package against an embedded public key (fetching the detached `<installer>.minisig` from the CDN) before it is ever renamed into place, stashed, or run — including on the silent install-on-exit path. A missing, malformed, or mismatched signature deletes the download and aborts the update, so a tampered or wrong-origin package can't be installed. Download and signature URLs are also restricted to an allowlist of trusted hosts (`cdn.reality.catlabdesign.space`, `gitlab.com`), so a tampered release manifest can't redirect the client to an arbitrary host.
+- Settings › Java › Download Java from: Amazon Corretto (default) or Oracle GraalVM. With GraalVM chosen, Install and automatic installs of Java 21 and 25 download Oracle GraalVM (`java/graalvm-jdk-<version>`); Java 8 and 17 still come from Corretto, since Oracle no longer offers GraalVM for them. Java that's already installed is kept and still used.
+- Discord Rich Presence follows the game: the second line shows "Playing in Main Menu", "Playing Singleplayer" or "Playing with N online" (N = players in the server's tab list), reported by the in-game agent every 2 s (Minecraft 1.19–1.21.x, the versions with the tab-list badge; others show "Playing"). For server instances the third line is "By <team>" (the team that made the instance, or its owner), instead of the player name; the player name stays on the avatar tooltip.
+- Discord Rich Presence on the Servers tab shows "Picking a Server" with the name and logo of the server on screen (the featured one, or the one whose page is open), and your avatar, like while playing. Leaving the tab goes back to the usual status.
+- Java arguments now have a default (`-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+DisableExplicitGC`, accepted by Java 8–25). It's filled in once for players who never set their own, can be edited any time in Settings › Game & Performance, and "Use Default" restores it. Instances with their own arguments keep them.
+
+### Fixed
+- Mods a player added to a server instance themselves (from Explore or dropped into `mods/`) were deleted by the next sync or launch with auto-update on, because every sync removed any jar the server didn't ship. Syncs now remember which mods they installed (`.reality/managed-mods.json`) and only remove those the server has since dropped; everything else the player added is kept. On the first sync after updating, before that record exists, mods installed from the launcher's Explore tab and locked mods are kept.
+- Disabling a mod that a server admin added to a server instance didn't stick: the next sync or launch saw `<mod>.jar` missing and downloaded it again, so the mod came back enabled. Syncs (pack v2, `.mrpack`, managed and per-file server mods, overrides) now treat `<file>.disabled` as the installed copy: it's checked in place, a newer version from the server is written there so the mod stays disabled, and the enabled copy older syncs re-downloaded next to it is removed.
+- Forge instances without a chosen Forge build failed with `Forge installer download failed: HTTP 404 Not Found (…/forge/1.20.1-latest/forge-1.20.1-latest-installer.jar)`: the launcher put the word "latest" into the download URL. An empty, "latest" or "recommended" loader version is now resolved to a real build before install (Forge from its promotions, NeoForge/Fabric/Quilt to their newest build) and saved on the instance, so later launches reuse the installed loader.
+- NeoForge instances failed to install with HTTP 404: the launcher put the Minecraft version in front of the NeoForge version (`neoforge/1.21.1-21.1.264/…`), but NeoForge for 1.20.2+ is published as `neoforge/21.1.264/…`. NeoForge for 1.20.1 now uses its own `net.neoforged:forge:1.20.1-47.1.x` artifact. The game now also finds the patched NeoForge client jar at launch. The NeoForge version list for 1.20.1, which was empty, now lists those builds, newest first.
+- NeoForge 1.21.1 crashed at start with `IllegalStateException: Duplicate key …gson-2.10.1.jar`: libraries listed by both NeoForge and the vanilla version it builds on (gson, guava, log4j, slf4j, …) went on the classpath twice. Each library is now added once, and the loader's copy is kept. After that it failed with `ResolutionException: Module minecraft contains package …`: NeoForge 1.20.2+ loads the game jar itself, so the launcher no longer also puts a client jar on the classpath for it.
+- NeoForge 1.20.2+ kept the default window title (`Minecraft NeoForge* 1.21.1`) instead of the Reality Launcher one: NeoForge puts the modified-game star after its name, which the agent didn't recognise as Minecraft's default title.
+- Forge/NeoForge still failed to install with `Processor failed, invalid outputs` on Linux distros with zlib-ng (Arch, CachyOS, Fedora 40+) when no distro OpenJDK was installed. The launcher now downloads a Temurin JRE of the same version once (`java/installer-jre-<version>`, about 45 MB) and runs only the loader installer with it; Temurin has its own zlib. The download shows as launch progress, and the game still runs on the usual Java.
+- Game Logs, left open across a new Play press, could keep the previous launch's lines and pick up the new launch log from the middle when the new log had already grown past the old one by the next poll; the game's rotated `latest.log` had the same problem. A new log file is now detected by its creation time (file size is still the fallback), so Game Logs starts over for each launch.
+- First launch of a Forge/NeoForge instance was cancelled with "Launch cancelled: no progress for 5 minutes" while the loader installer was still working (slow connection or CPU): the installer ran silently, so the Play watchdog saw no progress, and the installer kept running after the cancel. Its output now counts as launch progress (shown as "Installing Forge: …"), its phases (`Downloading libraries`, `Building Processors`, `Task: …`) and the path of its full log appear in Game Logs, a minute without output logs its last line, and cancelling a launch stops the installer. It also no longer blocks a background worker thread while it runs.
+- Launcher sounds were silent on Linux systems without GStreamer's "good" plugins (`GStreamer element autoaudiosink not found`). The `.deb` now depends on `gstreamer1.0-plugins-good` and the `.rpm` on `gstreamer1-plugins-good`. The AppImage now bundles GStreamer and its plugins, so it doesn't rely on the system's.
+
+### Changed
+- Discord Rich Presence no longer shows "Playing X/Y" (launcher members in game / members) for server instances; see the new in-game status above.
+
+## [5.1.0] — 2026-10-22
+
+### Added
+- Game Logs now start at the Play press: the launcher writes its own log for each launch (`<instance>/logs/launcher.log`) with the sign-in check, session status, server file sync, client/libraries/assets checks, Java, mod loader, memory, how long each slow step took, early game errors that never reach `latest.log` (bad JVM flags, out of memory), and the game's exit code. Game Logs shows it above Minecraft's own log and clears when a new launch starts. Sensitive text is censored in both logs: tokens, passwords, e-mail and IP addresses, the home folder in paths, and the player name.
+- Settings › Game & Performance › Native Wayland (Wayland sessions only), off by default.
+- Settings › Game & Performance › Linux performance (Linux only): toggles to run the game under MangoHud (`mangohud --dlsym`, in-game FPS/frame-time overlay) and Feral GameMode (`gamemoderun`). Each toggle is disabled with an install hint when the tool isn't on PATH.
+- In-game branding: the game window title is now `<instance name> | Reality Launcher (<game version>-<launcher version>)` and the window icon is the instance icon (the Reality logo when the instance has none). Only Minecraft's default title and icon are replaced, so modpacks/mods that set their own keep them. "Reality Launcher" also shows on the title screen and the F3 debug screen. Done with a small bundled Java agent (`agent/`) that patches LWJGL's window title and Forge/NeoForge's title-screen branding; vanilla/Fabric/Quilt show it through `--versionType`.
+- Reality badge in the multiplayer tab list (1.19–1.21.x, all loaders): players currently playing through Reality Launcher (including yourself) get a small Reality logo in front of their head (1.19.3+; before the name on servers without heads and on 1.19–1.19.2). Works on any server, visible to Reality users. The launcher registers the running game with the API (`/presence/*`, needs the matching backend), installs a tiny badge resource pack, and the agent patches the tab list using names resolved from Mojang/Fabric/Forge mappings.
+
+### Fixed
+- Installing or syncing a server pack could report every pack file as failed ("199 file(s) failed to download — the modpack is incomplete") when the one big layer download broke or two syncs ran at once: the layer went to a fixed temp file shared by all syncs, and a failed layer failed all of its files. Each sync now uses its own temp file, files from a layer that didn't download or unpack are fetched one by one from their own URLs (with retries), and the error now includes the first failure's reason.
+- Wayland: blank or crashing launcher windows ("Error 71 (Protocol error)", NVIDIA), no centering, and broken moving/resizing of the launcher window; Minecraft 1.20.2+ switching to native Wayland, where the window icon and position don't work. On Wayland sessions the launcher and the game now run through XWayland by default (`GDK_BACKEND=x11`; the game gets no `WAYLAND_DISPLAY`). The Native Wayland setting turns this off, and then disables NVIDIA explicit sync for WebKitGTK. Variables set by the player are left alone.
+- "Game launch timed out" fired 2 minutes after pressing Play even while the launch was still working (server mod sync, downloads, Forge installer). In the Library the game then opened anyway after the error; in the Servers tab the launcher killed the game as soon as it started, so a slow first launch of a server pack could never succeed. The timeout now only trips after 5 minutes with no progress at all, abandons the launch cleanly (new `cancel_launch` command, which never touches a game that is already running), and a late result no longer clears the state of a newer launch.
+- Pressing Play could hang silently: the account refresh that runs before every launch (up to 8 requests to the API, Microsoft, Xbox and Minecraft) had no overall time limit. It is now capped at 30 s with a clear error, and its outcome and duration are logged (`[Auth] Refresh …`).
+- Game Logs opened from the Servers tab showed no logs for server instances: it was given the server's cloud id instead of the local instance folder, so it read a `latest.log` that doesn't exist. It now uses the same local-id lookup as Play.
+- Forge/NeoForge install failed on Linux distros that ship zlib-ng (Arch, CachyOS, Fedora 40+) with `Processor failed, invalid outputs` / checksum mismatches. The bundled Corretto JDK compresses through the system zlib-ng, which produces different jar bytes than Forge expects. The loader installer now runs with an installed JDK that bundles its own zlib (same or newer major) when one is available; otherwise the error explains the cause.
+- Game Logs: lines were split into two entries when a poll landed mid-line; only complete lines are read now.
+- Game Logs: a non-UTF-8 byte or a read starting mid-character dropped a whole chunk of log silently; logs are now decoded lossily.
+- Game Logs: Forge logs (`[22Oct2026 13:50:53.856] …`) showed no timestamps.
+- Game Logs: stack-trace lines were labelled INFO and hidden by the ERROR/WARN filters; untimestamped lines now inherit the level of the line above.
+- Game Logs: Reload rendered the full log uncapped and kept tailing from the old offset (duplicate lines); it now restarts the tail.
+- Loader installer failures no longer dump the installer's entire output (~20k lines) into the error; only the last 40 lines are kept.
+
+### Perf
+- **Faster launches.** Steps that redid the same work on every launch are now cached (dev-build timings for a Forge 1.20.1 server pack, before the change):
+  - window icon: decoding and resizing the instance icon and Minecraft's default icons (12.2 s);
+  - client jar: re-hashing the ~25 MB jar, now checked by size and date after its first verification (2.6 s);
+  - tab-list badge names: re-hashing and re-parsing ~10 MB of mappings (1.2 s);
+  - server sync: two independent API requests now run at the same time.
+- The console log prints how long each launch step took (`[Launcher] Stage …`).
+
+## [5.0.2] — 2026-10-20
+
+### Fixed
+- Game install/launch could fail with `Rename error: …\assets\objects\xx\<hash> - The system cannot find the file specified (os error 2)`. Asset names that share a hash were downloaded twice at once into the same temp file; assets are now de-duplicated and each download uses its own temp file.
+
+## [5.0.1] — 2026-10-18
+
+### Perf
+- **Snappier while installing or syncing:**
+  - Components subscribe to only the store fields they use, instead of whole stores.
+  - The install-progress toast subscribes to progress on its own.
+  - The shell, overlays and tabs are memoized, with stable callbacks (`useStableCallback`).
+  - Result: progress ticks no longer re-render the whole app (app renders during a 3s progress burst: 26 → 3).
+- **Smoother scrolling on Servers:** scrolling no longer re-renders the app on every scroll event (renders 125 → 11 per scroll pass).
+- **Faster tab switching for Library and Install:** they stay mounted after the first visit and are hidden instead of torn down, so going back keeps their view and data without rebuilding. Their full-bleed/immersive layout and scroll effects pause while hidden (`src/lib/tabKeepAlive.ts`).
+- **Less work while the window is hidden:** looping animations, the rainbow-mode timer and the Home news autoplay pause (`src/lib/pageVisibility.ts`).
+- **Faster startup:** startup loads 696 KB of JS instead of 1,998 KB (−65%):
+  - tabs other than Home load on demand (`React.lazy`) and are prefetched once the app is idle;
+  - vendor code is split into `vendor-react` / `motion` / `gsap` / `markdown` / `skinview3d` chunks;
+  - the changelog modal and its markdown stack load on first open.
+- **Smaller assets:**
+  - The datapack badge icon shrank from a 1.47 MB PNG to a 1 KB WebP.
+  - The unused Prompt 300 font weight was dropped.
+- **Rust release profile:** thin LTO, `codegen-units = 16`, stripped symbols, `opt-level = 3`.
+
+### Fixed
+- Servers › Explore was always empty: the public server list built its request from `window.API_URL`, an Electron-era global that nothing sets under Tauri, so the URL threw and the error was swallowed. The list and the post-update "What's new" changelog now use a shared API base (`src/lib/apiBase.ts`).
+- Library and Install, which now stay mounted, reload their instance lists every time you return to them, so instances created or installed elsewhere show up right away.
+
+### Added
+- **Performance mode** (Settings › Appearance, off by default) for slower PCs:
+  - turns off backdrop blur, page/tab transitions and hover motion (`MotionConfig reducedMotion="always"`), and decorative looping animations;
+  - suspends Rainbow Mode while on, without changing the saved choice;
+  - loading spinners and skeletons keep running (`src/lib/performanceMode.ts`, `:root[data-perf-lite]`).
+- Dev-only performance bench:
+  - Run `VITE_PERF_BENCH=1 VITE_PERF_BENCH_EXIT=1 bun run tauri dev`.
+  - It cycles tabs, scrolls Install/Servers, fakes a progress burst and runs behavior checks.
+  - It prints `PERF_REPORT <json>` via the debug-only `dev_perf_report` command.
+  - It is not included in production builds.
+
+## [5.0.0] — 2026-10-18
+
+### Added
+- Mirror GitLab releases to GitHub Releases (`mirror:github`, opt-in via `MIRROR_GITHUB_RELEASE`)
+- Launcher self-update: re-checks every 30 minutes while open, auto-downloads, then restarts into the new version after a 15-second countdown ("Restart now" / "Later"); while a game is running, or after "Later", the update installs silently when the launcher closes (`set_install_update_on_exit`)
+- Windows runs the NSIS installer passively (`/P /R /UPDATE`, progress bar only, relaunches when done); macOS swaps the `.app` out of the downloaded `.dmg` after exit (old bundle kept until the copy succeeds, quarantine flag cleared); Linux replaces the running AppImage in place — falls back to opening the package when the app can't replace itself (deb/rpm installs, read-only locations)
+- Server gallery: images uploaded in the Portal show under the server description and in a landscape "Read more" story modal with a 16:9 viewer, thumbnails and lightbox
+- Official / Partner verification badges on servers and the instance page
+- Server status cards (IP, favicon, live MOTD) and arrow-scrolled rails (`ScrollStrip`) for server carousels and the hero thumbnail rail
+- Library "continue playing" hero and Home quick-link tiles inside the news hero
+- Skin Manager 3D preview room (white tiles and light tubes, MineDevice-style pixel art) behind the skin model
+- Shared motion presets (`src/lib/motion.ts`) with reduced-motion support: page and panel transitions, showcase hero entrances, cascading mod-list rows
+- RAM slider presets shared between Settings › Game and the instance Java tab (`RamSlider`, `RamPresetChips`)
+- Pack v2 sync: installs server packs from their manifest and layers
+
+### Changed
+- About links to the GitLab project (GitLab icon and label)
+- CI moved from GitHub Actions to GitLab CI (`.gitlab-ci.yml`): MR/main build check, tag- or manually-triggered multi-platform build, R2 upload and GitLab Release
+- Full v5 redesign: title-bar text navigation, Home news billboard, Steam-style Server List, redesigned settings, Install (Explore), instance page, server detail page, Skin Manager, login/CatID/Microsoft modals and toasts with a step log
+- Navigation renamed: Modpacks → Library (ไลบรารี), Explore → Install (ติดตั้ง)
+- The instance "add content" browser is now the same UI as the Install page (toolbar, list, preview)
+- Library cards show the icon beside the name at the top; the auto-update badge is a switch
+- Discord Rich Presence (crate 1.x) shows the server / instance name as the activity name while playing
+- CatSkinC follows the current mod API and takes its default host from the published `servers.json` (`globalIp`, cached hourly), falling back to `storage-skin.catlabdesign.space`
+- Caches with stale-while-revalidate for the server list and images, Install search results and project details, and Home news (with a loading skeleton)
+
+### Fixed
+- Saved accounts no longer disappear after login or on a cloud auth error; "Invalid Minecraft access token" on CatID link/refresh fixed by sending a Mojang player-certificate proof (the API can't reach Mojang from Workers)
+- Fabric/Quilt instances failed to launch with no main class: the loader profile libraries (loader, intermediary, mixin, asm) were never downloaded
+- The progress toast stayed open after a launch's mod sync completed
+- The custom background image was never saved: the persisted store exceeded the localStorage quota before the disk save ran
+- CatSkinC sync failed with `error sending request for url (https://storage-api.catskin.space/auth/session)`: saved hosts on the retired `catskin.space` domain are migrated to the current default (and rewritten in the instance's `catskinc.json` so the mod follows)
+- `default_catskinc_url()` recursed forever when the default host was the built-in one
+- Opening an instance from the Library kept the Library's scroll position instead of starting at the top
+- Tab indicator pills could land misaligned during page transitions
+- The update toast claimed the update "will install on next launch" although nothing installed it
+
+## [4.2.1] — 2026-08-23
+
+### Security
+- Replaced the native OpenSSL TLS backend with rustls (`reqwest` `default-features = false` + `rustls-tls`), removing the `openssl` crate from the dependency tree entirely — clears all eight tracked rust-openssl advisories (heap buffer overflows, out-of-bounds reads/writes, undefined behavior)
+- Upgraded Vite 5 → 6.4.3, clearing every tracked Vite advisory: the Windows `server.fs.deny` bypass, the optimized-deps path traversal, the launch-editor NTLMv2 hash disclosure (dev-only), and the `.map` handling path traversal
+- Updated transitive Rust dependencies across the board (`cargo update`: bytes, time, rand, serde_with, rustls-webpki, and others) to pick up patched releases
+- Replaced URL substring matching (`url.includes("discord.gg")`) in ServerDetailView social-link handling with parsed-hostname checks — closes both CodeQL `incomplete-url-substring-sanitization` alerts
+
+### Fixed
+- Cloud/server features no longer fail with stale-session errors: every authenticated cloud request (joined servers, join/leave, cloud install/sync, integrity check, invitations, notifications) now detects a 401, transparently force-refreshes the session's API token once (Microsoft chain re-mints it server-side), and retries with the fresh token — a 401 is always rejected before execution, so the retry can never duplicate work; only if the retry also fails does the user see the session-expired prompt
+- Cloud manifest/metadata/mod-list fetches used during installs and syncs self-heal the same way, including their ETag-cached revalidation paths
+- CurseForge/Modrinth modpacks using NeoForge were installed as Vanilla — the CurseForge manifest loader detection only knew "forge"/"fabric" and the mrpack dependency check had no "neoforge" case; both now detect NeoForge (and CurseForge Quilt) and extract the loader version correctly (`neoforge-21.1.77` → `21.1.77`, legacy `neoforge-1.20.1-47.1.104` → `1.20.1-47.1.104`)
+- NeoForge instances launched against the vanilla client jar: the patched-client-jar lookup used the bare loader version while the Maven layout uses `{mc}-{loader}` (e.g. `1.21.1-21.1.77`), so the NeoForge client jar was never found on the classpath; install-time verification, classpath building, and native fingerprinting now all use the same resolved version, and legacy MC-prefixed version strings no longer get the MC version duplicated
+- Forge/NeoForge installs could leave missing loader libraries and cryptic launch failures: the installer download had no HTTP-status or integrity check (a Maven error page could be saved as the installer JAR), and the library list produced by the installed loader was never ensured by the launcher — installers are now verified (HTTP status, JAR signature, published Maven SHA-1) and the loader's libraries are downloaded through the retrying download engine after install, including on later launches so partial installs self-repair
+
 ## [4.2.0] — 2026-08-19
 
 ### Added

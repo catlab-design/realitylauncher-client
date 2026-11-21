@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useCallback } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { playClick } from "../../lib/sounds";
+import { useMotionPreset } from "../../lib/motion";
 import SimpleMarkdown from "./SimpleMarkdown";
 import { useTranslation } from "../../hooks/useTranslation";
 
@@ -38,6 +40,7 @@ interface NotificationInboxProps {
 
 export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNotificationChanged, colors, announcements = [], notifications = [], isFullscreen = false }: NotificationInboxProps) {
     const { t, language } = useTranslation();
+    const m = useMotionPreset();
     const [activeTab, setActiveTab] = useState<'news' | 'system'>('system');
     const [invitations, setInvitations] = useState<Invitation[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -150,21 +153,26 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
         });
     };
 
-    if (!isOpen) return null;
-
     return (
         <>
-            <div
-                className="fixed inset-0 z-[99]"
-                onClick={onClose}
-            />
-            <div
-                className={`absolute top-full right-0 mt-3 rounded-2xl shadow-2xl overflow-hidden z-[100] transition-all duration-200 animate-in fade-in zoom-in-95 ${isFullscreen ? 'w-[560px]' : 'w-[480px]'}`}
+            {isOpen && (
+                <div
+                    className="fixed inset-0 z-99"
+                    onClick={onClose}
+                />
+            )}
+            <AnimatePresence>
+            {isOpen && (
+            <motion.div
+                key="notification-inbox"
+                className={`absolute top-full right-0 mt-3 rounded-2xl shadow-2xl overflow-hidden z-100 ${isFullscreen ? 'w-140' : 'w-120'}`}
                 style={{
                     backgroundColor: colors.surface,
                     border: `1px solid ${colors.outline}`,
                     boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
                 }}
+                variants={m.popover("bottom-end")}
+                {...m.states}
             >
                 <div
                     className="px-5 py-4 flex items-center justify-between relative"
@@ -485,7 +493,9 @@ export function NotificationInbox({ isOpen, onClose, onInvitationAccepted, onNot
                         </div>
                     )}
                 </div>
-            </div>
+            </motion.div>
+            )}
+            </AnimatePresence>
         </>
     );
 }

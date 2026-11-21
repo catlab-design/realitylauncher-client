@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useMotionPreset } from "../../lib/motion";
 import { Icons } from "../ui/Icons";
 import { Skeleton } from "../ui/Skeleton";
 import { useTranslation } from "../../hooks/useTranslation";
@@ -33,6 +35,7 @@ interface Props {
 
 export default function UserManagement({ colors, adminToken, language }: Props) {
     const { t } = useTranslation(language as any);
+    const m = useMotionPreset();
     const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
@@ -212,10 +215,10 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
                     className="flex-1 px-3 py-2 rounded-lg text-sm"
                     style={inputStyle}
                 />
-                <button onClick={handleSearch} className="px-4 py-2 rounded-lg" style={{ backgroundColor: colors.secondary, color: colors.onPrimary }}>
+                <button onClick={handleSearch} className="px-4 py-2 rounded-lg pressable" style={{ backgroundColor: colors.secondary, color: colors.onPrimary }}>
                     <Icons.Search className="w-4 h-4" />
                 </button>
-                <button onClick={() => setAddModalOpen(true)} className="px-4 py-2 rounded-lg flex items-center gap-1" style={{ backgroundColor: "#22c55e", color: "#fff" }}>
+                <button onClick={() => setAddModalOpen(true)} className="px-4 py-2 rounded-lg flex items-center gap-1 pressable" style={{ backgroundColor: "#22c55e", color: "#fff" }}>
                     <span>+</span> {t('add_user')}
                 </button>
             </div>
@@ -240,7 +243,7 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
                     ))}
                 </div>
             ) : (
-                <div className="space-y-2">
+                <motion.div key={`users-page-${page}`} className="space-y-2" variants={m.fadeIn} initial="hidden" animate="show">
                     {users.length === 0 ? (
                         <p className="text-center py-4" style={{ color: colors.onSurfaceVariant }}>{t('no_users_found')}</p>
                     ) : (
@@ -260,13 +263,13 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
                                     <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{user.email}</p>
                                 </div>
                                 <div className="flex gap-1">
-                                    <button onClick={() => openViewModal(user.id)} className="p-2 rounded-lg" style={{ backgroundColor: colors.surface }} title={t('view_details')}>
+                                    <button onClick={() => openViewModal(user.id)} className="p-2 rounded-lg pressable" style={{ backgroundColor: colors.surface }} title={t('view_details')}>
                                         <Icons.Info className="w-4 h-4" style={{ color: colors.onSurface }} />
                                     </button>
                                     <button
                                         onClick={() => handleToggleAdmin(user.id)}
                                         disabled={actionLoading === user.id}
-                                        className="p-2 rounded-lg transition-opacity hover:opacity-80"
+                                        className="p-2 rounded-lg pressable hover:opacity-80"
                                         style={{ backgroundColor: user.isAdmin ? colors.secondary : colors.surface }}
                                         title={user.isAdmin ? t('remove_admin') : t('grant_admin')}
                                     >
@@ -277,11 +280,11 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
                                         )}
                                     </button>
                                     {user.isBanned ? (
-                                        <button onClick={() => handleUnban(user.id)} disabled={actionLoading === user.id} className="p-2 rounded-lg bg-green-500/20 hover:bg-green-500/30" title={t('unban')}>
+                                        <button onClick={() => handleUnban(user.id)} disabled={actionLoading === user.id} className="p-2 rounded-lg pressable bg-green-500/20 hover:bg-green-500/30" title={t('unban')}>
                                             <Icons.Check className="w-4 h-4 text-green-500" />
                                         </button>
                                     ) : (
-                                        <button onClick={() => openBanModal(user.id)} disabled={actionLoading === user.id} className="p-2 rounded-lg bg-red-500/20 hover:bg-red-500/30" title={t('ban_user')}>
+                                        <button onClick={() => openBanModal(user.id)} disabled={actionLoading === user.id} className="p-2 rounded-lg pressable bg-red-500/20 hover:bg-red-500/30" title={t('ban_user')}>
                                             <Icons.Close className="w-4 h-4 text-red-500" />
                                         </button>
                                     )}
@@ -289,20 +292,21 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
                             </div>
                         ))
                     )}
-                </div>
+                </motion.div>
             )}
 
             {totalPages > 1 && (
                 <div className="flex justify-center gap-2 mt-4">
-                    <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 rounded" style={{ backgroundColor: colors.surface, color: colors.onSurface, opacity: page === 1 ? 0.5 : 1 }}>←</button>
+                    <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 rounded pressable" style={{ backgroundColor: colors.surface, color: colors.onSurface, opacity: page === 1 ? 0.5 : 1 }}>←</button>
                     <span style={{ color: colors.onSurfaceVariant }}>{page} / {totalPages}</span>
-                    <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="px-3 py-1 rounded" style={{ backgroundColor: colors.surface, color: colors.onSurface, opacity: page === totalPages ? 0.5 : 1 }}>→</button>
+                    <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="px-3 py-1 rounded pressable" style={{ backgroundColor: colors.surface, color: colors.onSurface, opacity: page === totalPages ? 0.5 : 1 }}>→</button>
                 </div>
             )}
 
+            <AnimatePresence>
             {banModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                    <div className="rounded-xl p-6 w-full max-w-md mx-4" style={{ backgroundColor: colors.surfaceContainer }}>
+                <motion.div key="admin-ban-modal" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" variants={m.modal.backdrop} initial="hidden" animate="show" exit="exit">
+                    <motion.div role="dialog" aria-modal="true" className="rounded-xl p-6 w-full max-w-md mx-4" style={{ backgroundColor: colors.surfaceContainer }} variants={m.modal.panel}>
                         <h3 className="text-lg font-bold mb-4" style={{ color: colors.onSurface }}>{t('ban_user_account')}</h3>
                         <input
                             type="text"
@@ -313,19 +317,25 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
                             style={inputStyle}
                         />
                         <div className="flex gap-3">
-                            <button onClick={() => setBanModalOpen(false)} className="flex-1 py-2 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHigh, color: colors.onSurface }}>{t('cancel')}</button>
-                            <button onClick={handleBan} disabled={actionLoading !== null} className="flex-1 py-2 rounded-lg bg-red-500 text-white">{t('ban_account')}</button>
+                            <button onClick={() => setBanModalOpen(false)} className="flex-1 py-2 rounded-lg pressable" style={{ backgroundColor: colors.surfaceContainerHigh, color: colors.onSurface }}>{t('cancel')}</button>
+                            <button onClick={handleBan} disabled={actionLoading !== null} className="flex-1 py-2 rounded-lg pressable bg-red-500 text-white">{t('ban_account')}</button>
                         </div>
-                    </div>
-                </div>
+                    </motion.div>
+                </motion.div>
             )}
+            </AnimatePresence>
 
+            <AnimatePresence>
             {addModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                    <div className="rounded-xl p-6 w-full max-w-md mx-4" style={{ backgroundColor: colors.surfaceContainer }}>
+                <motion.div key="admin-add-user-modal" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" variants={m.modal.backdrop} initial="hidden" animate="show" exit="exit">
+                    <motion.div role="dialog" aria-modal="true" className="rounded-xl p-6 w-full max-w-md mx-4" style={{ backgroundColor: colors.surfaceContainer }} variants={m.modal.panel}>
                         <h3 className="text-lg font-bold mb-4" style={{ color: colors.onSurface }}>{t('add_new_user')}</h3>
 
-                        {addUserError && <div className="bg-red-500/10 border border-red-500 text-red-500 rounded-lg p-3 mb-4 text-sm">{addUserError}</div>}
+                        <AnimatePresence initial={false}>
+                            {addUserError && (
+                                <motion.div key="admin-add-user-error" role="alert" className="bg-red-500/10 border border-red-500 text-red-500 rounded-lg p-3 mb-4 text-sm" variants={m.scaleIn} initial="hidden" animate="show" exit="exit">{addUserError}</motion.div>
+                            )}
+                        </AnimatePresence>
 
                         <div className="space-y-3 mb-4">
                             <div>
@@ -347,18 +357,20 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
                         </div>
 
                         <div className="flex gap-3">
-                            <button onClick={() => { setAddModalOpen(false); setAddUserError(""); }} className="flex-1 py-2 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHigh, color: colors.onSurface }}>{t('cancel')}</button>
-                            <button onClick={handleAddUser} disabled={addUserLoading} className="flex-1 py-2 rounded-lg" style={{ backgroundColor: "#22c55e", color: "#fff", opacity: addUserLoading ? 0.7 : 1 }}>
+                            <button onClick={() => { setAddModalOpen(false); setAddUserError(""); }} className="flex-1 py-2 rounded-lg pressable" style={{ backgroundColor: colors.surfaceContainerHigh, color: colors.onSurface }}>{t('cancel')}</button>
+                            <button onClick={handleAddUser} disabled={addUserLoading} className="flex-1 py-2 rounded-lg pressable" style={{ backgroundColor: "#22c55e", color: "#fff", opacity: addUserLoading ? 0.7 : 1 }}>
                                 {addUserLoading ? t('creating') : t('create_user')}
                             </button>
                         </div>
-                    </div>
-                </div>
+                    </motion.div>
+                </motion.div>
             )}
+            </AnimatePresence>
 
+            <AnimatePresence>
             {viewModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                    <div className="rounded-xl p-6 w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto" style={{ backgroundColor: colors.surfaceContainer }}>
+                <motion.div key="admin-view-user-modal" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" variants={m.modal.backdrop} initial="hidden" animate="show" exit="exit">
+                    <motion.div role="dialog" aria-modal="true" className="rounded-xl p-6 w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto" style={{ backgroundColor: colors.surfaceContainer }} variants={m.modal.panel}>
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-lg font-bold" style={{ color: colors.onSurface }}>{t('user_details')}</h3>
                             <button onClick={() => setViewModalOpen(false)} className="p-1 rounded hover:opacity-70">
@@ -376,7 +388,7 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
                                 <button onClick={() => setViewModalOpen(false)} className="text-sm underline" style={{ color: colors.onSurfaceVariant }}>{t('close')}</button>
                             </div>
                         ) : viewUser ? (
-                            <div className="space-y-4">
+                            <motion.div className="space-y-4" variants={m.fadeIn} initial="hidden" animate="show">
                                 <div className="grid grid-cols-2 gap-3 text-sm">
                                     <div className="p-3 rounded-lg" style={{ backgroundColor: colors.surfaceContainerHigh }}>
                                         <p style={{ color: colors.onSurfaceVariant }}>{t('catid_username')}</p>
@@ -416,11 +428,12 @@ export default function UserManagement({ colors, adminToken, language }: Props) 
                                         </div>
                                     </div>
                                 )}
-                            </div>
+                            </motion.div>
                         ) : null}
-                    </div>
-                </div>
+                    </motion.div>
+                </motion.div>
             )}
+            </AnimatePresence>
         </div>
     );
 }

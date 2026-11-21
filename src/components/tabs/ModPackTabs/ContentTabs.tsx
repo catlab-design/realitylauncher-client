@@ -41,40 +41,41 @@ export function ContentTabs({
         : allTabs;
 
     return (
-        <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div
+            role="tablist"
+            className="flex items-end gap-6 mb-4 overflow-x-auto no-scrollbar border-b"
+            style={{ borderColor: colors.outlineVariant }}
+        >
             {tabs.map((tab) => {
                 const active = activeTab === tab.id;
                 const TabIcon = tab.icon;
                 return (
                     <button
                         key={tab.id}
+                        role="tab"
+                        aria-selected={active}
                         onClick={() => { playClick(); onTabChange(tab.id); }}
-                        className="px-3 py-1.5 rounded-xl text-sm font-medium transition-all relative group flex items-center gap-1.5"
+                        className="relative flex items-center gap-1.5 pt-1 pb-3 text-[15px] font-semibold whitespace-nowrap transition-colors text-(--tab-fg) hover:text-(--tab-hover)"
                         style={{
-                            color: active ? "#1a1a1a" : colors.onSurfaceVariant,
-                        }}
+                            "--tab-fg": active ? colors.onSurface : colors.onSurfaceVariant,
+                            "--tab-hover": colors.onSurface,
+                        } as React.CSSProperties}
                     >
+                        <TabIcon className="w-4.5 h-4.5 shrink-0" />
+                        <span>{tab.label}</span>
+                        <span
+                            className="text-[13px] font-medium tabular-nums"
+                            style={{ color: colors.onSurfaceVariant, opacity: active ? 0.9 : 0.7 }}
+                        >
+                            {tab.id === "mods" && modsLoading ? "..." : tab.count}
+                        </span>
                         {active && (
                             <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                className="absolute inset-0 rounded-xl"
+                                layoutId="instance-content-tab-underline"
+                                className="absolute left-0 right-0 -bottom-px h-0.5 rounded-full"
                                 style={{ backgroundColor: colors.secondary }}
-                                transition={{ duration: 0.15 }}
+                                transition={{ type: "spring", stiffness: 500, damping: 40 }}
                             />
-                        )}
-                        <TabIcon className="w-3.5 h-3.5 z-10 relative" />
-                        <span className="z-10 relative">{tab.label}</span>
-                        {(tab.id === "mods" || tab.count > 0) && (
-                            <span
-                                className="px-2 py-0.5 rounded-full text-[10px] font-bold z-10 relative"
-                                style={{
-                                    backgroundColor: active ? "rgba(0,0,0,0.12)" : colors.surfaceContainerHighest,
-                                    color: active ? "#000" : colors.onSurfaceVariant
-                                }}
-                            >
-                                {tab.id === "mods" && modsLoading ? "..." : tab.count}
-                            </span>
                         )}
                     </button>
                 );

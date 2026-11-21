@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "../../../hooks/useTranslation";
+import { motion } from "framer-motion";
+import { useMotionPreset } from "../../../lib/motion";
 import type { TranslationKey } from "../../../i18n/translations";
 import { Icons } from "../../ui/Icons";
 import type { ModVersion, GameInstance, ProjectType } from "./types";
@@ -46,6 +48,7 @@ export function VersionSelectModal({
     onSelectVersion,
 }: VersionSelectModalProps) {
     const { t } = useTranslation();
+    const m = useMotionPreset();
     const [filter, setFilter] = useState("");
     const [channel, setChannel] = useState<"all" | "release" | "beta" | "alpha">("all");
 
@@ -80,8 +83,8 @@ export function VersionSelectModal({
     const noCompatibleVersions = targetInstance && filteredVersions.length === 0 && !filter.trim() && channel === "all";
 
     return createPortal(
-        <div className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50" onClick={onClose}>
-            <div className="w-full max-w-lg rounded-2xl p-6 relative" style={{ backgroundColor: colors.surface }} onClick={(e) => e.stopPropagation()}>
+        <motion.div variants={m.modal.backdrop} {...m.states} className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50" onClick={onClose}>
+            <motion.div variants={m.modal.panel} role="dialog" aria-modal="true" className="w-full max-w-lg rounded-2xl p-6 relative" style={{ backgroundColor: colors.surface }} onClick={(e) => e.stopPropagation()}>
                 <button
                     type="button"
                     onClick={onClose}
@@ -129,12 +132,19 @@ export function VersionSelectModal({
                                 key={c}
                                 type="button"
                                 onClick={() => setChannel(c)}
-                                className="px-2.5 py-1 rounded-lg text-[11px] font-bold capitalize transition-colors"
+                                className="relative isolate px-2.5 py-1 rounded-lg text-[11px] font-bold capitalize pressable"
                                 style={{
-                                    backgroundColor: channel === c ? colors.secondary : "transparent",
                                     color: channel === c ? "#000" : colors.onSurfaceVariant,
                                 }}
                             >
+                                {channel === c && (
+                                    <motion.span
+                                        layoutId="explore-version-channel-pill"
+                                        transition={m.tabIndicator}
+                                        className="absolute inset-0 -z-10 rounded-lg"
+                                        style={{ backgroundColor: colors.secondary }}
+                                    />
+                                )}
                                 {c === "all" ? t("all" as TranslationKey) : c}
                             </button>
                         ))}
@@ -155,7 +165,7 @@ export function VersionSelectModal({
                         <p style={{ color: colors.onSurfaceVariant }}>{t("no_versions_found" as TranslationKey)}</p>
                     </div>
                 ) : (
-                    <div className="space-y-2 max-h-80 overflow-y-auto">
+                    <motion.div key={channel} variants={m.fadeIn} initial="hidden" animate="show" className="space-y-2 max-h-80 overflow-y-auto">
                         {filteredVersions.map((version) => {
                             const ch = detectChannel(version);
                             const dot = ch === "release" ? "bg-emerald-400" : ch === "beta" ? "bg-amber-400" : "bg-red-400";
@@ -165,7 +175,7 @@ export function VersionSelectModal({
                                     type="button"
                                     onClick={() => onSelectVersion(version.id)}
                                     disabled={isDownloading}
-                                    className="w-full p-3 rounded-xl text-left transition-all hover:scale-[1.01] disabled:opacity-50"
+                                    className="w-full p-3 rounded-xl text-left pressable hover:brightness-110 disabled:opacity-50"
                                     style={{ backgroundColor: colors.surfaceContainer }}
                                 >
                                     <div className="flex items-center justify-between">
@@ -199,7 +209,7 @@ export function VersionSelectModal({
                                 </button>
                             );
                         })}
-                    </div>
+                    </motion.div>
                 )}
 
                 {isDownloading && (
@@ -207,8 +217,8 @@ export function VersionSelectModal({
                         {t("downloading")}
                     </div>
                 )}
-            </div>
-        </div>,
+            </motion.div>
+        </motion.div>,
         document.body
     );
 }

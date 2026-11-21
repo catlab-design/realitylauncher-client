@@ -58,7 +58,7 @@ export const BannerImage = React.memo(({
         <div className={cn("relative w-full h-full overflow-hidden", className)} style={style}>
             <div 
                 className={cn(
-                    "absolute inset-0 bg-gray-800 transition-opacity duration-700",
+                    "absolute inset-0 bg-gray-800 transition-opacity duration-300",
                     isLoaded ? "opacity-0" : "opacity-100"
                 )} 
             />
@@ -71,7 +71,7 @@ export const BannerImage = React.memo(({
                 onLoad={() => setIsLoaded(true)}
                 onError={() => setError(true)}
                 className={cn(
-                    "w-full h-full object-cover transition-opacity duration-1000 ease-in-out will-change-transform",
+                    "w-full h-full object-cover transition-opacity duration-300 ease-out",
                     isLoaded ? "opacity-100" : "opacity-0"
                 )}
             />

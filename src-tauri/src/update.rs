@@ -12,10 +12,91 @@ use once_cell::sync::Lazy;
 
 const API_URL: &str = "https://api.reality.catlabdesign.space";
 
+/// Minisign public key that every update package is signed with. The matching
+/// secret key lives only in CI (`MINISIGN_SECRET_KEY`); see `.gitlab-ci.yml`.
+///
+/// Generate the pair once with `minisign -G -p reality.pub -s reality.key`,
+/// keep `reality.key` secret, and paste the *second* line of `reality.pub`
+/// (the base64 blob, not the `untrusted comment:` line) here.
+///
+/// An update whose `.minisig` does not verify against this key is deleted and
+/// never installed.
+const UPDATE_PUBLIC_KEY: &str = "RWR0izgZgSF+UT4+SE/KtkbCVfqCAQOuGi2E3F4JXh48dkRkkIuLBakP";
+
+/// Hosts an update installer (and its detached signature) may be served from.
+/// A tampered `/launcher/latest` response can name a download URL, but it can't
+/// point the client at a host outside this set.
+const ALLOWED_DOWNLOAD_HOSTS: &[&str] = &[
+    "cdn.reality.catlabdesign.space",
+    "gitlab.com",
+];
+
+fn host_is_allowed(url: &str) -> bool {
+    // Minimal, dependency-free host extraction: scheme must be https, then the
+    // authority runs up to the next '/', '?' or '#'. Any userinfo ('@') or port
+    // (':') is stripped before the exact, case-insensitive host comparison.
+    let rest = match url.strip_prefix("https://") {
+        Some(r) => r,
+        None => return false,
+    };
+    let authority = rest
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("");
+    let host = authority
+        .rsplit('@')
+        .next()
+        .unwrap_or("")
+        .split(':')
+        .next()
+        .unwrap_or("");
+    ALLOWED_DOWNLOAD_HOSTS
+        .iter()
+        .any(|allowed| host.eq_ignore_ascii_case(allowed))
+}
+
+/// Fetches the detached minisign signature that sits next to `installer_url`
+/// (same path, `.minisig` appended) and verifies `file_bytes` against the
+/// embedded public key. Returns an error on any failure — missing signature,
+/// malformed key, or mismatch — so the caller can refuse the installer.
+async fn verify_update_signature(installer_url: &str, file_bytes: &[u8]) -> Result<(), String> {
+    use minisign_verify::{PublicKey, Signature};
+
+    let public_key = PublicKey::from_base64(UPDATE_PUBLIC_KEY)
+        .map_err(|e| format!("Update public key is invalid: {e}"))?;
+
+    let sig_url = format!("{installer_url}.minisig");
+    if !host_is_allowed(&sig_url) {
+        return Err("Update signature host is not allowed".into());
+    }
+    let resp = crate::http_client::HTTP_CLIENT
+        .clone()
+        .get(&sig_url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch update signature: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("Update signature unavailable (HTTP {})", resp.status()));
+    }
+    let sig_text = resp
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read update signature: {e}"))?;
+
+    let signature = Signature::decode(&sig_text)
+        .map_err(|e| format!("Update signature is malformed: {e}"))?;
+    public_key
+        .verify(file_bytes, &signature, false)
+        .map_err(|e| format!("Update signature verification failed: {e}"))
+}
+
 
 static DOWNLOADED_INSTALLER: Lazy<Mutex<Option<PathBuf>>> = Lazy::new(|| Mutex::new(None));
 static DOWNLOADED_VERSION: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
 static DOWNLOAD_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+/// Set by the frontend once an auto-update is downloaded but deferred (game running / "later"):
+/// the installer then runs silently when the launcher exits.
+static INSTALL_ON_EXIT: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -294,6 +375,10 @@ pub async fn download_update(app: tauri::AppHandle) -> serde_json::Value {
         }
     };
 
+    if !host_is_allowed(&url) {
+        return serde_json::json!({ "ok": false, "error": "Update download host is not allowed" });
+    }
+
     let raw_filename = url
         .rsplit('/')
         .next()
@@ -352,6 +437,24 @@ pub async fn download_update(app: tauri::AppHandle) -> serde_json::Value {
     }
     drop(file);
 
+    // Verify the downloaded bytes against the embedded minisign key before the
+    // file is ever renamed to its final name or stashed for install. A failure
+    // here (bad/absent signature, tampered bytes) deletes the temp file and
+    // aborts, so neither `install_update` nor the silent on-exit path can run an
+    // unverified installer.
+    match std::fs::read(&tmp_path) {
+        Ok(bytes) => {
+            if let Err(e) = verify_update_signature(&url, &bytes).await {
+                let _ = std::fs::remove_file(&tmp_path);
+                return serde_json::json!({ "ok": false, "error": e });
+            }
+        }
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp_path);
+            return serde_json::json!({ "ok": false, "error": e.to_string() });
+        }
+    }
+
     if dest.exists() {
         let _ = std::fs::remove_file(&dest);
     }
@@ -380,9 +483,11 @@ pub async fn download_update(app: tauri::AppHandle) -> serde_json::Value {
     serde_json::json!({ "ok": true, "path": dest.to_string_lossy() })
 }
 
-/// Launch the downloaded installer and quit so it can replace the app.
+/// Install the downloaded update and quit so it can replace the app.
+/// `auto`: no clicks needed (Windows installer in passive mode) and the launcher reopens when done.
+/// macOS / Linux always swap the app in place and reopen it.
 #[tauri::command]
-pub fn install_update(app: tauri::AppHandle) -> serde_json::Value {
+pub fn install_update(app: tauri::AppHandle, auto: Option<bool>) -> serde_json::Value {
     let path = match DOWNLOADED_INSTALLER.lock().unwrap().clone() {
         Some(p) => p,
         None => return serde_json::json!({ "ok": false, "error": "No update downloaded" }),
@@ -391,11 +496,35 @@ pub fn install_update(app: tauri::AppHandle) -> serde_json::Value {
         return serde_json::json!({ "ok": false, "error": "Downloaded installer missing" });
     }
     backup_data_for_update();
-    if let Err(e) = open_installer(&path) {
+    let auto = auto.unwrap_or(false);
+    if let Err(e) = apply_update(&path, auto, auto || !cfg!(target_os = "windows")) {
         return serde_json::json!({ "ok": false, "error": e });
     }
+    // Already handled here; don't start a second installer from the exit hook.
+    INSTALL_ON_EXIT.store(false, Ordering::SeqCst);
     app.exit(0);
     serde_json::json!({ "ok": true })
+}
+
+#[tauri::command]
+pub fn set_install_update_on_exit(enabled: bool) {
+    INSTALL_ON_EXIT.store(enabled, Ordering::SeqCst);
+}
+
+/// Called from the app's exit hook: installs a deferred auto-update without asking
+/// (no relaunch, the user chose to close).
+pub fn run_pending_install_on_exit() {
+    if !INSTALL_ON_EXIT.swap(false, Ordering::SeqCst) || cfg!(debug_assertions) {
+        return;
+    }
+    let Some(path) = DOWNLOADED_INSTALLER.lock().unwrap().clone() else { return };
+    if !path.exists() {
+        return;
+    }
+    backup_data_for_update();
+    if let Err(e) = apply_update(&path, true, false) {
+        log::error!("[Update] Failed to install update on exit: {e}");
+    }
 }
 
 fn backup_data_for_update() {
@@ -411,17 +540,165 @@ fn backup_data_for_update() {
     }
 }
 
-fn open_installer(path: &Path) -> Result<(), String> {
+/// Starts replacing the app with the downloaded package.
+/// - Windows: NSIS installer; `passive` = progress bar only, `relaunch` = reopen when done.
+/// - macOS: after this process exits, copies the .app out of the dmg over the running bundle.
+/// - Linux: swaps the running AppImage file for the new one.
+/// When the app can't replace itself (deb/rpm install, read-only location), the package is
+/// opened for the user instead.
+fn apply_update(path: &Path, passive: bool, relaunch: bool) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let mut args: Vec<&str> = Vec::new();
+        if passive {
+            args.extend(["/P", "/UPDATE"]);
+            if relaunch {
+                args.push("/R");
+            }
+        }
+        open_installer(path, &args)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = passive;
+        #[cfg(target_os = "macos")]
+        let result = self_update_dmg(path, relaunch);
+        #[cfg(not(target_os = "macos"))]
+        let result = self_update_appimage(path, relaunch);
+        result.or_else(|e| {
+            log::warn!("[Update] Self-update not possible ({e}); opening the package instead");
+            open_installer(path, &[])
+        })
+    }
+}
+
+/// Runs `script` with /bin/sh once this launcher process has exited; `args` become $1, $2, ...
+/// (passed as arguments, never spliced into the script, so paths with spaces/quotes are safe).
+#[cfg_attr(target_os = "windows", allow(dead_code))]
+fn spawn_after_exit(script: &str, args: &[&str]) -> Result<(), String> {
+    use std::process::Stdio;
+    let pid = std::process::id().to_string();
+    let full = format!("while kill -0 \"$1\" 2>/dev/null; do sleep 0.3; done\nshift\n{script}");
+    std::process::Command::new("/bin/sh")
+        .arg("-c")
+        .arg(full)
+        .arg("reality-update")
+        .arg(&pid)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[cfg_attr(target_os = "windows", allow(dead_code))]
+fn dir_writable(dir: &Path) -> bool {
+    let probe = dir.join(format!(".reality-write-test-{}", std::process::id()));
+    match fs::File::create(&probe) {
+        Ok(_) => {
+            let _ = fs::remove_file(&probe);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+/// Linux: the AppImage is the whole app, so updating = replacing that one file.
+/// Renaming over a running AppImage is safe (the running process keeps the old inode).
+#[cfg_attr(target_os = "windows", allow(dead_code))]
+fn self_update_appimage(new_file: &Path, relaunch: bool) -> Result<(), String> {
+    let is_appimage = new_file
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("appimage"));
+    if !is_appimage {
+        return Err("Downloaded package is not an AppImage".into());
+    }
+    let target = std::env::var_os("APPIMAGE")
+        .map(PathBuf::from)
+        .filter(|p| p.is_file())
+        .ok_or("Not running from an AppImage")?;
+    let dir = target.parent().ok_or("AppImage has no parent directory")?;
+    if !dir_writable(dir) {
+        return Err(format!("No write access to {}", dir.display()));
+    }
+    let name = target.file_name().and_then(|n| n.to_str()).unwrap_or("Reality-Launcher.AppImage");
+    // Stage next to the target so the final rename is atomic (same filesystem).
+    let staged = dir.join(format!(".{name}.update"));
+    fs::copy(new_file, &staged).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Err(e) = fs::set_permissions(&staged, fs::Permissions::from_mode(0o755)) {
+            let _ = fs::remove_file(&staged);
+            return Err(e.to_string());
+        }
+    }
+    if let Err(e) = fs::rename(&staged, &target) {
+        let _ = fs::remove_file(&staged);
+        return Err(e.to_string());
+    }
+    if relaunch {
+        spawn_after_exit("exec \"$1\" >/dev/null 2>&1", &[&target.to_string_lossy()])?;
+    }
+    Ok(())
+}
+
+/// macOS: mount the dmg, swap the .app bundle (old one kept until the copy succeeds),
+/// unmount, reopen. Runs after exit so the running bundle isn't modified underneath us.
+#[cfg_attr(target_os = "windows", allow(dead_code))]
+fn self_update_dmg(dmg: &Path, relaunch: bool) -> Result<(), String> {
+    let app = std::env::current_exe()
+        .ok()
+        .and_then(|exe| {
+            exe.ancestors()
+                .find(|p| p.extension().is_some_and(|e| e == "app"))
+                .map(Path::to_path_buf)
+        })
+        .ok_or("Not running from an .app bundle")?;
+    let parent = app.parent().ok_or(".app bundle has no parent directory")?;
+    if !dir_writable(parent) {
+        return Err(format!("No write access to {}", parent.display()));
+    }
+    const SCRIPT: &str = r#"DMG="$1"; APP="$2"; RELAUNCH="$3"
+MNT=$(mktemp -d "${TMPDIR:-/tmp}/reality-update.XXXXXX") || exit 1
+if ! hdiutil attach -nobrowse -noautoopen -quiet -mountpoint "$MNT" "$DMG"; then
+  rmdir "$MNT"; open "$DMG"; exit 1
+fi
+SRC=$(ls -d "$MNT"/*.app 2>/dev/null | head -n 1)
+if [ -n "$SRC" ]; then
+  rm -rf "$APP.old"
+  if mv "$APP" "$APP.old"; then
+    if ditto "$SRC" "$APP"; then rm -rf "$APP.old"; else rm -rf "$APP"; mv "$APP.old" "$APP"; fi
+  fi
+fi
+hdiutil detach -quiet "$MNT"; rmdir "$MNT" 2>/dev/null
+xattr -dr com.apple.quarantine "$APP" 2>/dev/null
+if [ "$RELAUNCH" = 1 ]; then open "$APP"; fi
+exit 0"#;
+    spawn_after_exit(
+        SCRIPT,
+        &[&dmg.to_string_lossy(), &app.to_string_lossy(), if relaunch { "1" } else { "0" }],
+    )
+}
+
+fn open_installer(path: &Path, args: &[&str]) -> Result<(), String> {
     let target = path.to_string_lossy().to_string();
     #[cfg(target_os = "windows")]
     let mut cmd = {
         let mut c = std::process::Command::new("cmd");
         c.args(["/C", "start", "", &target]);
+        // NSIS options: /P passive, /R relaunch after install, /UPDATE keep shortcuts.
+        c.args(args);
         // Suppress the cmd console flash (CREATE_NO_WINDOW).
         use std::os::windows::process::CommandExt;
         c.creation_flags(0x08000000);
         c
     };
+    #[cfg(not(target_os = "windows"))]
+    let _ = args;
     #[cfg(target_os = "macos")]
     let mut cmd = {
         let mut c = std::process::Command::new("open");
@@ -449,6 +726,28 @@ mod tests {
         assert_eq!(compare_versions("3.3.2-beta.1", "3.3.2"), 0);
         assert_eq!(compare_versions("v3.3.2", "3.3.2"), 0);
         assert_eq!(compare_versions("3.3", "3.3.1"), -1);
+    }
+
+    #[test]
+    fn test_embedded_public_key_is_valid() {
+        // Guards against a typo'd or placeholder key shipping — a key that
+        // doesn't parse would reject every update, silently disabling updates.
+        minisign_verify::PublicKey::from_base64(UPDATE_PUBLIC_KEY)
+            .expect("UPDATE_PUBLIC_KEY must be a valid minisign public key");
+    }
+
+    #[test]
+    fn test_host_is_allowed() {
+        assert!(host_is_allowed("https://cdn.reality.catlabdesign.space/client/4.1.0/app.AppImage"));
+        assert!(host_is_allowed("https://CDN.Reality.CatLabDesign.Space/x"));
+        assert!(host_is_allowed("https://gitlab.com/api/v4/x"));
+        // Wrong scheme, wrong host, look-alike host, and embedded-userinfo tricks.
+        assert!(!host_is_allowed("http://cdn.reality.catlabdesign.space/x"));
+        assert!(!host_is_allowed("https://evil.com/x"));
+        assert!(!host_is_allowed("https://cdn.reality.catlabdesign.space.evil.com/x"));
+        assert!(!host_is_allowed("https://cdn.reality.catlabdesign.space@evil.com/x"));
+        assert!(!host_is_allowed("ftp://cdn.reality.catlabdesign.space/x"));
+        assert!(!host_is_allowed("not a url"));
     }
 
     #[test]

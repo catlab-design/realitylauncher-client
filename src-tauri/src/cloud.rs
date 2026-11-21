@@ -177,6 +177,27 @@ fn client() -> reqwest::Client {
     crate::http_client::HTTP_CLIENT.clone()
 }
 
+/// Send an authenticated cloud-API request. On a 401 the session's API token
+/// is force-refreshed once (Microsoft chain re-mints it via the backend) and
+/// the request is rebuilt and retried with the fresh token — a 401 is always
+/// pre-execution on the server, so the retry can never duplicate work.
+async fn send_authed(
+    build: impl Fn(&str) -> reqwest::RequestBuilder,
+) -> Result<reqwest::Response, String> {
+    let resp = build(&get_api_token()?)
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {e}"))?;
+    if resp.status() != reqwest::StatusCode::UNAUTHORIZED {
+        return Ok(resp);
+    }
+    let refreshed = crate::auth::refresh_api_token().await?;
+    build(&refreshed)
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {e}"))
+}
+
 fn normalize_hash(hash_str: &str) -> Option<(String, String)> {
     let mut value = hash_str.trim().to_string();
     if value.is_empty() {
@@ -225,14 +246,14 @@ fn normalize_hash(hash_str: &str) -> Option<(String, String)> {
     None
 }
 
-fn compute_sha1(path: &Path) -> Result<String, String> {
+pub(crate) fn compute_sha1(path: &Path) -> Result<String, String> {
     let data = fs::read(path).map_err(|e| format!("Read error: {}", e))?;
     let mut hasher = Sha1::new();
     hasher.update(&data);
     Ok(hex::encode(hasher.finalize()))
 }
 
-fn compute_sha256(path: &Path) -> Result<String, String> {
+pub(crate) fn compute_sha256(path: &Path) -> Result<String, String> {
     let data = fs::read(path).map_err(|e| format!("Read error: {}", e))?;
     let mut hasher = Sha256::new();
     hasher.update(&data);
@@ -266,7 +287,7 @@ fn verify_file_hash(path: &Path, expected_hash: &str) -> Result<bool, String> {
 
 
 
-fn safe_join(base: &Path, rel: &str) -> Option<std::path::PathBuf> {
+pub(crate) fn safe_join(base: &Path, rel: &str) -> Option<std::path::PathBuf> {
     use std::path::Component;
     let normalized = rel.replace('\\', "/");
     let mut out = base.to_path_buf();
@@ -282,6 +303,23 @@ fn safe_join(base: &Path, rel: &str) -> Option<std::path::PathBuf> {
     } else {
         Some(out)
     }
+}
+
+/// Where a synced file lives: the player's disabled copy (`<file>.disabled`)
+/// when there is one, so disabling a server-managed mod survives syncs and
+/// pack updates land in the disabled copy instead of re-enabling it. Removes
+/// an enabled duplicate that older syncs re-downloaded next to it.
+pub(crate) fn honor_disabled(path: std::path::PathBuf) -> std::path::PathBuf {
+    let mut disabled = path.clone().into_os_string();
+    disabled.push(".disabled");
+    let disabled = std::path::PathBuf::from(disabled);
+    if !disabled.is_file() {
+        return path;
+    }
+    if path.is_file() {
+        let _ = fs::remove_file(&path);
+    }
+    disabled
 }
 
 fn normalize_mods(mods: Option<Vec<ServerMod>>) -> Vec<ServerMod> {
@@ -452,18 +490,32 @@ async fn fetch_server_content(
         format!("{}/instances/{}/content", API_URL, cloud_id)
     };
 
-    let mut req = client()
-        .get(&endpoint)
-        .header("Authorization", format!("Bearer {}", auth_token));
+    let mut effective_token = auth_token.to_string();
 
-    if let Some(ref rev) = cached_revision {
-        req = req.header("If-None-Match", format!("\"{}\"", rev));
-    }
+    let mut build_req = |token: &str| {
+        let mut req = client()
+            .get(&endpoint)
+            .header("Authorization", format!("Bearer {}", token));
+        if let Some(ref rev) = cached_revision {
+            req = req.header("If-None-Match", format!("\"{}\"", rev));
+        }
+        req
+    };
 
-    let resp = req
+    let mut resp = build_req(&effective_token)
         .send()
         .await
         .map_err(|e| format!("Network error: {}", e))?;
+
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        if let Ok(fresh) = crate::auth::refresh_api_token().await {
+            effective_token = fresh;
+            resp = build_req(&effective_token)
+                .send()
+                .await
+                .map_err(|e| format!("Network error: {}", e))?;
+        }
+    }
 
     if resp.status() == 304 {
         let cache = MANIFEST_CACHE.lock().unwrap();
@@ -493,9 +545,7 @@ async fn fetch_server_content(
     
     
     if resp.status() == 304 {
-        let req = client()
-            .get(&endpoint)
-            .header("Authorization", format!("Bearer {}", auth_token));
+        let req = build_req(&effective_token);
         let fresh_resp = req
             .send()
             .await
@@ -575,18 +625,29 @@ async fn fetch_instance_metadata(
             .map(|e| e.etag.clone())
     };
 
-    let mut req = client()
-        .get(format!("{}/instances/{}", API_URL, cloud_id))
-        .header("Authorization", format!("Bearer {}", auth_token));
+    let build_req = |token: &str| {
+        let mut req = client()
+            .get(format!("{}/instances/{}", API_URL, cloud_id))
+            .header("Authorization", format!("Bearer {}", token));
+        if let Some(ref etag) = cached_etag {
+            req = req.header("If-None-Match", etag.clone());
+        }
+        req
+    };
 
-    if let Some(ref etag) = cached_etag {
-        req = req.header("If-None-Match", etag.clone());
-    }
-
-    let resp = req
+    let mut resp = build_req(auth_token)
         .send()
         .await
         .map_err(|e| format!("Network error: {}", e))?;
+
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        if let Ok(fresh) = crate::auth::refresh_api_token().await {
+            resp = build_req(&fresh)
+                .send()
+                .await
+                .map_err(|e| format!("Network error: {}", e))?;
+        }
+    }
 
     if resp.status() == 304 {
         return Ok((serde_json::Value::Null, None));
@@ -630,12 +691,23 @@ async fn fetch_instance_metadata(
 
 async fn fetch_managed_mods(cloud_id: &str, auth_token: &str) -> Result<Vec<ManagedMod>, String> {
     let url = format!("{}/instances/{}/modpack/mods", API_URL, cloud_id);
-    let resp = client()
+    let mut resp = client()
         .get(&url)
         .header("Authorization", format!("Bearer {}", auth_token))
         .send()
         .await
         .map_err(|e| format!("Network error: {}", e))?;
+
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        if let Ok(fresh) = crate::auth::refresh_api_token().await {
+            resp = client()
+                .get(&url)
+                .header("Authorization", format!("Bearer {}", fresh))
+                .send()
+                .await
+                .map_err(|e| format!("Network error: {}", e))?;
+        }
+    }
 
     if !resp.status().is_success() {
         return Err(format!("HTTP {}", resp.status()));
@@ -652,40 +724,93 @@ async fn fetch_managed_mods(cloud_id: &str, auth_token: &str) -> Result<Vec<Mana
 
 
 
-fn cleanup_unmanaged_mods(instance_dir: &str, keep: &std::collections::HashSet<String>) {
+const MANAGED_MODS_FILE: &str = ".reality/managed-mods.json";
+
+fn load_managed_mods(dir: &Path) -> Option<std::collections::HashSet<String>> {
+    let bytes = fs::read(dir.join(MANAGED_MODS_FILE)).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+fn save_managed_mods(dir: &Path, names: &std::collections::HashSet<String>) {
+    let path = dir.join(MANAGED_MODS_FILE);
+    let Some(parent) = path.parent() else { return };
+    let mut sorted: Vec<&String> = names.iter().collect();
+    sorted.sort();
+    let Ok(json) = serde_json::to_vec_pretty(&sorted) else { return };
+    let tmp = path.with_extension("json.tmp");
+    let ok = fs::create_dir_all(parent).is_ok()
+        && fs::write(&tmp, json).is_ok()
+        && fs::rename(&tmp, &path).is_ok();
+    if !ok {
+        let _ = fs::remove_file(&tmp);
+        log::warn!("[Cloud Sync] could not save {}", path.display());
+    }
+}
+
+/// Which top-level mod jars a sync may delete: only ones an earlier sync put
+/// there (`.reality/managed-mods.json`) and the server no longer ships, so mods
+/// the player added themselves survive. Instances synced before the record
+/// existed fall back to "anything the player didn't install from the launcher".
+fn should_remove_mod(
+    real_name: &str,
+    keep: &std::collections::HashSet<String>,
+    locked: &[String],
+    previous: Option<&std::collections::HashSet<String>>,
+    player_installed: impl Fn(&str) -> bool,
+) -> bool {
+    if keep.contains(real_name) || locked.iter().any(|l| l == real_name) {
+        return false;
+    }
+    match previous {
+        Some(prev) => prev.contains(real_name),
+        None => !player_installed(real_name),
+    }
+}
+
+pub(crate) fn cleanup_unmanaged_mods(instance_dir: &str, keep: &std::collections::HashSet<String>) {
     // Deletes files from the instance dir — never run while a migration or
     // other exclusive op is in flight.
     let Some(_guard) = crate::op_guard::OperationGuard::try_shared() else {
         return;
     };
-    let mods_dir = Path::new(instance_dir).join("mods");
-    if !mods_dir.exists() {
-        return;
-    }
+    let dir = Path::new(instance_dir);
+    let mods_dir = dir.join("mods");
+    let keep: std::collections::HashSet<String> = keep
+        .iter()
+        .map(|n| n.strip_suffix(".disabled").unwrap_or(n).to_string())
+        .collect();
 
-    
-    
-    let locked: Vec<String> = crate::instances::instances_list_sync()
-        .into_iter()
-        .find(|i| i.game_directory == instance_dir)
-        .and_then(|i| i.locked_mods)
-        .unwrap_or_default();
+    if mods_dir.exists() {
+        let locked: Vec<String> = crate::instances::instances_list_sync()
+            .into_iter()
+            .find(|i| i.game_directory == instance_dir)
+            .and_then(|i| i.locked_mods)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|n| n.strip_suffix(".disabled").map(str::to_string).unwrap_or(n))
+            .collect();
+        let previous = load_managed_mods(dir);
+        let links = crate::mod_meta::read_content_links(dir);
 
-    if let Ok(entries) = fs::read_dir(&mods_dir) {
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if !name.ends_with(".jar") && !name.ends_with(".jar.disabled") {
-                continue;
-            }
-            let real_name = name.replace(".jar.disabled", ".jar");
-            if locked.contains(&name) || locked.contains(&real_name) {
-                continue;
-            }
-            if !keep.contains(&name) && !keep.contains(&real_name) {
-                let _ = fs::remove_file(entry.path());
+        if let Ok(entries) = fs::read_dir(&mods_dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if !name.ends_with(".jar") && !name.ends_with(".jar.disabled") {
+                    continue;
+                }
+                let real_name = name.strip_suffix(".disabled").unwrap_or(&name);
+                let remove = should_remove_mod(real_name, &keep, &locked, previous.as_ref(), |n| {
+                    crate::mod_meta::link_for(&links, "mod", n).is_some()
+                });
+                if remove {
+                    log::info!("[Cloud Sync] removing mod the server dropped: {name}");
+                    let _ = fs::remove_file(entry.path());
+                }
             }
         }
     }
+
+    save_managed_mods(dir, &keep);
 }
 
 async fn sync_managed_mods(
@@ -729,8 +854,15 @@ async fn sync_managed_mods(
                 }
                 joined
             }
-            None => mods_dir.join(&m.file_name),
+            None => match crate::fs_utils::safe_file_name(&m.file_name) {
+                Some(name) => mods_dir.join(name),
+                None => {
+                    failed.push((m.file_name.clone(), "Path traversal blocked".into()));
+                    continue;
+                }
+            },
         };
+        let file_path = honor_disabled(file_path);
 
         let needs_download = if file_path.exists() {
             if let Some(ref hash) = m.file_hash {
@@ -836,7 +968,7 @@ async fn sync_managed_mods(
 
 
 
-fn emit_sync_progress(
+pub(crate) fn emit_sync_progress(
     app_handle: &tauri::AppHandle,
     type_: &str,
     task: &str,
@@ -869,9 +1001,19 @@ fn emit_instances_updated(app_handle: &tauri::AppHandle) {
 pub async fn sync_instance_for_launch(
     app_handle: &tauri::AppHandle,
     instance: &crate::instances::GameInstance,
+    mode: crate::keybinds::KeybindMode,
 ) -> Result<Vec<(String, String)>, String> {
     let Some(cloud_id) = instance.cloud_id.as_deref() else {
         return Ok(Vec::new());
+    };
+    let keybinds = crate::keybinds::KeybindSync {
+        mode,
+        backup_dir: match mode {
+            crate::keybinds::KeybindMode::Repair => crate::keybind_backups::backup_dir(app_handle, &instance.id).ok(),
+            crate::keybinds::KeybindMode::FirstInstallOnly => None,
+        },
+        game_running: mode == crate::keybinds::KeybindMode::Repair
+            && crate::launcher::is_game_running(Some(instance.id.clone())),
     };
     // Per-operation cancel token: a Cancel pressed during this sync aborts it
     // (and any other op running at that moment), but starting a new op never
@@ -885,6 +1027,7 @@ pub async fn sync_instance_for_launch(
         cloud_id,
         &api_token,
         &cancel,
+        &keybinds,
     )
     .await
 }
@@ -926,7 +1069,7 @@ pub async fn instance_check_integrity(app_handle: tauri::AppHandle, id: String) 
         };
     }
 
-    match sync_instance_for_launch(&app_handle, &instance).await {
+    match sync_instance_for_launch(&app_handle, &instance, crate::keybinds::KeybindMode::Repair).await {
         Ok(failed) => {
             emit_instances_updated(&app_handle);
             if failed.is_empty() {
@@ -945,9 +1088,10 @@ pub async fn instance_check_integrity(app_handle: tauri::AppHandle, id: String) 
                 SimpleResult {
                     ok: false,
                     error: Some(format!(
-                        "{} file(s) failed to download: {preview}{}",
+                        "{} file(s) failed to download: {preview}{} (first error: {})",
                         failed.len(),
-                        if failed.len() > 5 { ", …" } else { "" }
+                        if failed.len() > 5 { ", …" } else { "" },
+                        failed.first().map(|(_, reason)| reason.as_str()).unwrap_or("unknown")
                     )),
                     message: None,
                 }
@@ -967,6 +1111,7 @@ async fn sync_server_mods(
     cloud_id: &str,
     auth_token: &str,
     cancel: &crate::op_guard::CancelToken,
+    keybinds: &crate::keybinds::KeybindSync,
 ) -> Result<Vec<(String, String)>, String> {
     // NOTE: cancellation is scoped to the entry command's per-operation token
     // (instances_cloud_install / sync_instance_for_launch)
@@ -975,11 +1120,14 @@ async fn sync_server_mods(
     // a Cancel that already arrived (pressing Cancel immediately did nothing).
     emit_sync_progress(app_handle, "sync-start", "", None, None, None, None);
 
-    let (manifest_data, _manifest_not_modified) =
-        fetch_server_content(cloud_id, auth_token, true).await?;
+    // Independent requests; run them together to save a round trip per launch.
+    let (content, metadata) = tokio::join!(
+        fetch_server_content(cloud_id, auth_token, true),
+        fetch_instance_metadata(cloud_id, auth_token)
+    );
+    let (manifest_data, _manifest_not_modified) = content?;
 
-    
-    if let Ok((metadata, _)) = fetch_instance_metadata(cloud_id, auth_token).await {
+    if let Ok((metadata, _)) = metadata {
         if metadata
             .get("id")
             .and_then(|v| v.as_str())
@@ -994,6 +1142,14 @@ async fn sync_server_mods(
     
     
     
+    // Pack v2 (manifest + layers) first; instances without one fall through.
+    match crate::pack_v2::sync(app_handle, Path::new(instance_dir), cloud_id, cancel, keybinds).await {
+        Ok(crate::pack_v2::Outcome::Synced(failed)) => return Ok(failed),
+        Ok(crate::pack_v2::Outcome::NotV2) => {}
+        Err(e) if e == crate::modpack::CANCELLED_SENTINEL => return Err(e),
+        Err(e) => log::warn!("[Cloud Sync] pack v2 sync failed ({e}) — falling back to .mrpack"),
+    }
+
     if let Some(url) = manifest_data.modpack_url.as_deref() {
         emit_sync_progress(app_handle, "sync-download", "", None, None, None, None);
         match crate::modpack::install_mrpack_url_into_dir(
@@ -1076,7 +1232,7 @@ async fn sync_server_mods(
         
         
         
-        let Some(file_path) = safe_join(instance_path, &m.filename) else {
+        let Some(file_path) = safe_join(instance_path, &m.filename).map(honor_disabled) else {
             continue;
         };
 
@@ -1152,7 +1308,7 @@ async fn sync_server_mods(
             }
         };
 
-        let Some(file_path) = safe_join(instance_path, &m.filename) else {
+        let Some(file_path) = safe_join(instance_path, &m.filename).map(honor_disabled) else {
             failed.push((m.filename.clone(), "Path traversal blocked".into()));
             no_url_count += 1;
             continue;
@@ -1361,22 +1517,12 @@ async fn import_cloud_instance(
 
 #[tauri::command]
 pub async fn instances_get_joined_servers(_app_handle: tauri::AppHandle) -> JoinedServersResult {
-    let api_token = match get_api_token() {
-        Ok(t) => t,
-        Err(e) => {
-            return JoinedServersResult {
-                ok: false,
-                data: None,
-                error: Some(e),
-            }
-        }
-    };
-
-    let resp = match client()
-        .get(format!("{}/instances", API_URL))
-        .header("Authorization", format!("Bearer {}", api_token))
-        .send()
-        .await
+    let resp = match send_authed(|token| {
+        client()
+            .get(format!("{}/instances", API_URL))
+            .header("Authorization", format!("Bearer {token}"))
+    })
+    .await
     {
         Ok(r) => r,
         Err(e) => {
@@ -1435,27 +1581,17 @@ pub async fn instances_get_joined_servers(_app_handle: tauri::AppHandle) -> Join
 
 #[tauri::command]
 pub async fn instance_join(app_handle: tauri::AppHandle, key: String) -> SimpleResult {
-    let api_token = match get_api_token() {
-        Ok(t) => t,
-        Err(e) => {
-            return SimpleResult {
-                ok: false,
-                error: Some(e),
-                message: None,
-            }
-        }
-    };
-
     let formatted_key = key.trim().to_uppercase();
     let body = serde_json::json!({ "key": formatted_key });
 
-    let resp = match client()
-        .post(format!("{}/instances/join", API_URL))
-        .header("Authorization", format!("Bearer {}", api_token))
-        .header("Content-Type", "application/json")
-        .json(&body)
-        .send()
-        .await
+    let resp = match send_authed(|token| {
+        client()
+            .post(format!("{}/instances/join", API_URL))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Content-Type", "application/json")
+            .json(&body)
+    })
+    .await
     {
         Ok(r) => r,
         Err(e) => {
@@ -1514,23 +1650,13 @@ pub async fn instance_join(app_handle: tauri::AppHandle, key: String) -> SimpleR
 
 #[tauri::command]
 pub async fn instance_join_public(instance_id: String) -> SimpleResult {
-    let api_token = match get_api_token() {
-        Ok(t) => t,
-        Err(e) => {
-            return SimpleResult {
-                ok: false,
-                error: Some(e),
-                message: None,
-            }
-        }
-    };
-
-    let resp = match client()
-        .post(format!("{}/instances/{}/join", API_URL, instance_id))
-        .header("Authorization", format!("Bearer {}", api_token))
-        .header("Content-Type", "application/json")
-        .send()
-        .await
+    let resp = match send_authed(|token| {
+        client()
+            .post(format!("{}/instances/{}/join", API_URL, instance_id))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Content-Type", "application/json")
+    })
+    .await
     {
         Ok(r) => r,
         Err(e) => {
@@ -1570,23 +1696,13 @@ pub async fn instance_join_public(instance_id: String) -> SimpleResult {
 
 #[tauri::command]
 pub async fn instance_leave(instance_id: String) -> SimpleResult {
-    let api_token = match get_api_token() {
-        Ok(t) => t,
-        Err(e) => {
-            return SimpleResult {
-                ok: false,
-                error: Some(e),
-                message: None,
-            }
-        }
-    };
-
-    let resp = match client()
-        .post(format!("{}/instances/{}/leave", API_URL, instance_id))
-        .header("Authorization", format!("Bearer {}", api_token))
-        .header("Content-Type", "application/json")
-        .send()
-        .await
+    let resp = match send_authed(|token| {
+        client()
+            .post(format!("{}/instances/{}/leave", API_URL, instance_id))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Content-Type", "application/json")
+    })
+    .await
     {
         Ok(r) => r,
         Err(e) => {
@@ -1634,7 +1750,6 @@ pub async fn instances_cloud_install(app_handle: tauri::AppHandle, id: String) -
             }
         }
     };
-    let cancel = crate::op_guard::CancelToken::new();
 
     let api_token = match get_api_token() {
         Ok(t) => t,
@@ -1646,12 +1761,14 @@ pub async fn instances_cloud_install(app_handle: tauri::AppHandle, id: String) -
             }
         }
     };
+    let cancel = crate::op_guard::CancelToken::new();
 
-    let resp = match client()
-        .get(format!("{}/instances", API_URL))
-        .header("Authorization", format!("Bearer {}", api_token))
-        .send()
-        .await
+    let resp = match send_authed(|token| {
+        client()
+            .get(format!("{}/instances", API_URL))
+            .header("Authorization", format!("Bearer {token}"))
+    })
+    .await
     {
         Ok(r) => r,
         Err(e) => {
@@ -1738,6 +1855,7 @@ pub async fn instances_cloud_install(app_handle: tauri::AppHandle, id: String) -
         &cloud_id,
         &api_token,
         &cancel,
+        &crate::keybinds::KeybindSync { mode: crate::keybinds::KeybindMode::FirstInstallOnly, backup_dir: None, game_running: false },
     )
     .await
     {
@@ -1760,9 +1878,10 @@ pub async fn instances_cloud_install(app_handle: tauri::AppHandle, id: String) -
             SimpleResult {
                 ok: false,
                 error: Some(format!(
-                    "{} file(s) failed to download — the modpack is incomplete: {preview}{}",
+                    "{} file(s) failed to download — the modpack is incomplete: {preview}{} (first error: {})",
                     failed.len(),
-                    if failed.len() > 5 { ", …" } else { "" }
+                    if failed.len() > 5 { ", …" } else { "" },
+                    failed.first().map(|(_, reason)| reason.as_str()).unwrap_or("unknown")
                 )),
                 message: None,
             }
@@ -1802,22 +1921,12 @@ pub async fn instances_cloud_sync(app_handle: tauri::AppHandle) -> SimpleResult 
             }
         }
     };
-    let api_token = match get_api_token() {
-        Ok(t) => t,
-        Err(e) => {
-            return SimpleResult {
-                ok: false,
-                error: Some(e),
-                message: None,
-            }
-        }
-    };
-
-    let resp = match client()
-        .get(format!("{}/instances", API_URL))
-        .header("Authorization", format!("Bearer {}", api_token))
-        .send()
-        .await
+    let resp = match send_authed(|token| {
+        client()
+            .get(format!("{}/instances", API_URL))
+            .header("Authorization", format!("Bearer {token}"))
+    })
+    .await
     {
         Ok(r) => r,
         Err(e) => {
@@ -1993,15 +2102,14 @@ pub async fn cloud_instance_sync_managed(app_handle: tauri::AppHandle, id: Strin
 
 #[tauri::command]
 pub async fn invitations_fetch() -> Result<Vec<Invitation>, String> {
-    let api_token = get_api_token()?;
-
-    let resp = client()
-        .get(format!("{}/invitations", API_URL))
-        .header("Authorization", format!("Bearer {}", api_token))
-        .header("Content-Type", "application/json")
-        .send()
-        .await
-        .map_err(|e| format!("Network error: {}", e))?;
+    let resp = send_authed(|token| {
+        client()
+            .get(format!("{}/invitations", API_URL))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Content-Type", "application/json")
+    })
+    .await
+    .map_err(|e| format!("Network error: {}", e))?;
 
     if !resp.status().is_success() {
         return Ok(vec![]);
@@ -2017,30 +2125,28 @@ pub async fn invitations_fetch() -> Result<Vec<Invitation>, String> {
 
 #[tauri::command]
 pub async fn invitations_accept(invitation_id: String) -> Result<bool, String> {
-    let api_token = get_api_token()?;
-
-    let resp = client()
-        .put(format!("{}/invitations/{}/accept", API_URL, invitation_id))
-        .header("Authorization", format!("Bearer {}", api_token))
-        .header("Content-Type", "application/json")
-        .send()
-        .await
-        .map_err(|e| format!("Network error: {}", e))?;
+    let resp = send_authed(|token| {
+        client()
+            .put(format!("{}/invitations/{}/accept", API_URL, invitation_id))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Content-Type", "application/json")
+    })
+    .await
+    .map_err(|e| format!("Network error: {}", e))?;
 
     Ok(resp.status().is_success())
 }
 
 #[tauri::command]
 pub async fn invitations_reject(invitation_id: String) -> Result<bool, String> {
-    let api_token = get_api_token()?;
-
-    let resp = client()
-        .put(format!("{}/invitations/{}/reject", API_URL, invitation_id))
-        .header("Authorization", format!("Bearer {}", api_token))
-        .header("Content-Type", "application/json")
-        .send()
-        .await
-        .map_err(|e| format!("Network error: {}", e))?;
+    let resp = send_authed(|token| {
+        client()
+            .put(format!("{}/invitations/{}/reject", API_URL, invitation_id))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Content-Type", "application/json")
+    })
+    .await
+    .map_err(|e| format!("Network error: {}", e))?;
 
     Ok(resp.status().is_success())
 }
@@ -2069,18 +2175,18 @@ pub async fn notifications_fetch_announcements() -> Result<Vec<serde_json::Value
 
 #[tauri::command]
 pub async fn notifications_fetch_user() -> Result<Vec<serde_json::Value>, String> {
-    let api_token = match get_api_token() {
-        Ok(t) => t,
-        Err(_) => return Ok(vec![]),
-    };
+    if get_api_token().is_err() {
+        return Ok(vec![]);
+    }
 
-    let resp = client()
-        .get(format!("{}/announcements/notifications", API_URL))
-        .header("Content-Type", "application/json")
-        .header("Authorization", format!("Bearer {}", api_token))
-        .send()
-        .await
-        .map_err(|e| format!("Network error: {}", e))?;
+    let resp = send_authed(|token| {
+        client()
+            .get(format!("{}/announcements/notifications", API_URL))
+            .header("Content-Type", "application/json")
+            .header("Authorization", format!("Bearer {token}"))
+    })
+    .await
+    .map_err(|e| format!("Network error: {}", e))?;
 
     if !resp.status().is_success() {
         return Ok(vec![]);
@@ -2095,22 +2201,20 @@ pub async fn notifications_fetch_user() -> Result<Vec<serde_json::Value>, String
 
 #[tauri::command]
 pub async fn notifications_sync() -> Result<NotificationSyncResult, String> {
-    let api_token = match get_api_token() {
-        Ok(t) => t,
-        Err(_) => {
-            return Ok(NotificationSyncResult {
-                notifications: vec![],
-                invitations: vec![],
-            })
-        }
-    };
+    if get_api_token().is_err() {
+        return Ok(NotificationSyncResult {
+            notifications: vec![],
+            invitations: vec![],
+        });
+    }
 
-    let resp = match client()
-        .get(format!("{}/announcements/sync?limit=50", API_URL))
-        .header("Content-Type", "application/json")
-        .header("Authorization", format!("Bearer {}", api_token))
-        .send()
-        .await
+    let resp = match send_authed(|token| {
+        client()
+            .get(format!("{}/announcements/notifications", API_URL))
+            .header("Content-Type", "application/json")
+            .header("Authorization", format!("Bearer {token}"))
+    })
+    .await
     {
         Ok(r) => r,
         Err(_) => {
@@ -2189,36 +2293,70 @@ pub async fn notifications_sync() -> Result<NotificationSyncResult, String> {
 
 #[tauri::command]
 pub async fn notifications_mark_read(notification_id: String) -> Result<bool, String> {
-    let api_token = get_api_token()?;
-
-    let resp = client()
-        .put(format!(
-            "{}/announcements/notifications/{}/read",
-            API_URL, notification_id
-        ))
-        .header("Content-Type", "application/json")
-        .header("Authorization", format!("Bearer {}", api_token))
-        .send()
-        .await
-        .map_err(|e| format!("Network error: {}", e))?;
+    let resp = send_authed(|token| {
+        client()
+            .put(format!(
+                "{}/announcements/notifications/{}/read",
+                API_URL, notification_id
+            ))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Content-Type", "application/json")
+    })
+    .await
+    .map_err(|e| format!("Network error: {}", e))?;
 
     Ok(resp.status().is_success())
 }
 
 #[tauri::command]
 pub async fn notifications_delete(notification_id: String) -> Result<bool, String> {
-    let api_token = get_api_token()?;
-
-    let resp = client()
-        .delete(format!(
-            "{}/announcements/notifications/{}",
-            API_URL, notification_id
-        ))
-        .header("Content-Type", "application/json")
-        .header("Authorization", format!("Bearer {}", api_token))
-        .send()
-        .await
-        .map_err(|e| format!("Network error: {}", e))?;
+    let resp = send_authed(|token| {
+        client()
+            .delete(format!(
+                "{}/announcements/notifications/{}",
+                API_URL, notification_id
+            ))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Content-Type", "application/json")
+    })
+    .await
+    .map_err(|e| format!("Network error: {}", e))?;
 
     Ok(resp.status().is_success())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_remove_mod;
+    use std::collections::HashSet;
+
+    fn set(names: &[&str]) -> HashSet<String> {
+        names.iter().map(|n| n.to_string()).collect()
+    }
+
+    #[test]
+    fn player_mods_survive_sync() {
+        let keep = set(&["sodium.jar"]);
+        let prev = set(&["sodium.jar", "old-lib.jar"]);
+        let remove = |n| should_remove_mod(n, &keep, &[], Some(&prev), |_| false);
+        assert!(!remove("sodium.jar"));
+        assert!(remove("old-lib.jar"));
+        assert!(!remove("my-minimap.jar"));
+    }
+
+    #[test]
+    fn locked_mods_are_never_removed() {
+        let prev = set(&["old-lib.jar"]);
+        let locked = vec!["old-lib.jar".to_string()];
+        assert!(!should_remove_mod("old-lib.jar", &set(&[]), &locked, Some(&prev), |_| false));
+    }
+
+    #[test]
+    fn first_sync_without_record_keeps_launcher_installed_mods() {
+        let keep = set(&["sodium.jar"]);
+        let installed = |n: &str| n == "my-minimap.jar";
+        assert!(!should_remove_mod("my-minimap.jar", &keep, &[], None, installed));
+        assert!(should_remove_mod("stale.jar", &keep, &[], None, installed));
+        assert!(!should_remove_mod("sodium.jar", &keep, &[], None, installed));
+    }
 }

@@ -3,6 +3,8 @@ import { useTranslation } from "../../../hooks/useTranslation";
 import type { ModrinthProject, InstallProgress } from "./types";
 import { ProjectCard } from "./ProjectCard";
 import { Icons } from "../../ui/Icons";
+import { motion } from "framer-motion";
+import { useMotionPreset } from "../../../lib/motion";
 
 interface ProjectListProps {
     colors: any;
@@ -17,6 +19,7 @@ interface ProjectListProps {
     onPageChange: (page: number) => void;
     installingProjectId?: string | null;
     installProgress?: InstallProgress | null;
+    layout?: "grid" | "list";
 }
 
 export function ProjectList({
@@ -32,8 +35,10 @@ export function ProjectList({
     onPageChange,
     installingProjectId,
     installProgress,
+    layout = "grid",
 }: ProjectListProps) {
     const { t } = useTranslation();
+    const m = useMotionPreset();
     const containerRef = useRef<HTMLDivElement>(null);
 
     const handlePageChange = (newPage: number) => {
@@ -50,26 +55,25 @@ export function ProjectList({
                     <span className="text-sm font-medium" style={{ color: colors.onSurfaceVariant }}>
                         {t('items_count').replace('{count}', ((totalHits && totalHits > 0) ? totalHits : results.length).toLocaleString())}
                     </span>
-                    <span className="text-xs px-2 py-0.5 rounded-full"
-                        style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}>
+                    <span className="text-[13px] font-medium"
+                        style={{ color: colors.onSurfaceVariant }}>
                         {t('page_of').replace('{page}', String(page)).replace('{totalPages}', String(Math.max(1, totalPages)))}
                     </span>
                 </div>
             )}
 
             {isLoading ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3">
+                <div className={layout === "list" ? "flex flex-col gap-0.5" : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3"}>
                     {Array.from({ length: viewCount }).map((_, i) => (
                         <div
                             key={i}
-                            className="rounded-xl overflow-hidden p-4 flex gap-4 animate-skeleton-wave"
+                            className="rounded-2xl overflow-hidden p-4 flex gap-4 animate-skeleton-wave"
                             style={{
-                                backgroundColor: `${colors.surfaceContainer}60`,
-                                border: `1px solid ${colors.outline}15`,
+                                backgroundColor: colors.surfaceContainer,
                                 animationDelay: `${Math.min(i * 30, 150)}ms`
                             }}
                         >
-                            <div className="w-12 h-12 rounded-xl shrink-0 overflow-hidden relative"
+                            <div className="w-16 h-16 rounded-xl shrink-0 overflow-hidden relative"
                                 style={{ backgroundColor: colors.surfaceContainerHighest }}>
                             </div>
                             <div className="flex-1 space-y-2">
@@ -84,22 +88,24 @@ export function ProjectList({
                     ))}
                 </div>
             ) : results.length === 0 ? (
-                <div className="flex-1 flex flex-col items-center justify-center p-12 text-center rounded-xl border border-dashed"
-                    style={{ borderColor: colors.outline + "40", color: colors.onSurfaceVariant }}>
-                    <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4"
-                        style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                        <Icons.Box className="w-8 h-8 opacity-50" style={{ color: colors.onSurfaceVariant }} />
-                    </div>
-                    <h3 className="text-base font-medium mb-1" style={{ color: colors.onSurface }}>{t('no_results')}</h3>
-                    <p className="text-sm opacity-70">{t('try_change_filters')}</p>
-                </div>
+                <motion.div variants={m.scaleIn} {...m.states} className="flex-1 flex flex-col items-center justify-center p-12 text-center rounded-2xl"
+                    style={{ backgroundColor: colors.surfaceContainer, color: colors.onSurfaceVariant }}>
+                    <Icons.Search className="w-10 h-10 mb-4" style={{ color: colors.onSurfaceVariant }} />
+                    <h3 className="text-lg font-bold mb-1" style={{ color: colors.onSurface }}>{t('no_results')}</h3>
+                    <p className="text-sm">{t('try_change_filters')}</p>
+                </motion.div>
             ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 pb-4">
+                <motion.div
+                    key={`${layout}-${page}`}
+                    variants={m.fadeIn}
+                    {...m.states}
+                    className={layout === "list" ? "flex flex-col gap-0.5 pb-4" : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 pb-4"}
+                >
                     {results.map((project, index) => (
-                        <div
+                        <motion.div
                             key={project.project_id}
-                            className="animate-card-appear"
-                            style={{ animationDelay: `${Math.min(index * 20, 150)}ms` }}
+                            variants={layout === "grid" ? m.showcaseItem : undefined}
+                            custom={index}
                         >
                             <ProjectCard
                                 colors={colors}
@@ -108,21 +114,22 @@ export function ProjectList({
                                 onClick={() => onSelectProject(project)}
                                 isInstalling={installingProjectId === project.project_id}
                                 installProgress={installProgress}
+                                layout={layout}
                             />
-                        </div>
+                        </motion.div>
                     ))}
-                </div>
+                </motion.div>
             )}
 
             {!isLoading && results.length > 0 && totalPages > 1 && (
                 <div className="flex justify-center mt-6 pb-2">
-                    <div className="flex items-center gap-2 p-1 rounded-lg"
-                        style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}20` }}>
+                    <div className="flex items-center gap-2 p-1 rounded-xl"
+                        style={{ backgroundColor: colors.surfaceContainerHighest }}>
 
                         <button
                             onClick={() => handlePageChange(Math.max(1, page - 1))}
                             disabled={page === 1}
-                            className="px-3 py-1.5 rounded-md text-sm font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-1.5"
+                            className="px-3 py-1.5 rounded-md text-sm font-medium disabled:opacity-40 hover:bg-white/5 pressable flex items-center gap-1.5"
                             style={{ color: colors.onSurface }}
                         >
                             <i className="fa-solid fa-chevron-left text-xs"></i>
@@ -131,14 +138,14 @@ export function ProjectList({
 
                         <div className="px-3 min-w-[80px] text-center" style={{ color: colors.onSurfaceVariant }}>
                             <span className="text-sm font-bold" style={{ color: colors.onSurface }}>{page}</span>
-                            <span className="text-xs opacity-70 mx-1">/</span>
-                            <span className="text-sm opacity-70">{totalPages}</span>
+                            <span className="text-sm mx-1">/</span>
+                            <span className="text-sm">{totalPages}</span>
                         </div>
 
                         <button
                             onClick={() => handlePageChange(Math.min(totalPages, page + 1))}
                             disabled={page >= totalPages}
-                            className="px-3 py-1.5 rounded-md text-sm font-medium disabled:opacity-40 hover:bg-white/5 transition-colors flex items-center gap-1.5"
+                            className="px-3 py-1.5 rounded-md text-sm font-medium disabled:opacity-40 hover:bg-white/5 pressable flex items-center gap-1.5"
                             style={{ color: colors.onSurface }}
                         >
                             {t('next' as any)}

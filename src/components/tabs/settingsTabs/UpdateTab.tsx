@@ -4,6 +4,7 @@ import type { LauncherConfig } from "../../../types/launcher";
 import type { SettingsTabProps } from "./AccountTab";
 import rIcon from "../../../assets/r.svg";
 import { useTranslation } from "../../../hooks/useTranslation";
+import { SettingsPage, SettingsSection, SettingsRow, Toggle, buttonClass, buttonStyle } from "./SettingsUI";
 
 export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
     const [appVersion, setAppVersion] = useState<string>("0.0.0");
@@ -17,9 +18,9 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
 
     const windowApi = (window as any).api;
 
-    
-    
-    
+
+
+
     const checkLatestFromApi = async (): Promise<boolean> => {
         const result = await windowApi?.checkLatestVersion?.();
         if (!result?.ok) {
@@ -42,11 +43,11 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
             if (version) setAppVersion(version);
             if (devMode !== undefined) setIsDevMode(devMode);
 
-            
+
             try {
                 await checkLatestFromApi();
             } catch {
-                
+
             }
         })();
 
@@ -79,214 +80,206 @@ export function UpdateTab({ config, updateConfig, colors }: SettingsTabProps) {
         return () => cleanups.forEach(fn => fn());
     }, []);
 
+    const isUpToDate = updateStatus !== "available";
+
     return (
-        <>
-            {}
-            <div
-                className="rounded-xl overflow-hidden"
-                style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.outline}30` }}
-            >
-                <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: colors.outline + "30" }}>
-                    <i className="fa-solid fa-download" style={{ color: colors.secondary }}></i>
-                    <span className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('tab_update')}</span>
-                </div>
-                <div className="p-4">
-                    <div className="flex items-center gap-4">
-                        <div
-                            className="w-12 h-12 rounded-md flex items-center justify-center"
-                            style={{ backgroundColor: colors.secondary }}
-                        >
-                            <img src={rIcon} alt="Reality" className="w-7 h-7 object-contain" />
+        <SettingsPage title={t('tab_update')} colors={colors}>
+            <SettingsSection colors={colors}>
+                {/* App info card */}
+                <div
+                    className="rounded-xl border px-5 py-5 flex items-center gap-4"
+                    style={{ backgroundColor: colors.surfaceContainer, borderColor: "transparent" }}
+                >
+                    <div
+                        className="w-14 h-14 rounded-xl flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: colors.secondary }}
+                    >
+                        <img src={rIcon} alt="Reality" className="w-8 h-8 object-contain" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-lg font-bold" style={{ color: colors.onSurface }}>Reality Launcher</p>
+                        <div className="flex items-center gap-2 mt-1">
+                            <span className="text-sm font-medium" style={{ color: colors.onSurfaceVariant }}>v{appVersion}</span>
+                            <span
+                                className="px-2 py-0.5 rounded-md text-xs font-semibold"
+                                style={{
+                                    backgroundColor: isDevMode ? "#f9731620" : "#22c55e20",
+                                    color: isDevMode ? "#f97316" : "#22c55e"
+                                }}
+                            >
+                                {isDevMode ? t('dev') : t('stable')}
+                            </span>
                         </div>
-                        <div className="flex-1">
-                            <p className="font-semibold text-sm" style={{ color: colors.onSurface }}>Reality Launcher</p>
-                            <div className="flex items-center gap-2 mt-1">
-                                <span className="text-xs" style={{ color: colors.onSurfaceVariant }}>v{appVersion}</span>
-                                <span
-                                    className="px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                    style={{
-                                        backgroundColor: isDevMode ? "#f9731620" : "#22c55e20",
-                                        color: isDevMode ? "#f97316" : "#22c55e"
-                                    }}
-                                >
-                                    {isDevMode ? t('dev') : t('stable')}
-                                </span>
-                            </div>
-                        </div>
-                        <div
-                            className="w-2 h-2 rounded-full"
+                    </div>
+                    <div
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-full shrink-0"
+                        style={{ backgroundColor: isUpToDate ? "#22c55e1a" : "#f59e0b1a" }}
+                        title={updateStatus === "available" ? t('update_available') : t('up_to_date')}
+                    >
+                        <span
+                            className="w-2.5 h-2.5 rounded-full"
                             style={{ backgroundColor: updateStatus === "available" ? "#f59e0b" : "#22c55e" }}
-                            title={updateStatus === "available" ? t('update_available') : t('up_to_date')}
                         />
+                        <span className="text-sm font-semibold" style={{ color: updateStatus === "available" ? "#f59e0b" : "#22c55e" }}>
+                            {updateStatus === "available" ? t('update_available') : t('up_to_date')}
+                        </span>
                     </div>
                 </div>
-            </div>
 
-            {isDevMode && (
-                <div
-                    className="rounded-md p-3 flex items-center gap-3 mt-3"
-                    style={{ backgroundColor: "#f9731610", border: "1px solid #f9731630" }}
-                >
-                    <i className="fa-solid fa-flask text-sm" style={{ color: "#f97316" }}></i>
-                    <span className="text-xs" style={{ color: colors.onSurfaceVariant }}>
-                        {t('update_disabled_dev')}
-                    </span>
-                </div>
-            )}
-
-            {updateStatus === "available" && updateInfo && (
-                <div
-                    className="rounded-lg p-4 mt-3"
-                    style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.secondary}50` }}
-                >
-                    <div className="flex items-center gap-3 mb-3">
-                        <i className="fa-solid fa-arrow-up" style={{ color: colors.secondary }}></i>
-                        <div className="flex-1">
-                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('update_available')}</p>
-                            <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t('version_label').replace('{version}', updateInfo.version)}</p>
-                        </div>
-                    </div>
-                    <button
-                        onClick={async () => {
-                            try {
-                                // Prefer the official download URL resolved from ml-api;
-                                // fall back to electron-updater's in-app download.
-                                if (downloadUrl) {
-                                    await windowApi?.openExternal?.(downloadUrl);
-                                } else {
-                                    await windowApi?.downloadUpdate?.();
-                                }
-                                toast.success(t('downloading_update'));
-                            } catch (error) {
-                                toast.error(t('download_failed'));
-                            }
-                        }}
-                        className="w-full py-2 rounded-md text-sm font-medium"
-                        style={{ backgroundColor: colors.secondary, color: "#1a1a1a" }}
+                {isDevMode && (
+                    <div
+                        className="rounded-xl px-5 py-4 flex items-center gap-3"
+                        style={{ backgroundColor: "#f9731610", border: "1px solid #f9731640" }}
                     >
-                        <i className="fa-solid fa-download mr-2 text-xs"></i>
-                        {t('download')}
-                    </button>
-                </div>
-            )}
+                        <i className="fa-solid fa-flask text-base" style={{ color: "#f97316" }}></i>
+                        <span className="text-sm" style={{ color: colors.onSurface }}>
+                            {t('update_disabled_dev')}
+                        </span>
+                    </div>
+                )}
 
-            {updateStatus === "downloading" && (
-                <div
-                    className="rounded-lg p-4 mt-3"
-                    style={{ backgroundColor: colors.surfaceContainer }}
-                >
-                    <div className="flex items-center gap-3 mb-2">
-                        <i className="fa-solid fa-spinner fa-spin text-sm" style={{ color: colors.secondary }}></i>
-                        <span className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('downloading')}</span>
-                        <span className="ml-auto text-sm font-medium" style={{ color: colors.secondary }}>{downloadProgress.toFixed(0)}%</span>
-                    </div>
-                    <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                        <div
-                            className="h-full transition-all duration-300"
-                            style={{ width: `${downloadProgress}%`, backgroundColor: colors.secondary }}
-                        />
-                    </div>
-                </div>
-            )}
-
-            {updateStatus === "ready" && updateInfo && (
-                <div
-                    className="rounded-lg p-4 mt-3"
-                    style={{ backgroundColor: colors.surfaceContainer, border: "1px solid #22c55e50" }}
-                >
-                    <div className="flex items-center gap-3 mb-3">
-                        <i className="fa-solid fa-check" style={{ color: "#22c55e" }}></i>
-                        <div className="flex-1">
-                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('ready_to_install')}</p>
-                            <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t('version_label').replace('{version}', updateInfo.version)}</p>
-                        </div>
-                    </div>
-                    {config.autoUpdateEnabled && (
-                        <p className="text-xs mb-3" style={{ color: colors.onSurfaceVariant }}>
-                            <i className="fa-solid fa-info-circle mr-1.5"></i>
-                            {t('update_ready_next_restart').replace('{version}', updateInfo.version)}
-                        </p>
-                    )}
-                    <button
-                        onClick={async () => {
-                            try {
-                                await windowApi?.installUpdate?.();
-                            } catch (error) {
-                                toast.error(t('install_failed'));
-                            }
-                        }}
-                        className="w-full py-2 rounded-md text-sm font-medium"
-                        style={{ backgroundColor: "#22c55e", color: "#fff" }}
+                {updateStatus === "available" && updateInfo && (
+                    <div
+                        className="rounded-xl px-5 py-4"
+                        style={{ backgroundColor: colors.surfaceContainer, border: `1px solid ${colors.secondary}80` }}
                     >
-                        <i className="fa-solid fa-play mr-2 text-xs"></i>
-                        {t('install_and_restart')}
-                    </button>
-                </div>
-            )}
-
-            <div className="rounded-xl overflow-hidden mt-3" style={{ backgroundColor: colors.surfaceContainer }}>
-                <div className="p-4 space-y-4">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('auto_update')}</p>
-                            <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t('auto_update_desc')}</p>
-                        </div>
-                        <button
-                            onClick={() => {
-                                const newValue = !config.autoUpdateEnabled;
-                                updateConfig({ autoUpdateEnabled: newValue });
-                                toast.success(newValue ? t('auto_update_on') : t('auto_update_off'));
-                            }}
-                            className="relative w-10 h-5 rounded-full transition-colors"
-                            style={{ backgroundColor: config.autoUpdateEnabled ? colors.secondary : colors.surfaceContainerHighest }}
-                        >
-                            <div
-                                className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all"
-                                style={{ left: config.autoUpdateEnabled ? "calc(100% - 18px)" : "2px" }}
-                            />
-                        </button>
-                    </div>
-
-                    <div className="h-px" style={{ backgroundColor: colors.outline + "20" }} />
-
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="font-medium text-sm" style={{ color: colors.onSurface }}>{t('check_for_updates')}</p>
-                            <p className="text-xs" style={{ color: colors.onSurfaceVariant }}>{t('check_for_updates_desc')}</p>
+                        <div className="flex items-center gap-3.5 mb-4">
+                            <div className="w-7 flex items-center justify-center shrink-0 text-xl">
+                                <i className="fa-solid fa-arrow-up" style={{ color: colors.secondary }}></i>
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-base font-semibold" style={{ color: colors.onSurface }}>{t('update_available')}</p>
+                                <p className="text-sm mt-0.5" style={{ color: colors.onSurfaceVariant }}>{t('version_label').replace('{version}', updateInfo.version)}</p>
+                            </div>
                         </div>
                         <button
                             onClick={async () => {
-                                if (updateStatus === "checking") return;
-
-                                if (isDevMode) {
-                                    toast(t('cannot_check_in_dev'), { icon: "⚠️" });
-                                    return;
-                                }
-
-                                setUpdateStatus("checking");
-                                toast.loading(t('checking_for_updates'), { id: "check-update" });
                                 try {
-                                    const hasUpdate = await checkLatestFromApi();
-                                    if (hasUpdate) {
-                                        toast.dismiss("check-update");
+                                    // Prefer the official download URL resolved from ml-api;
+                                    // fall back to electron-updater's in-app download.
+                                    if (downloadUrl) {
+                                        await windowApi?.openExternal?.(downloadUrl);
                                     } else {
-                                        toast.success(t('already_latest_version'), { id: "check-update" });
+                                        await windowApi?.downloadUpdate?.();
                                     }
+                                    toast.success(t('downloading_update'));
                                 } catch (error) {
-                                    setUpdateStatus("idle");
-                                    toast.error(t('update_check_failed'), { id: "check-update" });
+                                    toast.error(t('download_failed'));
                                 }
                             }}
-                            disabled={updateStatus === "checking" || isDevMode}
-                            className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium disabled:opacity-50"
-                            style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurface }}
+                            className="w-full h-11 rounded-lg text-[15px] font-semibold transition hover:brightness-110"
+                            style={{ backgroundColor: colors.secondary, color: "#111" }}
                         >
-                            <i className={`fa-solid ${updateStatus === "checking" ? "fa-spinner fa-spin" : "fa-sync"} text-[10px]`}></i>
-                            {updateStatus === "checking" ? t('checking_for_updates') : t('check')}
+                            <i className="fa-solid fa-download mr-2 text-sm"></i>
+                            {t('download')}
                         </button>
                     </div>
-                </div>
-            </div>
-        </>
+                )}
+
+                {updateStatus === "downloading" && (
+                    <div
+                        className="rounded-xl border px-5 py-4"
+                        style={{ backgroundColor: colors.surfaceContainer, borderColor: "transparent" }}
+                    >
+                        <div className="flex items-center gap-3 mb-3">
+                            <i className="fa-solid fa-spinner fa-spin text-base" style={{ color: colors.secondary }}></i>
+                            <span className="text-base font-semibold" style={{ color: colors.onSurface }}>{t('downloading')}</span>
+                            <span className="ml-auto text-base font-bold" style={{ color: colors.secondary }}>{downloadProgress.toFixed(0)}%</span>
+                        </div>
+                        <div className="w-full h-2 rounded-full overflow-hidden" style={{ backgroundColor: colors.surfaceContainerHighest }}>
+                            <div
+                                className="h-full w-full rounded-full transition-transform duration-300 ease-out"
+                                style={{ transform: `translateX(${downloadProgress - 100}%)`, backgroundColor: colors.secondary }}
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {updateStatus === "ready" && updateInfo && (
+                    <div
+                        className="rounded-xl px-5 py-4"
+                        style={{ backgroundColor: colors.surfaceContainer, border: "1px solid #22c55e66" }}
+                    >
+                        <div className="flex items-center gap-3.5 mb-4">
+                            <div className="w-7 flex items-center justify-center shrink-0 text-xl">
+                                <i className="fa-solid fa-check" style={{ color: "#22c55e" }}></i>
+                            </div>
+                            <div className="flex-1">
+                                <p className="text-base font-semibold" style={{ color: colors.onSurface }}>{t('ready_to_install')}</p>
+                                <p className="text-sm mt-0.5" style={{ color: colors.onSurfaceVariant }}>{t('version_label').replace('{version}', updateInfo.version)}</p>
+                            </div>
+                        </div>
+                        {config.autoUpdateEnabled && (
+                            <p className="text-sm mb-4" style={{ color: colors.onSurfaceVariant }}>
+                                <i className="fa-solid fa-info-circle mr-1.5"></i>
+                                {t('update_ready_next_restart').replace('{version}', updateInfo.version)}
+                            </p>
+                        )}
+                        <button
+                            onClick={async () => {
+                                try {
+                                    await windowApi?.installUpdate?.();
+                                } catch (error) {
+                                    toast.error(t('install_failed'));
+                                }
+                            }}
+                            className="w-full h-11 rounded-lg text-[15px] font-semibold transition hover:brightness-110"
+                            style={{ backgroundColor: "#22c55e", color: "#fff" }}
+                        >
+                            <i className="fa-solid fa-play mr-2 text-sm"></i>
+                            {t('install_and_restart')}
+                        </button>
+                    </div>
+                )}
+            </SettingsSection>
+
+            <SettingsSection colors={colors}>
+                <SettingsRow title={t('auto_update')} description={t('auto_update_desc')} colors={colors}>
+                    <Toggle
+                        checked={!!config.autoUpdateEnabled}
+                        label={t('auto_update')}
+                        colors={colors}
+                        onChange={() => {
+                            const newValue = !config.autoUpdateEnabled;
+                            updateConfig({ autoUpdateEnabled: newValue });
+                            toast.success(newValue ? t('auto_update_on') : t('auto_update_off'));
+                        }}
+                    />
+                </SettingsRow>
+
+                <SettingsRow title={t('check_for_updates')} description={t('check_for_updates_desc')} colors={colors}>
+                    <button
+                        onClick={async () => {
+                            if (updateStatus === "checking") return;
+
+                            if (isDevMode) {
+                                toast(t('cannot_check_in_dev'), { icon: "⚠️" });
+                                return;
+                            }
+
+                            setUpdateStatus("checking");
+                            toast.loading(t('checking_for_updates'), { id: "check-update" });
+                            try {
+                                const hasUpdate = await checkLatestFromApi();
+                                if (hasUpdate) {
+                                    toast.dismiss("check-update");
+                                } else {
+                                    toast.success(t('already_latest_version'), { id: "check-update" });
+                                }
+                            } catch (error) {
+                                setUpdateStatus("idle");
+                                toast.error(t('update_check_failed'), { id: "check-update" });
+                            }
+                        }}
+                        disabled={updateStatus === "checking" || isDevMode}
+                        className={buttonClass}
+                        style={buttonStyle(colors)}
+                    >
+                        <i className={`fa-solid ${updateStatus === "checking" ? "fa-spinner fa-spin" : "fa-sync"} text-sm`}></i>
+                        {updateStatus === "checking" ? t('checking_for_updates') : t('check')}
+                    </button>
+                </SettingsRow>
+            </SettingsSection>
+        </SettingsPage>
     );
 }

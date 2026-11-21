@@ -27,6 +27,8 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
     const [isLoadingFile, setIsLoadingFile] = useState(false);
     const logContainerRef = useRef<HTMLDivElement>(null);
     const logIdRef = useRef(0);
+    const lastLevelRef = useRef<LogEntry["level"]>("info");
+    const [reloadKey, setReloadKey] = useState(0);
 
     useEffect(() => {
         if (autoScroll && logContainerRef.current) {
@@ -35,17 +37,22 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
     }, [logs, autoScroll]);
 
     
+    // Vanilla/Fabric: "[13:56:16] [main/INFO]: ..."; Forge: "[22Oct2026 13:50:53.856] [main/INFO] ...".
+    // Lines without a timestamp (stack traces, wrapped output) inherit the previous line's level.
     const parseLines = useCallback((content: string): LogEntry[] => {
         return content
-            .split("\n")
+            .split(/\r?\n/)
             .filter((line) => line.trim())
             .map((line) => {
-                let level: LogEntry["level"] = "info";
-                if (line.includes("/ERROR]") || line.includes("/FATAL]")) level = "error";
-                else if (line.includes("/WARN]")) level = "warn";
-                else if (line.includes("/DEBUG]")) level = "debug";
-
-                const timeMatch = line.match(/\[(\d{2}:\d{2}:\d{2})\]/);
+                const timeMatch = line.match(/^\[(?:\d{1,2}[A-Za-z]{3}\d{4} )?(\d{2}:\d{2}:\d{2})/);
+                let level = lastLevelRef.current;
+                if (timeMatch) {
+                    if (line.includes("/ERROR]") || line.includes("/FATAL]")) level = "error";
+                    else if (line.includes("/WARN]")) level = "warn";
+                    else if (line.includes("/DEBUG]")) level = "debug";
+                    else level = "info";
+                    lastLevelRef.current = level;
+                }
                 return {
                     id: logIdRef.current++,
                     timestamp: timeMatch ? timeMatch[1] : "",
@@ -63,9 +70,24 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
 
         let cancelled = false;
         let timer: ReturnType<typeof setTimeout> | null = null;
-        let offset = 0;
-        logIdRef.current = 0;
-        setLogs([]);
+        // Two sources: the launcher's log of the last launch (launcher.log,
+        // from the Play press until the game starts) and the game's latest.log.
+        let launchOffset = 0;
+        let gameOffset = 0;
+        let launchCreated = 0;
+        let gameCreated = 0;
+        const reset = () => {
+            logIdRef.current = 0;
+            lastLevelRef.current = "info";
+            setLogs([]);
+        };
+        reset();
+
+        // Play recreates launcher.log and the game rotates latest.log. A new file
+        // has a new creation time; where the filesystem doesn't report one, a file
+        // smaller than what was already read is the only sign.
+        const replaced = (res: { size: number; created?: number }, offset: number, created: number) =>
+            res.size < offset || (created > 0 && (res.created ?? 0) > 0 && res.created !== created);
 
         const append = (content: string) => {
             const entries = parseLines(content);
@@ -80,14 +102,30 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
             if (cancelled) return;
             try {
                 if (!isPausedRef.current) {
-                    const res = await (window.api as any)?.instanceTailLog?.(instanceId, offset);
+                    let launch = await window.api?.instanceTailLaunchLog?.(instanceId, launchOffset);
+                    if (!cancelled && launch?.ok && replaced(launch, launchOffset, launchCreated)) {
+                        // A new launch: start over, keeping the previous game's
+                        // latest.log hidden until the game rotates it.
+                        reset();
+                        launch = await window.api?.instanceTailLaunchLog?.(instanceId, 0);
+                    }
+                    if (!cancelled && launch?.ok) {
+                        launchOffset = launch.size;
+                        launchCreated = launch.created ?? 0;
+                        if (launch.content) append(launch.content);
+                    }
+                    let res = await window.api?.instanceTailLog?.(instanceId, gameOffset);
+                    if (!cancelled && res?.ok && replaced(res, gameOffset, gameCreated)) {
+                        res = await window.api?.instanceTailLog?.(instanceId, 0);
+                    }
                     if (!cancelled && res?.ok) {
-                        if (typeof res.size === "number") offset = res.size;
+                        gameOffset = res.size;
+                        gameCreated = res.created ?? 0;
                         if (res.content) append(res.content);
                     }
                 }
             } catch {
-                
+
             }
             if (!cancelled) timer = setTimeout(poll, 1000);
         };
@@ -95,10 +133,21 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
         const init = async () => {
             setIsLoadingFile(true);
             try {
-                const result = await (window.api as any)?.instanceReadLatestLog?.(instanceId);
+                const launch = await window.api?.instanceTailLaunchLog?.(instanceId, 0);
+                if (!cancelled && launch?.ok) {
+                    launchOffset = launch.size;
+                    launchCreated = launch.created ?? 0;
+                    if (launch.content) append(launch.content);
+                }
+                const result = await window.api?.instanceReadLatestLog?.(instanceId);
                 if (!cancelled && result?.ok) {
-                    if (typeof result.size === "number") offset = result.size;
-                    if (result.content) append(result.content);
+                    gameOffset = result.size;
+                    gameCreated = result.created ?? 0;
+                    // A latest.log last written before this launch began is the
+                    // previous session's; wait for the game to start a new one.
+                    const launchStarted = launch?.ok ? launch.created ?? 0 : 0;
+                    const stale = launchStarted > 0 && (result.modified ?? 0) < launchStarted;
+                    if (result.content && !stale) append(result.content);
                 }
             } catch (error) {
                 console.error("[LiveLog] Failed to load log file:", error);
@@ -114,7 +163,7 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
             cancelled = true;
             if (timer) clearTimeout(timer);
         };
-    }, [isOpen, instanceId, parseLines]);
+    }, [isOpen, instanceId, parseLines, reloadKey]);
 
     const clearLogs = useCallback(() => {
         setLogs([]);
@@ -126,31 +175,7 @@ export function LiveLog({ colors, isOpen, onClose, instanceId }: LiveLogProps) {
         navigator.clipboard.writeText(text);
     }, [logs]);
 
-    const reloadLogs = useCallback(async () => {
-        if (!instanceId) return;
-        setIsLoadingFile(true);
-        try {
-            const result = await (window.api as any)?.instanceReadLatestLog?.(instanceId);
-            if (result?.ok && result.content) {
-                const lines = result.content.split("\n").filter((line: string) => line.trim());
-                const entries: LogEntry[] = lines.map((line: string, idx: number) => {
-                    let level: LogEntry["level"] = "info";
-                    if (line.includes("/ERROR]") || line.includes("/FATAL]")) level = "error";
-                    else if (line.includes("/WARN]")) level = "warn";
-                    else if (line.includes("/DEBUG]")) level = "debug";
-                    const timeMatch = line.match(/\[(\d{2}:\d{2}:\d{2})\]/);
-                    const timestamp = timeMatch ? timeMatch[1] : "";
-                    return { id: idx, timestamp, level, message: line };
-                });
-                setLogs(entries);
-                logIdRef.current = entries.length;
-            }
-        } catch (error) {
-            console.error("[LiveLog] Failed to reload log file:", error);
-        } finally {
-            setIsLoadingFile(false);
-        }
-    }, [instanceId]);
+    const reloadLogs = useCallback(() => setReloadKey((k) => k + 1), []);
 
     const filteredLogs = filter === "all"
         ? logs

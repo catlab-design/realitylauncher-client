@@ -9,22 +9,31 @@ mod auth;
 mod cloud;
 mod config;
 mod content;
+mod pack_v2;
 mod curseforge;
 mod discord;
 mod download;
 mod fs_utils;
+mod game_window;
 mod http_client;
 mod instances;
+mod keybind_backups;
+mod keybinds;
 mod java;
+mod launch_log;
 mod launcher;
+mod mappings;
 mod mod_meta;
 mod modpack;
 mod modrinth;
 mod op_guard;
+mod perf_tools;
 mod social;
+mod tab_badge;
 mod telemetry;
 mod update;
 mod wardrobe;
+mod wayland;
 mod window;
 
 fn main() {
@@ -33,6 +42,7 @@ fn main() {
         if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
             std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
         }
+        wayland::configure_launcher(config::config_get().native_wayland);
     }
 
     let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn"))
@@ -80,12 +90,15 @@ fn main() {
             
             launcher::is_game_running,
             launcher::kill_game,
+            launcher::cancel_launch,
             launcher::instances_launch,
             launcher::get_playing_instance_id,
             launcher::instance_read_latest_log,
             launcher::instance_tail_log,
+            launcher::instance_tail_launch_log,
             launcher::get_app_version,
             launcher::is_dev_mode,
+            perf_tools::linux_perf_tools,
             launcher::browse_java,
             launcher::instances_preinstall,
             
@@ -153,6 +166,7 @@ fn main() {
             update::check_latest_version,
             update::download_update,
             update::install_update,
+            update::set_install_update_on_exit,
             
             fs_utils::open_folder,
             fs_utils::open_url,
@@ -176,6 +190,10 @@ fn main() {
             cloud::instances_cloud_install,
             cloud::instances_cloud_sync,
             cloud::instance_check_integrity,
+            keybind_backups::keybind_backups_list,
+            keybind_backups::keybind_backup_create,
+            keybind_backups::keybind_backup_restore,
+            keybind_backups::keybind_backup_delete,
             cloud::cloud_instance_sync_managed,
             cloud::invitations_fetch,
             cloud::invitations_accept,
@@ -191,8 +209,10 @@ fn main() {
             discord::discord_rpc_is_connected,
             
             social::server_ping,
+            social::instance_saved_servers,
             
             telemetry::telemetry_log_event,
+            telemetry::dev_perf_report,
             
             wardrobe::catskinc_get_config,
             wardrobe::catskinc_save_config,
@@ -212,6 +232,7 @@ fn main() {
         .run(|_app_handle, event| {
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 tauri::async_runtime::block_on(telemetry::track_app_close());
+                update::run_pending_install_on_exit();
             }
         });
 }

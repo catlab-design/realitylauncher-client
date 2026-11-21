@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { type LauncherConfig } from '../types/launcher';
 
+/** Default game JVM flags. Every Java the launcher may run (8–25) must accept all of them. */
+export const DEFAULT_JAVA_ARGUMENTS = "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+DisableExplicitGC";
+
 interface ConfigState extends LauncherConfig {
     setConfig: (config: Partial<LauncherConfig>) => void;
     resetConfig: () => void;
@@ -25,11 +28,16 @@ const defaultConfig: LauncherConfig = {
     clickSoundEnabled: true,
     notificationSoundEnabled: true,
     rainbowMode: false,
+    performanceMode: false,
     backgroundImage: "",
     backgroundImageOpacity: 0.15,
     fullscreen: false,
-    javaArguments: "",
+    javaArguments: DEFAULT_JAVA_ARGUMENTS,
     maxConcurrentDownloads: 8,
+    enableMangoHud: false,
+    enableGameMode: false,
+    nativeWayland: false,
+    javaProvider: "corretto",
     telemetryEnabled: true,
     autoUpdateEnabled: true,
 };
@@ -65,6 +73,13 @@ export const useConfigStore = create<ConfigState>()(
         }),
         {
             name: 'reality_config',
+            // The background image is a base64 data URL (often several MB). Mirroring it into
+            // localStorage blew the quota, the store write threw, and the config never reached
+            // disk. config.json (loaded at startup) is its only store.
+            partialize: (state) => {
+                const { backgroundImage: _backgroundImage, ...rest } = state;
+                return rest as ConfigState;
+            },
             migrate: (persistedState: any) => {
                 if (persistedState && typeof persistedState.closeOnLaunch === 'boolean') {
                     persistedState.closeOnLaunch = persistedState.closeOnLaunch ? 'hide-reopen' : 'keep-open';

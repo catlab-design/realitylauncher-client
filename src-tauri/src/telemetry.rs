@@ -301,6 +301,15 @@ pub fn queue_event(event_type: &str, data: serde_json::Value) {
 }
 
 #[tauri::command]
+pub fn dev_perf_report(report: serde_json::Value) -> Result<(), String> {
+    #[cfg(debug_assertions)]
+    println!("PERF_REPORT {}", report);
+    #[cfg(not(debug_assertions))]
+    let _ = report;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn telemetry_log_event(
     event_type: String,
     data: Option<serde_json::Value>,

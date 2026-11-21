@@ -1,0 +1,632 @@
+//! Reality badge in the multiplayer tab list (docs/plans/2026-10-22-tab-list-reality-badge-design.md).
+//!
+//! The launcher side: a resource pack that draws the badge glyph, the session
+//! file the agent reads (lookup token + runtime names from `mappings`), and the
+//! presence session that tells the API this game runs through Reality.
+//! Everything here is best-effort: failures mean "no badge", never a failed launch.
+
+use std::fs;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
+use crate::mappings::TabScheme;
+
+const API_URL: &str = "https://api.reality.catlabdesign.space";
+const BADGE_GLYPH: char = '\u{E2A0}';
+/// Space glyphs (font provider type "space", Minecraft 1.19.3+) used to draw
+/// the badge left of the player head: back up over the moved head, draw the
+/// badge, then skip forward past the head again.
+const BACK_SPACE: char = '\u{E2A1}';
+const FORWARD_SPACE: char = '\u{E2A2}';
+/// Badge glyph advance: 8 px wide + 1 px.
+const BADGE_ADVANCE: i32 = 9;
+/// How far the agent moves the head right; leaves a 2 px gap after the badge.
+const HEAD_SHIFT: i32 = 10;
+const BADGE_PNG: &[u8] = include_bytes!("../resources/badge.png");
+const PACK_FILE: &str = "reality-badge.zip";
+const SESSION_FILE: &str = "session.properties";
+/// Where the agent reports the player's whereabouts (`GameStatus`), read by `discord`.
+const GAME_STATUS_FILE: &str = "game-status.properties";
+const DEFAULT_HEARTBEAT_SECS: u64 = 120;
+
+/// Resource pack format per Minecraft version (1.19+). Unknown newer versions
+/// get the newest known format; `supported_formats` / `min_format` /
+/// `max_format` keep the pack loading without the "incompatible" warning.
+fn pack_format(mc_version: &str) -> u32 {
+    let parts: Vec<u32> = mc_version
+        .split('.')
+        .map(|p| p.parse().unwrap_or(0))
+        .collect();
+    let minor = parts.get(1).copied().unwrap_or(0);
+    let patch = parts.get(2).copied().unwrap_or(0);
+    match (minor, patch) {
+        (19, 0..=2) => 9,
+        (19, 3) => 12,
+        (19, _) => 13,
+        (20, 0..=1) => 15,
+        (20, 2) => 18,
+        (20, 3..=4) => 22,
+        (20, _) => 32,
+        (21, 0..=1) => 34,
+        (21, 2..=3) => 42,
+        (21, 4) => 46,
+        (21, 5) => 55,
+        (21, 6) => 63,
+        (21, 7..=8) => 64,
+        _ => 69,
+    }
+}
+
+/// "space" font providers arrived with pack format 12 (1.19.3); older versions
+/// keep the badge after the head.
+fn supports_head_left(mc_version: &str) -> bool {
+    pack_format(mc_version) >= 12
+}
+
+fn pack_zip(mc_version: &str) -> Result<Vec<u8>, String> {
+    let format = pack_format(mc_version);
+    let mcmeta = serde_json::json!({
+        "pack": {
+            "description": "Reality Launcher badge",
+            "pack_format": format,
+            "supported_formats": { "min_inclusive": 9, "max_inclusive": 1000 },
+            "min_format": 9,
+            "max_format": 1000,
+        }
+    });
+    let mut providers = vec![serde_json::json!({
+        "type": "bitmap",
+        "file": "reality:font/badge.png",
+        "ascent": 7,
+        "height": 8,
+        "chars": [BADGE_GLYPH.to_string()],
+    })];
+    if supports_head_left(mc_version) {
+        let mut advances = serde_json::Map::new();
+        // Name text starts where the unmoved head ended: back up one badge to
+        // the row start, draw the badge, then skip past the moved head.
+        advances.insert(BACK_SPACE.to_string(), (-BADGE_ADVANCE).into());
+        advances.insert(FORWARD_SPACE.to_string(), HEAD_SHIFT.into());
+        providers.push(serde_json::json!({ "type": "space", "advances": advances }));
+    }
+    let font = serde_json::json!({ "providers": providers });
+
+    let mut buf = std::io::Cursor::new(Vec::new());
+    {
+        let mut zip = zip::ZipWriter::new(&mut buf);
+        let opts: zip::write::SimpleFileOptions = zip::write::SimpleFileOptions::default();
+        let files: [(&str, Vec<u8>); 3] = [
+            ("pack.mcmeta", serde_json::to_vec_pretty(&mcmeta).map_err(|e| e.to_string())?),
+            (
+                "assets/minecraft/font/default.json",
+                serde_json::to_vec_pretty(&font).map_err(|e| e.to_string())?,
+            ),
+            ("assets/reality/textures/font/badge.png", BADGE_PNG.to_vec()),
+        ];
+        for (name, bytes) in files {
+            zip.start_file(name, opts).map_err(|e| e.to_string())?;
+            zip.write_all(&bytes).map_err(|e| e.to_string())?;
+        }
+        zip.finish().map_err(|e| e.to_string())?;
+    }
+    Ok(buf.into_inner())
+}
+
+fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let dir = path.parent().ok_or("no parent dir")?;
+    fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let tmp = dir.join(format!(
+        ".{}.{}.tmp",
+        path.file_name().and_then(|n| n.to_str()).unwrap_or("file"),
+        std::process::id()
+    ));
+    fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    if path.file_name().and_then(|n| n.to_str()) == Some(SESSION_FILE) {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&tmp, fs::Permissions::from_mode(0o600));
+    }
+    fs::rename(&tmp, path).map_err(|e| {
+        let _ = fs::remove_file(&tmp);
+        e.to_string()
+    })
+}
+
+/// Adds the badge pack to `resourcePacks` in options.txt. Minecraft fills in
+/// every other option itself when the file is new.
+fn enable_pack(instance_dir: &Path) -> Result<(), String> {
+    let options_path = instance_dir.join("options.txt");
+    let entry = format!("file/{PACK_FILE}");
+    let content = fs::read_to_string(&options_path).unwrap_or_default();
+    let mut found = false;
+    let mut changed = false;
+    let mut lines: Vec<String> = content
+        .lines()
+        .map(|line| {
+            let Some(raw) = line.strip_prefix("resourcePacks:") else {
+                return line.to_string();
+            };
+            found = true;
+            let mut packs: Vec<String> = serde_json::from_str(raw).unwrap_or_default();
+            if packs.iter().any(|p| p == &entry) {
+                return line.to_string();
+            }
+            if packs.is_empty() {
+                packs.push("vanilla".to_string());
+            }
+            packs.push(entry.clone());
+            changed = true;
+            format!("resourcePacks:{}", serde_json::to_string(&packs).unwrap_or_default())
+        })
+        .collect();
+    if !found {
+        lines.push(format!(
+            "resourcePacks:{}",
+            serde_json::to_string(&["vanilla", entry.as_str()]).unwrap_or_default()
+        ));
+        changed = true;
+    }
+    if !changed {
+        return Ok(());
+    }
+    let mut out = lines.join("\n");
+    out.push('\n');
+    write_atomic(&options_path, out.as_bytes())
+}
+
+/// Escapes a value for java.util.Properties (Latin-1 + \uXXXX).
+fn escape_property(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for (i, ch) in value.chars().enumerate() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            ' ' if i == 0 => out.push_str("\\ "),
+            '=' | ':' | '#' | '!' => {
+                out.push('\\');
+                out.push(ch);
+            }
+            c if (c as u32) < 0x20 || (c as u32) > 0x7e => {
+                let mut units = [0u16; 2];
+                for unit in c.encode_utf16(&mut units) {
+                    out.push_str(&format!("\\u{:04X}", unit));
+                }
+            }
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// Dashed lowercase, the form the agent and the API compare.
+fn normalize_uuid(raw: &str) -> Option<String> {
+    let hex: String = raw.chars().filter(|c| *c != '-').collect::<String>().to_lowercase();
+    if hex.len() != 32 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    Some(format!("{}-{}-{}-{}-{}", &hex[0..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..32]))
+}
+
+/// A Minecraft player name (1-16 letters, digits, `_`), or None.
+fn normalize_name(raw: &str) -> Option<String> {
+    let name = raw.trim();
+    (!name.is_empty() && name.len() <= 16 && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+        .then(|| name.to_string())
+}
+
+/// Who this game registers as on the API: the UUIDs it can appear as in a tab
+/// list, and the player name. The name lets other players' agents badge this
+/// player on servers that show a different UUID (offline mode behind proxies,
+/// tab plugins that draw their own rows).
+#[derive(Clone, Debug, PartialEq)]
+pub struct PresenceIdentity {
+    pub uuids: Vec<String>,
+    pub name: Option<String>,
+}
+
+impl PresenceIdentity {
+    pub fn new(uuids: &[String], name: &str) -> Self {
+        let mut out: Vec<String> = Vec::new();
+        for u in uuids.iter().filter_map(|u| normalize_uuid(u)) {
+            if !out.contains(&u) {
+                out.push(u);
+            }
+        }
+        Self { uuids: out, name: normalize_name(name) }
+    }
+}
+
+/// `self.uuids` / `self.name` are this player's own: the agent always badges
+/// them (the API leaves the caller's own session out of lookups).
+/// `badge` prefixes the name when the server shows no heads; `badge.head` is
+/// used for rows whose head the agent moved right by `badge.head.shift`.
+fn session_properties(
+    schemes: &[TabScheme],
+    identity: &PresenceIdentity,
+    head_left: bool,
+    lookup_token: Option<&str>,
+) -> String {
+    let mut entries: Vec<(String, String)> = vec![
+        ("api.url".into(), API_URL.into()),
+        ("badge".into(), format!("{BADGE_GLYPH} ")),
+        ("self.uuids".into(), identity.uuids.join(",")),
+        ("scheme.count".into(), schemes.len().to_string()),
+    ];
+    if let Some(name) = &identity.name {
+        entries.push(("self.name".into(), name.clone()));
+    }
+    if head_left {
+        entries.push(("badge.head".into(), format!("{BACK_SPACE}{BADGE_GLYPH}{FORWARD_SPACE}")));
+        entries.push(("badge.head.shift".into(), HEAD_SHIFT.to_string()));
+    }
+    if let Some(token) = lookup_token {
+        entries.push(("lookup.token".into(), token.to_string()));
+    }
+    for (i, s) in schemes.iter().enumerate() {
+        let fields: [(&str, &str); 12] = [
+            ("name", &s.name),
+            ("overlay.class", &s.overlay_class),
+            ("overlay.method", &s.overlay_method),
+            ("overlay.desc", &s.overlay_desc),
+            ("playerinfo.class", &s.player_info_class),
+            ("getprofile", &s.get_profile),
+            ("component.class", &s.component_class),
+            ("literal", &s.literal),
+            ("literal.desc", &s.literal_desc),
+            ("mutable.class", &s.mutable_class),
+            ("append", &s.append),
+            ("append.desc", &s.append_desc),
+        ];
+        for (key, value) in fields {
+            entries.push((format!("scheme.{i}.{key}"), value.to_string()));
+        }
+    }
+    entries
+        .iter()
+        .map(|(k, v)| format!("{}={}\n", escape_property(k), escape_property(v)))
+        .collect()
+}
+
+pub struct BadgeSetup {
+    session_path: PathBuf,
+    status_path: PathBuf,
+    schemes: Vec<TabScheme>,
+    identity: PresenceIdentity,
+    head_left: bool,
+}
+
+impl BadgeSetup {
+    pub fn jvm_args(&self) -> [String; 2] {
+        [
+            format!("-Dreality.session={}", self.session_path.to_string_lossy()),
+            format!("-Dreality.status={}", self.status_path.to_string_lossy()),
+        ]
+    }
+}
+
+pub fn game_status_path(minecraft_dir: &Path) -> PathBuf {
+    minecraft_dir.join("agent").join(GAME_STATUS_FILE)
+}
+
+/// Where the agent last saw the player; `None` before the game reports anything.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GameStatus {
+    Menu,
+    Singleplayer,
+    Server { players: u32 },
+}
+
+pub fn parse_game_status(text: &str) -> Option<GameStatus> {
+    let value = |key: &str| {
+        text.lines()
+            .find_map(|l| l.strip_prefix(key)?.strip_prefix('='))
+            .map(str::trim)
+    };
+    match value("state")? {
+        "menu" => Some(GameStatus::Menu),
+        "singleplayer" => Some(GameStatus::Singleplayer),
+        "server" => Some(GameStatus::Server {
+            players: value("players")?.parse().ok()?,
+        }),
+        _ => None,
+    }
+}
+
+pub fn read_game_status(minecraft_dir: &Path) -> Option<GameStatus> {
+    parse_game_status(&fs::read_to_string(game_status_path(minecraft_dir)).ok()?)
+}
+
+/// Writes the pack, enables it and writes the session file (without a token
+/// yet). None when there is nothing to hook for this version/loader.
+pub fn prepare(
+    minecraft_dir: &Path,
+    instance_dir: &Path,
+    mc_version: &str,
+    schemes: Vec<TabScheme>,
+    identity: &PresenceIdentity,
+) -> Option<BadgeSetup> {
+    if schemes.is_empty() {
+        return None;
+    }
+    let result = (|| -> Result<BadgeSetup, String> {
+        let pack = pack_zip(mc_version)?;
+        write_atomic(&instance_dir.join("resourcepacks").join(PACK_FILE), &pack)?;
+        enable_pack(instance_dir)?;
+        let session_path = minecraft_dir.join("agent").join(SESSION_FILE);
+        let head_left = supports_head_left(mc_version);
+        write_atomic(&session_path, session_properties(&schemes, identity, head_left, None).as_bytes())?;
+        let status_path = game_status_path(minecraft_dir);
+        Ok(BadgeSetup { session_path, status_path, schemes, identity: identity.clone(), head_left })
+    })();
+    match result {
+        Ok(setup) => Some(setup),
+        Err(e) => {
+            log::warn!("[TabBadge] Skipping tab badges: {e}");
+            None
+        }
+    }
+}
+
+/// Stops the presence task; it then ends the session on the API.
+#[derive(Clone)]
+pub struct PresenceHandle(Arc<AtomicBool>);
+
+impl PresenceHandle {
+    pub fn stop(&self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StartResponse {
+    session_id: String,
+    lookup_token: String,
+    heartbeat_seconds: Option<u64>,
+}
+
+async fn post(path: &str, api_token: &str, body: serde_json::Value) -> Result<reqwest::Response, String> {
+    crate::http_client::HTTP_CLIENT
+        .post(format!("{API_URL}{path}"))
+        .bearer_auth(api_token)
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(15))
+        .send()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+async fn start_session(
+    api_token: &str,
+    instance_id: &str,
+    identity: &PresenceIdentity,
+) -> Result<StartResponse, String> {
+    let mut body = serde_json::json!({ "instanceId": instance_id, "uuids": identity.uuids });
+    if let Some(name) = &identity.name {
+        body["name"] = serde_json::Value::String(name.clone());
+    }
+    let resp = post("/presence/start", api_token, body)
+    .await?;
+    if !resp.status().is_success() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    resp.json::<StartResponse>().await.map_err(|e| e.to_string())
+}
+
+/// Registers the running game, hands the lookup token to the agent (when this
+/// launch has badges), heartbeats until stopped, then ends the session and
+/// removes the session file. Runs even without badges (`setup` None: an
+/// unsupported version or a mapping failure), so other players still see
+/// this player's badge.
+pub fn spawn_presence(
+    setup: Option<BadgeSetup>,
+    identity: PresenceIdentity,
+    api_token: String,
+    instance_id: String,
+) -> Option<PresenceHandle> {
+    if identity.uuids.is_empty() {
+        return None;
+    }
+    let stopped = Arc::new(AtomicBool::new(false));
+    let handle = PresenceHandle(stopped.clone());
+    tauri::async_runtime::spawn(async move {
+        let mut session: Option<StartResponse> = None;
+        let mut next_beat = std::time::Instant::now();
+        while !stopped.load(Ordering::SeqCst) {
+            if std::time::Instant::now() >= next_beat {
+                let interval = session
+                    .as_ref()
+                    .and_then(|s| s.heartbeat_seconds)
+                    .unwrap_or(DEFAULT_HEARTBEAT_SECS);
+                next_beat = std::time::Instant::now() + std::time::Duration::from_secs(interval);
+
+                let alive = match &session {
+                    Some(s) => matches!(
+                        post("/presence/heartbeat", &api_token, serde_json::json!({ "sessionId": s.session_id })).await,
+                        Ok(resp) if resp.status().is_success()
+                    ),
+                    None => false,
+                };
+                if !alive {
+                    match start_session(&api_token, &instance_id, &identity).await {
+                        Ok(started) => {
+                            if let Some(setup) = &setup {
+                                let props = session_properties(
+                                    &setup.schemes,
+                                    &identity,
+                                    setup.head_left,
+                                    Some(&started.lookup_token),
+                                );
+                                if let Err(e) = write_atomic(&setup.session_path, props.as_bytes()) {
+                                    log::warn!("[TabBadge] Could not write session file: {e}");
+                                }
+                            }
+                            session = Some(started);
+                        }
+                        Err(e) => {
+                            log::warn!("[TabBadge] Presence start failed: {e}");
+                            session = None;
+                            // Retry sooner than a full heartbeat interval.
+                            next_beat = std::time::Instant::now() + std::time::Duration::from_secs(30);
+                        }
+                    }
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+        if let Some(s) = session {
+            let _ = post("/presence/end", &api_token, serde_json::json!({ "sessionId": s.session_id })).await;
+        }
+        if let Some(setup) = &setup {
+            let _ = fs::remove_file(&setup.session_path);
+        }
+    });
+    Some(handle)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scheme() -> TabScheme {
+        TabScheme {
+            name: "intermediary".into(),
+            overlay_class: "net/minecraft/class_355".into(),
+            overlay_method: "method_1918".into(),
+            overlay_desc: "(Lnet/minecraft/class_640;)Lnet/minecraft/class_2561;".into(),
+            player_info_class: "net/minecraft/class_640".into(),
+            get_profile: "method_2966".into(),
+            component_class: "net/minecraft/class_2561".into(),
+            literal: "method_43470".into(),
+            literal_desc: "(Ljava/lang/String;)Lnet/minecraft/class_5250;".into(),
+            mutable_class: "net/minecraft/class_5250".into(),
+            append: "method_10852".into(),
+            append_desc: "(Lnet/minecraft/class_2561;)Lnet/minecraft/class_5250;".into(),
+        }
+    }
+
+    #[test]
+    fn parses_game_status() {
+        assert_eq!(parse_game_status("state=menu\n"), Some(GameStatus::Menu));
+        assert_eq!(parse_game_status("state=singleplayer\nplayers=1\n"), Some(GameStatus::Singleplayer));
+        assert_eq!(
+            parse_game_status("state=server\nplayers=12\n"),
+            Some(GameStatus::Server { players: 12 })
+        );
+        assert_eq!(parse_game_status("state=server\n"), None);
+        assert_eq!(parse_game_status(""), None);
+    }
+
+    #[test]
+    fn normalizes_uuids() {
+        assert_eq!(
+            normalize_uuid("72398DCE78F647F0AFBC3C66E2E4F9D3").as_deref(),
+            Some("72398dce-78f6-47f0-afbc-3c66e2e4f9d3")
+        );
+        assert_eq!(
+            normalize_uuid("72398dce-78f6-47f0-afbc-3c66e2e4f9d3").as_deref(),
+            Some("72398dce-78f6-47f0-afbc-3c66e2e4f9d3")
+        );
+        assert_eq!(normalize_uuid("catid-123"), None);
+    }
+
+    #[test]
+    fn pack_formats() {
+        assert_eq!(pack_format("1.19.2"), 9);
+        assert_eq!(pack_format("1.20.1"), 15);
+        assert_eq!(pack_format("1.20.4"), 22);
+        assert_eq!(pack_format("1.21.1"), 34);
+        assert_eq!(pack_format("1.21.11"), 69);
+    }
+
+    #[test]
+    fn pack_contains_font_and_glyph() {
+        let bytes = pack_zip("1.20.1").unwrap();
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let mut font = String::new();
+        std::io::Read::read_to_string(&mut zip.by_name("assets/minecraft/font/default.json").unwrap(), &mut font)
+            .unwrap();
+        assert!(font.contains('\u{E2A0}'));
+        assert!(zip.by_name("assets/reality/textures/font/badge.png").is_ok());
+        let mut meta = String::new();
+        std::io::Read::read_to_string(&mut zip.by_name("pack.mcmeta").unwrap(), &mut meta).unwrap();
+        assert!(meta.contains("\"pack_format\": 15"));
+        assert!(font.contains("\"space\""));
+        assert!(font.contains("-9"));
+        assert!(font.contains("10"));
+    }
+
+    #[test]
+    fn no_space_provider_before_1_19_3() {
+        let bytes = pack_zip("1.19.2").unwrap();
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let mut font = String::new();
+        std::io::Read::read_to_string(&mut zip.by_name("assets/minecraft/font/default.json").unwrap(), &mut font)
+            .unwrap();
+        assert!(!font.contains("\"space\""));
+        assert!(supports_head_left("1.19.3"));
+        assert!(!supports_head_left("1.19.2"));
+    }
+
+    #[test]
+    fn enable_pack_appends_once_and_creates_line() {
+        let dir = std::env::temp_dir().join(format!("rl-badge-opts-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let opts = dir.join("options.txt");
+
+        fs::write(&opts, "fov:0.0\nresourcePacks:[\"vanilla\",\"mod_resources\"]\nlang:th_th\n").unwrap();
+        enable_pack(&dir).unwrap();
+        enable_pack(&dir).unwrap();
+        assert_eq!(
+            fs::read_to_string(&opts).unwrap(),
+            "fov:0.0\nresourcePacks:[\"vanilla\",\"mod_resources\",\"file/reality-badge.zip\"]\nlang:th_th\n"
+        );
+
+        fs::remove_file(&opts).unwrap();
+        enable_pack(&dir).unwrap();
+        assert_eq!(
+            fs::read_to_string(&opts).unwrap(),
+            "resourcePacks:[\"vanilla\",\"file/reality-badge.zip\"]\n"
+        );
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn presence_identity_normalizes() {
+        let id = PresenceIdentity::new(
+            &[
+                "11111111222233334444555555555555".into(),
+                "11111111-2222-3333-4444-555555555555".into(),
+                "catid-abc".into(),
+            ],
+            " Alex ",
+        );
+        assert_eq!(id.uuids, vec!["11111111-2222-3333-4444-555555555555".to_string()]);
+        assert_eq!(id.name.as_deref(), Some("Alex"));
+        assert_eq!(PresenceIdentity::new(&[], "a".repeat(17).as_str()).name, None);
+        assert_eq!(PresenceIdentity::new(&[], "ชื่อ").name, None);
+        assert_eq!(PresenceIdentity::new(&[], "").name, None);
+    }
+
+    #[test]
+    fn session_properties_escape_for_java() {
+        let identity = PresenceIdentity::new(&["11111111-2222-3333-4444-555555555555".into()], "Steve_1");
+        let props = session_properties(&[scheme()], &identity, true, Some("tok_-123"));
+        assert!(props.contains("badge=\\uE2A0 \n"));
+        assert!(props.contains("api.url=https\\://api.reality.catlabdesign.space\n"));
+        assert!(props.contains("lookup.token=tok_-123\n"));
+        assert!(props.contains("scheme.count=1\n"));
+        assert!(props.contains("self.uuids=11111111-2222-3333-4444-555555555555\n"));
+        assert!(props.contains("badge.head=\\uE2A1\\uE2A0\\uE2A2\n"));
+        assert!(props.contains("badge.head.shift=10\n"));
+        assert!(props.contains("self.name=Steve_1\n"));
+        let nameless = PresenceIdentity::new(&[], "not a name");
+        assert!(!session_properties(&[scheme()], &nameless, false, None).contains("badge.head"));
+        assert!(!session_properties(&[scheme()], &nameless, false, None).contains("self.name"));
+        assert!(props.contains("scheme.0.overlay.desc=(Lnet/minecraft/class_640;)Lnet/minecraft/class_2561;\n"));
+    }
+}

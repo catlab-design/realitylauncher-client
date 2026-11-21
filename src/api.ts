@@ -1,6 +1,10 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { GameInstance, LauncherConfig } from './types/launcher';
+import type { GameInstance, KeybindBackup, LauncherConfig } from './types/launcher';
+import { getSafeExternalUrl } from './lib/externalUrl';
+
+/** A read of an instance log; text is already censored by the backend. Times are epoch ms (0 = unknown). */
+type LogChunk = { ok: boolean; content: string; size: number; modified?: number; created?: number };
 
 interface AuthAccount {
     uuid: string;
@@ -135,10 +139,13 @@ export const api = {
 
     isGameRunning: (instanceId?: string) => invoke<boolean>('is_game_running', { instanceId }),
     killGame: (_instanceId?: string) => invoke<void>('kill_game').then(() => true),
+    cancelLaunch: () => invoke<boolean>('cancel_launch'),
     instanceReadLatestLog: (instanceId: string) =>
-        invoke<{ ok: boolean; content: string; size: number }>('instance_read_latest_log', { instanceId }),
+        invoke<LogChunk>('instance_read_latest_log', { instanceId }),
     instanceTailLog: (instanceId: string, from: number) =>
-        invoke<{ ok: boolean; content: string; size: number }>('instance_tail_log', { instanceId, from }),
+        invoke<LogChunk>('instance_tail_log', { instanceId, from }),
+    instanceTailLaunchLog: (instanceId: string, from: number) =>
+        invoke<LogChunk>('instance_tail_launch_log', { instanceId, from }),
 
     getConfig: () => invoke<LauncherConfig>('config_get'),
     setConfig: async (partial: Partial<LauncherConfig>) => {
@@ -288,7 +295,14 @@ export const api = {
         }
         return invoke<void>('open_folder', { path: targetPath });
     },
-    openExternal: (url: string) => invoke<void>('open_url', { url }),
+    openExternal: async (url: string) => {
+        const safeUrl = getSafeExternalUrl(url);
+        if (!safeUrl) {
+            console.warn('[api] Refusing to open non-http(s) URL');
+            return;
+        }
+        return invoke<void>('open_url', { url: safeUrl });
+    },
     selectFile: async (filters?: any) => {
         if (filters?.filters?.some((f: any) => f.extensions?.includes('png') || f.extensions?.includes('jpg'))) {
             return invoke<string | null>('browse_icon');
@@ -313,8 +327,10 @@ export const api = {
     checkLatestVersion: () => invoke<any>('check_latest_version'),
     getAppVersion: () => invoke<string>('get_app_version'),
     isDevMode: () => invoke<boolean>('is_dev_mode'),
+    linuxPerfTools: () => invoke<{ linux: boolean; mangohud: boolean; gamemode: boolean; wayland: boolean }>('linux_perf_tools'),
     downloadUpdate: () => invoke<any>('download_update'),
-    installUpdate: () => invoke<any>('install_update'),
+    installUpdate: (auto?: boolean) => invoke<any>('install_update', { auto }),
+    setInstallUpdateOnExit: (enabled: boolean) => invoke<void>('set_install_update_on_exit', { enabled }),
 
     windowMinimize: () => invoke<void>('window_minimize'),
     windowMaximize: () => invoke<void>('window_maximize'),
@@ -356,6 +372,10 @@ export const api = {
     instancesCloudSync: () => invoke<SimpleResult>('instances_cloud_sync'),
     cloudInstanceSyncManaged: (id: string) => invoke<SimpleResult>('cloud_instance_sync_managed', { id }),
     instanceCheckIntegrity: (id: string) => invoke<SimpleResult>('instance_check_integrity', { id }),
+    keybindBackupsList: (id: string) => invoke<KeybindBackup[]>('keybind_backups_list', { id }),
+    keybindBackupCreate: (id: string) => invoke<KeybindBackup | null>('keybind_backup_create', { id }),
+    keybindBackupRestore: (id: string, name: string) => invoke<void>('keybind_backup_restore', { id, name }),
+    keybindBackupDelete: (id: string, name: string) => invoke<void>('keybind_backup_delete', { id, name }),
 
     invitationsFetch: () => invoke<Invitation[]>('invitations_fetch'),
     invitationsAccept: (invitationId: string) => invoke<boolean>('invitations_accept', { invitationId }),
@@ -369,7 +389,10 @@ export const api = {
     getAnnouncements: () => invoke<any[]>('notifications_fetch_announcements'),
     getNotifications: () => invoke<any[]>('notifications_fetch_user'),
     telemetryLogEvent: (eventType: string, data?: any) => invoke<void>('telemetry_log_event', { eventType, data }),
+    devPerfReport: (report: unknown) => invoke<void>('dev_perf_report', { report }),
     serverPing: (host: string, port?: number) => invoke<any>('server_ping', { host, port }),
+    instanceSavedServers: (instanceId: string) =>
+        invoke<{ name: string; ip: string; icon: string | null }[]>('instance_saved_servers', { instanceId }),
 
     catskincGetConfig: (gameDirectory?: string) => invoke<any>('catskinc_get_config', { gameDirectory }),
     catskincSaveConfig: (payload: { ip: string; gameDirectory?: string }) =>
@@ -383,7 +406,7 @@ export const api = {
             mouthOpenDataUrl: payload.mouthOpenDataUrl,
             gameDirectory: payload.gameDirectory,
         }),
-    catskincClearAssets: (payload: { mode: string; gameDirectory?: string }) =>
+    catskincClearAssets: (payload: { mode: 'all' | 'skin' | 'mouth'; gameDirectory?: string }) =>
         invoke<SimpleResult>('catskinc_clear_assets', { mode: payload.mode, gameDirectory: payload.gameDirectory }),
     minecraftGetProfile: (options?: { forceRefresh?: boolean }) =>
         invoke<any>('minecraft_get_profile', { forceRefresh: options?.forceRefresh }),
