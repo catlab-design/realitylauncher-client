@@ -120,7 +120,8 @@ public final class RealityAgent implements ClassFileTransformer {
             }
             TabBadges badges = new TabBadges(file, props.getProperty("api.url"), badge,
                     props.getProperty("badge.head"), headShift,
-                    TabBadges.parseUuids(props.getProperty("self.uuids")));
+                    TabBadges.parseUuids(props.getProperty("self.uuids")),
+                    props.getProperty("self.name"));
             badges.start();
             Hooks.BADGE = badges;
             Hooks.HEADSHIFT = badges.headShiftHook();

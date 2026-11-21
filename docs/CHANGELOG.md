@@ -1,3 +1,12 @@
+## [5.3.1] — 2026-11-21
+
+### Fixed
+- Some players who play through Reality were missing the Reality logo in the tab list. Two causes:
+  - The logo was matched only by the player's UUID, but many servers show a different UUID in the tab list than the one the launcher knows: offline-mode servers behind a proxy, and plugins such as TAB that draw their own tab rows. The logo now also matches by player name.
+  - A player was only announced as a Reality player when the logo could be set up in their own game (it can't on Minecraft versions without the tab-list logo, or when the launcher couldn't get the game's names in time). They're now announced on every launch, so other players see their logo either way.
+
+  Both players need 5.3.1 for name matching; a player on an older launcher still shows the logo on servers where the UUID matches.
+
 ## [5.3.0] — 2026-11-21
 
 ### Added

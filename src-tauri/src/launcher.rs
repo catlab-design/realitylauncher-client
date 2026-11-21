@@ -657,13 +657,14 @@ async fn launch_game(
     mark_stage("tab-badges");
     // A previous game's whereabouts must not reach this launch's Discord presence.
     let _ = std::fs::remove_file(crate::tab_badge::game_status_path(&minecraft_dir_val));
+    let presence_identity = crate::tab_badge::PresenceIdentity::new(&presence_uuids(&session), &session.username);
     let badge_setup = prepare_tab_badges(
         &minecraft_dir_val,
         &libraries_dir,
         &instance_dir,
         &instance,
         &effective_version_json,
-        &presence_uuids(&session),
+        &presence_identity,
     )
     .await;
     if let Some(ref setup) = badge_setup {
@@ -787,14 +788,11 @@ async fn launch_game(
     }));
     crate::telemetry::flush_now();
 
-    let presence = match (badge_setup, session.api_token.clone()) {
-        (Some(setup), Some(api_token)) => Some(crate::tab_badge::spawn_presence(
-            setup,
-            api_token,
-            telemetry_instance_id.clone(),
-        )),
-        _ => None,
-    };
+    // Register even when this launch has no badges of its own, so other
+    // Reality players still see this player's badge.
+    let presence = session.api_token.clone().and_then(|api_token| {
+        crate::tab_badge::spawn_presence(badge_setup, presence_identity, api_token, telemetry_instance_id.clone())
+    });
 
     let _ = app.emit(
         "game-started",
@@ -1952,7 +1950,7 @@ async fn prepare_tab_badges(
     instance_dir: &Path,
     instance: &GameInstance,
     version_json: &serde_json::Value,
-    self_uuids: &[String],
+    identity: &crate::tab_badge::PresenceIdentity,
 ) -> Option<crate::tab_badge::BadgeSetup> {
     let resolve = crate::mappings::resolve_tab_schemes(
         minecraft_dir,
@@ -1972,7 +1970,7 @@ async fn prepare_tab_badges(
             return None;
         }
     };
-    crate::tab_badge::prepare(minecraft_dir, instance_dir, &instance.minecraft_version, schemes, self_uuids)
+    crate::tab_badge::prepare(minecraft_dir, instance_dir, &instance.minecraft_version, schemes, identity)
 }
 
 /// Reports the sign-in check the frontend ran right before calling launch.
