@@ -1,3 +1,8 @@
+## [5.3.2] — 2026-11-21
+
+### Added
+- macOS: microphone support for in-game voice chat. The app bundle now declares `NSMicrophoneUsageDescription`, so when a voice-chat mod (or the Wardrobe "Test Mouth via Mic") opens the microphone, macOS shows the standard privacy prompt ("Reality Launcher would like to access the microphone") instead of blocking the access. Grant it in the prompt — or later under System Settings › Privacy & Security › Microphone — and the mic works.
+
 ## [5.3.1] — 2026-11-21
 
 ### Fixed
