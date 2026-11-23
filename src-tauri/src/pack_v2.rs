@@ -355,7 +355,7 @@ async fn download_layer(
     out.flush().map_err(|e| e.to_string())
 }
 
-async fn fetch_manifest(cloud_id: &str) -> Result<Option<Manifest>, String> {
+pub(crate) async fn fetch_manifest(cloud_id: &str) -> Result<Option<Manifest>, String> {
     let url = format!("{API_URL}/instances/{cloud_id}/pack/manifest");
     let resp = crate::http_client::HTTP_CLIENT
         .get(&url).reality_api()
@@ -370,6 +370,36 @@ async fn fetch_manifest(cloud_id: &str) -> Result<Option<Manifest>, String> {
         return Err(format!("Pack manifest: HTTP {}", resp.status()));
     }
     resp.json::<Manifest>().await.map(Some).map_err(|e| format!("Bad pack manifest: {e}"))
+}
+
+/// Conditional manifest fetch for the hotswap watcher: `Ok(None)` on 304, else
+/// the manifest and its `ETag`. A missing pack (404) is an error here.
+pub(crate) async fn fetch_manifest_if_changed(
+    cloud_id: &str,
+    etag: Option<&str>,
+) -> Result<Option<(Manifest, Option<String>)>, String> {
+    let url = format!("{API_URL}/instances/{cloud_id}/pack/manifest");
+    let mut req = crate::http_client::HTTP_CLIENT
+        .get(&url).reality_api()
+        .header("User-Agent", "RealityLauncher/2.0")
+        .timeout(std::time::Duration::from_secs(20));
+    if let Some(etag) = etag {
+        req = req.header("If-None-Match", etag);
+    }
+    let resp = req.send().await.map_err(|e| format!("Network error: {e}"))?;
+    if resp.status() == reqwest::StatusCode::NOT_MODIFIED {
+        return Ok(None);
+    }
+    if !resp.status().is_success() {
+        return Err(format!("Pack manifest: HTTP {}", resp.status()));
+    }
+    let new_etag = resp
+        .headers()
+        .get(reqwest::header::ETAG)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    let manifest = resp.json::<Manifest>().await.map_err(|e| format!("Bad pack manifest: {e}"))?;
+    Ok(Some((manifest, new_etag)))
 }
 
 /// Bring `dir` in line with the instance's published v2 pack.
