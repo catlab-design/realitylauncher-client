@@ -648,7 +648,7 @@ declare global {
       
       isGameRunning: (instanceId?: string) => Promise<boolean>;
       hotswapApply: (instanceId: string, version: number) => Promise<void>;
-      hotswapGameState: () => Promise<'menu' | 'singleplayer' | 'server' | null>;
+      hotswapAgentState: (instanceId: string) => Promise<'idle' | 'ready' | 'applying' | 'busy-in-world' | null>;
       onHotswapOffer: (
         callback: (data: HotswapOffer) => void,
       ) => () => void;

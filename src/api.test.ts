@@ -43,7 +43,7 @@ describe("Tauri IPC bridge", () => {
   });
 
   it("maps the hotswap commands to Rust", () => {
-    for (const name of ["hotswap_apply", "hotswap_game_state"]) {
+    for (const name of ["hotswap_apply", "hotswap_agent_state"]) {
       expect(invoked.has(name)).toBe(true);
       expect(rust.has(name)).toBe(true);
     }

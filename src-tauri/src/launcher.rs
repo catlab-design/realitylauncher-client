@@ -816,6 +816,7 @@ async fn launch_game(
         crate::tab_badge::spawn_presence(badge_setup, presence_identity, api_token, telemetry_instance_id.clone())
     });
 
+    let hotswap_ctx = hotswap_telemetry_ctx(&instance);
     let hotswap_watch = hotswap_plan.as_ref().zip(hotswap_pre.as_ref()).and_then(|(plan, pre)| {
         let cloud_id = instance.cloud_id.clone()?;
         Some(crate::hotswap_watch::spawn_hotswap_watch(
@@ -826,6 +827,7 @@ async fn launch_game(
             plan.session_dir.clone(),
             plan.tiers.clone(),
             pre.pack_version,
+            hotswap_ctx.clone(),
         ))
     });
     let hotswap_session = hotswap_plan.as_ref().map(|p| p.session_dir.clone());
@@ -944,7 +946,12 @@ async fn launch_game(
                         watch.stop();
                     }
                     if let Some(ref session) = hotswap_session {
-                        crate::hotswap_watch::update_crash_lock(&hotswap_instance_dir, session);
+                        if let Some(version) = crate::hotswap_watch::update_crash_lock(&hotswap_instance_dir, session) {
+                            crate::hotswap_telemetry::send(
+                                "hotswap_crash_lock",
+                                crate::hotswap_telemetry::crash_lock_payload(&hotswap_ctx, version),
+                            );
+                        }
                         crate::hotswap_watch::prune_sessions(&hotswap_instance_dir, session);
                     }
 
@@ -2076,6 +2083,13 @@ fn hotswap_inputs_from(disabled: bool, flag: Option<bool>, pack_version: u64) ->
     Some(HotswapLaunchInputs { manifest_flag: flag?, pack_version })
 }
 
+fn hotswap_telemetry_ctx(instance: &GameInstance) -> crate::hotswap_telemetry::TelemetryCtx {
+    crate::hotswap_telemetry::TelemetryCtx::new(
+        format!("{:?}", instance.loader).to_lowercase(),
+        instance.minecraft_version.clone(),
+    )
+}
+
 /// Resolves names, applies the crash lock and gate, and writes the session.
 async fn prepare_hotswap(
     minecraft_dir: &Path,
@@ -2088,7 +2102,10 @@ async fn prepare_hotswap(
     // A previous game that never reported its applied swap healthy locks
     // hotswap for that pack version, even if the launcher died with it.
     if let Some(prev) = crate::hotswap_watch::latest_session(instance_dir) {
-        crate::hotswap_watch::update_crash_lock(instance_dir, &prev);
+        if let Some(version) = crate::hotswap_watch::update_crash_lock(instance_dir, &prev) {
+            let ctx = hotswap_telemetry_ctx(instance);
+            crate::hotswap_telemetry::send("hotswap_crash_lock", crate::hotswap_telemetry::crash_lock_payload(&ctx, version));
+        }
     }
     let crash_locked = crate::hotswap_watch::crash_locked(instance_dir, pre.pack_version);
     let names = if pre.manifest_flag && !crash_locked {

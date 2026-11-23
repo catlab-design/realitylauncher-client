@@ -15,7 +15,7 @@ import org.junit.jupiter.api.io.TempDir;
 class TierZeroTest {
     @TempDir Path root;
 
-    static final class Fake implements GameAccess {
+    static class Fake implements GameAccess {
         boolean menu = true;
         boolean available = true;
         public boolean available() { return available; }
@@ -74,6 +74,74 @@ class TierZeroTest {
         assertFalse(Files.exists(inst.resolve("config/gone.toml")));
         assertEquals(Arrays.asList("config/gone.toml"), out.applied);
         assertEquals(Arrays.asList("../../outside.txt"), out.restart);
+    }
+
+    @Test
+    void jars_and_mods_paths_are_never_applied_even_as_tier_zero() throws Exception {
+        Path inst = root.resolve("inst"), staging = root.resolve("inst/.reality/staging/7");
+        put(staging.resolve("mods/m.jar"), "jar");
+        put(staging.resolve("config/lib.JAR"), "jar");
+        put(staging.resolve("mods/readme.txt"), "t");
+        put(staging.resolve("config/ok.toml"), "ok");
+        Fake g = new Fake();
+        TierZero.Outcome out = TierZero.apply(inst, staging, Arrays.asList(
+            ch("mods/m.jar", 0, "update"), ch("config/lib.JAR", 0, "add"), ch("mods/readme.txt", 0, "add"),
+            ch("config/ok.toml", 0, "add")), g);
+        assertFalse(Files.exists(inst.resolve("mods/m.jar")));
+        assertFalse(Files.exists(inst.resolve("config/lib.JAR")));
+        assertFalse(Files.exists(inst.resolve("mods/readme.txt")));
+        assertEquals(Arrays.asList("config/ok.toml"), out.applied);
+        assertEquals(Arrays.asList("mods/m.jar", "config/lib.JAR", "mods/readme.txt"), out.restart);
+    }
+
+    @Test
+    void one_unwritable_file_goes_to_restart_and_the_rest_still_apply_and_reload() throws Exception {
+        Path inst = root.resolve("inst"), staging = root.resolve("inst/.reality/staging/7");
+        put(staging.resolve("config/a.toml"), "a");
+        put(staging.resolve("config/locked.toml"), "l");
+        put(staging.resolve("config/c.toml"), "c");
+        // A non-empty directory where the file must go makes the copy fail, like a locked file.
+        put(inst.resolve("config/locked.toml/blocker"), "x");
+        Fake g = new Fake();
+        TierZero.Outcome out = TierZero.apply(inst, staging, Arrays.asList(
+            ch("config/a.toml", 0, "update"), ch("config/locked.toml", 0, "update"), ch("config/c.toml", 0, "update")), g);
+        assertEquals(Arrays.asList("config/a.toml", "config/c.toml"), out.applied);
+        assertEquals(Arrays.asList("config/locked.toml"), out.restart);
+        assertEquals(1, g.reloads);
+        assertEquals("c", new String(Files.readAllBytes(inst.resolve("config/c.toml")), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void nothing_applied_reports_restart_without_reload() throws Exception {
+        Path sess = root.resolve("sess"), inst = root.resolve("inst"), staging = inst.resolve(".reality/staging/7");
+        put(staging.resolve("config/locked.toml"), "l");
+        put(inst.resolve("config/locked.toml/blocker"), "x");
+        Channel c = new Channel(sess);
+        Fake g = new Fake();
+        Applier a = new Applier(c, inst, g);
+        H.offer(c, 7, false, staging.toString(), "config/locked.toml", 0);
+        H.apply(c, 7);
+        a.poll();
+        assertEquals("restart", H.outcome(c));
+        assertEquals(0, g.reloads);
+    }
+
+    @Test
+    void leaving_the_menu_just_before_the_copy_defers_the_apply() throws Exception {
+        Path sess = root.resolve("sess"), inst = root.resolve("inst"), staging = inst.resolve(".reality/staging/7");
+        put(staging.resolve("config/a.toml"), "new");
+        Channel c = new Channel(sess);
+        int[] calls = {0};
+        Fake g = new Fake() {
+            @Override public boolean atMainMenu() { return ++calls[0] == 1; } // menu at the poll, gone at the copy
+        };
+        Applier a = new Applier(c, inst, g);
+        H.offer(c, 7, false, staging.toString(), "config/a.toml", 0);
+        H.apply(c, 7);
+        a.poll();
+        assertFalse(Files.exists(inst.resolve("config/a.toml")));
+        assertEquals(0, g.reloads);
+        assertEquals("busy-in-world", H.status(c));
     }
 
     @Test

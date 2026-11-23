@@ -32,6 +32,7 @@ mod social;
 mod hotswap;
 mod hotswap_channel;
 mod hotswap_staging;
+mod hotswap_telemetry;
 mod hotswap_watch;
 mod tab_badge;
 mod telemetry;
@@ -94,7 +95,7 @@ fn main() {
             
             launcher::is_game_running,
             hotswap_watch::hotswap_apply,
-            hotswap_watch::hotswap_game_state,
+            hotswap_watch::hotswap_agent_state,
             launcher::kill_game,
             launcher::cancel_launch,
             launcher::instances_launch,

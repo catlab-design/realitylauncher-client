@@ -79,8 +79,8 @@ final class Applier {
                 } else {
                     handledKey = key;
                     setStatus("applying", version);
-                    run(offer);
-                    setStatus("idle", version);
+                    if (!run(offer)) handledKey = null; // left the menu meanwhile: retry later
+                    setStatus(handledKey == null ? "busy-in-world" : "idle", version);
                     return;
                 }
             }
@@ -93,7 +93,8 @@ final class Applier {
 
     private boolean isDone(long v) { return v == appliedVersion; }
 
-    private void run(Channel.Offer offer) throws Exception {
+    /** False when the player left the main menu before anything was copied. */
+    private boolean run(Channel.Offer offer) throws Exception {
         pending = null;
         doneAt = -1;
         try {
@@ -102,16 +103,20 @@ final class Applier {
             if (!staging.startsWith(allowed)) throw new IllegalStateException("staging outside the instance");
             TierZero.Outcome out = TierZero.apply(instanceDir, staging, offer.changes, game);
             appliedVersion = offer.version;
-            channel.writeResult(offer.version, "applied", out.applied, out.restart, null);
+            channel.writeResult(offer.version, out.applied.isEmpty() ? "restart" : "applied", out.applied,
+                out.restart, null);
             if (out.reload != null) {
                 pending = out;
                 pendingVersion = offer.version;
                 checkHealth();
             }
+        } catch (TierZero.NotAtMenuException e) {
+            return false;
         } catch (Throwable t) {
             channel.writeResult(offer.version, "failed", Collections.<String>emptyList(),
                 Collections.<String>emptyList(), String.valueOf(t.getMessage() == null ? t : t.getMessage()));
         }
+        return true;
     }
 
     private void checkHealth() throws Exception {

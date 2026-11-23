@@ -182,7 +182,7 @@ pub(crate) fn wants_from(manifest: &Manifest, dir: &Path) -> (Vec<Want>, Vec<(St
     (wants, rejected)
 }
 
-fn file_crc32(path: &Path) -> Result<u32, String> {
+pub(crate) fn file_crc32(path: &Path) -> Result<u32, String> {
     let mut file = fs::File::open(path).map_err(|e| e.to_string())?;
     let mut hasher = crc32fast::Hasher::new();
     let mut buf = vec![0u8; 256 * 1024];

@@ -15,7 +15,8 @@ use tauri::Emitter;
 use tokio::sync::Notify;
 
 use crate::hotswap::Tier;
-use crate::hotswap_channel::{read_json, write_json, Apply, HotswapResult, Offer, Outcome, SCHEMA};
+use crate::hotswap_channel::{read_json, write_json, AgentState, Apply, HotswapResult, Offer, Outcome, Status, SCHEMA};
+use crate::hotswap_telemetry::{self as tele, TelemetryCtx};
 use crate::pack_v2::Manifest;
 
 pub const POLL_BASE: Duration = Duration::from_secs(60);
@@ -61,20 +62,31 @@ pub fn hotswap_apply(instance_id: String, version: u64) -> Result<(), String> {
     apply_for_instance(&instance_id, version)
 }
 
-/// Where the game last reported the player: `menu`, `singleplayer`, `server`
-/// or `None` before it reports anything.
-#[tauri::command]
-pub fn hotswap_game_state() -> Option<String> {
-    use crate::tab_badge::GameStatus;
-    let status = crate::tab_badge::read_game_status(&crate::config::get_minecraft_dir())?;
+/// The agent's own state for a session (`status.json`): `idle`, `ready`,
+/// `applying` or `busy-in-world`. Independent of the tab-badge status file.
+pub(crate) fn agent_state_in_session(session_dir: &Path) -> Option<String> {
+    let status = read_json::<Status>(session_dir, "status.json")?;
     Some(
-        match status {
-            GameStatus::Menu => "menu",
-            GameStatus::Singleplayer => "singleplayer",
-            GameStatus::Server { .. } => "server",
+        match status.state {
+            AgentState::Idle => "idle",
+            AgentState::Ready => "ready",
+            AgentState::Applying => "applying",
+            AgentState::BusyInWorld => "busy-in-world",
+            AgentState::Unknown => return None,
         }
         .to_string(),
     )
+}
+
+/// What the hotswap agent of this instance's running game is doing, or `None`
+/// without a session or before it reports.
+#[tauri::command]
+pub fn hotswap_agent_state(instance_id: String) -> Option<String> {
+    let session = {
+        let guard = SESSIONS.lock().unwrap_or_else(|e| e.into_inner());
+        guard.as_ref().and_then(|m| m.get(&instance_id).cloned())
+    }?;
+    agent_state_in_session(&session)
 }
 
 const CRASH_LOCK_FILE: &str = "crash-lock.json";
@@ -114,15 +126,24 @@ pub fn crash_locked(instance_dir: &Path, pack_version: u64) -> bool {
 }
 
 /// Lock hotswap if the session's last result is `applied` and no `healthy`
-/// followed (the game died or was killed within the health window).
-pub fn update_crash_lock(instance_dir: &Path, session_dir: &Path) {
-    let Some(last) = read_json::<HotswapResult>(session_dir, "result.json") else { return };
+/// followed (the game died or was killed within the health window). True when
+/// a lock for that pack version was newly written.
+pub fn update_crash_lock(instance_dir: &Path, session_dir: &Path) -> Option<u64> {
+    let last = read_json::<HotswapResult>(session_dir, "result.json")?;
     if last.outcome != Outcome::Applied {
-        return;
+        return None;
+    }
+    let root = hotswap_root(instance_dir);
+    if read_json::<CrashLock>(&root, CRASH_LOCK_FILE).is_some_and(|l| l.pack_version == last.version) {
+        return None;
     }
     let lock = CrashLock { pack_version: last.version };
-    if let Err(e) = write_json(&hotswap_root(instance_dir), CRASH_LOCK_FILE, &lock) {
-        log::warn!("[Hotswap] could not write crash lock: {e}");
+    match write_json(&root, CRASH_LOCK_FILE, &lock) {
+        Ok(()) => Some(last.version),
+        Err(e) => {
+            log::warn!("[Hotswap] could not write crash lock: {e}");
+            None
+        }
     }
 }
 
@@ -173,9 +194,12 @@ pub(crate) trait Backend {
     async fn sleep(&mut self, d: Duration) -> bool;
     fn emit(&mut self, event: &str, payload: serde_json::Value);
     fn log(&mut self, message: &str);
+    /// A hotswap telemetry event (never carries paths).
+    fn telemetry(&mut self, _event: &'static str, _data: serde_json::Value) {}
 }
 
 pub(crate) struct WatchState {
+    pub ctx: TelemetryCtx,
     pub instance_id: String,
     pub session_dir: PathBuf,
     pub current_version: u64,
@@ -258,6 +282,7 @@ async fn poll_once<B: Backend>(
         if !offer.changes.is_empty() {
             write_json(&state.session_dir, "offer.json", &offer)?;
             let (live, restart) = live_and_restart(&offer);
+            be.telemetry("hotswap_offer", tele::offer_payload(&state.ctx, offer.version, live, restart));
             be.emit(
                 "hotswap-offer",
                 serde_json::json!({
@@ -328,6 +353,10 @@ impl Backend for LiveBackend {
     fn log(&mut self, message: &str) {
         crate::launch_log::info(message);
     }
+
+    fn telemetry(&mut self, event: &'static str, data: serde_json::Value) {
+        tele::send(event, data);
+    }
 }
 
 /// Starts the manifest poll and the result watcher for one running game.
@@ -340,13 +369,14 @@ pub fn spawn_hotswap_watch(
     session_dir: PathBuf,
     enabled: Vec<Tier>,
     current_version: u64,
+    ctx: TelemetryCtx,
 ) -> WatchHandle {
     let stopped = Arc::new(AtomicBool::new(false));
     let wake = Arc::new(Notify::new());
     let handle = WatchHandle { stopped: stopped.clone(), wake: wake.clone(), instance_id: instance_id.clone() };
     register_session(&instance_id, &session_dir);
 
-    let state = WatchState { instance_id: instance_id.clone(), session_dir: session_dir.clone(), current_version };
+    let state = WatchState { ctx: ctx.clone(), instance_id: instance_id.clone(), session_dir: session_dir.clone(), current_version };
     let mut backend = LiveBackend {
         cloud_id,
         instance_dir,
@@ -363,6 +393,9 @@ pub fn spawn_hotswap_watch(
         let mut last = None;
         while !stopped.load(Ordering::SeqCst) {
             if let Some(result) = take_result_change(&session_dir, &mut last) {
+                for (event, data) in tele::events_for_result(&ctx, &result) {
+                    tele::send(event, data);
+                }
                 let mut payload = serde_json::to_value(&result).unwrap_or_default();
                 if let Some(map) = payload.as_object_mut() {
                     map.insert("instanceId".into(), instance_id.clone().into());
@@ -421,8 +454,9 @@ mod tests {
         let session = new_session_dir(&inst);
         write_json(&session, "result.json", &result(6, Outcome::Applied)).unwrap();
         assert!(!crash_locked(&inst, 6));
-        update_crash_lock(&inst, &session);
+        assert_eq!(update_crash_lock(&inst, &session), Some(6));
         assert!(crash_locked(&inst, 6));
+        assert_eq!(update_crash_lock(&inst, &session), None, "an existing lock is not reported twice");
 
         // A healthy result afterwards never sets a lock.
         let inst = tmpdir("lock-healthy");
@@ -504,6 +538,7 @@ mod tests {
         logs: Vec<String>,
         staged: Vec<u64>,
         stage_changes: Vec<OfferChange>,
+        telemetry: Vec<(String, serde_json::Value)>,
     }
 
     impl Fake {
@@ -516,6 +551,7 @@ mod tests {
                 logs: vec![],
                 staged: vec![],
                 stage_changes: vec![],
+                telemetry: vec![],
             }
         }
     }
@@ -548,6 +584,9 @@ mod tests {
         fn log(&mut self, message: &str) {
             self.logs.push(message.into());
         }
+        fn telemetry(&mut self, event: &'static str, data: serde_json::Value) {
+            self.telemetry.push((event.into(), data));
+        }
     }
 
     fn manifest(version: u64, hotswap: bool) -> Manifest {
@@ -559,7 +598,7 @@ mod tests {
     }
 
     fn state(tag: &str, current: u64) -> WatchState {
-        WatchState { instance_id: "inst".into(), session_dir: tmpdir(tag), current_version: current }
+        WatchState { ctx: TelemetryCtx::new("fabric", "1.21.1"), instance_id: "inst".into(), session_dir: tmpdir(tag), current_version: current }
     }
 
     fn change(tier: Tier, path: &str) -> OfferChange {
@@ -606,6 +645,10 @@ mod tests {
             fake.events[0].1,
             serde_json::json!({"instanceId": "inst", "version": 6, "liveCount": 2, "restartCount": 1})
         );
+        assert_eq!(fake.telemetry.len(), 1);
+        assert_eq!(fake.telemetry[0].0, "hotswap_offer");
+        assert_eq!(fake.telemetry[0].1["loader"], "fabric");
+        assert_eq!(fake.telemetry[0].1["liveCount"], 2);
     }
 
     #[test]
@@ -715,6 +758,18 @@ mod tests {
         // No offer at all is the same refusal.
         let empty = tmpdir("apply-none");
         assert_eq!(apply_in_session(&empty, 6), Err("revoked".to_string()));
+    }
+
+    #[test]
+    fn agent_state_comes_from_status_json_not_the_badge_file() {
+        let session = tmpdir("agent-state");
+        assert_eq!(agent_state_in_session(&session), None);
+        for (raw, want) in [("idle", "idle"), ("ready", "ready"), ("applying", "applying"), ("busy-in-world", "busy-in-world")] {
+            std::fs::write(session.join("status.json"), format!(r#"{{"schema":1,"state":"{raw}"}}"#)).unwrap();
+            assert_eq!(agent_state_in_session(&session).as_deref(), Some(want));
+        }
+        std::fs::write(session.join("status.json"), r#"{"schema":1,"state":"warp"}"#).unwrap();
+        assert_eq!(agent_state_in_session(&session), None);
     }
 
     #[test]

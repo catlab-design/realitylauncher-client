@@ -123,7 +123,11 @@ where
         if let Some(parent) = dest.parent() {
             fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        if let Err(e) = fetch(w.clone(), dest.clone()).await {
+        let fetched = match fetch(w.clone(), dest.clone()).await {
+            Ok(()) => verify_staged(w, &dest),
+            Err(e) => Err(e),
+        };
+        if let Err(e) = fetched {
             let _ = fs::remove_dir_all(&dir);
             return Err(format!("{}: {e}", w.path));
         }
@@ -136,7 +140,8 @@ where
             sha256: sha256_hex(&bytes),
             action: if present { ChangeAction::Update } else { ChangeAction::Add },
         });
-        entries.insert(w.path.clone(), StateEntry { size: bytes.len() as u64, hash: w.hash.clone() });
+        let size = if w.size > 0 { w.size } else { bytes.len() as u64 };
+        entries.insert(w.path.clone(), StateEntry { size, hash: w.hash.clone() });
     }
     for path in gone {
         let tier = classify(change_kind(&path, true, false), enabled, false);
@@ -158,7 +163,32 @@ where
     Ok(offer)
 }
 
-/// Download one pack file to `dest`, checking the pack's SHA-1 when it has one.
+/// Check a downloaded file against everything the manifest states for it: the
+/// size (when given) and each of sha1 (mods), sha256 and crc32 (files).
+fn verify_staged(w: &Want, path: &Path) -> Result<(), String> {
+    let len = fs::metadata(path).map_err(|e| e.to_string())?.len();
+    if w.size > 0 && len != w.size {
+        return Err(format!("Size mismatch (expected {}, got {len})", w.size));
+    }
+    if let Some(s) = &w.sha1 {
+        if !crate::cloud::compute_sha1(path).map(|h| h.eq_ignore_ascii_case(s)).unwrap_or(false) {
+            return Err("SHA-1 mismatch".into());
+        }
+    }
+    if let Some(s) = &w.sha256 {
+        if !crate::cloud::compute_sha256(path).map(|h| h.eq_ignore_ascii_case(s)).unwrap_or(false) {
+            return Err("SHA-256 mismatch".into());
+        }
+    }
+    if let Some(c) = w.crc32 {
+        if crate::pack_v2::file_crc32(path).map(|h| h != c).unwrap_or(true) {
+            return Err("CRC-32 mismatch".into());
+        }
+    }
+    Ok(())
+}
+
+/// Download one pack file to `dest`; `stage_with` verifies it against the manifest.
 async fn download_file(w: Want, dest: PathBuf) -> Result<(), String> {
     use futures_util::StreamExt;
     use std::io::Write;
@@ -178,12 +208,6 @@ async fn download_file(w: Want, dest: PathBuf) -> Result<(), String> {
     }
     out.flush().map_err(|e| e.to_string())?;
     drop(out);
-    if let Some(s) = &w.sha1 {
-        let ok = crate::cloud::compute_sha1(&dest).map(|h| h.eq_ignore_ascii_case(s)).unwrap_or(false);
-        if !ok {
-            return Err("Checksum mismatch".into());
-        }
-    }
     Ok(())
 }
 
@@ -527,5 +551,65 @@ mod tests {
         let (wants, _) = wants_from(&m, &d);
         let w = wants.iter().find(|w| w.path == "mods/old.jar").unwrap();
         assert!(!needs_update(w, st.entries.get("mods/old.jar")));
+    }
+
+    fn staged_fails(m: Manifest, served: &[(&str, &[u8])]) -> PathBuf {
+        let d = tmpdir(&format!("verify-{}", m.version));
+        let f = fetcher(bodies(served), Arc::new(Mutex::new(Vec::new())));
+        let err = run(stage_with(&d, &m, &ALL, &[], f)).unwrap_err();
+        assert!(err.contains("mismatch"), "{err}");
+        assert!(!d.join(format!(".reality/staging/{}/plan.json", m.version)).exists());
+        d
+    }
+
+    #[test]
+    fn size_mismatch_fails_the_stage() {
+        // Right sha1 for the manifest entry, but the served body has another length.
+        let m: Manifest = serde_json::from_value(serde_json::json!({
+            "version": 11,
+            "mods": [{"path": "mods/a.jar", "url": "https://x/a", "size": 99, "sha1": sha1_hex(b"abc")}]
+        }))
+        .unwrap();
+        staged_fails(m, &[("mods/a.jar", b"abc")]);
+        // A file entry with only a size is checked as well.
+        let m: Manifest = serde_json::from_value(serde_json::json!({
+            "version": 12,
+            "files": [{"path": "config/a.toml", "url": "https://x/a", "size": 2, "layer": "L"}]
+        }))
+        .unwrap();
+        staged_fails(m, &[("config/a.toml", b"abc")]);
+    }
+
+    #[test]
+    fn file_entry_hash_mismatch_fails_the_stage() {
+        let good = b"hello";
+        let crc = crc32fast::hash(good);
+        let m: Manifest = serde_json::from_value(serde_json::json!({
+            "version": 13,
+            "files": [{"path": "config/a.toml", "url": "https://x/a", "size": 5, "crc32": crc, "layer": "L"}]
+        }))
+        .unwrap();
+        staged_fails(m, &[("config/a.toml", b"HELLO")]);
+        let m: Manifest = serde_json::from_value(serde_json::json!({
+            "version": 14,
+            "files": [{"path": "config/a.toml", "url": "https://x/a", "size": 5, "sha256": sha256_hex(good), "layer": "L"}]
+        }))
+        .unwrap();
+        staged_fails(m, &[("config/a.toml", b"HELLO")]);
+    }
+
+    #[test]
+    fn file_entry_with_matching_size_and_hashes_stages() {
+        let body = b"hello";
+        let m: Manifest = serde_json::from_value(serde_json::json!({
+            "version": 15,
+            "files": [{"path": "config/a.toml", "url": "https://x/a", "size": 5, "crc32": crc32fast::hash(body),
+                       "sha256": sha256_hex(body), "layer": "L"}]
+        }))
+        .unwrap();
+        let d = tmpdir("verify-ok");
+        let f = fetcher(bodies(&[("config/a.toml", body)]), Arc::new(Mutex::new(Vec::new())));
+        run(stage_with(&d, &m, &ALL, &[], f)).unwrap();
+        assert!(d.join(".reality/staging/15/plan.json").is_file());
     }
 }

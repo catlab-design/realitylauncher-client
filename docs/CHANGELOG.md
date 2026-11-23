@@ -7,6 +7,12 @@
 - Experimental hotswap: a new small in-game helper (`reality-hotswap.jar`) can copy changed resource-pack and config files into place and reload resources at the main menu when you click Apply. Everything else is reported as needing a restart. Not used yet, and only for instances that turn hotswap on.
 - Experimental hotswap, launch side (still off unless the pack owner turns it on, and the new "disableHotswap" setting in config.json can switch it off for this PC): when allowed, the game starts with the hotswap helper, and while you play the launcher checks the pack every minute (backing off to every 10 minutes when the server is unreachable), stages a newer pack and tells the app how many of its changes can be applied live. If the pack owner turns hotswap off, the offer is withdrawn. If an applied update does not stay healthy for 10 seconds (the game crashed or was closed), hotswap stays off for that pack version. With hotswap off, the game starts exactly as before.
 - Experimental hotswap, in the launcher: when a pack update can be applied live, a prompt "Pack updated – apply now?" with Apply / Later appears (Apply only works at the main menu), followed by "Applied live", "Restart to apply" or "Swap failed – will apply next launch". A new Settings > Game switch, "Disable hotswap on this PC", turns it off for this PC.
+- Experimental hotswap telemetry: `hotswap_offer`, `hotswap_applied`, `hotswap_restart_required` (with a reason), `hotswap_failed` (with a short error) and `hotswap_crash_lock`, each with loader, Minecraft version and launcher version. Only counts and short messages are sent, never file paths or tokens.
+
+### Fixed
+- Experimental hotswap: Apply no longer depends on the tab-badge status file, so it works on every launch; after you click Apply while in a world the prompt says "Go to the main menu to apply" and the swap happens when you get back to the menu.
+- Experimental hotswap: the in-game helper never swaps `.jar` files or anything under `mods/` live, re-checks that you are still at the main menu right before copying, and a file it cannot replace (for example one Windows has locked) now just needs a restart while the rest of the update still applies.
+- Experimental hotswap: staged downloads are now checked against every size and checksum the pack lists (not only SHA-1 for mods), and a mismatch discards that staging.
 
 ## [5.3.1] — 2026-11-21
 

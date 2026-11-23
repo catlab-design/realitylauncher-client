@@ -3,10 +3,11 @@ import { toast } from "react-hot-toast";
 import { useTranslation } from "./useTranslation";
 import type { TranslationKey } from "../i18n/translations";
 import { useConfigStore } from "../store/configStore";
+import { canApplyOffer, showMenuHint, type AgentState } from "../lib/hotswapOffer";
 
 const OFFER_TOAST_ID = "hotswap-offer";
 const RESULT_TOAST_ID = "hotswap-result";
-const STATE_POLL_MS = 2000;
+const STATE_POLL_MS = 1000;
 
 const RESULT_COPY: Partial<Record<HotswapResultEvent["outcome"], { key: TranslationKey; ok: boolean }>> = {
   applied: { key: "hotswap_applied", ok: true },
@@ -16,41 +17,43 @@ const RESULT_COPY: Partial<Record<HotswapResultEvent["outcome"], { key: Translat
 
 function OfferToast({ offer, accent, toastId }: { offer: HotswapOffer; accent: string; toastId: string }) {
   const { t } = useTranslation();
-  const [atMenu, setAtMenu] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const canApply = offer.liveCount > 0;
+  const [requested, setRequested] = useState(false);
+  const [agentState, setAgentState] = useState<AgentState | null>(null);
+  const canApply = canApplyOffer(offer);
 
+  // After Apply the agent either swaps at once (a result event closes the toast)
+  // or reports busy-in-world while the player is in a world.
   useEffect(() => {
-    if (!canApply) return;
+    if (!requested) return;
     let alive = true;
     const poll = async () => {
-      const state = await window.api?.hotswapGameState?.().catch(() => null);
-      if (alive) setAtMenu(state === "menu");
+      const state = await window.api?.hotswapAgentState?.(offer.instanceId).catch(() => null);
+      if (alive) setAgentState(state ?? null);
     };
     void poll();
     const id = setInterval(poll, STATE_POLL_MS);
     return () => { alive = false; clearInterval(id); };
-  }, [canApply]);
+  }, [requested, offer.instanceId]);
 
   const apply = async () => {
-    setBusy(true);
+    setRequested(true);
     try {
       await window.api?.hotswapApply?.(offer.instanceId, offer.version);
     } catch (e) {
       console.log("[Hotswap] apply refused:", e);
+      toast.dismiss(toastId);
     }
-    toast.dismiss(toastId);
   };
 
   return (
     <div className="flex flex-col gap-2">
       <span className="text-sm">{t(canApply ? "hotswap_prompt" : "hotswap_restart")}</span>
-      {canApply && !atMenu && <span className="text-xs opacity-70">{t("hotswap_go_to_menu")}</span>}
+      {showMenuHint(requested, agentState) && <span className="text-xs opacity-70">{t("hotswap_go_to_menu")}</span>}
       <div className="flex items-center gap-2">
         {canApply && (
           <button
             type="button"
-            disabled={!atMenu || busy}
+            disabled={requested}
             className="h-8 px-3 rounded-full text-xs font-bold text-[#111] shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ backgroundColor: accent }}
             onClick={apply}
@@ -99,6 +102,7 @@ export function useHotswapPrompt(accent: string) {
     const offResult = api?.onHotswapResult?.((result) => {
       const copy = RESULT_COPY[result.outcome];
       if (!copy) {
+        if (result.outcome === "refused") toast.dismiss(OFFER_TOAST_ID);
         console.log("[Hotswap] result:", result.outcome, result.error ?? "");
         return;
       }

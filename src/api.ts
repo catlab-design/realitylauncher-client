@@ -142,7 +142,7 @@ export const api = {
     cancelLaunch: () => invoke<boolean>('cancel_launch'),
 
     hotswapApply: (instanceId: string, version: number) => invoke<void>('hotswap_apply', { instanceId, version }),
-    hotswapGameState: () => invoke<'menu' | 'singleplayer' | 'server' | null>('hotswap_game_state'),
+    hotswapAgentState: (instanceId: string) => invoke<'idle' | 'ready' | 'applying' | 'busy-in-world' | null>('hotswap_agent_state', { instanceId }),
     instanceReadLatestLog: (instanceId: string) =>
         invoke<LogChunk>('instance_read_latest_log', { instanceId }),
     instanceTailLog: (instanceId: string, from: number) =>

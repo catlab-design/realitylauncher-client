@@ -14,6 +14,7 @@ pub mod game_window;
 pub mod hotswap;
 pub mod hotswap_channel;
 pub mod hotswap_staging;
+pub mod hotswap_telemetry;
 pub mod hotswap_watch;
 pub mod http_client;
 pub mod instances;
