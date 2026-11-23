@@ -372,6 +372,21 @@ pub(crate) async fn fetch_manifest(cloud_id: &str) -> Result<Option<Manifest>, S
     resp.json::<Manifest>().await.map(Some).map_err(|e| format!("Bad pack manifest: {e}"))
 }
 
+/// `experimental.hotswap` of the manifest each instance dir's latest sync read,
+/// so the launch needs no second manifest request.
+pub(crate) fn record_synced_flag(dir: &Path, flag: bool) {
+    SYNCED_FLAGS.lock().unwrap().insert(dir.to_path_buf(), flag);
+}
+
+/// Remove and return the flag recorded for `dir` (`None` if its sync did not
+/// read a v2 manifest).
+pub(crate) fn take_synced_flag(dir: &Path) -> Option<bool> {
+    SYNCED_FLAGS.lock().unwrap().remove(dir)
+}
+
+static SYNCED_FLAGS: once_cell::sync::Lazy<std::sync::Mutex<HashMap<PathBuf, bool>>> =
+    once_cell::sync::Lazy::new(Default::default);
+
 /// Conditional manifest fetch for the hotswap watcher: `Ok(None)` on 304, else
 /// the manifest and its `ETag`. A missing pack (404) is an error here.
 pub(crate) async fn fetch_manifest_if_changed(
@@ -415,6 +430,7 @@ pub async fn sync(
     let Some(manifest) = fetch_manifest(cloud_id).await? else {
         return Ok(Outcome::NotV2);
     };
+    record_synced_flag(dir, manifest.experimental.hotswap);
     emit_sync_progress(app, "sync-check", "Checking files", None, None, None, None);
     fs::create_dir_all(dir).map_err(|e| e.to_string())?;
 
@@ -596,6 +612,18 @@ pub async fn sync(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn synced_flag_is_recorded_per_dir_and_taken_once() {
+        let a = Path::new("/rl-test/flag-a");
+        let b = Path::new("/rl-test/flag-b");
+        assert_eq!(take_synced_flag(a), None);
+        record_synced_flag(a, true);
+        record_synced_flag(b, false);
+        assert_eq!(take_synced_flag(a), Some(true));
+        assert_eq!(take_synced_flag(a), None);
+        assert_eq!(take_synced_flag(b), Some(false));
+    }
+
     use super::*;
 
     fn temp_dir(name: &str) -> PathBuf {

@@ -17,6 +17,8 @@ class TierZeroTest {
 
     static final class Fake implements GameAccess {
         boolean menu = true;
+        boolean available = true;
+        public boolean available() { return available; }
         int reloads;
         RuntimeException reloadThrows;
         CompletableFuture<Object> reload = CompletableFuture.completedFuture(null);
@@ -108,6 +110,25 @@ class TierZeroTest {
         a.poll();
         assertEquals("failed", H.outcome(c));
         assertTrue(H.error(c).contains("boom"));
+    }
+
+    @Test
+    void unresolved_game_stays_idle_and_refuses_apply() throws Exception {
+        Path sess = root.resolve("sess"), inst = root.resolve("inst"), staging = inst.resolve(".reality/staging/7");
+        put(staging.resolve("config/a.toml"), "new");
+        Channel c = new Channel(sess);
+        Fake g = new Fake();
+        g.available = false;
+        Applier a = new Applier(c, inst, g);
+        H.offer(c, 7, false, staging.toString(), "config/a.toml", 0);
+        a.poll();
+        assertEquals("idle", H.status(c));
+        H.apply(c, 7);
+        a.poll();
+        assertEquals("refused", H.outcome(c));
+        assertEquals("idle", H.status(c));
+        assertEquals(0, g.reloads);
+        assertFalse(Files.exists(inst.resolve("config/a.toml")));
     }
 
     @Test

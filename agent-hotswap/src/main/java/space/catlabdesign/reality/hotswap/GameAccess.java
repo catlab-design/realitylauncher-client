@@ -20,6 +20,9 @@ interface GameAccess {
     /** Runs the task on the game's main (render) thread. */
     void onRenderThread(Runnable task);
 
+    /** False while the game's members could not be found under any known name set: hotswap stays inert. */
+    default boolean available() { return true; }
+
     /** Starts a resource reload; call on the render thread. */
     CompletableFuture<?> reloadResources();
 
@@ -41,22 +44,29 @@ interface GameAccess {
             this.inst = inst;
         }
 
+        @Override
+        public boolean available() {
+            return resolve();
+        }
+
+        /** The primary names win when they fully resolve, else the alternative set. */
         private synchronized boolean resolve() {
             if (reload != null) return true;
+            return resolveWith(names) || (names.alt != null && resolveWith(names.alt));
+        }
+
+        private boolean resolveWith(Names n) {
             try {
-                Class<?> c = findClass();
+                Class<?> c = findClass(n);
                 if (c == null) return false;
-                Method gi = find(c, names.getInstance, true);
-                Method gc = find(c, names.getConnection, false);
-                Method rl = find(c, names.reloadResourcePacks, false);
+                Method gi = find(c, n.getInstance, true);
+                Method gc = find(c, n.getConnection, false);
+                Method rl = find(c, n.reloadResourcePacks, false);
                 Field lf = null;
                 for (Class<?> k = c; k != null && lf == null; k = k.getSuperclass()) {
-                    try { lf = k.getDeclaredField(names.levelField); } catch (NoSuchFieldException ignored) { }
+                    try { lf = k.getDeclaredField(n.levelField); } catch (NoSuchFieldException ignored) { }
                 }
-                if (gi == null || gc == null || rl == null || lf == null) {
-                    System.err.println("[RealityHotswap] Minecraft members not found; hotswap idle");
-                    return false;
-                }
+                if (gi == null || gc == null || rl == null || lf == null) return false;
                 gi.setAccessible(true); gc.setAccessible(true); rl.setAccessible(true); lf.setAccessible(true);
                 minecraft = c; getInstance = gi; getConnection = gc; level = lf; reload = rl;
                 return true;
@@ -65,7 +75,7 @@ interface GameAccess {
             }
         }
 
-        private Class<?> findClass() {
+        private Class<?> findClass(Names names) {
             if (inst != null) {
                 for (Class<?> c : inst.getAllLoadedClasses()) {
                     if (c.getName().equals(names.minecraftClass)) return c;

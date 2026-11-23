@@ -696,6 +696,11 @@ pub struct HotswapNames {
     pub get_connection: String,
     pub level_field: String,
     pub reload_resource_packs: String,
+    /// The other namespace (official vs SRG) for Forge/NeoForge, where the
+    /// loader version decides which one the running game uses. The agent tries
+    /// the primary set first and the alternative if any member is missing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alt: Option<Box<HotswapNames>>,
 }
 
 impl HotswapNames {
@@ -706,19 +711,23 @@ impl HotswapNames {
             get_connection: "getConnection".into(),
             level_field: "level".into(),
             reload_resource_packs: "reloadResourcePacks".into(),
+            alt: None,
         }
     }
 
     /// The agent's `Names.load` format: a Java properties file.
     pub fn to_properties(&self) -> String {
-        format!(
-            "minecraft_class={}\nget_instance={}\nget_connection={}\nlevel_field={}\nreload_resource_packs={}\n",
-            self.minecraft_class,
-            self.get_instance,
-            self.get_connection,
-            self.level_field,
-            self.reload_resource_packs
-        )
+        let set = |prefix: &str, n: &HotswapNames| {
+            format!(
+                "{prefix}minecraft_class={}\n{prefix}get_instance={}\n{prefix}get_connection={}\n{prefix}level_field={}\n{prefix}reload_resource_packs={}\n",
+                n.minecraft_class, n.get_instance, n.get_connection, n.level_field, n.reload_resource_packs
+            )
+        };
+        let mut out = set("", self);
+        if let Some(alt) = &self.alt {
+            out.push_str(&set("alt.", alt));
+        }
+        out
     }
 }
 
@@ -855,6 +864,7 @@ pub fn parse_tiny_hotswap<R: BufRead>(
             get_connection: b?,
             level_field: c?,
             reload_resource_packs: d?,
+            alt: None,
         })
     })())
 }
@@ -912,17 +922,6 @@ pub fn parse_tsrg2_hotswap<R: BufRead>(reader: R, obf: &HotswapObf) -> std::io::
     Ok((|| Some([a?, b?, c?, d?]))())
 }
 
-/// Whether the running Forge/NeoForge uses SRG member names (official classes)
-/// rather than Mojang names: Forge through 1.20.x, NeoForge on 1.20.1 only.
-fn srg_at_runtime(mc: &str, loader: &LoaderType) -> bool {
-    let minor: Option<u32> = mc.split('.').nth(1).and_then(|m| m.parse().ok());
-    match loader {
-        LoaderType::Forge => minor.is_some_and(|m| m <= 20),
-        LoaderType::Neoforge => mc == "1.20.1",
-        _ => false,
-    }
-}
-
 #[derive(Serialize, Deserialize)]
 struct HotswapCache {
     key: String,
@@ -933,11 +932,10 @@ struct HotswapCache {
 /// (unsupported version, missing mappings, network failure): hotswap is then
 /// off for the launch. Cached like the tab schemes.
 ///
-/// Vanilla → obf; Fabric/Quilt → intermediary; Forge/NeoForge → SRG members
-/// where the loader runs SRG at runtime (see [`srg_at_runtime`]) and the
-/// official names otherwise. The two candidates are both resolved the way the
-/// tab schemes do; the agent's names file holds one value per key, so the
-/// loader's runtime namespace picks which.
+/// Vanilla → obf; Fabric/Quilt → intermediary; Forge/NeoForge → the official
+/// names with the SRG member names as `alt` (when the MCP config is present),
+/// the same two candidates the tab schemes resolve. Which one the running game
+/// uses is decided by the agent: the set that fully resolves wins.
 pub async fn resolve_hotswap_names(
     minecraft_dir: &Path,
     libraries_dir: &Path,
@@ -949,7 +947,7 @@ pub async fn resolve_hotswap_names(
         return None;
     }
     let key = format!(
-        "hs1|{}",
+        "hs2|{}",
         schemes_cache_key(minecraft_dir, libraries_dir, mc_version, loader, version_json)
     );
     let cache_path = minecraft_dir
@@ -990,26 +988,33 @@ async fn resolve_hotswap_names_uncached(
 ) -> Result<Option<HotswapNames>, String> {
     let official = HotswapNames::official();
     if matches!(loader, LoaderType::Forge | LoaderType::Neoforge) {
-        if !srg_at_runtime(mc_version, loader) {
-            return Ok(Some(official));
-        }
-        let Some(zip) = find_mcp_config(libraries_dir, mc_version) else {
-            return Ok(None);
+        let srg = async {
+            let Some(zip) = find_mcp_config(libraries_dir, mc_version) else {
+                return Ok(None);
+            };
+            let Some(obf) = mojang_hotswap_obf(minecraft_dir, libraries_dir, mc_version, version_json).await? else {
+                return Ok(None);
+            };
+            blocking(move || read_zip_entry(&zip, "config/joined.tsrg", |r| parse_tsrg2_hotswap(r, &obf))).await
         };
-        let Some(obf) = mojang_hotswap_obf(minecraft_dir, libraries_dir, mc_version, version_json).await? else {
-            return Ok(None);
+        let alt = match srg.await {
+            Ok(Some([get_instance, get_connection, level_field, reload_resource_packs])) => Some(Box::new(HotswapNames {
+                get_instance,
+                get_connection,
+                level_field,
+                reload_resource_packs,
+                ..HotswapNames::official()
+            })),
+            Ok(None) => {
+                log::warn!("[Mappings] SRG hotswap names not found for {mc_version}");
+                None
+            }
+            Err(e) => {
+                log::warn!("[Mappings] SRG hotswap resolution failed for {mc_version}: {e}");
+                None
+            }
         };
-        let members = blocking(move || {
-            read_zip_entry(&zip, "config/joined.tsrg", |r| parse_tsrg2_hotswap(r, &obf))
-        })
-        .await?;
-        return Ok(members.map(|[get_instance, get_connection, level_field, reload_resource_packs]| HotswapNames {
-            get_instance,
-            get_connection,
-            level_field,
-            reload_resource_packs,
-            ..official
-        }));
+        return Ok(Some(HotswapNames { alt, ..official }));
     }
 
     let Some(obf) = mojang_hotswap_obf(minecraft_dir, libraries_dir, mc_version, version_json).await? else {
@@ -1022,6 +1027,7 @@ async fn resolve_hotswap_names_uncached(
             get_connection: obf.members[1].clone(),
             level_field: obf.members[2].clone(),
             reload_resource_packs: obf.members[3].clone(),
+            alt: None,
         }));
     }
     let jar = minecraft_dir.join("mappings").join(mc_version).join("intermediary-v2.jar");
@@ -1257,6 +1263,7 @@ eud net/minecraft/src/C_1_ 1
                 get_connection: "method_1562".into(),
                 level_field: "field_1687".into(),
                 reload_resource_packs: "method_1521".into(),
+                alt: None,
             }
         );
         let broken = TINY_HS.replace("\tf\tLeud;\ts\tfield_1687\n", "");
@@ -1267,6 +1274,25 @@ eud net/minecraft/src/C_1_ 1
     fn tsrg2_hotswap_maps_members() {
         let members = parse_tsrg2_hotswap(std::io::Cursor::new(TSRG_HS), &hs_obf()).unwrap().unwrap();
         assert_eq!(members, ["m_91087_", "m_91403_", "f_91073_", "m_91391_"]);
+    }
+
+    #[test]
+    fn hotswap_names_properties_carry_the_alternative_namespace() {
+        let srg = HotswapNames {
+            get_instance: "m_91087_".into(),
+            get_connection: "m_91403_".into(),
+            level_field: "f_91073_".into(),
+            reload_resource_packs: "m_91391_".into(),
+            ..HotswapNames::official()
+        };
+        let both = HotswapNames { alt: Some(Box::new(srg.clone())), ..HotswapNames::official() };
+        let props = both.to_properties();
+        assert!(props.starts_with(&HotswapNames::official().to_properties()));
+        assert!(props.contains("alt.minecraft_class=net.minecraft.client.Minecraft\n"));
+        assert!(props.contains("alt.get_instance=m_91087_\n"));
+        assert!(props.contains("alt.level_field=f_91073_\n"));
+        assert!(props.contains("alt.reload_resource_packs=m_91391_\n"));
+        assert_eq!(props.lines().count(), 10);
     }
 
     #[test]

@@ -51,6 +51,20 @@ final class Applier {
 
         checkHealth();
 
+        if (!game.available()) {
+            // No known name set matches this game: never apply, never offer "ready".
+            if (apply != null) {
+                String key = apply.version + ":" + Files.getLastModifiedTime(channel.dir().resolve("apply.json")).toMillis();
+                if (!key.equals(handledKey)) {
+                    handledKey = key;
+                    channel.writeResult(apply.version, "refused", Collections.<String>emptyList(),
+                        Collections.<String>emptyList(), "game members not found");
+                }
+            }
+            setStatus("idle", version);
+            return;
+        }
+
         if (apply != null) {
             String key = apply.version + ":" + Files.getLastModifiedTime(channel.dir().resolve("apply.json")).toMillis();
             if (!key.equals(handledKey)) {

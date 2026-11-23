@@ -295,6 +295,7 @@ pub async fn instances_launch(
             Ok(None) => {}
             Err(e) => crate::launch_log::warn(format!("Staged pack update not applied ({e}); syncing normally")),
         }
+        let _ = crate::pack_v2::take_synced_flag(Path::new(&instance.game_directory));
         emit_progress(&app_handle, "sync", "Syncing server mods...", 0.02);
         let sync_started = std::time::Instant::now();
         let synced = crate::cloud::sync_instance_for_launch(&app_handle, &instance, crate::keybinds::KeybindMode::FirstInstallOnly).await;
@@ -346,7 +347,7 @@ pub async fn instances_launch(
     
     
     let hotswap_pre = if synced_ok {
-        hotswap_launch_inputs(&instance).await
+        hotswap_launch_inputs(&instance)
     } else {
         None
     };
@@ -2055,23 +2056,24 @@ struct HotswapLaunchInputs {
     pack_version: u64,
 }
 
-/// `None` (hotswap untouched) for instances without a cloud pack, with the
-/// "Disable hotswap on this PC" setting on, or when the manifest can't be read.
-async fn hotswap_launch_inputs(instance: &GameInstance) -> Option<HotswapLaunchInputs> {
-    let cloud_id = instance.cloud_id.as_deref()?;
-    if crate::config::config_get().disable_hotswap {
+/// `None` (hotswap untouched) when the "Disable hotswap on this PC" setting is
+/// on or this launch's sync did not read a v2 manifest. Reuses the manifest the
+/// sync already fetched: no extra request, nothing that can stall the launch.
+fn hotswap_launch_inputs(instance: &GameInstance) -> Option<HotswapLaunchInputs> {
+    let dir = Path::new(&instance.game_directory);
+    let flag = crate::pack_v2::take_synced_flag(dir);
+    hotswap_inputs_from(
+        crate::config::config_get().disable_hotswap,
+        flag,
+        crate::pack_v2::load_state(dir).version,
+    )
+}
+
+fn hotswap_inputs_from(disabled: bool, flag: Option<bool>, pack_version: u64) -> Option<HotswapLaunchInputs> {
+    if disabled {
         return None;
     }
-    let manifest = match crate::pack_v2::fetch_manifest(cloud_id).await {
-        Ok(Some(m)) => m,
-        Ok(None) => return None,
-        Err(e) => {
-            crate::launch_log::info(format!("Hotswap: pack manifest not read ({e}); off for this launch"));
-            return None;
-        }
-    };
-    let pack_version = crate::pack_v2::load_state(Path::new(&instance.game_directory)).version;
-    Some(HotswapLaunchInputs { manifest_flag: manifest.experimental.hotswap, pack_version })
+    Some(HotswapLaunchInputs { manifest_flag: flag?, pack_version })
 }
 
 /// Resolves names, applies the crash lock and gate, and writes the session.
@@ -3277,6 +3279,16 @@ mod tests {
             mc: "1.20.1".into(),
             names_resolved: true,
         }
+    }
+
+    #[test]
+    fn launch_inputs_need_a_synced_manifest_and_the_setting_off() {
+        assert!(hotswap_inputs_from(true, Some(true), 3).is_none());
+        assert!(hotswap_inputs_from(false, None, 3).is_none());
+        let on = hotswap_inputs_from(false, Some(true), 3).unwrap();
+        assert!(on.manifest_flag);
+        assert_eq!(on.pack_version, 3);
+        assert!(!hotswap_inputs_from(false, Some(false), 3).unwrap().manifest_flag);
     }
 
     #[test]
