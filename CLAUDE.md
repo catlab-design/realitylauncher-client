@@ -152,6 +152,7 @@ src-tauri/
 └── src/
     ├── main.rs                       # Entry point, 93+ command registrations
     ├── lib.rs                        # Module declarations
+    ├── hotswap.rs                    # Experimental hotswap: pure gate (`enabled_tiers`), `Tier`, `classify`/`change_kind`, bundled allowlist (`resources/hotswap-allowlist.json`)
     ├── http_client.rs                # (23 lines) Global shared reqwest::Client (pooled, HTTP/2, gzip, brotli); default `X-Launcher-Version` header via `launcher_default_headers()`
     ├── download.rs                   # (315 lines) Shared concurrent download engine
     ├── launch_log.rs                 # Per-launch launcher log (<instance>/logs/launcher.log) + redact() used by every log read
