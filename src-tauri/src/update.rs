@@ -1,6 +1,7 @@
 
 
 
+use crate::http_client::RealityApi;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -186,7 +187,7 @@ pub async fn check_latest_version(app: tauri::AppHandle) -> LatestVersionResult 
     let url = format!("{}/launcher/latest", API_URL);
 
     let client = crate::http_client::HTTP_CLIENT.clone();
-    match client.get(&url).send().await {
+    match client.get(&url).reality_api().send().await {
         Ok(response) => {
             if !response.status().is_success() {
                 return LatestVersionResult {
@@ -288,7 +289,7 @@ struct UpdateDownloadProgress {
 
 async fn fetch_latest_release() -> Result<LatestReleasePayload, String> {
     let resp = crate::http_client::HTTP_CLIENT.clone()
-        .get(format!("{}/launcher/latest", API_URL))
+        .get(format!("{}/launcher/latest", API_URL)).reality_api()
         .send()
         .await
         .map_err(|e| e.to_string())?;

@@ -1,6 +1,7 @@
 
 
 
+use crate::http_client::RealityApi;
 use crate::instances::get_instance_dir;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -1052,7 +1053,7 @@ async fn get_curseforge_download_url(
 ) -> Result<(String, String), String> {
     let url = format!("{API_URL}/curseforge/download/{project_id}/{file_id}");
     let resp = client
-        .get(&url)
+        .get(&url).reality_api()
         .header("Accept", "application/json")
         .send()
         .await
@@ -1071,7 +1072,7 @@ async fn get_curseforge_download_url(
 
     let file_url = format!("{API_URL}/curseforge/file/{project_id}/{file_id}");
     let file_resp = client
-        .get(&file_url)
+        .get(&file_url).reality_api()
         .header("Accept", "application/json")
         .send()
         .await

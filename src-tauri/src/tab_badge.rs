@@ -5,6 +5,7 @@
 //! presence session that tells the API this game runs through Reality.
 //! Everything here is best-effort: failures mean "no badge", never a failed launch.
 
+use crate::http_client::RealityApi;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -391,7 +392,7 @@ struct StartResponse {
 
 async fn post(path: &str, api_token: &str, body: serde_json::Value) -> Result<reqwest::Response, String> {
     crate::http_client::HTTP_CLIENT
-        .post(format!("{API_URL}{path}"))
+        .post(format!("{API_URL}{path}")).reality_api()
         .bearer_auth(api_token)
         .json(&body)
         .timeout(std::time::Duration::from_secs(15))

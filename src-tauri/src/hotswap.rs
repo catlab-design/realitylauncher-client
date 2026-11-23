@@ -45,7 +45,8 @@ impl<'de> Deserialize<'de> for Tier {
             1 => Ok(Tier::One),
             2 => Ok(Tier::Two),
             3 => Ok(Tier::Three),
-            n => Err(serde::de::Error::custom(format!("unknown hotswap tier {n}"))),
+            // Unknown tier from another version: treat as needing a restart.
+            _ => Ok(Tier::Three),
         }
     }
 }
@@ -286,7 +287,7 @@ mod tests {
     fn tier_serializes_as_number() {
         assert_eq!(serde_json::to_string(&[Tier::Zero, Tier::Three]).unwrap(), "[0,3]");
         assert_eq!(serde_json::from_str::<Tier>("2").unwrap(), Tier::Two);
-        assert!(serde_json::from_str::<Tier>("4").is_err());
+        assert_eq!(serde_json::from_str::<Tier>("7").unwrap(), Tier::Three);
     }
 
     #[test]

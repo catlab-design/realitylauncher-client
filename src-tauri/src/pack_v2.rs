@@ -11,6 +11,7 @@
 //! they left it until the pack ships a new version of that file. Mods are
 //! always kept exactly as the pack lists them.
 
+use crate::http_client::RealityApi;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{Read, Write};
@@ -348,7 +349,7 @@ async fn download_layer(
 async fn fetch_manifest(cloud_id: &str) -> Result<Option<Manifest>, String> {
     let url = format!("{API_URL}/instances/{cloud_id}/pack/manifest");
     let resp = crate::http_client::HTTP_CLIENT
-        .get(&url)
+        .get(&url).reality_api()
         .header("User-Agent", "RealityLauncher/2.0")
         .send()
         .await

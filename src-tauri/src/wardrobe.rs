@@ -1,3 +1,4 @@
+use crate::http_client::RealityApi;
 use crate::auth::get_session;
 use crate::config::get_minecraft_dir;
 use base64::Engine;
@@ -1307,7 +1308,7 @@ pub async fn minecraft_get_profile(
         let uuid_part = session.uuid.rsplit('-').next().unwrap_or("");
 
         let profile_resp = crate::http_client::HTTP_CLIENT.clone()
-            .get(format!("{}/profile/{}", API_URL, uuid_part))
+            .get(format!("{}/profile/{}", API_URL, uuid_part)).reality_api()
             .header("Authorization", format!("Bearer {}", api_token))
             .send()
             .await
@@ -1365,7 +1366,7 @@ pub async fn minecraft_upload_skin(
         let body = build_multipart_body(&boundary, fields, files);
 
         let upload_resp = crate::http_client::HTTP_CLIENT.clone()
-            .post(format!("{}/profile/skin", API_URL))
+            .post(format!("{}/profile/skin", API_URL)).reality_api()
             .header("Authorization", format!("Bearer {}", api_token))
             .header(
                 "Content-Type",
@@ -1391,7 +1392,7 @@ pub async fn minecraft_upload_skin(
         delete_cached_profile(&cache_key);
 
         let profile_resp = crate::http_client::HTTP_CLIENT.clone()
-            .get(format!("{}/profile/{}", API_URL, uuid_part))
+            .get(format!("{}/profile/{}", API_URL, uuid_part)).reality_api()
             .header("Authorization", format!("Bearer {}", api_token))
             .send()
             .await
@@ -1488,7 +1489,7 @@ pub async fn auth_update_avatar_source(
     .ok_or_else(|| "CatID account connection required".to_string())?;
 
     let resp = crate::http_client::HTTP_CLIENT.clone()
-        .put(format!("{}/auth/session/profile", API_URL))
+        .put(format!("{}/auth/session/profile", API_URL)).reality_api()
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", api_token))
         .json(&json!({ "avatarSource": avatar_source }))

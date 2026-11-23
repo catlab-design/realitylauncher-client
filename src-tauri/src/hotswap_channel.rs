@@ -14,6 +14,10 @@ use crate::hotswap::Tier;
 
 pub const SCHEMA: u32 = 1;
 
+fn tier_default() -> Tier {
+    Tier::Three
+}
+
 fn schema_default() -> u32 {
     SCHEMA
 }
@@ -24,16 +28,39 @@ pub enum ChangeAction {
     Add,
     Update,
     Remove,
+    /// A value this launcher does not know (newer or older agent/launcher).
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct OfferChange {
     pub path: String,
+    #[serde(default = "tier_default")]
     pub tier: Tier,
     #[serde(default)]
     pub sha256: String,
+    #[serde(default)]
     pub action: ChangeAction,
+}
+
+impl Default for ChangeAction {
+    fn default() -> Self {
+        ChangeAction::Unknown
+    }
+}
+
+impl Default for AgentState {
+    fn default() -> Self {
+        AgentState::Unknown
+    }
+}
+
+impl Default for Outcome {
+    fn default() -> Self {
+        Outcome::Unknown
+    }
 }
 
 /// Written by the launcher: a staged pack update the player may apply.
@@ -70,6 +97,8 @@ pub enum AgentState {
     Ready,
     Applying,
     BusyInWorld,
+    #[serde(other)]
+    Unknown,
 }
 
 /// Written by the agent.
@@ -78,6 +107,7 @@ pub enum AgentState {
 pub struct Status {
     #[serde(default = "schema_default")]
     pub schema: u32,
+    #[serde(default)]
     pub state: AgentState,
     #[serde(default)]
     pub version: Option<u64>,
@@ -91,6 +121,8 @@ pub enum Outcome {
     Failed,
     Healthy,
     Refused,
+    #[serde(other)]
+    Unknown,
 }
 
 /// Written by the agent after an Apply.
@@ -100,6 +132,7 @@ pub struct HotswapResult {
     #[serde(default = "schema_default")]
     pub schema: u32,
     pub version: u64,
+    #[serde(default)]
     pub outcome: Outcome,
     #[serde(default)]
     pub applied: Vec<String>,
@@ -214,6 +247,24 @@ mod tests {
         let s: Status = read_json(&d, "status.json").unwrap();
         assert_eq!(s.state, AgentState::Idle);
         assert_eq!(s.version, None);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn unknown_values_read_as_unknown() {
+        let d = tmpdir("unkval");
+        fs::write(
+            d.join("offer.json"),
+            r#"{"schema":1,"version":2,"changes":[{"path":"a","tier":7,"sha256":"x","action":"frobnicate"}]}"#,
+        )
+        .unwrap();
+        let o: Offer = read_json(&d, "offer.json").unwrap();
+        assert_eq!(o.changes[0].action, ChangeAction::Unknown);
+        assert_eq!(o.changes[0].tier, Tier::Three);
+        fs::write(d.join("status.json"), r#"{"schema":1,"state":"warp"}"#).unwrap();
+        assert_eq!(read_json::<Status>(&d, "status.json").unwrap().state, AgentState::Unknown);
+        fs::write(d.join("result.json"), r#"{"schema":1,"version":2,"outcome":"teleported"}"#).unwrap();
+        assert_eq!(read_json::<HotswapResult>(&d, "result.json").unwrap().outcome, Outcome::Unknown);
         let _ = fs::remove_dir_all(&d);
     }
 

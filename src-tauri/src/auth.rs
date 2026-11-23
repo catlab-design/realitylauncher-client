@@ -1,3 +1,4 @@
+use crate::http_client::RealityApi;
 use crate::config::default_launcher_dir;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -39,7 +40,7 @@ async fn ensure_client_id() -> Result<String, String> {
         }
     }
 
-    let resp = crate::http_client::HTTP_CLIENT.get(format!("{API_URL}/oauth/config")).send()
+    let resp = crate::http_client::HTTP_CLIENT.get(format!("{API_URL}/oauth/config")).reality_api().send()
         .await
         .map_err(|e| format!("Failed to fetch OAuth config: {e}"))?;
 
@@ -626,7 +627,7 @@ async fn exchange_with_ml_api(
     if is_linking {
         if let Some(token) = api_token_override {
             let resp = client
-                .post(format!("{API_URL}/auth/microsoft/link"))
+                .post(format!("{API_URL}/auth/microsoft/link")).reality_api()
                 .header("Content-Type", "application/json")
                 .header("Authorization", format!("Bearer {token}"))
                 .json(&body)
@@ -662,7 +663,7 @@ async fn exchange_with_ml_api(
 
     
     let mut resp = client
-        .post(format!("{API_URL}/auth/microsoft/login"))
+        .post(format!("{API_URL}/auth/microsoft/login")).reality_api()
         .header("Content-Type", "application/json")
         .header("X-Client-App", "RealityLauncher")
         .json(&body)
@@ -672,7 +673,7 @@ async fn exchange_with_ml_api(
 
     if resp.status() == 404 || resp.status() == 405 {
         resp = client
-            .post(format!("{API_URL}/auth/microsoft/link"))
+            .post(format!("{API_URL}/auth/microsoft/link")).reality_api()
             .header("Content-Type", "application/json")
             .header("X-Client-App", "RealityLauncher")
             .json(&body)
@@ -1185,7 +1186,7 @@ async fn auth_refresh_core(force: bool) -> AuthCommandResult {
 
         let client = crate::http_client::HTTP_CLIENT.clone();
         let api_resp = client
-            .post(format!("{API_URL}/auth/microsoft/link"))
+            .post(format!("{API_URL}/auth/microsoft/link")).reality_api()
             .header("Content-Type", "application/json")
             .header("Authorization", format!("Bearer {api_token_str}"))
             .json(&refresh_body)
@@ -1211,7 +1212,7 @@ async fn auth_refresh_core(force: bool) -> AuthCommandResult {
 
         let client = crate::http_client::HTTP_CLIENT.clone();
         let mut api_resp = client
-            .post(format!("{API_URL}/auth/microsoft/login"))
+            .post(format!("{API_URL}/auth/microsoft/login")).reality_api()
             .header("Content-Type", "application/json")
             .header("X-Client-App", "RealityLauncher")
             .json(&refresh_body)
@@ -1221,7 +1222,7 @@ async fn auth_refresh_core(force: bool) -> AuthCommandResult {
         if let Ok(ref resp) = api_resp {
             if resp.status() == 404 || resp.status() == 405 {
                 api_resp = client
-                    .post(format!("{API_URL}/auth/microsoft/link"))
+                    .post(format!("{API_URL}/auth/microsoft/link")).reality_api()
                     .header("Content-Type", "application/json")
                     .header("X-Client-App", "RealityLauncher")
                     .json(&refresh_body)
@@ -1351,7 +1352,7 @@ pub async fn login_catid(username: String, password: String) -> AuthCommandResul
     });
 
     let resp = match crate::http_client::HTTP_CLIENT.clone()
-        .post(format!("{API_URL}/auth/catid/login"))
+        .post(format!("{API_URL}/auth/catid/login")).reality_api()
         .header("Content-Type", "application/json")
         .header("X-Client-App", "RealityLauncher")
         .json(&body)
@@ -1491,7 +1492,7 @@ pub async fn register_catid(
         "confirmPassword": confirm_password,
     });
     let req = crate::http_client::HTTP_CLIENT.clone()
-        .post(format!("{API_URL}/auth/catid/register"))
+        .post(format!("{API_URL}/auth/catid/register")).reality_api()
         .header("Content-Type", "application/json")
         .header("X-Client-App", "RealityLauncher")
         .json(&body);
@@ -1501,7 +1502,7 @@ pub async fn register_catid(
 #[tauri::command]
 pub async fn check_registration_status(token: String) -> serde_json::Value {
     match crate::http_client::HTTP_CLIENT.clone()
-        .get(format!("{API_URL}/auth/catid/register/status/{token}"))
+        .get(format!("{API_URL}/auth/catid/register/status/{token}")).reality_api()
         .header("Content-Type", "application/json")
         .send()
         .await
@@ -1516,7 +1517,7 @@ pub async fn check_registration_status(token: String) -> serde_json::Value {
 #[tauri::command]
 pub async fn forgot_password(email: String) -> serde_json::Value {
     let req = crate::http_client::HTTP_CLIENT.clone()
-        .post(format!("{API_URL}/auth/catid/forgot-password"))
+        .post(format!("{API_URL}/auth/catid/forgot-password")).reality_api()
         .header("Content-Type", "application/json")
         .json(&serde_json::json!({ "email": email }));
     catid_passthrough(req, "Failed to send OTP").await
@@ -1525,7 +1526,7 @@ pub async fn forgot_password(email: String) -> serde_json::Value {
 #[tauri::command]
 pub async fn reset_password(email: String, otp: String, new_password: String) -> serde_json::Value {
     let req = crate::http_client::HTTP_CLIENT.clone()
-        .post(format!("{API_URL}/auth/catid/reset-password"))
+        .post(format!("{API_URL}/auth/catid/reset-password")).reality_api()
         .header("Content-Type", "application/json")
         .json(&serde_json::json!({ "email": email, "otp": otp, "newPassword": new_password }));
     catid_passthrough(req, "Failed to reset password").await
@@ -1534,7 +1535,7 @@ pub async fn reset_password(email: String, otp: String, new_password: String) ->
 #[tauri::command]
 pub async fn login_catid_token(token: String) -> serde_json::Value {
     let resp = match crate::http_client::HTTP_CLIENT.clone()
-        .get(format!("{API_URL}/auth/catid/me"))
+        .get(format!("{API_URL}/auth/catid/me")).reality_api()
         .header("Authorization", format!("Bearer {token}"))
         .header("Content-Type", "application/json")
         .send()
@@ -1672,7 +1673,7 @@ pub async fn link_catid(
     let login_body = serde_json::json!({ "username": username, "password": password });
     let client = crate::http_client::HTTP_CLIENT.clone();
     let login_resp = match client
-        .post(format!("{API_URL}/auth/catid/login"))
+        .post(format!("{API_URL}/auth/catid/login")).reality_api()
         .header("Content-Type", "application/json")
         .header("X-Client-App", "RealityLauncher")
         .json(&login_body)
@@ -1716,7 +1717,7 @@ pub async fn link_catid(
     link_body["accessTokenExpiresAt"] = serde_json::json!(ms_expires_at);
 
     let link_resp = match client
-        .post(format!("{API_URL}/auth/microsoft/link"))
+        .post(format!("{API_URL}/auth/microsoft/link")).reality_api()
         .header("Authorization", format!("Bearer {catid_token}"))
         .header("Content-Type", "application/json")
         .header("X-Client-App", "RealityLauncher")

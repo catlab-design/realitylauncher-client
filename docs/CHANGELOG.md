@@ -1,7 +1,7 @@
 ## [Unreleased]
 
 ### Added
-- Every request the launcher sends to the Reality API now carries an `X-Launcher-Version` header with the launcher's version, so the server can tell which features a launcher supports.
+- Requests the launcher sends to the Reality API now carry an `X-Launcher-Version` header with the launcher's version, so the server can tell which features a launcher supports. Requests to other sites (Modrinth, downloads) do not.
 - Groundwork for experimental live mod hotswapping (off by default, nothing changes yet): the rules for when it may run and which changes could be applied without a restart, and the small JSON files the launcher and the game exchange for it.
 
 ## [5.3.1] — 2026-11-21

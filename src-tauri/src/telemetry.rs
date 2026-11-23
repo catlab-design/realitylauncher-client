@@ -1,3 +1,4 @@
+use crate::http_client::RealityApi;
 use once_cell::sync::Lazy;
 use serde::Serialize;
 use std::collections::VecDeque;
@@ -120,7 +121,7 @@ pub async fn ensure_user_id_resolved() {
     }
 
     let resp = crate::http_client::HTTP_CLIENT.clone()
-        .get(format!("{API_URL}/auth/session/me"))
+        .get(format!("{API_URL}/auth/session/me")).reality_api()
         .header("Authorization", format!("Bearer {token}"))
         .send()
         .await;
@@ -165,7 +166,7 @@ async fn flush_telemetry_queue() {
 
     let body = serde_json::json!({ "events": events_to_send });
     let mut req = crate::http_client::HTTP_CLIENT.clone()
-        .post(format!("{API_URL}/telemetry/batch"))
+        .post(format!("{API_URL}/telemetry/batch")).reality_api()
         .header("Content-Type", "application/json");
 
     if let Some(token) = get_api_token() {

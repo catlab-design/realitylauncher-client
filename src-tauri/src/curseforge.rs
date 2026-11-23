@@ -1,3 +1,4 @@
+use crate::http_client::RealityApi;
 const API_URL: &str = "https://api.reality.catlabdesign.space";
 
 #[tauri::command]
@@ -42,7 +43,7 @@ pub async fn curseforge_search(
     println!("[CurseForge] Search: {}", url);
 
     let resp = client
-        .get(&url)
+        .get(&url).reality_api()
         .header("Accept", "application/json")
         .send()
         .await
@@ -63,7 +64,7 @@ pub async fn curseforge_get_project(project_id: i32) -> Result<serde_json::Value
     let url = format!("{API_URL}/curseforge/project/{project_id}");
 
     let resp = client
-        .get(&url)
+        .get(&url).reality_api()
         .header("Accept", "application/json")
         .send()
         .await
@@ -97,7 +98,7 @@ pub async fn curseforge_get_files(
         }
 
         let resp = client
-            .get(&url)
+            .get(&url).reality_api()
             .header("Accept", "application/json")
             .send()
             .await
@@ -151,7 +152,7 @@ pub async fn curseforge_get_description(project_id: i32) -> Result<serde_json::V
     let client = crate::http_client::HTTP_CLIENT.clone();
     let url = format!("{API_URL}/curseforge/project/{project_id}/description");
     let resp = client
-        .get(&url)
+        .get(&url).reality_api()
         .header("Accept", "application/json")
         .send()
         .await

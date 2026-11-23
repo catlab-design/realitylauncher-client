@@ -4,6 +4,7 @@
 
 
 
+use crate::http_client::RealityApi;
 use serde_json::{json, Value};
 
 const API_URL: &str = "https://api.reality.catlabdesign.space";
@@ -44,7 +45,7 @@ pub async fn admin_check_status() -> Value {
     };
     match send(
         client()
-            .get(format!("{API_URL}/admin/check"))
+            .get(format!("{API_URL}/admin/check")).reality_api()
             .bearer_auth(token),
     )
     .await
@@ -62,7 +63,7 @@ pub async fn admin_get_settings() -> Value {
     };
     match send(
         client()
-            .get(format!("{API_URL}/admin/settings"))
+            .get(format!("{API_URL}/admin/settings")).reality_api()
             .bearer_auth(token),
     )
     .await
@@ -90,7 +91,7 @@ pub async fn admin_save_setting(setting_key: String, value: String) -> Value {
     };
 
     let url = format!("{API_URL}/admin/settings/{endpoint}");
-    match send(client().put(url).bearer_auth(token).json(&body)).await {
+    match send(client().put(url).reality_api().bearer_auth(token).json(&body)).await {
         Ok(_) => json!({ "ok": true }),
         Err(e) => json!({ "ok": false, "error": e }),
     }
@@ -121,7 +122,7 @@ pub async fn admin_get_users(
         url.push_str(&format!("&search={}", urlencoding::encode(&s)));
     }
 
-    match send(client().get(url).bearer_auth(token)).await {
+    match send(client().get(url).reality_api().bearer_auth(token)).await {
         Ok(data) => json!({
             "ok": true,
             "users": data.get("users").cloned().unwrap_or(json!([])),
@@ -140,7 +141,7 @@ pub async fn admin_ban_user(user_id: String, reason: Option<String>) -> Value {
     let body = json!({ "reason": reason.unwrap_or_default() });
     match send(
         client()
-            .post(format!("{API_URL}/admin/users/{user_id}/ban"))
+            .post(format!("{API_URL}/admin/users/{user_id}/ban")).reality_api()
             .bearer_auth(token)
             .json(&body),
     )
@@ -159,7 +160,7 @@ pub async fn admin_unban_user(user_id: String) -> Value {
     };
     match send(
         client()
-            .post(format!("{API_URL}/admin/users/{user_id}/unban"))
+            .post(format!("{API_URL}/admin/users/{user_id}/unban")).reality_api()
             .bearer_auth(token),
     )
     .await
@@ -177,7 +178,7 @@ pub async fn admin_toggle_user_admin(user_id: String) -> Value {
     };
     match send(
         client()
-            .post(format!("{API_URL}/admin/users/{user_id}/toggle-admin"))
+            .post(format!("{API_URL}/admin/users/{user_id}/toggle-admin")).reality_api()
             .bearer_auth(token),
     )
     .await
@@ -197,7 +198,7 @@ pub async fn admin_create_user(user_data: Value) -> Value {
     };
     match send(
         client()
-            .post(format!("{API_URL}/admin/users"))
+            .post(format!("{API_URL}/admin/users")).reality_api()
             .bearer_auth(token)
             .json(&user_data),
     )
@@ -216,7 +217,7 @@ pub async fn admin_get_user_details(user_id: String) -> Value {
     };
     match send(
         client()
-            .get(format!("{API_URL}/admin/users/{user_id}"))
+            .get(format!("{API_URL}/admin/users/{user_id}")).reality_api()
             .bearer_auth(token),
     )
     .await
