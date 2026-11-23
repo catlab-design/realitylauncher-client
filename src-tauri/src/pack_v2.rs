@@ -425,12 +425,35 @@ pub async fn sync(
     cancel: &crate::op_guard::CancelToken,
     keybinds: &crate::keybinds::KeybindSync,
 ) -> Result<Outcome, String> {
+    let _ = take_synced_flag(dir);
+    let mut flag = None;
+    let result = sync_inner(app, dir, cloud_id, cancel, keybinds, &mut flag).await;
+    record_flag_if_synced(dir, &result, flag);
+    result
+}
+
+/// The hotswap flag counts only for a completed v2 sync: after an error the
+/// caller falls back to another sync path and the instance is not v2-synced.
+fn record_flag_if_synced(dir: &Path, result: &Result<Outcome, String>, flag: Option<bool>) {
+    if let (Ok(Outcome::Synced(_)), Some(flag)) = (result, flag) {
+        record_synced_flag(dir, flag);
+    }
+}
+
+async fn sync_inner(
+    app: &tauri::AppHandle,
+    dir: &Path,
+    cloud_id: &str,
+    cancel: &crate::op_guard::CancelToken,
+    keybinds: &crate::keybinds::KeybindSync,
+    hotswap_flag: &mut Option<bool>,
+) -> Result<Outcome, String> {
     // Must run before anything is written to `dir` (a pack may ship options.txt).
     let first_install = crate::keybinds::is_first_install(dir);
     let Some(manifest) = fetch_manifest(cloud_id).await? else {
         return Ok(Outcome::NotV2);
     };
-    record_synced_flag(dir, manifest.experimental.hotswap);
+    *hotswap_flag = Some(manifest.experimental.hotswap);
     emit_sync_progress(app, "sync-check", "Checking files", None, None, None, None);
     fs::create_dir_all(dir).map_err(|e| e.to_string())?;
 
@@ -612,6 +635,18 @@ pub async fn sync(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn flag_recorded_only_after_a_successful_v2_sync() {
+        let d = Path::new("/rl-test/flag-sync");
+        let _ = take_synced_flag(d);
+        record_flag_if_synced(d, &Err("download failed".into()), Some(true));
+        assert_eq!(take_synced_flag(d), None);
+        record_flag_if_synced(d, &Ok(Outcome::NotV2), None);
+        assert_eq!(take_synced_flag(d), None);
+        record_flag_if_synced(d, &Ok(Outcome::Synced(vec![])), Some(true));
+        assert_eq!(take_synced_flag(d), Some(true));
+    }
+
     #[test]
     fn synced_flag_is_recorded_per_dir_and_taken_once() {
         let a = Path::new("/rl-test/flag-a");
