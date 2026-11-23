@@ -31,14 +31,23 @@ const LAYER_BYTES_SHARE: f64 = 0.6;
 const LAYER_FILE_COUNT: usize = 300;
 
 #[derive(Deserialize)]
-struct Manifest {
-    version: u64,
+pub(crate) struct Manifest {
+    pub(crate) version: u64,
+    /// Opt-in flags; a manifest from before they existed means "all off".
+    #[serde(default)]
+    pub(crate) experimental: Experimental,
     #[serde(default)]
     mods: Vec<ModEntry>,
     #[serde(default)]
     files: Vec<FileEntry>,
     #[serde(default)]
     layers: Vec<LayerEntry>,
+}
+
+#[derive(Deserialize, Default, Debug, Clone, PartialEq)]
+pub(crate) struct Experimental {
+    #[serde(default)]
+    pub(crate) hotswap: bool,
 }
 
 #[derive(Deserialize)]
@@ -79,33 +88,33 @@ fn side_both() -> String {
 }
 
 #[derive(Serialize, Deserialize, Default)]
-struct State {
-    version: u64,
-    entries: HashMap<String, StateEntry>,
+pub(crate) struct State {
+    pub(crate) version: u64,
+    pub(crate) entries: HashMap<String, StateEntry>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
-struct StateEntry {
-    size: u64,
-    hash: String,
+pub(crate) struct StateEntry {
+    pub(crate) size: u64,
+    pub(crate) hash: String,
 }
 
 /// One file the instance should contain.
 #[derive(Clone)]
-struct Want {
-    path: String,
-    dest: PathBuf,
-    url: String,
-    size: u64,
+pub(crate) struct Want {
+    pub(crate) path: String,
+    pub(crate) dest: PathBuf,
+    pub(crate) url: String,
+    pub(crate) size: u64,
     /// Identity of the pack's copy: "sha1:…", "crc32:…", "sha256:…" or "size:…".
-    hash: String,
+    pub(crate) hash: String,
     /// Mods must match exactly; other files keep local edits until the pack changes them.
-    enforce: bool,
-    sha1: Option<String>,
-    sha256: Option<String>,
-    crc32: Option<u32>,
-    layer: Option<String>,
-    entry: Option<String>,
+    pub(crate) enforce: bool,
+    pub(crate) sha1: Option<String>,
+    pub(crate) sha256: Option<String>,
+    pub(crate) crc32: Option<u32>,
+    pub(crate) layer: Option<String>,
+    pub(crate) entry: Option<String>,
 }
 
 pub enum Outcome {
@@ -120,7 +129,7 @@ fn is_mod_path(path: &str) -> bool {
     p.starts_with("mods/") && p.ends_with(".jar")
 }
 
-fn wants_from(manifest: &Manifest, dir: &Path) -> (Vec<Want>, Vec<(String, String)>) {
+pub(crate) fn wants_from(manifest: &Manifest, dir: &Path) -> (Vec<Want>, Vec<(String, String)>) {
     let mut wants = Vec::new();
     let mut rejected = Vec::new();
     for m in manifest.mods.iter().filter(|m| m.side != "server") {
@@ -201,7 +210,7 @@ fn local_matches(w: &Want) -> bool {
 }
 
 /// Whether `w` has to be (re)installed, given what the last sync recorded for it.
-fn needs_update(w: &Want, prev: Option<&StateEntry>) -> bool {
+pub(crate) fn needs_update(w: &Want, prev: Option<&StateEntry>) -> bool {
     let meta = match fs::metadata(&w.dest) {
         Ok(m) if m.is_file() => m,
         _ => return true,
@@ -223,14 +232,14 @@ fn needs_update(w: &Want, prev: Option<&StateEntry>) -> bool {
     !local_matches(w)
 }
 
-fn load_state(dir: &Path) -> State {
+pub(crate) fn load_state(dir: &Path) -> State {
     fs::read(dir.join(STATE_FILE))
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default()
 }
 
-fn save_state(dir: &Path, state: &State) -> Result<(), String> {
+pub(crate) fn save_state(dir: &Path, state: &State) -> Result<(), String> {
     let path = dir.join(STATE_FILE);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;

@@ -154,6 +154,7 @@ src-tauri/
     ├── lib.rs                        # Module declarations
     ├── hotswap.rs                    # Experimental hotswap: pure gate (`enabled_tiers`), `Tier`, `classify`/`change_kind`, bundled allowlist (`resources/hotswap-allowlist.json`)
     ├── hotswap_channel.rs            # Hotswap launcher<->agent channel files (offer/apply/status/result.json, schema 1, temp+rename `write_json`/`read_json`)
+    ├── hotswap_staging.rs            # Hotswap staging: `stage` downloads changed pack files to `.reality/staging/<v>/` (plan.json last), `apply_staged` verifies sha256 + moves them at next launch before `pack_v2::sync`; reuses cloud.rs removal rules (never player/locked mods)
     ├── http_client.rs                # Global shared reqwest::Client (pooled, HTTP/2, gzip, brotli); `reality_api()` / `.reality_api()` adds `X-Launcher-Version` to Reality API requests only
     ├── download.rs                   # (315 lines) Shared concurrent download engine
     ├── launch_log.rs                 # Per-launch launcher log (<instance>/logs/launcher.log) + redact() used by every log read

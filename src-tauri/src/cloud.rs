@@ -725,9 +725,9 @@ async fn fetch_managed_mods(cloud_id: &str, auth_token: &str) -> Result<Vec<Mana
 
 
 
-const MANAGED_MODS_FILE: &str = ".reality/managed-mods.json";
+pub(crate) const MANAGED_MODS_FILE: &str = ".reality/managed-mods.json";
 
-fn load_managed_mods(dir: &Path) -> Option<std::collections::HashSet<String>> {
+pub(crate) fn load_managed_mods(dir: &Path) -> Option<std::collections::HashSet<String>> {
     let bytes = fs::read(dir.join(MANAGED_MODS_FILE)).ok()?;
     serde_json::from_slice(&bytes).ok()
 }
@@ -752,7 +752,7 @@ fn save_managed_mods(dir: &Path, names: &std::collections::HashSet<String>) {
 /// there (`.reality/managed-mods.json`) and the server no longer ships, so mods
 /// the player added themselves survive. Instances synced before the record
 /// existed fall back to "anything the player didn't install from the launcher".
-fn should_remove_mod(
+pub(crate) fn should_remove_mod(
     real_name: &str,
     keep: &std::collections::HashSet<String>,
     locked: &[String],

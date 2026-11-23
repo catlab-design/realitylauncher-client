@@ -3,6 +3,7 @@
 ### Added
 - Requests the launcher sends to the Reality API now carry an `X-Launcher-Version` header with the launcher's version, so the server can tell which features a launcher supports. Requests to other sites (Modrinth, downloads) do not.
 - Groundwork for experimental live mod hotswapping (off by default, nothing changes yet): the rules for when it may run and which changes could be applied without a restart, and the small JSON files the launcher and the game exchange for it.
+- Experimental hotswap groundwork: while the game runs the launcher can download a newer pack's changed files into a staging folder, and applies them (after checking each file's checksum) at the next launch before the normal sync. A half-downloaded staging folder is thrown away. Player-installed and locked mods are never removed. Nothing uses this yet.
 
 ## [5.3.1] — 2026-11-21
 
