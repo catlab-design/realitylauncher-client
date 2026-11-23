@@ -15,11 +15,67 @@ use tauri::Emitter;
 use tokio::sync::Notify;
 
 use crate::hotswap::Tier;
-use crate::hotswap_channel::{read_json, write_json, HotswapResult, Offer, Outcome, SCHEMA};
+use crate::hotswap_channel::{read_json, write_json, Apply, HotswapResult, Offer, Outcome, SCHEMA};
 use crate::pack_v2::Manifest;
 
 pub const POLL_BASE: Duration = Duration::from_secs(60);
 pub const POLL_MAX: Duration = Duration::from_secs(600);
+
+/// Session dir of each instance whose game is running with hotswap.
+static SESSIONS: std::sync::Mutex<Option<std::collections::HashMap<String, PathBuf>>> = std::sync::Mutex::new(None);
+
+pub(crate) fn register_session(instance_id: &str, session_dir: &Path) {
+    let mut guard = SESSIONS.lock().unwrap_or_else(|e| e.into_inner());
+    guard.get_or_insert_with(Default::default).insert(instance_id.to_string(), session_dir.to_path_buf());
+}
+
+pub(crate) fn unregister_session(instance_id: &str) {
+    let mut guard = SESSIONS.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(map) = guard.as_mut() {
+        map.remove(instance_id);
+    }
+}
+
+/// Write `apply.json` for `version`, but only while `offer.json` is that
+/// version and not revoked. Anything else is `"revoked"`.
+pub(crate) fn apply_in_session(session_dir: &Path, version: u64) -> Result<(), String> {
+    match read_json::<Offer>(session_dir, "offer.json") {
+        Some(offer) if !offer.revoked && offer.version == version => {
+            write_json(session_dir, "apply.json", &Apply { schema: SCHEMA, version })
+        }
+        _ => Err("revoked".to_string()),
+    }
+}
+
+pub(crate) fn apply_for_instance(instance_id: &str, version: u64) -> Result<(), String> {
+    let session = {
+        let guard = SESSIONS.lock().unwrap_or_else(|e| e.into_inner());
+        guard.as_ref().and_then(|m| m.get(instance_id).cloned())
+    };
+    apply_in_session(&session.ok_or_else(|| "no-session".to_string())?, version)
+}
+
+/// The player clicked Apply on a pending pack update.
+#[tauri::command]
+pub fn hotswap_apply(instance_id: String, version: u64) -> Result<(), String> {
+    apply_for_instance(&instance_id, version)
+}
+
+/// Where the game last reported the player: `menu`, `singleplayer`, `server`
+/// or `None` before it reports anything.
+#[tauri::command]
+pub fn hotswap_game_state() -> Option<String> {
+    use crate::tab_badge::GameStatus;
+    let status = crate::tab_badge::read_game_status(&crate::config::get_minecraft_dir())?;
+    Some(
+        match status {
+            GameStatus::Menu => "menu",
+            GameStatus::Singleplayer => "singleplayer",
+            GameStatus::Server { .. } => "server",
+        }
+        .to_string(),
+    )
+}
 
 const CRASH_LOCK_FILE: &str = "crash-lock.json";
 
@@ -287,7 +343,8 @@ pub fn spawn_hotswap_watch(
 ) -> WatchHandle {
     let stopped = Arc::new(AtomicBool::new(false));
     let wake = Arc::new(Notify::new());
-    let handle = WatchHandle { stopped: stopped.clone(), wake: wake.clone() };
+    let handle = WatchHandle { stopped: stopped.clone(), wake: wake.clone(), instance_id: instance_id.clone() };
+    register_session(&instance_id, &session_dir);
 
     let state = WatchState { instance_id: instance_id.clone(), session_dir: session_dir.clone(), current_version };
     let mut backend = LiveBackend {
@@ -325,10 +382,12 @@ pub fn spawn_hotswap_watch(
 pub struct WatchHandle {
     stopped: Arc<AtomicBool>,
     wake: Arc<Notify>,
+    instance_id: String,
 }
 
 impl WatchHandle {
     pub fn stop(&self) {
+        unregister_session(&self.instance_id);
         self.stopped.store(true, Ordering::SeqCst);
         self.wake.notify_waiters();
     }
@@ -623,5 +682,49 @@ mod tests {
         assert!(take_result_change(&d, &mut last).is_none());
         write_json(&d, "result.json", &result(6, Outcome::Healthy)).unwrap();
         assert_eq!(take_result_change(&d, &mut last).unwrap().outcome, Outcome::Healthy);
+    }
+
+    fn offer_file(session: &Path, version: u64, revoked: bool) {
+        let offer = Offer { schema: SCHEMA, version, revoked, changes: vec![], staging: String::new() };
+        write_json(session, "offer.json", &offer).unwrap();
+    }
+
+    #[test]
+    fn apply_writes_apply_json_for_the_current_offer() {
+        let session = tmpdir("apply-ok");
+        offer_file(&session, 6, false);
+        apply_in_session(&session, 6).unwrap();
+        let apply: crate::hotswap_channel::Apply = read_json(&session, "apply.json").unwrap();
+        assert_eq!((apply.schema, apply.version), (1, 6));
+    }
+
+    #[test]
+    fn apply_after_revoke_is_refused() {
+        let session = tmpdir("apply-revoked");
+        offer_file(&session, 6, true);
+        assert_eq!(apply_in_session(&session, 6), Err("revoked".to_string()));
+        assert!(read_json::<crate::hotswap_channel::Apply>(&session, "apply.json").is_none());
+    }
+
+    #[test]
+    fn apply_wrong_version_is_refused() {
+        let session = tmpdir("apply-wrong");
+        offer_file(&session, 7, false);
+        assert_eq!(apply_in_session(&session, 6), Err("revoked".to_string()));
+        assert!(read_json::<crate::hotswap_channel::Apply>(&session, "apply.json").is_none());
+        // No offer at all is the same refusal.
+        let empty = tmpdir("apply-none");
+        assert_eq!(apply_in_session(&empty, 6), Err("revoked".to_string()));
+    }
+
+    #[test]
+    fn apply_without_a_running_session_says_no_session() {
+        assert_eq!(apply_for_instance("never-registered", 6), Err("no-session".to_string()));
+        let session = tmpdir("apply-registry");
+        offer_file(&session, 6, false);
+        register_session("reg-inst", &session);
+        assert!(apply_for_instance("reg-inst", 6).is_ok());
+        unregister_session("reg-inst");
+        assert_eq!(apply_for_instance("reg-inst", 6), Err("no-session".to_string()));
     }
 }

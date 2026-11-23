@@ -29,6 +29,10 @@ mod modrinth;
 mod op_guard;
 mod perf_tools;
 mod social;
+mod hotswap;
+mod hotswap_channel;
+mod hotswap_staging;
+mod hotswap_watch;
 mod tab_badge;
 mod telemetry;
 mod update;
@@ -89,6 +93,8 @@ fn main() {
             instances::instances_set_icon,
             
             launcher::is_game_running,
+            hotswap_watch::hotswap_apply,
+            hotswap_watch::hotswap_game_state,
             launcher::kill_game,
             launcher::cancel_launch,
             launcher::instances_launch,

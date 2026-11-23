@@ -12,6 +12,7 @@ import { getColors } from "./launcherTheme";
 import { type AuthSession, type Server, type NewsItem, type LauncherConfig, type GameInstance } from "../types/launcher";
 import { playClick, playSucceed, playNotification, setSoundConfig } from "../lib/sounds";
 import { useTranslation } from "../hooks/useTranslation";
+import { useHotswapPrompt } from "../hooks/useHotswapPrompt";
 import { DEFAULT_JAVA_ARGUMENTS, useConfigStore } from "../store/configStore";
 import { useAuthStore } from "../store/authStore";
 import { useGameEvents } from "../hooks/useGameEvents";
@@ -219,6 +220,8 @@ function LauncherAppContent() {
     () => getColors(config.colorTheme, config.theme, config.customColor, visuals.rainbow),
     [config.colorTheme, config.theme, config.customColor, visuals.rainbow]
   );
+
+  useHotswapPrompt(colors.secondary);
 
   const effectiveThemeMode = useMemo(() => {
     if (config.theme === "auto") {

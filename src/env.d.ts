@@ -46,6 +46,23 @@ interface AuthSession {
   avatarSource?: string;
 }
 
+interface HotswapOffer {
+  instanceId: string;
+  version: number;
+  liveCount: number;
+  restartCount: number;
+  revoked?: boolean;
+}
+
+interface HotswapResultEvent {
+  instanceId: string;
+  version: number;
+  outcome: "applied" | "restart" | "failed" | "healthy" | "refused" | "unknown";
+  applied?: string[];
+  restart?: string[];
+  error?: string | null;
+}
+
 interface LauncherInfo {
   javaOK: boolean;
   runtime: string;
@@ -630,6 +647,14 @@ declare global {
       }>;
       
       isGameRunning: (instanceId?: string) => Promise<boolean>;
+      hotswapApply: (instanceId: string, version: number) => Promise<void>;
+      hotswapGameState: () => Promise<'menu' | 'singleplayer' | 'server' | null>;
+      onHotswapOffer: (
+        callback: (data: HotswapOffer) => void,
+      ) => () => void;
+      onHotswapResult: (
+        callback: (data: HotswapResultEvent) => void,
+      ) => () => void;
       keybindBackupsList: (id: string) => Promise<import("./types/launcher").KeybindBackup[]>;
       keybindBackupCreate: (id: string) => Promise<import("./types/launcher").KeybindBackup | null>;
       keybindBackupRestore: (id: string, name: string) => Promise<void>;
