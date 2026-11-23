@@ -28,3 +28,4 @@ agent/target/
 reality.key
 reality.pub
 *.minisig
+agent-hotswap/target/

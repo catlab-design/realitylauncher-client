@@ -284,9 +284,18 @@ pub async fn instances_launch(
     
     
     
+    let mut synced_ok = false;
     if instance.cloud_id.is_some() && skip_server_mod_sync != Some(true) {
         
         
+        // Files a running game staged last time go in place before the normal
+        // sync, which then only has to confirm them. Any failure falls back to it.
+        match crate::hotswap_staging::apply_staged(Path::new(&instance.game_directory)) {
+            Ok(Some(v)) => crate::launch_log::info(format!("Applied staged pack update v{v}")),
+            Ok(None) => {}
+            Err(e) => crate::launch_log::warn(format!("Staged pack update not applied ({e}); syncing normally")),
+        }
+        let _ = crate::pack_v2::take_synced_flag(Path::new(&instance.game_directory));
         emit_progress(&app_handle, "sync", "Syncing server mods...", 0.02);
         let sync_started = std::time::Instant::now();
         let synced = crate::cloud::sync_instance_for_launch(&app_handle, &instance, crate::keybinds::KeybindMode::FirstInstallOnly).await;
@@ -328,7 +337,7 @@ pub async fn instances_launch(
                     message: Some(format!("Server sync failed: {e}")),
                 };
             }
-            Ok(_) => {}
+            Ok(_) => synced_ok = true,
         }
     }
 
@@ -337,7 +346,13 @@ pub async fn instances_launch(
     
     
     
-    match launch_game(app_handle.clone(), instance, launch_gen).await {
+    let hotswap_pre = if synced_ok {
+        hotswap_launch_inputs(&instance)
+    } else {
+        None
+    };
+
+    match launch_game(app_handle.clone(), instance, launch_gen, hotswap_pre).await {
         Ok(()) => LaunchResult {
             ok: true,
             message: None,
@@ -550,6 +565,7 @@ async fn launch_game(
     app: tauri::AppHandle,
     instance: GameInstance,
     launch_gen: u64,
+    hotswap_pre: Option<HotswapLaunchInputs>,
 ) -> Result<(), String> {
     emit_progress(&app, "preparing", "Preparing to launch...", 0.0);
     let instance = resolve_loader_version(instance).await?;
@@ -673,6 +689,12 @@ async fn launch_game(
     } else {
         crate::launch_log::info("Tab-list badges: off for this launch");
     }
+    mark_stage("hotswap");
+    let hotswap_plan = match &hotswap_pre {
+        Some(pre) => prepare_hotswap(&minecraft_dir_val, &libraries_dir, &instance_dir, &instance, &effective_version_json, pre).await,
+        None => None,
+    };
+    extend_with_hotswap(&mut jvm_args, hotswap_plan.as_ref());
 
     
     let (main_class, game_args) = build_game_args(
@@ -794,6 +816,23 @@ async fn launch_game(
         crate::tab_badge::spawn_presence(badge_setup, presence_identity, api_token, telemetry_instance_id.clone())
     });
 
+    let hotswap_ctx = hotswap_telemetry_ctx(&instance);
+    let hotswap_watch = hotswap_plan.as_ref().zip(hotswap_pre.as_ref()).and_then(|(plan, pre)| {
+        let cloud_id = instance.cloud_id.clone()?;
+        Some(crate::hotswap_watch::spawn_hotswap_watch(
+            app.clone(),
+            cloud_id,
+            instance.id.clone(),
+            instance_dir.clone(),
+            plan.session_dir.clone(),
+            plan.tiers.clone(),
+            pre.pack_version,
+            hotswap_ctx.clone(),
+        ))
+    });
+    let hotswap_session = hotswap_plan.as_ref().map(|p| p.session_dir.clone());
+    let hotswap_instance_dir = instance_dir.clone();
+
     let _ = app.emit(
         "game-started",
         GameStartedPayload {
@@ -902,6 +941,18 @@ async fn launch_game(
                     crate::launch_log::append(&launch_log_path, "Launcher", level, &message);
                     if let Some(ref presence) = presence {
                         presence.stop();
+                    }
+                    if let Some(ref watch) = hotswap_watch {
+                        watch.stop();
+                    }
+                    if let Some(ref session) = hotswap_session {
+                        if let Some(version) = crate::hotswap_watch::update_crash_lock(&hotswap_instance_dir, session) {
+                            crate::hotswap_telemetry::send(
+                                "hotswap_crash_lock",
+                                crate::hotswap_telemetry::crash_lock_payload(&hotswap_ctx, version),
+                            );
+                        }
+                        crate::hotswap_watch::prune_sessions(&hotswap_instance_dir, session);
                     }
 
                     
@@ -1927,19 +1978,176 @@ const REALITY_AGENT_JAR: &[u8] = include_bytes!("../resources/reality-agent.jar"
 /// Writes the bundled agent (source in `agent/`) next to the libraries,
 /// replacing it only when the bytes differ.
 fn ensure_agent_jar(minecraft_dir: &Path) -> Result<PathBuf, String> {
+    ensure_embedded_jar(minecraft_dir, "reality-agent.jar", REALITY_AGENT_JAR)
+}
+
+fn ensure_embedded_jar(minecraft_dir: &Path, name: &str, bytes: &[u8]) -> Result<PathBuf, String> {
     let agent_dir = minecraft_dir.join("agent");
-    let path = agent_dir.join("reality-agent.jar");
-    if fs::read(&path).is_ok_and(|bytes| bytes == REALITY_AGENT_JAR) {
+    let path = agent_dir.join(name);
+    if fs::read(&path).is_ok_and(|existing| existing == bytes) {
         return Ok(path);
     }
     fs::create_dir_all(&agent_dir).map_err(|e| e.to_string())?;
-    let tmp = agent_dir.join(format!("reality-agent.jar.{}.tmp", std::process::id()));
-    fs::write(&tmp, REALITY_AGENT_JAR).map_err(|e| e.to_string())?;
+    let tmp = agent_dir.join(format!("{name}.{}.tmp", std::process::id()));
+    fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
     fs::rename(&tmp, &path).map_err(|e| {
         let _ = fs::remove_file(&tmp);
         e.to_string()
     })?;
     Ok(path)
+}
+
+const REALITY_HOTSWAP_JAR: &[u8] = include_bytes!("../resources/reality-hotswap.jar");
+
+/// Writes the bundled hotswap agent (source in `agent-hotswap/`) next to the
+/// branding agent, replacing it only when the bytes differ.
+fn ensure_hotswap_jar(minecraft_dir: &Path) -> Result<PathBuf, String> {
+    ensure_embedded_jar(minecraft_dir, "reality-hotswap.jar", REALITY_HOTSWAP_JAR)
+}
+
+/// The four JVM args that start the hotswap agent, added after the branding
+/// agent args and only when hotswap is enabled for the launch.
+fn hotswap_jvm_args(jar: &Path, session: &Path, tiers: &[crate::hotswap::Tier], names: &Path) -> Vec<String> {
+    let tiers = tiers.iter().map(|t| t.as_u8().to_string()).collect::<Vec<_>>().join(",");
+    vec![
+        format!("-javaagent:{}", jar.to_string_lossy()),
+        format!("-Dreality.hotswap={}", session.to_string_lossy()),
+        format!("-Dreality.hotswap.tiers={tiers}"),
+        format!("-Dreality.hotswap.names={}", names.to_string_lossy()),
+    ]
+}
+
+/// Hotswap for one launch: its session directory, enabled tiers and JVM args.
+struct HotswapPlan {
+    session_dir: PathBuf,
+    tiers: Vec<crate::hotswap::Tier>,
+    args: Vec<String>,
+}
+
+/// Gate the launch. `None` leaves the launch exactly as it was: no files are
+/// written and no args are added.
+fn plan_hotswap(
+    minecraft_dir: &Path,
+    instance_dir: &Path,
+    gate: &crate::hotswap::GateInput,
+    names: Option<&crate::mappings::HotswapNames>,
+) -> Option<HotswapPlan> {
+    let tiers = crate::hotswap::enabled_tiers(gate);
+    if tiers.is_empty() {
+        return None;
+    }
+    let names = names?;
+    let jar = match ensure_hotswap_jar(minecraft_dir) {
+        Ok(jar) => jar,
+        Err(e) => {
+            log::warn!("[Launcher] Hotswap off for this launch, could not write agent: {e}");
+            return None;
+        }
+    };
+    let session_dir = crate::hotswap_watch::new_session_dir(instance_dir);
+    let names_path = session_dir.join("hotswap-names.properties");
+    let written = fs::create_dir_all(&session_dir).and_then(|_| fs::write(&names_path, names.to_properties()));
+    if let Err(e) = written {
+        log::warn!("[Launcher] Hotswap off for this launch, could not write names: {e}");
+        return None;
+    }
+    let args = hotswap_jvm_args(&jar, &session_dir, &tiers, &names_path);
+    Some(HotswapPlan { session_dir, tiers, args })
+}
+
+/// What the launch learned about the pack once the server sync finished.
+struct HotswapLaunchInputs {
+    /// `experimental.hotswap` from the published manifest.
+    manifest_flag: bool,
+    /// Pack version now installed in the instance.
+    pack_version: u64,
+}
+
+/// `None` (hotswap untouched) when the "Disable hotswap on this PC" setting is
+/// on or this launch's sync did not read a v2 manifest. Reuses the manifest the
+/// sync already fetched: no extra request, nothing that can stall the launch.
+fn hotswap_launch_inputs(instance: &GameInstance) -> Option<HotswapLaunchInputs> {
+    let dir = Path::new(&instance.game_directory);
+    let flag = crate::pack_v2::take_synced_flag(dir);
+    hotswap_inputs_from(
+        crate::config::config_get().disable_hotswap,
+        flag,
+        crate::pack_v2::load_state(dir).version,
+    )
+}
+
+fn hotswap_inputs_from(disabled: bool, flag: Option<bool>, pack_version: u64) -> Option<HotswapLaunchInputs> {
+    if disabled {
+        return None;
+    }
+    Some(HotswapLaunchInputs { manifest_flag: flag?, pack_version })
+}
+
+fn hotswap_telemetry_ctx(instance: &GameInstance) -> crate::hotswap_telemetry::TelemetryCtx {
+    crate::hotswap_telemetry::TelemetryCtx::new(
+        format!("{:?}", instance.loader).to_lowercase(),
+        instance.minecraft_version.clone(),
+    )
+}
+
+/// Resolves names, applies the crash lock and gate, and writes the session.
+async fn prepare_hotswap(
+    minecraft_dir: &Path,
+    libraries_dir: &Path,
+    instance_dir: &Path,
+    instance: &GameInstance,
+    version_json: &serde_json::Value,
+    pre: &HotswapLaunchInputs,
+) -> Option<HotswapPlan> {
+    // A previous game that never reported its applied swap healthy locks
+    // hotswap for that pack version, even if the launcher died with it.
+    if let Some(prev) = crate::hotswap_watch::latest_session(instance_dir) {
+        if let Some(version) = crate::hotswap_watch::update_crash_lock(instance_dir, &prev) {
+            let ctx = hotswap_telemetry_ctx(instance);
+            crate::hotswap_telemetry::send("hotswap_crash_lock", crate::hotswap_telemetry::crash_lock_payload(&ctx, version));
+        }
+    }
+    let crash_locked = crate::hotswap_watch::crash_locked(instance_dir, pre.pack_version);
+    let names = if pre.manifest_flag && !crash_locked {
+        let resolve = crate::mappings::resolve_hotswap_names(
+            minecraft_dir,
+            libraries_dir,
+            &instance.minecraft_version,
+            &instance.loader,
+            version_json,
+        );
+        tokio::time::timeout(std::time::Duration::from_secs(60), resolve).await.ok().flatten()
+    } else {
+        None
+    };
+    let gate = crate::hotswap::GateInput {
+        manifest_flag: pre.manifest_flag,
+        pc_disabled: false,
+        crash_locked,
+        loader: instance.loader.clone(),
+        mc: instance.minecraft_version.clone(),
+        names_resolved: names.is_some(),
+    };
+    let plan = plan_hotswap(minecraft_dir, instance_dir, &gate, names.as_ref());
+    match &plan {
+        Some(plan) => {
+            crate::hotswap_watch::prune_sessions(instance_dir, &plan.session_dir);
+            crate::launch_log::info("Live mod hotswap (beta): on");
+        }
+        None if pre.manifest_flag => crate::launch_log::info(if crash_locked {
+            "Live mod hotswap (beta): off, locked after the last applied update did not stay healthy"
+        } else {
+            "Live mod hotswap (beta): off for this launch"
+        }),
+        None => {}
+    }
+    plan
+}
+
+fn extend_with_hotswap(args: &mut Vec<String>, plan: Option<&HotswapPlan>) {
+    if let Some(plan) = plan {
+        args.extend(plan.args.iter().cloned());
+    }
 }
 
 /// Tab-list badge setup (`tab_badge`); `None` means this launch simply has no
@@ -3063,6 +3271,122 @@ pub async fn instances_preinstall(app: tauri::AppHandle, id: String) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn hs_tmp(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("rl-launch-hotswap-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn fixture_instance(dir: &Path) -> GameInstance {
+        serde_json::from_value(serde_json::json!({
+            "id": "pack", "name": "Pack", "minecraftVersion": "1.20.1", "loader": "fabric",
+            "createdAt": "2026-01-01", "totalPlayTime": 0, "gameDirectory": dir.to_string_lossy(),
+        }))
+        .unwrap()
+    }
+
+    fn gate(loader: LoaderType) -> crate::hotswap::GateInput {
+        crate::hotswap::GateInput {
+            manifest_flag: true,
+            pc_disabled: false,
+            crash_locked: false,
+            loader,
+            mc: "1.20.1".into(),
+            names_resolved: true,
+        }
+    }
+
+    #[test]
+    fn launch_inputs_need_a_synced_manifest_and_the_setting_off() {
+        assert!(hotswap_inputs_from(true, Some(true), 3).is_none());
+        assert!(hotswap_inputs_from(false, None, 3).is_none());
+        let on = hotswap_inputs_from(false, Some(true), 3).unwrap();
+        assert!(on.manifest_flag);
+        assert_eq!(on.pack_version, 3);
+        assert!(!hotswap_inputs_from(false, Some(false), 3).unwrap().manifest_flag);
+    }
+
+    #[test]
+    fn hotswap_args_exact() {
+        use crate::hotswap::Tier;
+        let jar = Path::new("/mc/agent/reality-hotswap.jar");
+        let session = Path::new("/inst/.reality/hotswap/123");
+        let names = Path::new("/inst/.reality/hotswap/123/hotswap-names.properties");
+        assert_eq!(
+            hotswap_jvm_args(jar, session, &[Tier::Zero], names),
+            [
+                "-javaagent:/mc/agent/reality-hotswap.jar",
+                "-Dreality.hotswap=/inst/.reality/hotswap/123",
+                "-Dreality.hotswap.tiers=0",
+                "-Dreality.hotswap.names=/inst/.reality/hotswap/123/hotswap-names.properties",
+            ]
+        );
+        assert_eq!(
+            hotswap_jvm_args(jar, session, &[Tier::Zero, Tier::One, Tier::Two], names)[2],
+            "-Dreality.hotswap.tiers=0,1,2"
+        );
+    }
+
+    #[test]
+    fn ensure_hotswap_jar_writes_and_refreshes() {
+        let dir = hs_tmp("jar");
+        let path = ensure_hotswap_jar(&dir).unwrap();
+        assert_eq!(path, dir.join("agent").join("reality-hotswap.jar"));
+        assert_eq!(fs::read(&path).unwrap(), REALITY_HOTSWAP_JAR);
+        fs::write(&path, b"stale").unwrap();
+        ensure_hotswap_jar(&dir).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), REALITY_HOTSWAP_JAR);
+        assert_eq!(&REALITY_HOTSWAP_JAR[..2], b"PK");
+    }
+
+    #[test]
+    fn no_hotswap_args_when_tiers_empty() {
+        let mc_dir = hs_tmp("off-mc");
+        let inst_dir = hs_tmp("off-inst");
+        let instance = fixture_instance(&inst_dir);
+        let version_json = serde_json::json!({"id": "1.20.1", "arguments": {"jvm": ["-Dx=${natives_directory}"]}});
+        let config = crate::config::LauncherConfig::default();
+        // Today's list: built without any hotswap code in the path.
+        let base = build_jvm_args(&version_json, "cp", &mc_dir.join("natives"), &mc_dir.join("libraries"), &instance, &config).unwrap();
+        let names = crate::mappings::HotswapNames::official();
+
+        let mut gates = vec![];
+        let mut g = gate(LoaderType::Fabric);
+        g.manifest_flag = false;
+        gates.push(g);
+        let mut g = gate(LoaderType::Fabric);
+        g.pc_disabled = true;
+        gates.push(g);
+        let mut g = gate(LoaderType::Fabric);
+        g.crash_locked = true;
+        gates.push(g);
+        let mut g = gate(LoaderType::Fabric);
+        g.names_resolved = false;
+        gates.push(g);
+        gates.push(gate(LoaderType::Vanilla));
+
+        for g in &gates {
+            let plan = plan_hotswap(&mc_dir, &inst_dir, g, Some(&names));
+            assert!(plan.is_none(), "{g:?}");
+            let mut args = base.clone();
+            extend_with_hotswap(&mut args, plan.as_ref());
+            assert_eq!(args, base, "{g:?}");
+        }
+        // Nothing was written either.
+        assert!(!mc_dir.join("agent").exists());
+        assert!(!inst_dir.join(".reality").exists());
+
+        // Enabled: the base list is untouched and exactly four args follow.
+        let plan = plan_hotswap(&mc_dir, &inst_dir, &gate(LoaderType::Fabric), Some(&names)).unwrap();
+        let mut args = base.clone();
+        extend_with_hotswap(&mut args, Some(&plan));
+        assert_eq!(args[..base.len()], base[..]);
+        assert_eq!(args.len(), base.len() + 4);
+        assert!(plan.session_dir.join("hotswap-names.properties").is_file());
+        assert!(args[base.len() + 3].ends_with("hotswap-names.properties"));
+    }
 
     #[test]
     fn parses_java_versions() {

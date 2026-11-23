@@ -1,3 +1,4 @@
+use crate::http_client::RealityApi;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use sha1::{Digest as Sha1Digest, Sha1};
@@ -494,7 +495,7 @@ async fn fetch_server_content(
 
     let mut build_req = |token: &str| {
         let mut req = client()
-            .get(&endpoint)
+            .get(&endpoint).reality_api()
             .header("Authorization", format!("Bearer {}", token));
         if let Some(ref rev) = cached_revision {
             req = req.header("If-None-Match", format!("\"{}\"", rev));
@@ -627,7 +628,7 @@ async fn fetch_instance_metadata(
 
     let build_req = |token: &str| {
         let mut req = client()
-            .get(format!("{}/instances/{}", API_URL, cloud_id))
+            .get(format!("{}/instances/{}", API_URL, cloud_id)).reality_api()
             .header("Authorization", format!("Bearer {}", token));
         if let Some(ref etag) = cached_etag {
             req = req.header("If-None-Match", etag.clone());
@@ -692,7 +693,7 @@ async fn fetch_instance_metadata(
 async fn fetch_managed_mods(cloud_id: &str, auth_token: &str) -> Result<Vec<ManagedMod>, String> {
     let url = format!("{}/instances/{}/modpack/mods", API_URL, cloud_id);
     let mut resp = client()
-        .get(&url)
+        .get(&url).reality_api()
         .header("Authorization", format!("Bearer {}", auth_token))
         .send()
         .await
@@ -701,7 +702,7 @@ async fn fetch_managed_mods(cloud_id: &str, auth_token: &str) -> Result<Vec<Mana
     if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
         if let Ok(fresh) = crate::auth::refresh_api_token().await {
             resp = client()
-                .get(&url)
+                .get(&url).reality_api()
                 .header("Authorization", format!("Bearer {}", fresh))
                 .send()
                 .await
@@ -724,9 +725,9 @@ async fn fetch_managed_mods(cloud_id: &str, auth_token: &str) -> Result<Vec<Mana
 
 
 
-const MANAGED_MODS_FILE: &str = ".reality/managed-mods.json";
+pub(crate) const MANAGED_MODS_FILE: &str = ".reality/managed-mods.json";
 
-fn load_managed_mods(dir: &Path) -> Option<std::collections::HashSet<String>> {
+pub(crate) fn load_managed_mods(dir: &Path) -> Option<std::collections::HashSet<String>> {
     let bytes = fs::read(dir.join(MANAGED_MODS_FILE)).ok()?;
     serde_json::from_slice(&bytes).ok()
 }
@@ -751,7 +752,7 @@ fn save_managed_mods(dir: &Path, names: &std::collections::HashSet<String>) {
 /// there (`.reality/managed-mods.json`) and the server no longer ships, so mods
 /// the player added themselves survive. Instances synced before the record
 /// existed fall back to "anything the player didn't install from the launcher".
-fn should_remove_mod(
+pub(crate) fn should_remove_mod(
     real_name: &str,
     keep: &std::collections::HashSet<String>,
     locked: &[String],
@@ -1519,7 +1520,7 @@ async fn import_cloud_instance(
 pub async fn instances_get_joined_servers(_app_handle: tauri::AppHandle) -> JoinedServersResult {
     let resp = match send_authed(|token| {
         client()
-            .get(format!("{}/instances", API_URL))
+            .get(format!("{}/instances", API_URL)).reality_api()
             .header("Authorization", format!("Bearer {token}"))
     })
     .await
@@ -1586,7 +1587,7 @@ pub async fn instance_join(app_handle: tauri::AppHandle, key: String) -> SimpleR
 
     let resp = match send_authed(|token| {
         client()
-            .post(format!("{}/instances/join", API_URL))
+            .post(format!("{}/instances/join", API_URL)).reality_api()
             .header("Authorization", format!("Bearer {token}"))
             .header("Content-Type", "application/json")
             .json(&body)
@@ -1652,7 +1653,7 @@ pub async fn instance_join(app_handle: tauri::AppHandle, key: String) -> SimpleR
 pub async fn instance_join_public(instance_id: String) -> SimpleResult {
     let resp = match send_authed(|token| {
         client()
-            .post(format!("{}/instances/{}/join", API_URL, instance_id))
+            .post(format!("{}/instances/{}/join", API_URL, instance_id)).reality_api()
             .header("Authorization", format!("Bearer {token}"))
             .header("Content-Type", "application/json")
     })
@@ -1698,7 +1699,7 @@ pub async fn instance_join_public(instance_id: String) -> SimpleResult {
 pub async fn instance_leave(instance_id: String) -> SimpleResult {
     let resp = match send_authed(|token| {
         client()
-            .post(format!("{}/instances/{}/leave", API_URL, instance_id))
+            .post(format!("{}/instances/{}/leave", API_URL, instance_id)).reality_api()
             .header("Authorization", format!("Bearer {token}"))
             .header("Content-Type", "application/json")
     })
@@ -1765,7 +1766,7 @@ pub async fn instances_cloud_install(app_handle: tauri::AppHandle, id: String) -
 
     let resp = match send_authed(|token| {
         client()
-            .get(format!("{}/instances", API_URL))
+            .get(format!("{}/instances", API_URL)).reality_api()
             .header("Authorization", format!("Bearer {token}"))
     })
     .await
@@ -1923,7 +1924,7 @@ pub async fn instances_cloud_sync(app_handle: tauri::AppHandle) -> SimpleResult 
     };
     let resp = match send_authed(|token| {
         client()
-            .get(format!("{}/instances", API_URL))
+            .get(format!("{}/instances", API_URL)).reality_api()
             .header("Authorization", format!("Bearer {token}"))
     })
     .await
@@ -2104,7 +2105,7 @@ pub async fn cloud_instance_sync_managed(app_handle: tauri::AppHandle, id: Strin
 pub async fn invitations_fetch() -> Result<Vec<Invitation>, String> {
     let resp = send_authed(|token| {
         client()
-            .get(format!("{}/invitations", API_URL))
+            .get(format!("{}/invitations", API_URL)).reality_api()
             .header("Authorization", format!("Bearer {token}"))
             .header("Content-Type", "application/json")
     })
@@ -2127,7 +2128,7 @@ pub async fn invitations_fetch() -> Result<Vec<Invitation>, String> {
 pub async fn invitations_accept(invitation_id: String) -> Result<bool, String> {
     let resp = send_authed(|token| {
         client()
-            .put(format!("{}/invitations/{}/accept", API_URL, invitation_id))
+            .put(format!("{}/invitations/{}/accept", API_URL, invitation_id)).reality_api()
             .header("Authorization", format!("Bearer {token}"))
             .header("Content-Type", "application/json")
     })
@@ -2141,7 +2142,7 @@ pub async fn invitations_accept(invitation_id: String) -> Result<bool, String> {
 pub async fn invitations_reject(invitation_id: String) -> Result<bool, String> {
     let resp = send_authed(|token| {
         client()
-            .put(format!("{}/invitations/{}/reject", API_URL, invitation_id))
+            .put(format!("{}/invitations/{}/reject", API_URL, invitation_id)).reality_api()
             .header("Authorization", format!("Bearer {token}"))
             .header("Content-Type", "application/json")
     })
@@ -2156,7 +2157,7 @@ pub async fn invitations_reject(invitation_id: String) -> Result<bool, String> {
 #[tauri::command]
 pub async fn notifications_fetch_announcements() -> Result<Vec<serde_json::Value>, String> {
     let resp = client()
-        .get(format!("{}/announcements", API_URL))
+        .get(format!("{}/announcements", API_URL)).reality_api()
         .header("Content-Type", "application/json")
         .send()
         .await
@@ -2181,7 +2182,7 @@ pub async fn notifications_fetch_user() -> Result<Vec<serde_json::Value>, String
 
     let resp = send_authed(|token| {
         client()
-            .get(format!("{}/announcements/notifications", API_URL))
+            .get(format!("{}/announcements/notifications", API_URL)).reality_api()
             .header("Content-Type", "application/json")
             .header("Authorization", format!("Bearer {token}"))
     })
@@ -2210,7 +2211,7 @@ pub async fn notifications_sync() -> Result<NotificationSyncResult, String> {
 
     let resp = match send_authed(|token| {
         client()
-            .get(format!("{}/announcements/notifications", API_URL))
+            .get(format!("{}/announcements/notifications", API_URL)).reality_api()
             .header("Content-Type", "application/json")
             .header("Authorization", format!("Bearer {token}"))
     })
@@ -2298,7 +2299,7 @@ pub async fn notifications_mark_read(notification_id: String) -> Result<bool, St
             .put(format!(
                 "{}/announcements/notifications/{}/read",
                 API_URL, notification_id
-            ))
+            )).reality_api()
             .header("Authorization", format!("Bearer {token}"))
             .header("Content-Type", "application/json")
     })
@@ -2315,7 +2316,7 @@ pub async fn notifications_delete(notification_id: String) -> Result<bool, Strin
             .delete(format!(
                 "{}/announcements/notifications/{}",
                 API_URL, notification_id
-            ))
+            )).reality_api()
             .header("Authorization", format!("Bearer {token}"))
             .header("Content-Type", "application/json")
     })

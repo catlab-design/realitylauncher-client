@@ -42,6 +42,13 @@ describe("Tauri IPC bridge", () => {
     expect(missing).toEqual([]);
   });
 
+  it("maps the hotswap commands to Rust", () => {
+    for (const name of ["hotswap_apply", "hotswap_agent_state"]) {
+      expect(invoked.has(name)).toBe(true);
+      expect(rust.has(name)).toBe(true);
+    }
+  });
+
   it("does not invoke the non-existent 'auth_login' (regression)", () => {
     expect(invoked.has("auth_login")).toBe(false);
   });

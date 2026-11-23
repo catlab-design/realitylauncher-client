@@ -2,6 +2,7 @@ use discord_rich_presence::{
     activity::{Activity, Assets},
     DiscordIpc, DiscordIpcClient,
 };
+use crate::http_client::RealityApi;
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
 
@@ -221,7 +222,7 @@ pub fn discord_rpc_is_connected() -> bool {
 async fn fetch_instance_team(cloud_id: &str) -> Option<Option<String>> {
     let token = crate::auth::get_session_inner()?.api_token?;
     let resp = crate::http_client::HTTP_CLIENT.clone()
-        .get(format!("https://api.reality.catlabdesign.space/instances/{}", cloud_id))
+        .get(format!("https://api.reality.catlabdesign.space/instances/{}", cloud_id)).reality_api()
         .header("Authorization", format!("Bearer {token}"))
         .send()
         .await

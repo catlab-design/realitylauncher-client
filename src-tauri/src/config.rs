@@ -63,6 +63,9 @@ pub struct LauncherConfig {
     /// come from Corretto; Oracle has no current GraalVM builds for them.
     #[serde(default)]
     pub java_provider: String,
+    /// The player turned experimental hotswap off for this PC.
+    #[serde(default)]
+    pub disable_hotswap: bool,
     
     
     #[serde(flatten)]
@@ -85,6 +88,7 @@ impl Default for LauncherConfig {
             enable_game_mode: false,
             native_wayland: false,
             java_provider: String::new(),
+            disable_hotswap: false,
             extra: std::collections::HashMap::new(),
         }
     }
@@ -599,6 +603,18 @@ mod tests {
         assert!(cfg.java_path.is_none());
         assert!(cfg.java_paths.is_none());
         assert!(cfg.extra.is_empty());
+    }
+
+    #[test]
+    fn disable_hotswap_defaults_false_and_reads_camel_case() {
+        let missing: LauncherConfig = serde_json::from_str("{}").unwrap();
+        assert!(!missing.disable_hotswap);
+        assert!(!LauncherConfig::default().disable_hotswap);
+        let on: LauncherConfig = serde_json::from_str(r#"{"disableHotswap": true}"#).unwrap();
+        assert!(on.disable_hotswap);
+        assert!(!on.extra.contains_key("disableHotswap"));
+        let out = serde_json::to_value(&on).unwrap();
+        assert_eq!(out["disableHotswap"], true);
     }
 
     #[test]

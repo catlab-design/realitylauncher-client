@@ -11,6 +11,7 @@
 //! they left it until the pack ships a new version of that file. Mods are
 //! always kept exactly as the pack lists them.
 
+use crate::http_client::RealityApi;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{Read, Write};
@@ -30,14 +31,23 @@ const LAYER_BYTES_SHARE: f64 = 0.6;
 const LAYER_FILE_COUNT: usize = 300;
 
 #[derive(Deserialize)]
-struct Manifest {
-    version: u64,
+pub(crate) struct Manifest {
+    pub(crate) version: u64,
+    /// Opt-in flags; a manifest from before they existed means "all off".
+    #[serde(default)]
+    pub(crate) experimental: Experimental,
     #[serde(default)]
     mods: Vec<ModEntry>,
     #[serde(default)]
     files: Vec<FileEntry>,
     #[serde(default)]
     layers: Vec<LayerEntry>,
+}
+
+#[derive(Deserialize, Default, Debug, Clone, PartialEq)]
+pub(crate) struct Experimental {
+    #[serde(default)]
+    pub(crate) hotswap: bool,
 }
 
 #[derive(Deserialize)]
@@ -78,33 +88,33 @@ fn side_both() -> String {
 }
 
 #[derive(Serialize, Deserialize, Default)]
-struct State {
-    version: u64,
-    entries: HashMap<String, StateEntry>,
+pub(crate) struct State {
+    pub(crate) version: u64,
+    pub(crate) entries: HashMap<String, StateEntry>,
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
-struct StateEntry {
-    size: u64,
-    hash: String,
+pub(crate) struct StateEntry {
+    pub(crate) size: u64,
+    pub(crate) hash: String,
 }
 
 /// One file the instance should contain.
 #[derive(Clone)]
-struct Want {
-    path: String,
-    dest: PathBuf,
-    url: String,
-    size: u64,
+pub(crate) struct Want {
+    pub(crate) path: String,
+    pub(crate) dest: PathBuf,
+    pub(crate) url: String,
+    pub(crate) size: u64,
     /// Identity of the pack's copy: "sha1:…", "crc32:…", "sha256:…" or "size:…".
-    hash: String,
+    pub(crate) hash: String,
     /// Mods must match exactly; other files keep local edits until the pack changes them.
-    enforce: bool,
-    sha1: Option<String>,
-    sha256: Option<String>,
-    crc32: Option<u32>,
-    layer: Option<String>,
-    entry: Option<String>,
+    pub(crate) enforce: bool,
+    pub(crate) sha1: Option<String>,
+    pub(crate) sha256: Option<String>,
+    pub(crate) crc32: Option<u32>,
+    pub(crate) layer: Option<String>,
+    pub(crate) entry: Option<String>,
 }
 
 pub enum Outcome {
@@ -119,7 +129,7 @@ fn is_mod_path(path: &str) -> bool {
     p.starts_with("mods/") && p.ends_with(".jar")
 }
 
-fn wants_from(manifest: &Manifest, dir: &Path) -> (Vec<Want>, Vec<(String, String)>) {
+pub(crate) fn wants_from(manifest: &Manifest, dir: &Path) -> (Vec<Want>, Vec<(String, String)>) {
     let mut wants = Vec::new();
     let mut rejected = Vec::new();
     for m in manifest.mods.iter().filter(|m| m.side != "server") {
@@ -172,7 +182,7 @@ fn wants_from(manifest: &Manifest, dir: &Path) -> (Vec<Want>, Vec<(String, Strin
     (wants, rejected)
 }
 
-fn file_crc32(path: &Path) -> Result<u32, String> {
+pub(crate) fn file_crc32(path: &Path) -> Result<u32, String> {
     let mut file = fs::File::open(path).map_err(|e| e.to_string())?;
     let mut hasher = crc32fast::Hasher::new();
     let mut buf = vec![0u8; 256 * 1024];
@@ -200,7 +210,7 @@ fn local_matches(w: &Want) -> bool {
 }
 
 /// Whether `w` has to be (re)installed, given what the last sync recorded for it.
-fn needs_update(w: &Want, prev: Option<&StateEntry>) -> bool {
+pub(crate) fn needs_update(w: &Want, prev: Option<&StateEntry>) -> bool {
     let meta = match fs::metadata(&w.dest) {
         Ok(m) if m.is_file() => m,
         _ => return true,
@@ -222,14 +232,14 @@ fn needs_update(w: &Want, prev: Option<&StateEntry>) -> bool {
     !local_matches(w)
 }
 
-fn load_state(dir: &Path) -> State {
+pub(crate) fn load_state(dir: &Path) -> State {
     fs::read(dir.join(STATE_FILE))
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default()
 }
 
-fn save_state(dir: &Path, state: &State) -> Result<(), String> {
+pub(crate) fn save_state(dir: &Path, state: &State) -> Result<(), String> {
     let path = dir.join(STATE_FILE);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -345,10 +355,10 @@ async fn download_layer(
     out.flush().map_err(|e| e.to_string())
 }
 
-async fn fetch_manifest(cloud_id: &str) -> Result<Option<Manifest>, String> {
+pub(crate) async fn fetch_manifest(cloud_id: &str) -> Result<Option<Manifest>, String> {
     let url = format!("{API_URL}/instances/{cloud_id}/pack/manifest");
     let resp = crate::http_client::HTTP_CLIENT
-        .get(&url)
+        .get(&url).reality_api()
         .header("User-Agent", "RealityLauncher/2.0")
         .send()
         .await
@@ -362,6 +372,51 @@ async fn fetch_manifest(cloud_id: &str) -> Result<Option<Manifest>, String> {
     resp.json::<Manifest>().await.map(Some).map_err(|e| format!("Bad pack manifest: {e}"))
 }
 
+/// `experimental.hotswap` of the manifest each instance dir's latest sync read,
+/// so the launch needs no second manifest request.
+pub(crate) fn record_synced_flag(dir: &Path, flag: bool) {
+    SYNCED_FLAGS.lock().unwrap().insert(dir.to_path_buf(), flag);
+}
+
+/// Remove and return the flag recorded for `dir` (`None` if its sync did not
+/// read a v2 manifest).
+pub(crate) fn take_synced_flag(dir: &Path) -> Option<bool> {
+    SYNCED_FLAGS.lock().unwrap().remove(dir)
+}
+
+static SYNCED_FLAGS: once_cell::sync::Lazy<std::sync::Mutex<HashMap<PathBuf, bool>>> =
+    once_cell::sync::Lazy::new(Default::default);
+
+/// Conditional manifest fetch for the hotswap watcher: `Ok(None)` on 304, else
+/// the manifest and its `ETag`. A missing pack (404) is an error here.
+pub(crate) async fn fetch_manifest_if_changed(
+    cloud_id: &str,
+    etag: Option<&str>,
+) -> Result<Option<(Manifest, Option<String>)>, String> {
+    let url = format!("{API_URL}/instances/{cloud_id}/pack/manifest");
+    let mut req = crate::http_client::HTTP_CLIENT
+        .get(&url).reality_api()
+        .header("User-Agent", "RealityLauncher/2.0")
+        .timeout(std::time::Duration::from_secs(20));
+    if let Some(etag) = etag {
+        req = req.header("If-None-Match", etag);
+    }
+    let resp = req.send().await.map_err(|e| format!("Network error: {e}"))?;
+    if resp.status() == reqwest::StatusCode::NOT_MODIFIED {
+        return Ok(None);
+    }
+    if !resp.status().is_success() {
+        return Err(format!("Pack manifest: HTTP {}", resp.status()));
+    }
+    let new_etag = resp
+        .headers()
+        .get(reqwest::header::ETAG)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    let manifest = resp.json::<Manifest>().await.map_err(|e| format!("Bad pack manifest: {e}"))?;
+    Ok(Some((manifest, new_etag)))
+}
+
 /// Bring `dir` in line with the instance's published v2 pack.
 pub async fn sync(
     app: &tauri::AppHandle,
@@ -370,11 +425,35 @@ pub async fn sync(
     cancel: &crate::op_guard::CancelToken,
     keybinds: &crate::keybinds::KeybindSync,
 ) -> Result<Outcome, String> {
+    let _ = take_synced_flag(dir);
+    let mut flag = None;
+    let result = sync_inner(app, dir, cloud_id, cancel, keybinds, &mut flag).await;
+    record_flag_if_synced(dir, &result, flag);
+    result
+}
+
+/// The hotswap flag counts only for a completed v2 sync: after an error the
+/// caller falls back to another sync path and the instance is not v2-synced.
+fn record_flag_if_synced(dir: &Path, result: &Result<Outcome, String>, flag: Option<bool>) {
+    if let (Ok(Outcome::Synced(_)), Some(flag)) = (result, flag) {
+        record_synced_flag(dir, flag);
+    }
+}
+
+async fn sync_inner(
+    app: &tauri::AppHandle,
+    dir: &Path,
+    cloud_id: &str,
+    cancel: &crate::op_guard::CancelToken,
+    keybinds: &crate::keybinds::KeybindSync,
+    hotswap_flag: &mut Option<bool>,
+) -> Result<Outcome, String> {
     // Must run before anything is written to `dir` (a pack may ship options.txt).
     let first_install = crate::keybinds::is_first_install(dir);
     let Some(manifest) = fetch_manifest(cloud_id).await? else {
         return Ok(Outcome::NotV2);
     };
+    *hotswap_flag = Some(manifest.experimental.hotswap);
     emit_sync_progress(app, "sync-check", "Checking files", None, None, None, None);
     fs::create_dir_all(dir).map_err(|e| e.to_string())?;
 
@@ -556,6 +635,30 @@ pub async fn sync(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn flag_recorded_only_after_a_successful_v2_sync() {
+        let d = Path::new("/rl-test/flag-sync");
+        let _ = take_synced_flag(d);
+        record_flag_if_synced(d, &Err("download failed".into()), Some(true));
+        assert_eq!(take_synced_flag(d), None);
+        record_flag_if_synced(d, &Ok(Outcome::NotV2), None);
+        assert_eq!(take_synced_flag(d), None);
+        record_flag_if_synced(d, &Ok(Outcome::Synced(vec![])), Some(true));
+        assert_eq!(take_synced_flag(d), Some(true));
+    }
+
+    #[test]
+    fn synced_flag_is_recorded_per_dir_and_taken_once() {
+        let a = Path::new("/rl-test/flag-a");
+        let b = Path::new("/rl-test/flag-b");
+        assert_eq!(take_synced_flag(a), None);
+        record_synced_flag(a, true);
+        record_synced_flag(b, false);
+        assert_eq!(take_synced_flag(a), Some(true));
+        assert_eq!(take_synced_flag(a), None);
+        assert_eq!(take_synced_flag(b), Some(false));
+    }
+
     use super::*;
 
     fn temp_dir(name: &str) -> PathBuf {

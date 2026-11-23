@@ -145,6 +145,19 @@ export function GameTab({ config, updateConfig, colors, handleBrowseJava, handle
                         </div>
                     }
                 />
+                <SettingsRow
+                    colors={colors}
+                    icon={<i className="fa-solid fa-bolt text-base"></i>}
+                    title={t('disable_hotswap')}
+                    description={t('disable_hotswap_desc')}
+                >
+                    <Toggle
+                        checked={!!config.disableHotswap}
+                        label={t('disable_hotswap')}
+                        colors={colors}
+                        onChange={() => updateConfig({ disableHotswap: !config.disableHotswap })}
+                    />
+                </SettingsRow>
             </SettingsSection>
 
             {perfTools?.linux && (

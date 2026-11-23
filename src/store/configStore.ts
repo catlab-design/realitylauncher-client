@@ -37,6 +37,7 @@ const defaultConfig: LauncherConfig = {
     enableMangoHud: false,
     enableGameMode: false,
     nativeWayland: false,
+    disableHotswap: false,
     javaProvider: "corretto",
     telemetryEnabled: true,
     autoUpdateEnabled: true,

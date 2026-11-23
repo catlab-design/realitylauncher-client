@@ -414,14 +414,14 @@ async fn blocking<T: Send + 'static>(
         .map_err(|e| format!("mappings task failed: {e}"))?
 }
 
-/// Locates (cache, Forge's copy in libraries) or downloads the Mojang mappings and
-/// parses the obfuscated names. `Ok(None)` when the version has no client mappings.
-async fn mojang_obf_names(
+/// Locates (cache, Forge's copy in libraries) or downloads the Mojang mappings.
+/// `Ok(None)` when the version has no client mappings.
+async fn mojang_mappings_file(
     minecraft_dir: &Path,
     libraries_dir: &Path,
     mc: &str,
     version_json: &serde_json::Value,
-) -> Result<Option<TabNames>, String> {
+) -> Result<Option<PathBuf>, String> {
     let info = client_mappings_info(minecraft_dir, version_json);
     let sha1 = info.as_ref().and_then(|(_, s)| s.clone());
     let cached = minecraft_dir
@@ -460,10 +460,38 @@ async fn mojang_obf_names(
             cached
         }
     };
+    Ok(Some(path))
+}
 
+/// Parses the obfuscated tab-list names out of the Mojang mappings.
+async fn mojang_obf_names(
+    minecraft_dir: &Path,
+    libraries_dir: &Path,
+    mc: &str,
+    version_json: &serde_json::Value,
+) -> Result<Option<TabNames>, String> {
+    let Some(path) = mojang_mappings_file(minecraft_dir, libraries_dir, mc, version_json).await? else {
+        return Ok(None);
+    };
     blocking(move || {
         let file = std::fs::File::open(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         parse_mojang(BufReader::new(file)).map_err(|e| format!("{}: {e}", path.display()))
+    })
+    .await
+}
+
+async fn mojang_hotswap_obf(
+    minecraft_dir: &Path,
+    libraries_dir: &Path,
+    mc: &str,
+    version_json: &serde_json::Value,
+) -> Result<Option<HotswapObf>, String> {
+    let Some(path) = mojang_mappings_file(minecraft_dir, libraries_dir, mc, version_json).await? else {
+        return Ok(None);
+    };
+    blocking(move || {
+        let file = std::fs::File::open(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        parse_mojang_hotswap(BufReader::new(file)).map_err(|e| format!("{}: {e}", path.display()))
     })
     .await
 }
@@ -482,6 +510,27 @@ fn read_zip_entry<T>(
     f(BufReader::new(entry)).map_err(|e| format!("{}: {e}", zip_path.display()))
 }
 
+/// Makes sure the intermediary jar is in the cache, downloading it when missing
+/// or unreadable. `Ok(false)` when this version has no intermediary mappings.
+async fn ensure_intermediary_jar(jar: &Path, mc: &str) -> Result<bool, String> {
+    let check = jar.to_path_buf();
+    let usable = blocking(move || {
+        Ok(check.is_file() && read_zip_entry(&check, "mappings/mappings.tiny", |_| Ok(())).is_ok())
+    })
+    .await?;
+    if !usable {
+        let url = format!(
+            "https://maven.fabricmc.net/net/fabricmc/intermediary/{mc}/intermediary-{mc}-v2.jar"
+        );
+        match crate::download::download_file(&crate::http_client::HTTP_CLIENT, &url, &jar.to_path_buf(), None).await {
+            Ok(_) => {}
+            Err(e) if e.starts_with("HTTP_STATUS:404") => return Ok(false),
+            Err(e) => return Err(format!("Intermediary download failed: {e}")),
+        }
+    }
+    Ok(true)
+}
+
 async fn intermediary_names(
     minecraft_dir: &Path,
     mc: &str,
@@ -491,32 +540,15 @@ async fn intermediary_names(
         .join("mappings")
         .join(mc)
         .join("intermediary-v2.jar");
-    let parse = {
-        let jar = jar.clone();
-        move || {
-            read_zip_entry(&jar, "mappings/mappings.tiny", |r| {
-                parse_tiny_v2(r, &obf, "intermediary")
-            })
-        }
-    };
-    let check = jar.clone();
-    let usable = blocking(move || {
-        Ok(check.is_file() && read_zip_entry(&check, "mappings/mappings.tiny", |_| Ok(())).is_ok())
-    })
-    .await?;
-    if !usable {
-        let url = format!(
-            "https://maven.fabricmc.net/net/fabricmc/intermediary/{mc}/intermediary-{mc}-v2.jar"
-        );
-        match crate::download::download_file(&crate::http_client::HTTP_CLIENT, &url, &jar, None)
-            .await
-        {
-            Ok(_) => {}
-            Err(e) if e.starts_with("HTTP_STATUS:404") => return Ok(None),
-            Err(e) => return Err(format!("Intermediary download failed: {e}")),
-        }
+    if !ensure_intermediary_jar(&jar, mc).await? {
+        return Ok(None);
     }
-    blocking(parse).await
+    blocking(move || {
+        read_zip_entry(&jar, "mappings/mappings.tiny", |r| {
+            parse_tiny_v2(r, &obf, "intermediary")
+        })
+    })
+    .await
 }
 
 /// Resolves runtime names for the tab hook.
@@ -643,6 +675,369 @@ async fn resolve_tab_schemes_uncached(
                 .unwrap_or_default())
         }
     }
+}
+
+
+// ---------------------------------------------------------------------------
+// Hotswap names: the five runtime names the hotswap agent reflects on.
+// ---------------------------------------------------------------------------
+
+const MINECRAFT: &str = "net.minecraft.client.Minecraft";
+const CLIENT_LEVEL: &str = "net.minecraft.client.multiplayer.ClientLevel";
+const CLIENT_LISTENER: &str = "net.minecraft.client.multiplayer.ClientPacketListener";
+const COMPLETABLE_FUTURE_DESC: &str = "Ljava/util/concurrent/CompletableFuture;";
+
+/// Runtime names for `-Dreality.hotswap.names`. `minecraft_class` is a dotted
+/// binary name (`Class#getName()`); the rest are plain member names.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HotswapNames {
+    pub minecraft_class: String,
+    pub get_instance: String,
+    pub get_connection: String,
+    pub level_field: String,
+    pub reload_resource_packs: String,
+    /// The other namespace (official vs SRG) for Forge/NeoForge, where the
+    /// loader version decides which one the running game uses. The agent tries
+    /// the primary set first and the alternative if any member is missing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alt: Option<Box<HotswapNames>>,
+}
+
+impl HotswapNames {
+    pub fn official() -> Self {
+        Self {
+            minecraft_class: MINECRAFT.into(),
+            get_instance: "getInstance".into(),
+            get_connection: "getConnection".into(),
+            level_field: "level".into(),
+            reload_resource_packs: "reloadResourcePacks".into(),
+            alt: None,
+        }
+    }
+
+    /// The agent's `Names.load` format: a Java properties file.
+    pub fn to_properties(&self) -> String {
+        let set = |prefix: &str, n: &HotswapNames| {
+            format!(
+                "{prefix}minecraft_class={}\n{prefix}get_instance={}\n{prefix}get_connection={}\n{prefix}level_field={}\n{prefix}reload_resource_packs={}\n",
+                n.minecraft_class, n.get_instance, n.get_connection, n.level_field, n.reload_resource_packs
+            )
+        };
+        let mut out = set("", self);
+        if let Some(alt) = &self.alt {
+            out.push_str(&set("alt.", alt));
+        }
+        out
+    }
+}
+
+/// Obfuscated names from the Mojang mappings: JVM internal class names of
+/// Minecraft, ClientLevel and ClientPacketListener, then the Minecraft members
+/// (getInstance, getConnection, level, reloadResourcePacks).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HotswapObf {
+    classes: [String; 3],
+    members: [String; 4],
+}
+
+pub fn parse_mojang_hotswap<R: BufRead>(reader: R) -> std::io::Result<Option<HotswapObf>> {
+    let member_sigs = [
+        format!("{MINECRAFT} getInstance()"),
+        format!("{CLIENT_LISTENER} getConnection()"),
+        format!("{CLIENT_LEVEL} level"),
+        "java.util.concurrent.CompletableFuture reloadResourcePacks()".to_string(),
+    ];
+    let mut classes: [Option<String>; 3] = Default::default();
+    let mut members: [Option<String>; 4] = Default::default();
+    let mut in_minecraft = false;
+
+    for line in reader.lines() {
+        let line = line?;
+        if line.starts_with('#') || line.is_empty() {
+            continue;
+        }
+        if !line.starts_with(' ') {
+            in_minecraft = false;
+            let Some((official, obf)) = line.split_once(" -> ") else {
+                continue;
+            };
+            let idx = match official {
+                MINECRAFT => 0,
+                CLIENT_LEVEL => 1,
+                CLIENT_LISTENER => 2,
+                _ => continue,
+            };
+            classes[idx] = Some(obf.trim_end_matches(':').trim().replace('.', "/"));
+            in_minecraft = idx == 0;
+            continue;
+        }
+        if !in_minecraft {
+            continue;
+        }
+        let Some((sig, obf)) = mojang_member(&line) else {
+            continue;
+        };
+        if let Some(slot) = member_sigs.iter().position(|m| m == sig) {
+            members[slot].get_or_insert_with(|| obf.to_string());
+        }
+    }
+
+    let [a, b, c] = classes;
+    let [d, e, f, g] = members;
+    Ok((|| Some(HotswapObf { classes: [a?, b?, c?], members: [d?, e?, f?, g?] }))())
+}
+
+impl HotswapObf {
+    /// (name, descriptor, is_field) of each member in the obfuscated namespace.
+    fn targets(&self) -> [(&str, String, bool); 4] {
+        let [minecraft, level, listener] = &self.classes;
+        [
+            (&self.members[0], format!("()L{minecraft};"), false),
+            (&self.members[1], format!("()L{listener};"), false),
+            (&self.members[2], format!("L{level};"), true),
+            (&self.members[3], format!("(){COMPLETABLE_FUTURE_DESC}"), false),
+        ]
+        .map(|(n, d, f)| (n.as_str(), d, f))
+    }
+}
+
+/// Streams a tiny v2 file (`official` first) and maps the five names to `target`.
+pub fn parse_tiny_hotswap<R: BufRead>(
+    reader: R,
+    obf: &HotswapObf,
+    target: &str,
+) -> std::io::Result<Option<HotswapNames>> {
+    let mut lines = reader.lines();
+    let Some(header) = lines.next().transpose()? else {
+        return Ok(None);
+    };
+    let cols: Vec<&str> = header.split('\t').collect();
+    if cols.len() < 5 || cols[0] != "tiny" || cols[1] != "2" {
+        return Ok(None);
+    }
+    let namespaces = &cols[3..];
+    let (Some(0), Some(dst)) = (
+        namespaces.iter().position(|n| *n == "official"),
+        namespaces.iter().position(|n| *n == target),
+    ) else {
+        return Ok(None);
+    };
+
+    let targets = obf.targets();
+    let mut class: Option<String> = None;
+    let mut members: [Option<String>; 4] = Default::default();
+    let mut in_minecraft = false;
+
+    for line in lines {
+        let line = line?;
+        if let Some(rest) = line.strip_prefix("c\t") {
+            let parts: Vec<&str> = rest.split('\t').collect();
+            in_minecraft = parts.first() == Some(&obf.classes[0].as_str());
+            if in_minecraft {
+                class = parts.get(dst).map(|n| n.replace('/', "."));
+            }
+            continue;
+        }
+        if !in_minecraft {
+            continue;
+        }
+        let (is_field, rest) = match (line.strip_prefix("\tm\t"), line.strip_prefix("\tf\t")) {
+            (Some(r), _) => (false, r),
+            (_, Some(r)) => (true, r),
+            _ => continue,
+        };
+        let parts: Vec<&str> = rest.split('\t').collect();
+        for (slot, (name, desc, field)) in targets.iter().enumerate() {
+            if *field == is_field && parts.first() == Some(&desc.as_str()) && parts.get(1) == Some(name) {
+                if let Some(n) = parts.get(1 + dst) {
+                    members[slot].get_or_insert_with(|| n.to_string());
+                }
+            }
+        }
+    }
+
+    let [a, b, c, d] = members;
+    Ok((|| {
+        Some(HotswapNames {
+            minecraft_class: class?,
+            get_instance: a?,
+            get_connection: b?,
+            level_field: c?,
+            reload_resource_packs: d?,
+            alt: None,
+        })
+    })())
+}
+
+/// Streams a tsrg2 file and returns the SRG member names as
+/// (getInstance, getConnection, level, reloadResourcePacks). Classes keep their
+/// official names under Forge/NeoForge.
+pub fn parse_tsrg2_hotswap<R: BufRead>(reader: R, obf: &HotswapObf) -> std::io::Result<Option<[String; 4]>> {
+    let mut lines = reader.lines();
+    let Some(header) = lines.next().transpose()? else {
+        return Ok(None);
+    };
+    let cols: Vec<&str> = header.split(' ').collect();
+    if cols.first() != Some(&"tsrg2") {
+        return Ok(None);
+    }
+    let Some(dst) = cols[1..].iter().position(|n| *n == "srg") else {
+        return Ok(None);
+    };
+    if dst == 0 {
+        return Ok(None);
+    }
+
+    let targets = obf.targets();
+    let mut members: [Option<String>; 4] = Default::default();
+    let mut in_minecraft = false;
+
+    for line in lines {
+        let line = line?;
+        if !line.starts_with('\t') {
+            in_minecraft = line.split(' ').next() == Some(obf.classes[0].as_str());
+            continue;
+        }
+        if !in_minecraft || line.starts_with("\t\t") {
+            continue;
+        }
+        let parts: Vec<&str> = line[1..].split(' ').collect();
+        // Methods: `obf (desc) srg id`; fields: `obf srg id`.
+        let is_method = parts.get(1).is_some_and(|p| p.starts_with('('));
+        for (slot, (name, desc, field)) in targets.iter().enumerate() {
+            if parts.first() != Some(name) || *field == is_method {
+                continue;
+            }
+            if is_method && parts.get(1) != Some(&desc.as_str()) {
+                continue;
+            }
+            let value = if is_method { parts.get(2) } else { parts.get(1) };
+            if let Some(v) = value {
+                members[slot].get_or_insert_with(|| v.to_string());
+            }
+        }
+    }
+
+    let [a, b, c, d] = members;
+    Ok((|| Some([a?, b?, c?, d?]))())
+}
+
+#[derive(Serialize, Deserialize)]
+struct HotswapCache {
+    key: String,
+    names: HotswapNames,
+}
+
+/// Runtime names for the hotswap agent, or `None` when they can't be resolved
+/// (unsupported version, missing mappings, network failure): hotswap is then
+/// off for the launch. Cached like the tab schemes.
+///
+/// Vanilla → obf; Fabric/Quilt → intermediary; Forge/NeoForge → the official
+/// names with the SRG member names as `alt` (when the MCP config is present),
+/// the same two candidates the tab schemes resolve. Which one the running game
+/// uses is decided by the agent: the set that fully resolves wins.
+pub async fn resolve_hotswap_names(
+    minecraft_dir: &Path,
+    libraries_dir: &Path,
+    mc_version: &str,
+    loader: &LoaderType,
+    version_json: &serde_json::Value,
+) -> Option<HotswapNames> {
+    if !is_supported_version(mc_version) {
+        return None;
+    }
+    let key = format!(
+        "hs2|{}",
+        schemes_cache_key(minecraft_dir, libraries_dir, mc_version, loader, version_json)
+    );
+    let cache_path = minecraft_dir
+        .join("mappings")
+        .join(mc_version)
+        .join(format!("hotswap-names-{loader:?}.json").to_lowercase());
+    let cached = std::fs::read(&cache_path)
+        .ok()
+        .and_then(|b| serde_json::from_slice::<HotswapCache>(&b).ok())
+        .filter(|c| c.key == key);
+    if let Some(cache) = cached {
+        return Some(cache.names);
+    }
+
+    let names = match resolve_hotswap_names_uncached(minecraft_dir, libraries_dir, mc_version, loader, version_json).await {
+        Ok(n) => n?,
+        Err(e) => {
+            log::warn!("[Mappings] hotswap names failed for {mc_version}: {e}");
+            return None;
+        }
+    };
+    let cache = HotswapCache { key, names: names.clone() };
+    if let (Some(parent), Ok(bytes)) = (cache_path.parent(), serde_json::to_vec(&cache)) {
+        let tmp = cache_path.with_extension(format!("{}.tmp", std::process::id()));
+        let _ = std::fs::create_dir_all(parent)
+            .and_then(|_| std::fs::write(&tmp, bytes))
+            .and_then(|_| std::fs::rename(&tmp, &cache_path));
+    }
+    Some(names)
+}
+
+async fn resolve_hotswap_names_uncached(
+    minecraft_dir: &Path,
+    libraries_dir: &Path,
+    mc_version: &str,
+    loader: &LoaderType,
+    version_json: &serde_json::Value,
+) -> Result<Option<HotswapNames>, String> {
+    let official = HotswapNames::official();
+    if matches!(loader, LoaderType::Forge | LoaderType::Neoforge) {
+        let srg = async {
+            let Some(zip) = find_mcp_config(libraries_dir, mc_version) else {
+                return Ok(None);
+            };
+            let Some(obf) = mojang_hotswap_obf(minecraft_dir, libraries_dir, mc_version, version_json).await? else {
+                return Ok(None);
+            };
+            blocking(move || read_zip_entry(&zip, "config/joined.tsrg", |r| parse_tsrg2_hotswap(r, &obf))).await
+        };
+        let alt = match srg.await {
+            Ok(Some([get_instance, get_connection, level_field, reload_resource_packs])) => Some(Box::new(HotswapNames {
+                get_instance,
+                get_connection,
+                level_field,
+                reload_resource_packs,
+                ..HotswapNames::official()
+            })),
+            Ok(None) => {
+                log::warn!("[Mappings] SRG hotswap names not found for {mc_version}");
+                None
+            }
+            Err(e) => {
+                log::warn!("[Mappings] SRG hotswap resolution failed for {mc_version}: {e}");
+                None
+            }
+        };
+        return Ok(Some(HotswapNames { alt, ..official }));
+    }
+
+    let Some(obf) = mojang_hotswap_obf(minecraft_dir, libraries_dir, mc_version, version_json).await? else {
+        return Ok(None);
+    };
+    if *loader == LoaderType::Vanilla {
+        return Ok(Some(HotswapNames {
+            minecraft_class: obf.classes[0].replace('/', "."),
+            get_instance: obf.members[0].clone(),
+            get_connection: obf.members[1].clone(),
+            level_field: obf.members[2].clone(),
+            reload_resource_packs: obf.members[3].clone(),
+            alt: None,
+        }));
+    }
+    let jar = minecraft_dir.join("mappings").join(mc_version).join("intermediary-v2.jar");
+    if !ensure_intermediary_jar(&jar, mc_version).await? {
+        return Ok(None);
+    }
+    blocking(move || {
+        read_zip_entry(&jar, "mappings/mappings.tiny", |r| parse_tiny_hotswap(r, &obf, "intermediary"))
+    })
+    .await
 }
 
 #[cfg(test)]
@@ -793,6 +1188,119 @@ tj net/minecraft/src/C_5012_ 5012
         assert_eq!(
             s.append_desc,
             "(Lnet/minecraft/network/chat/Component;)Lnet/minecraft/network/chat/MutableComponent;"
+        );
+    }
+
+
+    const MOJANG_HS: &str = "\
+net.minecraft.client.Minecraft -> enn:
+    net.minecraft.client.multiplayer.ClientLevel level -> s
+    net.minecraft.client.multiplayer.ClientLevel other -> t
+    1:1:net.minecraft.client.Minecraft getInstance() -> Q
+    1:1:net.minecraft.client.multiplayer.ClientPacketListener getConnection() -> I
+    1:1:java.util.concurrent.CompletableFuture reloadResourcePacks() -> W
+    1:1:java.util.concurrent.CompletableFuture reloadResourcePacks(boolean) -> X
+net.minecraft.client.Minecraft$ChatStatus -> enn$a:
+    1:1:java.util.concurrent.CompletableFuture reloadResourcePacks() -> zz
+net.minecraft.client.multiplayer.ClientLevel -> eud:
+net.minecraft.client.multiplayer.ClientPacketListener -> eue:
+";
+
+    const TINY_HS: &str = "\
+tiny\t2\t0\tofficial\tintermediary
+c\tenn\tnet/minecraft/class_310
+\tf\tLeud;\ts\tfield_1687
+\tf\tLeud;\tt\tfield_other
+\tm\t()Lenn;\tQ\tmethod_1551
+\tm\t()Leue;\tI\tmethod_1562
+\tm\t()Ljava/util/concurrent/CompletableFuture;\tW\tmethod_1521
+\tm\t(Z)Ljava/util/concurrent/CompletableFuture;\tX\tmethod_wrong
+c\teud\tnet/minecraft/class_638
+c\teue\tnet/minecraft/class_634
+";
+
+    const TSRG_HS: &str = "\
+tsrg2 obf srg id
+enn net/minecraft/src/C_91087_ 91087
+\ts f_91073_ 91073
+\tt f_other_ 1
+\tQ ()Lenn; m_91087_ 91087
+\tI ()Leue; m_91403_ 91403
+\tW ()Ljava/util/concurrent/CompletableFuture; m_91391_ 91391
+\tX (Z)Ljava/util/concurrent/CompletableFuture; m_wrong_ 1
+eud net/minecraft/src/C_1_ 1
+";
+
+    fn hs_obf() -> HotswapObf {
+        parse_mojang_hotswap(std::io::Cursor::new(MOJANG_HS)).unwrap().unwrap()
+    }
+
+    #[test]
+    fn mojang_hotswap_picks_exact_signatures() {
+        let obf = hs_obf();
+        assert_eq!(obf.classes, ["enn", "eud", "eue"]);
+        assert_eq!(obf.members, ["Q", "I", "s", "W"]);
+    }
+
+    #[test]
+    fn mojang_hotswap_missing_member_is_none() {
+        let cut = MOJANG_HS.replace("reloadResourcePacks() -> W", "reloadResourcePacks(int) -> W");
+        assert!(parse_mojang_hotswap(std::io::Cursor::new(cut)).unwrap().is_none());
+        let no_class = MOJANG_HS.replace("ClientLevel -> eud:", "ClientLevelX -> eud:");
+        assert!(parse_mojang_hotswap(std::io::Cursor::new(no_class)).unwrap().is_none());
+    }
+
+    #[test]
+    fn tiny_hotswap_maps_to_intermediary() {
+        let names = parse_tiny_hotswap(std::io::Cursor::new(TINY_HS), &hs_obf(), "intermediary")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            names,
+            HotswapNames {
+                minecraft_class: "net.minecraft.class_310".into(),
+                get_instance: "method_1551".into(),
+                get_connection: "method_1562".into(),
+                level_field: "field_1687".into(),
+                reload_resource_packs: "method_1521".into(),
+                alt: None,
+            }
+        );
+        let broken = TINY_HS.replace("\tf\tLeud;\ts\tfield_1687\n", "");
+        assert!(parse_tiny_hotswap(std::io::Cursor::new(broken), &hs_obf(), "intermediary").unwrap().is_none());
+    }
+
+    #[test]
+    fn tsrg2_hotswap_maps_members() {
+        let members = parse_tsrg2_hotswap(std::io::Cursor::new(TSRG_HS), &hs_obf()).unwrap().unwrap();
+        assert_eq!(members, ["m_91087_", "m_91403_", "f_91073_", "m_91391_"]);
+    }
+
+    #[test]
+    fn hotswap_names_properties_carry_the_alternative_namespace() {
+        let srg = HotswapNames {
+            get_instance: "m_91087_".into(),
+            get_connection: "m_91403_".into(),
+            level_field: "f_91073_".into(),
+            reload_resource_packs: "m_91391_".into(),
+            ..HotswapNames::official()
+        };
+        let both = HotswapNames { alt: Some(Box::new(srg.clone())), ..HotswapNames::official() };
+        let props = both.to_properties();
+        assert!(props.starts_with(&HotswapNames::official().to_properties()));
+        assert!(props.contains("alt.minecraft_class=net.minecraft.client.Minecraft\n"));
+        assert!(props.contains("alt.get_instance=m_91087_\n"));
+        assert!(props.contains("alt.level_field=f_91073_\n"));
+        assert!(props.contains("alt.reload_resource_packs=m_91391_\n"));
+        assert_eq!(props.lines().count(), 10);
+    }
+
+    #[test]
+    fn hotswap_names_properties_use_the_agents_keys() {
+        let props = HotswapNames::official().to_properties();
+        assert_eq!(
+            props,
+            "minecraft_class=net.minecraft.client.Minecraft\nget_instance=getInstance\nget_connection=getConnection\nlevel_field=level\nreload_resource_packs=reloadResourcePacks\n"
         );
     }
 

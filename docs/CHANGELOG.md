@@ -1,3 +1,17 @@
+## [5.4.0] — 2026-11-24
+
+### Added
+- Experimental: live pack updates (hotswap). It is off by default. A server owner turns it on for an instance in the management site (Pack › Settings › Experimental), and it works only for instances with a published pack.
+  - While you play, the launcher checks the pack every minute. When a newer version is published, it downloads the changed files in the background and checks every file's size and checksums. When the server can't be reached, it checks less often, backing off to every 10 minutes.
+  - If the update has resource packs, shader packs or config files, a prompt "Pack updated – apply now?" offers Apply / Later. Apply swaps those files and reloads resources once you are at the main menu. If you are in a world, the prompt says "Go to the main menu to apply".
+  - Mods (`.jar`) and anything else are never swapped while the game runs. They show "Restart to apply" and are put in place at your next launch, before the normal sync.
+  - If a live update fails, it says "Swap failed – will apply next launch". If the game crashes or closes within 10 seconds of an applied update, hotswap stays off for that pack version.
+  - When the server owner turns hotswap off, the pending offer is withdrawn. "Disable hotswap on this PC" in Settings › Game turns it off locally.
+  - With hotswap off, the game starts exactly as before. Player-installed and locked mods are never removed.
+- The game starts with a small extra helper (`reality-hotswap.jar`), but only when hotswap is on for that launch.
+- Requests to the Reality API now carry an `X-Launcher-Version` header, so the server can tell which features a launcher supports. Requests to other sites (Modrinth, CurseForge, downloads) don't carry it.
+- Hotswap telemetry: offer, applied, restart required, failed and crash lock. Each event holds the loader, Minecraft version, launcher version and counts only, never file paths or tokens.
+
 ## [5.3.2] — 2026-11-21
 
 ### Added

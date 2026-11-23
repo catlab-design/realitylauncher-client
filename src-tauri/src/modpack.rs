@@ -1,3 +1,4 @@
+use crate::http_client::RealityApi;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Read;
@@ -812,7 +813,7 @@ async fn install_cf_modpack(app: &tauri::AppHandle, file_path: &str) -> ModpackI
                 let _permit = sem.acquire().await.map_err(|e| e.to_string())?;
                 let url = format!("{API_URL}/curseforge/download/{proj}/{fid}");
                 let resp = client
-                    .get(&url)
+                    .get(&url).reality_api()
                     .header("Accept", "application/json")
                     .send()
                     .await
@@ -1047,7 +1048,7 @@ pub async fn modpack_install_from_curseforge(
 
     let download_url = format!("{API_URL}/curseforge/download/{project_id}/{file_id}");
     let resp = match client
-        .get(&download_url)
+        .get(&download_url).reality_api()
         .header("Accept", "application/json")
         .send()
         .await
@@ -1701,7 +1702,7 @@ async fn fetch_and_set_assets(instance_id: &str, source: &str, project_id: &str)
     } else if source == "curseforge" {
         let url = format!("{}/curseforge/project/{}", API_URL, project_id);
         if let Ok(resp) = client
-            .get(&url)
+            .get(&url).reality_api()
             .header("Accept", "application/json")
             .send()
             .await
