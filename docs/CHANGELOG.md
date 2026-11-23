@@ -1,3 +1,8 @@
+## [Unreleased]
+
+### Added
+- Every request the launcher sends to the Reality API now carries an `X-Launcher-Version` header with the launcher's version, so the server can tell which features a launcher supports.
+
 ## [5.3.1] — 2026-11-21
 
 ### Fixed

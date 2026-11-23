@@ -152,7 +152,7 @@ src-tauri/
 └── src/
     ├── main.rs                       # Entry point, 93+ command registrations
     ├── lib.rs                        # Module declarations
-    ├── http_client.rs                # (23 lines) Global shared reqwest::Client (pooled, HTTP/2, gzip, brotli)
+    ├── http_client.rs                # (23 lines) Global shared reqwest::Client (pooled, HTTP/2, gzip, brotli); default `X-Launcher-Version` header via `launcher_default_headers()`
     ├── download.rs                   # (315 lines) Shared concurrent download engine
     ├── launch_log.rs                 # Per-launch launcher log (<instance>/logs/launcher.log) + redact() used by every log read
     ├── launcher.rs                   # (2127 lines) Game launch — largest module
